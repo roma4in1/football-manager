@@ -1,0 +1,21 @@
+{
+  "name": "football-manager",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "harness": "node stat-harness.ts",
+    "typecheck": "tsc --noEmit",
+    "db:test:up": "docker start fm-test-pg 2>/dev/null || docker run -d --name fm-test-pg -e POSTGRES_PASSWORD=fm -e POSTGRES_DB=fm_test -p 54329:5432 postgres:16-alpine",
+    "db:test:down": "docker rm -f fm-test-pg",
+    "test:integration": "node --test league-integration.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/pg": "^8.20.0",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "pg": "^8.22.0",
+    "pg-boss": "^12.24.1"
+  }
+}

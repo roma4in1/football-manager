@@ -1,0 +1,564 @@
+/**
+ * engine/aggregate.ts — AggregateEngine: the Poisson/aggregate fallback behind
+ * SimEngine (M3 playable league). AgentEngine replaces it behind the same
+ * interface mid-season.
+ *
+ * What it does:
+ *  - Team strength profiles from attribute means; Poisson shot counts scaled by
+ *    attack/defense ratio, home boost, tempo; per-shot xG draw decides goals.
+ *  - Fabricates coarse events (shots/goals/saves/fouls/cards/corners/offsides/
+ *    injuries) and low-rate frames (one per 6s) — enough for result card, stats,
+ *    and a degraded replay. Heatmaps from phase-blended anchors.
+ *  - Consumes tactics coarsely: team sliders + player-instruction means move
+ *    aggregate rates (press→PPDA/fatigue, risk→passAcc/xG-per-shot, lineHeight→
+ *    opponent offsides, crossBias→aerials/headers). Anchors drive heatmaps and
+ *    frames. `zones` are IGNORED here — only the agent engine consumes them.
+ *
+ * Not modeled (known stub gaps):
+ *  - Subs: bench unused, no 'sub' events; minutesPlayed is 45/half for all.
+ *  - Red cards apply a within-half rate penalty but CANNOT carry across halves:
+ *    HalfTimeState.playerState has no sent-off field (cards is 0|1). Interface
+ *    gap — raise before freezing v2.
+ *  - Injured players are flagged but keep playing (no sub model).
+ *
+ * Determinism: all randomness via Rng seeded from `${fixtureId}|${seed}`; half 2
+ * resumes the serialized stream from resumeState.rngState. No I/O, no Date.now(),
+ * no Math.random().
+ *
+ * Coordinate conventions: tactics anchors are team-relative (own goal line x=0,
+ * attacking toward x=105). Events and frames are in the GLOBAL frame (home
+ * attacks +x, away positions flipped). Heatmaps stay team-relative (each team
+ * attacks left→right) — harness/UI decodes.
+ */
+
+import type {
+  Attributes,
+  BallFlight,
+  Fixture,
+  HalfResult,
+  HalfStats,
+  HalfTimeState,
+  MatchEvent,
+  Phase,
+  PlayerTactic,
+  SimEngine,
+  SquadPlayer,
+  Tactics,
+  Vec2,
+} from './engine-types.ts';
+import { Rng } from './engine-rng.ts';
+
+export const HALF_SECONDS = 2700;
+
+/** Calibration knobs. Tuned against calibration-reference.md via stat-harness.ts. */
+export const CAL = {
+  baseShotsPerHalf: 6.2, // per team, equal-strength, before boosts
+  shotStrengthExp: 1.25, // shots × (attack/oppDefense)^exp
+  homeShotBoost: 1.14,
+  awayShotBoost: 0.88,
+  h1Factor: 0.93, // → 2nd-half goal share ~53.5%
+  h2Factor: 1.07,
+  tempoShotGain: 0.2, // ×(0.9 + gain×meanTempo)
+  fatigueAttackPenalty: 0.15, // attack/control ×(1 − pen×meanFatigue)
+
+  pensPerHalf: 0.07,
+  srcSetPiece: 0.26, // shot source mix (rest open play)
+  srcCounter: 0.1,
+  xgOpen: [0.02, 0.45] as const, // xg = a + b·u^xgPow
+  xgCounter: [0.03, 0.55] as const,
+  xgSetPiece: [0.015, 0.35] as const,
+  xgPow: 4,
+  penXg: 0.76,
+  riskXgGain: 0.2, // xg ×(1 + gain×(risk−0.5))
+  finishAdjPerPt: 0.02, // pGoal ×(1 + adj×(finishing−12))
+  onTargetBase: 0.28, // non-goal shots on target
+  headerSetPiece: 0.68,
+  headerOpenBase: 0.075,
+  headerCrossGain: 0.12,
+  cornerAmbientPerHalf: 1.6,
+  cornerAfterSave: 0.3,
+
+  foulsPerHalf: 5.5,
+  yellowPerFoul: 0.18,
+  redPerFoul: 0.008,
+  redShotThin: 0.35, // own shots dropped after a red
+  redOppShotGain: 0.25, // opponent extra-shot λ share after a red
+  offsidesPerHalf: 1.0, // ×(0.5 + opponent lineHeight)
+  injuryBasePerHalf: 0.016,
+
+  aerialDuelsPerHalf: 18, // both teams
+  possPerCtrlDiff: 55,
+  possNoiseSd: 3,
+  passAccBase: 82,
+  passAccCtrlGain: 30,
+  passAccRiskLoss: 8, // −loss×(risk−0.5)
+  ppdaBase: 16,
+  ppdaPressGain: 8,
+
+  fatigueBasePerHalf: 0.22,
+  fatigueTempoGain: 0.1,
+  fatiguePressGain: 0.12,
+
+  heatmapCols: 12,
+  heatmapRows: 8,
+  frameDt: 6, // seconds between fabricated frames
+} as const;
+
+// ── internal shapes ──────────────────────────────────────────────────────────
+
+interface ActivePlayer {
+  id: string;
+  sp: SquadPlayer;
+  pt: PlayerTactic;
+  isGk: boolean;
+  startFatigue: number;
+}
+
+interface TeamCtx {
+  side: 'home' | 'away';
+  tactics: Tactics;
+  players: ActivePlayer[];
+  gk: ActivePlayer;
+  attack: number; // 0–1 scale (attr means /20)
+  defense: number;
+  control: number;
+  aerial: number;
+  press: number; // 0–1 blended team+player pressing
+  risk: number;
+  cross: number;
+  aggression: number; // 0–1
+  tempo: number;
+  lineHeight: number;
+  meanFatigue: number;
+}
+
+interface ShotPlan {
+  t: number;
+  team: TeamCtx;
+  source: 'openPlay' | 'counter' | 'setPiece' | 'penalty';
+}
+
+interface PlayerTally {
+  goals: number;
+  sot: number;
+  saves: number;
+  cards: 0 | 1;
+  red: boolean;
+  injured: boolean;
+}
+
+const round = (x: number, d: number): number => {
+  const m = 10 ** d;
+  return Math.round(x * m) / m;
+};
+const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+const mean = (xs: number[]): number => xs.reduce((s, x) => s + x, 0) / xs.length;
+const attrMean = (ps: ActivePlayer[], f: (a: Attributes) => number): number =>
+  mean(ps.map((p) => f(p.sp.attributes))) / 20;
+const flip = (v: Vec2): Vec2 => ({ x: 105 - v.x, y: 68 - v.y });
+
+// ── engine ───────────────────────────────────────────────────────────────────
+
+export class AggregateEngine implements SimEngine {
+  simulateHalf(
+    fixture: Fixture,
+    squads: { home: SquadPlayer[]; away: SquadPlayer[] },
+    tactics: { home: Tactics; away: Tactics },
+    seed: string,
+  ): HalfResult {
+    const resume = fixture.resumeState;
+    if (fixture.half === 2 && !resume) throw new Error('half 2 requires resumeState');
+    if (fixture.half === 1 && resume) throw new Error('half 1 must not carry resumeState');
+
+    const rng = fixture.half === 1
+      ? Rng.fromSeed(`${fixture.fixtureId}|${seed}`)
+      : Rng.fromState(resume!.rngState);
+    const t0 = fixture.half === 1 ? 0 : HALF_SECONDS;
+    const halfFactor = fixture.half === 1 ? CAL.h1Factor : CAL.h2Factor;
+
+    const home = buildTeam('home', squads.home, tactics.home, resume);
+    const away = buildTeam('away', squads.away, tactics.away, resume);
+    const all = [...home.players, ...away.players];
+
+    const events: Array<MatchEvent & { seq: number }> = [];
+    let seq = 0;
+    const emit = (e: MatchEvent): void => {
+      events.push({ ...e, t: round(e.t, 1), seq: seq++ });
+    };
+    emit({ t: t0, type: 'kickoff' });
+
+    const tally = new Map<string, PlayerTally>();
+    for (const p of all) tally.set(p.id, { goals: 0, sot: 0, saves: 0, cards: 0, red: false, injured: false });
+
+    // ── fouls / cards first: reds modulate shot volume for the rest of the half
+    const redTime = new Map<TeamCtx, number>(); // team → earliest red timestamp
+    for (const [team] of pairs(home, away)) {
+      const lambda = CAL.foulsPerHalf * (0.8 + 0.4 * team.aggression) * (0.9 + 0.2 * team.press);
+      const n = rng.poisson(lambda);
+      for (let i = 0; i < n; i++) {
+        const t = t0 + rng.range(30, HALF_SECONDS - 10);
+        let fouler = pickByWeight(rng, team.players.filter((p) => !p.isGk), (p) =>
+          p.sp.attributes.aggression + p.sp.attributes.tackling * 0.5);
+        emit({ t, type: 'foul', playerId: fouler.id, outcome: 'fail' });
+        if (rng.chance(CAL.redPerFoul)) {
+          tally.get(fouler.id)!.red = true;
+          tally.get(fouler.id)!.cards = 1;
+          emit({ t: t + 0.3, type: 'card', playerId: fouler.id, meta: { card: 'red' } });
+          if (!redTime.has(team) || t < redTime.get(team)!) redTime.set(team, t);
+        } else if (rng.chance(CAL.yellowPerFoul)) {
+          if (tally.get(fouler.id)!.cards === 1) {
+            // keep yellow volume calibrated: hand it to an uncarded teammate
+            const clean = team.players.filter((p) => !p.isGk && tally.get(p.id)!.cards === 0);
+            if (clean.length === 0) continue;
+            fouler = pickByWeight(rng, clean, (p) => p.sp.attributes.aggression);
+          }
+          tally.get(fouler.id)!.cards = 1;
+          emit({ t: t + 0.3, type: 'card', playerId: fouler.id, meta: { card: 'yellow' } });
+        }
+      }
+    }
+
+    // ── shot plans
+    const shotLambda = (team: TeamCtx, opp: TeamCtx): number =>
+      CAL.baseShotsPerHalf *
+      Math.pow(team.attack / opp.defense, CAL.shotStrengthExp) *
+      (team.side === 'home' ? CAL.homeShotBoost : CAL.awayShotBoost) *
+      halfFactor *
+      (0.9 + CAL.tempoShotGain * ((team.tempo + opp.tempo) / 2));
+
+    const shots: ShotPlan[] = [];
+    for (const [team, opp] of pairs(home, away)) {
+      const lambda = shotLambda(team, opp);
+      const n = rng.poisson(lambda);
+      for (let i = 0; i < n; i++) {
+        const t = t0 + rng.range(15, HALF_SECONDS - 5);
+        // a red thins own shots and feeds opponent extras (handled below)
+        if (redTime.has(team) && t > redTime.get(team)! && rng.chance(CAL.redShotThin)) continue;
+        const u = rng.float();
+        const source = u < CAL.srcSetPiece ? 'setPiece' : u < CAL.srcSetPiece + CAL.srcCounter ? 'counter' : 'openPlay';
+        shots.push({ t, team, source });
+      }
+      if (redTime.has(opp)) {
+        const frac = (t0 + HALF_SECONDS - redTime.get(opp)!) / HALF_SECONDS;
+        const extra = rng.poisson(lambda * CAL.redOppShotGain * frac);
+        for (let i = 0; i < extra; i++) {
+          shots.push({ t: rng.range(redTime.get(opp)!, t0 + HALF_SECONDS - 5), team, source: 'openPlay' });
+        }
+      }
+      const pens = rng.poisson(CAL.pensPerHalf);
+      for (let i = 0; i < pens; i++) {
+        shots.push({ t: t0 + rng.range(60, HALF_SECONDS - 30), team, source: 'penalty' });
+      }
+    }
+    shots.sort((a, b) => a.t - b.t);
+
+    // ── resolve shots
+    const score: Record<'home' | 'away', number> = { home: 0, away: 0 };
+    const xgSum: Record<'home' | 'away', number> = { home: 0, away: 0 };
+    const shotCount: Record<'home' | 'away', number> = { home: 0, away: 0 };
+    const sotCount: Record<'home' | 'away', number> = { home: 0, away: 0 };
+
+    for (const shot of shots) {
+      const team = shot.team;
+      const opp = team === home ? away : home;
+      const shooter = shot.source === 'penalty'
+        ? (team.players.find((p) => p.id === team.tactics.setPieceTakers.penalties) ?? team.gk)
+        : pickByWeight(rng, team.players.filter((p) => !p.isGk && !tally.get(p.id)!.red), (p) =>
+            Math.pow(p.pt.anchors.finalThird.x / 105, 2) *
+            (0.5 + p.pt.instructions.shootingBias) *
+            (p.sp.attributes.finishing / 20 + p.sp.attributes.offTheBall / 40));
+
+      let xg: number;
+      let header = 0;
+      if (shot.source === 'penalty') {
+        xg = clamp(CAL.penXg + rng.gauss(0, 0.02), 0.6, 0.9);
+        emit({ t: shot.t - 2, type: 'setPiece', playerId: shooter.id, meta: { kind: 'penalty' } });
+      } else {
+        const [a, b] = shot.source === 'counter' ? CAL.xgCounter : shot.source === 'setPiece' ? CAL.xgSetPiece : CAL.xgOpen;
+        xg = (a + b * Math.pow(rng.float(), CAL.xgPow)) * (1 + CAL.riskXgGain * (team.risk - 0.5));
+        header = shot.source === 'setPiece'
+          ? (rng.chance(CAL.headerSetPiece) ? 1 : 0)
+          : (rng.chance(clamp(CAL.headerOpenBase + CAL.headerCrossGain * (team.cross - 0.5), 0.02, 0.25)) ? 1 : 0);
+      }
+      xg = clamp(xg, 0.01, 0.95);
+
+      const skill = header ? shooter.sp.attributes.heading : shooter.sp.attributes.finishing;
+      const pGoal = shot.source === 'penalty' ? xg : clamp(xg * (1 + CAL.finishAdjPerPt * (skill - 12)), 0.01, 0.92);
+
+      const from = team === home ? shooter.pt.anchors.finalThird : flip(shooter.pt.anchors.finalThird);
+      const to: Vec2 = team === home ? { x: 105, y: 30.5 + rng.range(0, 7) } : { x: 0, y: 30.5 + rng.range(0, 7) };
+      const flight: BallFlight = header ? 'high' : rng.chance(0.6) ? 'ground' : rng.chance(0.75) ? 'driven' : 'lofted';
+      const meta = { xg: round(xg, 3), source: shot.source, header };
+
+      shotCount[team.side]++;
+      xgSum[team.side] += xg;
+      emit({ t: shot.t, type: 'shot', playerId: shooter.id, from, to, flight, meta });
+
+      if (rng.chance(pGoal)) {
+        score[team.side]++;
+        sotCount[team.side]++;
+        tally.get(shooter.id)!.goals++;
+        tally.get(shooter.id)!.sot++;
+        emit({ t: shot.t + 0.4, type: 'goal', playerId: shooter.id, outcome: 'success', meta });
+      } else if (rng.chance(CAL.onTargetBase + 0.01 * (skill - 12))) {
+        sotCount[team.side]++;
+        tally.get(shooter.id)!.sot++;
+        tally.get(opp.gk.id)!.saves++;
+        emit({ t: shot.t + 0.4, type: 'save', playerId: opp.gk.id, outcome: 'success' });
+        if (rng.chance(CAL.cornerAfterSave)) {
+          emit({ t: shot.t + 4, type: 'cornerAwarded', playerId: shooter.id });
+        }
+      }
+    }
+
+    // ── ambient corners, offsides, injuries
+    for (const [team, opp] of pairs(home, away)) {
+      const corners = rng.poisson(CAL.cornerAmbientPerHalf);
+      for (let i = 0; i < corners; i++) emit({ t: t0 + rng.range(20, HALF_SECONDS - 5), type: 'cornerAwarded', playerId: team.tactics.setPieceTakers.corners });
+
+      const offsides = rng.poisson(CAL.offsidesPerHalf * (0.5 + opp.lineHeight));
+      for (let i = 0; i < offsides; i++) {
+        const runner = pickByWeight(rng, team.players.filter((p) => !p.isGk), (p) => p.pt.anchors.finalThird.x / 105);
+        emit({ t: t0 + rng.range(30, HALF_SECONDS - 5), type: 'offside', playerId: runner.id, outcome: 'fail' });
+      }
+
+      for (const p of team.players) {
+        const pInj = CAL.injuryBasePerHalf * (0.5 + p.sp.physical.injuryProneness / 20) * (1 + 0.5 * p.startFatigue);
+        if (rng.chance(pInj)) {
+          tally.get(p.id)!.injured = true;
+          emit({ t: t0 + rng.range(60, HALF_SECONDS - 5), type: 'injury', playerId: p.id, outcome: 'fail' });
+        }
+      }
+    }
+
+    // ── aerial duels: shared pool split by aerial strength, volume by crossBias
+    const crossFactor = 0.7 + 0.3 * (home.cross + away.cross);
+    const duels = rng.poisson(CAL.aerialDuelsPerHalf * crossFactor);
+    const aerialShareH = home.aerial / (home.aerial + away.aerial);
+    let aerialsH = 0;
+    for (let i = 0; i < duels; i++) if (rng.chance(aerialShareH)) aerialsH++;
+
+    // ── team stat lines
+    const ctrlDiff = home.control - away.control;
+    const possH = clamp(50 + CAL.possPerCtrlDiff * ctrlDiff + rng.gauss(0, CAL.possNoiseSd), 28, 72);
+    const passAcc = (team: TeamCtx, opp: TeamCtx): number =>
+      clamp(
+        CAL.passAccBase + CAL.passAccCtrlGain * (team.control - opp.control) -
+          CAL.passAccRiskLoss * (team.risk - 0.5) + rng.gauss(0, 1.2),
+        66, 94);
+    const passAccH = passAcc(home, away);
+    const passAccA = passAcc(away, home);
+    const ppda = (team: TeamCtx): number => clamp(CAL.ppdaBase - CAL.ppdaPressGain * team.press + rng.gauss(0, 1.2), 5, 24);
+    const ppdaH = ppda(home);
+    const ppdaA = ppda(away);
+    const tiltH = clamp(50 + 1.15 * (possH - 50) + rng.gauss(0, 3.5), 18, 82);
+
+    // ── fatigue
+    const endFatigue = new Map<string, number>();
+    for (const [team] of pairs(home, away)) {
+      const load = CAL.fatigueBasePerHalf + CAL.fatigueTempoGain * team.tempo + CAL.fatiguePressGain * team.press;
+      for (const p of team.players) {
+        const staminaFactor = 1.25 - (p.sp.attributes.stamina / 20) * 0.5; // stamina 10→1.0, 20→0.75
+        const gkFactor = p.isGk ? 0.35 : 1;
+        endFatigue.set(p.id, clamp(round(p.startFatigue + load * staminaFactor * gkFactor + rng.gauss(0, 0.015), 3), 0, 1));
+      }
+    }
+
+    // ── player ratings
+    const playerRatings: Record<string, number> = {};
+    for (const [team] of pairs(home, away)) {
+      const diff = score[team.side] - score[team.side === 'home' ? 'away' : 'home'];
+      const resultTerm = diff > 0 ? 0.25 : diff < 0 ? -0.25 : 0;
+      for (const p of team.players) {
+        const t = tally.get(p.id)!;
+        let r = 6.4 + 0.85 * t.goals + 0.12 * (t.sot - t.goals) + resultTerm + rng.gauss(0, 0.32);
+        if (p.isGk) r += 0.16 * t.saves - 0.12 * score[team.side === 'home' ? 'away' : 'home'];
+        if (t.red) r -= 1.2;
+        else if (t.cards === 1) r -= 0.3;
+        playerRatings[p.id] = clamp(round(r, 1), 4, 9.8);
+      }
+    }
+
+    emit({ t: t0 + HALF_SECONDS, type: 'halfEnd' });
+    events.sort((a, b) => a.t - b.t || a.seq - b.seq);
+
+    // ── frames + heatmaps
+    const frames = fabricateFrames(rng, t0, tiltH, home, away);
+    const heatmaps: Record<string, number[]> = {};
+    for (const [team] of pairs(home, away)) {
+      const possFrac = (team.side === 'home' ? possH : 100 - possH) / 100;
+      for (const p of team.players) heatmaps[p.id] = heatmapFor(p, possFrac);
+    }
+
+    // ── end state
+    const prevScore = resume?.score ?? [0, 0];
+    const endState: HalfTimeState = {
+      score: [prevScore[0] + score.home, prevScore[1] + score.away],
+      playerState: Object.fromEntries(all.map((p) => {
+        const t = tally.get(p.id)!;
+        const prev = resume?.playerState[p.id];
+        return [p.id, {
+          fatigue: endFatigue.get(p.id)!,
+          cards: (prev?.cards === 1 ? 1 : t.cards) as 0 | 1,
+          injured: (prev?.injured ?? false) || t.injured,
+          minutesPlayed: (prev?.minutesPlayed ?? 0) + 45,
+        }];
+      })),
+      subsUsed: resume?.subsUsed ?? [0, 0],
+      rngState: rng.serialize(),
+    };
+
+    const stats: HalfStats = {
+      possession: [round(possH, 1), round(100 - possH, 1)],
+      shots: [shotCount.home, shotCount.away],
+      shotsOnTarget: [sotCount.home, sotCount.away],
+      xg: [round(xgSum.home, 2), round(xgSum.away, 2)],
+      passAccuracy: [round(passAccH, 1), round(passAccA, 1)],
+      aerialsWon: [aerialsH, duels - aerialsH],
+      ppda: [round(ppdaH, 1), round(ppdaA, 1)],
+      fieldTilt: [round(tiltH, 1), round(100 - tiltH, 1)],
+      playerRatings,
+      heatmaps,
+    };
+
+    return {
+      events: events.map(({ seq: _, ...e }) => e),
+      frames,
+      stats,
+      endState,
+    };
+  }
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function pairs(home: TeamCtx, away: TeamCtx): Array<[TeamCtx, TeamCtx]> {
+  return [[home, away], [away, home]];
+}
+
+function pickByWeight(rng: Rng, ps: ActivePlayer[], w: (p: ActivePlayer) => number): ActivePlayer {
+  return ps[rng.weighted(ps.map(w))];
+}
+
+function buildTeam(
+  side: 'home' | 'away',
+  squad: SquadPlayer[],
+  tactics: Tactics,
+  resume: HalfTimeState | undefined,
+): TeamCtx {
+  const byId = new Map(squad.map((sp) => [sp.playerId, sp]));
+  const players: ActivePlayer[] = tactics.players.map((pt: PlayerTactic) => {
+    const sp = byId.get(pt.playerId);
+    if (!sp) throw new Error(`tactic references ${pt.playerId} not in squad`);
+    return {
+      id: pt.playerId,
+      sp,
+      pt,
+      isGk: false,
+      startFatigue: resume?.playerState[pt.playerId]?.fatigue ?? sp.fatigue,
+    };
+  });
+  if (players.length !== 11) throw new Error(`expected 11 starters, got ${players.length}`);
+
+  // no position field on SquadPlayer — GK is the strongest gk-attribute composite
+  const gk = players.reduce((best, p) => {
+    const g = (x: ActivePlayer) => x.sp.attributes.gkReflexes + x.sp.attributes.gkPositioning + x.sp.attributes.gkDistribution;
+    return g(p) > g(best) ? p : best;
+  });
+  gk.isGk = true;
+  const outfield = players.filter((p) => !p.isGk);
+
+  const meanFatigue = mean(players.map((p) => p.startFatigue));
+  const fatigueMul = 1 - CAL.fatigueAttackPenalty * meanFatigue;
+
+  const a = (f: (x: Attributes) => number): number => attrMean(outfield, f);
+  return {
+    side,
+    tactics,
+    players,
+    gk,
+    attack: fatigueMul * a((x) => x.finishing * 0.3 + x.offTheBall * 0.2 + x.dribbling * 0.15 + x.vision * 0.15 + x.pace * 0.2),
+    defense:
+      0.85 * a((x) => x.tackling * 0.25 + x.marking * 0.25 + x.positioning * 0.2 + x.anticipation * 0.2 + x.strength * 0.1) +
+      0.15 * ((gk.sp.attributes.gkReflexes + gk.sp.attributes.gkPositioning) / 40),
+    control: fatigueMul * a((x) => x.passing * 0.3 + x.vision * 0.2 + x.decisions * 0.2 + x.firstTouch * 0.15 + x.workRate * 0.1 + x.stamina * 0.05),
+    aerial: a((x) => x.heading * 0.4 + x.jumping * 0.4 + x.strength * 0.2),
+    press: 0.5 * tactics.team.pressTrigger + 0.5 * mean(outfield.map((p) => p.pt.instructions.pressingIntensity)),
+    risk: mean(outfield.map((p) => p.pt.instructions.riskAppetite)),
+    cross: mean(outfield.map((p) => p.pt.instructions.crossBias)),
+    aggression: a((x) => x.aggression),
+    tempo: tactics.team.tempo,
+    lineHeight: tactics.team.lineHeight,
+    meanFatigue,
+  };
+}
+
+const PHASE_MIX_IN: Array<[Phase, number]> = [
+  ['buildUp', 0.3],
+  ['progression', 0.35],
+  ['finalThird', 0.25],
+  ['counterAttack', 0.1],
+];
+const PHASE_MIX_OUT: Array<[Phase, number]> = [
+  ['defensiveBlock', 0.8],
+  ['counterPress', 0.2],
+];
+
+/** Team-relative 12×8 grid (row-major), gaussian splats on phase-blended anchors. */
+function heatmapFor(p: ActivePlayer, possFrac: number): number[] {
+  const { heatmapCols: C, heatmapRows: R } = CAL;
+  const cells = new Array<number>(C * R).fill(0);
+  const sigma = 6 + 8 * (1 - p.pt.instructions.holdPosition);
+  const mix: Array<[Phase, number]> = [
+    ...PHASE_MIX_IN.map(([ph, w]) => [ph, w * possFrac] as [Phase, number]),
+    ...PHASE_MIX_OUT.map(([ph, w]) => [ph, w * (1 - possFrac)] as [Phase, number]),
+  ];
+  for (const [phase, w] of mix) {
+    const c = p.pt.anchors[phase];
+    for (let row = 0; row < R; row++) {
+      for (let col = 0; col < C; col++) {
+        const cx = ((col + 0.5) * 105) / C;
+        const cy = ((row + 0.5) * 68) / R;
+        const d2 = (cx - c.x) ** 2 + (cy - c.y) ** 2;
+        cells[row * C + col] += w * Math.exp(-d2 / (2 * sigma * sigma));
+      }
+    }
+  }
+  const total = cells.reduce((s, x) => s + x, 0);
+  return cells.map((x) => round(x / total, 4));
+}
+
+const FLIGHT_TABLE: Array<[BallFlight, number]> = [
+  ['ground', 0.75],
+  ['driven', 0.1],
+  ['lofted', 0.1],
+  ['high', 0.05],
+];
+
+function fabricateFrames(rng: Rng, t0: number, tiltH: number, home: TeamCtx, away: TeamCtx) {
+  const frames = [];
+  let bx = 52.5;
+  let by = 34;
+  const drift = (tiltH - 50) * 0.02;
+  const n = Math.floor(HALF_SECONDS / CAL.frameDt);
+  for (let k = 0; k < n; k++) {
+    const t = t0 + k * CAL.frameDt;
+    bx = clamp(bx + rng.gauss(drift, 9), 2, 103);
+    by = clamp(by + rng.gauss(0, 6), 2, 66);
+    const flight = FLIGHT_TABLE[rng.weighted(FLIGHT_TABLE.map(([, w]) => w))][0];
+    // coarse phase guess from ball x (global frame): home attacks +x
+    const homePhase: Phase = bx < 35 ? 'buildUp' : bx < 70 ? 'progression' : 'finalThird';
+    const awayPhase: Phase = bx > 70 ? 'buildUp' : bx > 35 ? 'progression' : 'finalThird';
+    const players: Record<string, Vec2> = {};
+    for (const p of home.players) {
+      const a = p.pt.anchors[homePhase];
+      players[p.id] = { x: round(clamp(a.x + rng.gauss(0, 2.5), 0, 105), 1), y: round(clamp(a.y + rng.gauss(0, 2.5), 0, 68), 1) };
+    }
+    for (const p of away.players) {
+      const a = flip(p.pt.anchors[awayPhase]);
+      players[p.id] = { x: round(clamp(a.x + rng.gauss(0, 2.5), 0, 105), 1), y: round(clamp(a.y + rng.gauss(0, 2.5), 0, 68), 1) };
+    }
+    frames.push({ t: round(t, 1), ball: { x: round(bx, 1), y: round(by, 1), flight }, players });
+  }
+  return frames;
+}
