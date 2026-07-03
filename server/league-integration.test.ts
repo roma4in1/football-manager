@@ -222,11 +222,16 @@ test('week-close: force-completes, bookkeeps, reveals', async () => {
     `SELECT fatigue, season_minutes FROM squad_players WHERE season_id = $1`, [seasonId],
   );
   assert.equal(sp.rowCount, 26);
-  assert.equal(sp.rows.filter((r) => r.season_minutes === 90).length, 22, 'both lineups played the full match');
+  // fixture ids are random UUIDs and feed the engine seed, so each run rolls a
+  // fresh match — send-offs (45') are possible and legitimate
+  const played = sp.rows.filter((r) => r.season_minutes > 0);
+  assert.equal(played.length, 22, 'both lineups accrued minutes');
+  assert.ok(played.every((r) => r.season_minutes === 90 || r.season_minutes === 45), 'minutes are 90, or 45 for a send-off');
+  assert.ok(played.filter((r) => r.season_minutes === 90).length >= 20, 'send-offs are rare');
   assert.equal(sp.rows.filter((r) => r.season_minutes === 0).length, 4, 'reserves did not play');
   // between-week tick ran inside week-close: players who played carry real fatigue
   // (recovered once), unused reserves decayed below their 0.1 seed
-  assert.ok(sp.rows.filter((r) => r.season_minutes === 90).every((r) => r.fatigue > 0.12));
+  assert.ok(sp.rows.filter((r) => r.season_minutes > 0).every((r) => r.fatigue > 0.12));
   assert.ok(sp.rows.filter((r) => r.season_minutes === 0).every((r) => r.fatigue < 0.1));
 
   const fam = await q(`SELECT count(*) FROM familiarity WHERE season_id = $1`, [seasonId]);
@@ -344,7 +349,8 @@ test('bookkeeping: injuries, red cards, sent-off minutes, just_returned, familia
     [clubA, seasonId],
   );
   assert.equal(Number(fam.rows[0].count), 55);
-  assert.ok(fam.rows[0].lo > 0.09 && fam.rows[0].hi < 0.11, `two matches → ~0.10, got [${fam.rows[0].lo}, ${fam.rows[0].hi}]`);
+  // a send-off in the earlier real-engine match halves that player's co-minutes
+  assert.ok(fam.rows[0].lo > 0.045 && fam.rows[0].hi < 0.11, `two matches → ~0.10 (0.075 via send-off), got [${fam.rows[0].lo}, ${fam.rows[0].hi}]`);
 
   // idempotent re-run of the stub path too
   assert.equal(await stub.applyBookkeeping(f), 'skipped:done');
