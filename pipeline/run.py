@@ -28,6 +28,10 @@ def main() -> None:
     csv_pages, csv_prov = csv_ingest.load_csv_pages()
     html_types = []
     pages = {}
+    # CSV-only stat types (keepers_adv, passing_types) ride along untouched
+    for page in csv_pages:
+        if page not in config.FBREF_PAGES:
+            pages[page] = csv_pages[page]
     for page in config.FBREF_PAGES:
         if csv_pages.get(page):
             pages[page] = csv_pages[page]  # CSV is the primary source
@@ -53,6 +57,7 @@ def main() -> None:
     else:
         cachefiles.verify_cache()
     mixed_sources = bool(csv_prov) and bool(html_types)
+    csv_ingest.assert_required(pages)  # 0%-mapped required field aborts BEFORE the join
     merged = derive.merge_tables(pages)
     print(f"fbref: {len(merged)} players across {len(pages)} tables")
 

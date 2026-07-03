@@ -1,6 +1,6 @@
 # Unmatched FBref players
 
-19 of 2148 FBref players (0.9%) had no TM match (target ≤ 5%).
+22 of 2148 FBref players (1.0%) had no TM match (target ≤ 5%).
 Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 
 | fbref_id | name | year | club | best fuzzy guess | ratio |
@@ -9,6 +9,8 @@ Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 | 76a82373 | Carlos Gómez | 2002 | Rennes | Carlos Jiménez | 0.769 |
 | 0525a80f | Chuky san jose | 2004 | Valladolid | Jan Chytry | 0.583 |
 | 56fca564 | Daniel Bandeira | 2000 | Hellas Verona | Daniel Pereira | 0.759 |
+| 15918c9c | Eybi Nije | 2005 | Torino | Elías Montiel | 0.545 |
+| 675cacff | Fer López |  | Celta Vigo |  | 0.0 |
 | 3d79a68c | Francisco Perez | 2002 | Valencia | Fran Pérez | 0.8 |
 | fd01216a | John Joe | 2003 | Reims | Jonathan Rowe | 0.667 |
 | 27dc1378 | José Luis García Vayá | 1998 | Valencia | Jorge García | 0.606 |
@@ -16,6 +18,7 @@ Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 | 34e4dc3b | Kialonda | 1997 | Lecce | Italo | 0.615 |
 | 9fc2531b | Koka | 1993 | Le Havre | Marc Klok | 0.615 |
 | 8574c61f | Leif Davis | 2000 | Ipswich Town | Ben Davis | 0.737 |
+| 710045fb | Max Moerstedt |  | Hoffenheim |  | 0.0 |
 | f15f8b2b | Musa Al-Taamari | 1997 | Montpellier | Mousa Tamari | 0.815 |
 | 441197b8 | Obite N'Dicka | 1999 | Roma | Evan Ndicka | 0.667 |
 | 5054c359 | Oladapo Afolayan | 1998 | St. Pauli | Ola Solbakken | 0.552 |

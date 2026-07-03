@@ -63,7 +63,8 @@ class Metrics:
     def __init__(self, tables: Dict[str, Dict], height_cm: Optional[int]):
         self.t = tables
         self.height_cm = height_cm
-        self.minutes = num(tables["stats"], "minutes")
+        # standard's Min_Playing, falling back to playing_time's Min_Playing.Time
+        self.minutes = num(tables["stats"], "minutes") or num(tables.get("playingtime", {}), "minutes")
         self.position = coarse_position(tables["stats"].get("position", ""))
         age_raw = (tables["stats"].get("age") or "25").split("-")[0]
         self.age = float(age_raw) if age_raw.isdigit() else 25.0
@@ -89,6 +90,13 @@ class Metrics:
 
     def _pct(self, page: str, key: str) -> Optional[float]:
         return num(self.t[page], key) if self._present(page, key) else None
+
+    @staticmethod
+    def _first(*values: Optional[float]) -> Optional[float]:
+        for v in values:
+            if v is not None:
+                return v
+        return None
 
     def _np_g_minus_xg(self) -> Optional[float]:
         """np(G−xG) per 90 — only when the source carries npxG (the CSV dump)."""
@@ -121,7 +129,8 @@ class Metrics:
             "pass_long_vol": m("passing", "passes_long"),
             "pass_pct": p("passing", "passes_pct"),
             "crs_pa": m("passing", "crosses_into_penalty_area"),
-            "crs": m("misc", "crosses"),
+            # crossing volume: passing_types' Crs_Pass first, misc's Crs as fallback
+            "crs": self._first(m("passing_types", "crosses"), m("misc", "crosses")),
             "key_passes": m("passing", "assisted_shots"),
             "ppa": m("passing", "passes_into_penalty_area"),
             "pft": m("passing", "passes_into_final_third"),
@@ -158,7 +167,7 @@ class Metrics:
             "age_curve_pace": age_z_pace,
             "age_curve_stamina": age_z_stam,
             "gk_save_pct": p("keepers", "gk_save_pct"),
-            "gk_pens_save_pct": p("keepers", "gk_pens_save_pct"),
+            "gk_psxg_net90": m("keepers_adv", "gk_psxg_net"),
             "gk_cs_pct": p("keepers", "gk_clean_sheets_pct"),
             "gk_ga90": p("keepers", "gk_goals_against_per90"),
         }
@@ -189,7 +198,7 @@ BLENDS: Dict[str, List[Tuple[str, float, bool]]] = {
     "anticipation": [("interceptions", 0.6, False), ("blocked_passes", 0.4, False)],
     "workRate": [("tkl_int", 0.5, False), ("touches", 0.3, False), ("minutes_pct", 0.2, False)],
     "aggression": [("fouls", 0.5, False), ("yellows", 0.3, False), ("challenges", 0.2, False)],
-    "gkReflexes": [("gk_save_pct", 0.7, False), ("gk_pens_save_pct", 0.3, False)],
+    "gkReflexes": [("gk_save_pct", 0.6, False), ("gk_psxg_net90", 0.4, False)],
     "gkPositioning": [("gk_cs_pct", 0.5, False), ("gk_ga90", 0.5, True)],
     "gkDistribution": [("pass_long_pct", 0.6, False), ("pass_pct", 0.4, False)],
 }
