@@ -1,6 +1,6 @@
 # Unmatched FBref players
 
-22 of 2148 FBref players (1.0%) had no TM match (target ≤ 5%).
+20 of 2148 FBref players (0.9%) had no TM match (target ≤ 5%).
 Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 
 | fbref_id | name | year | club | best fuzzy guess | ratio |
@@ -24,6 +24,4 @@ Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 | 5054c359 | Oladapo Afolayan | 1998 | St. Pauli | Ola Solbakken | 0.552 |
 | 1ccd3dae | Peter González | 2002 | Getafe | Jair González | 0.741 |
 | 65ac6ea0 | Sergi | 1992 | Leganés | Sergiu Buș | 0.667 |
-| fe6e7156 | Sávio | 2004 | Manchester City | Savinho | 0.833 |
 | ec724366 | Yanis Zouaoui | 1994 | Le Havre | Diamantis Chouchoumis | 0.588 |
-| 907a5d7c | Yehor Yarmoliuk | 2004 | Brentford | Yegor Yarmolyuk | 0.867 |
