@@ -1,0 +1,23 @@
+[
+  "tests/test_join.py::test_birth_year_is_a_hard_gate",
+  "tests/test_join.py::test_exact_with_club_tiebreaker",
+  "tests/test_join.py::test_fuzzy_catches_transliteration_variants",
+  "tests/test_join.py::test_manual_override_wins_and_unmatched_reported",
+  "tests/test_join.py::test_single_token_subset_requires_club",
+  "tests/test_join.py::test_subset_full_name_vs_short_form",
+  "tests/test_join.py::test_surname_plus_club_matches_nicknamed_first_name",
+  "tests/test_join.py::test_token_reorder_matches",
+  "tests/test_names.py::test_clubs_match_containment_and_token_rules",
+  "tests/test_names.py::test_normalize_club_drops_legal_forms",
+  "tests/test_names.py::test_normalize_name_strips_accents_and_punctuation",
+  "tests/test_parse.py::test_id_from_data_append_csv_or_href",
+  "tests/test_parse.py::test_missing_table_raises",
+  "tests/test_parse.py::test_num_coercion_handles_commas_and_blanks",
+  "tests/test_parse.py::test_parses_comment_wrapped_table_and_skips_header_rows",
+  "tests/test_transforms.py::test_attributes_complete_and_in_range",
+  "tests/test_transforms.py::test_injury_proneness_prior_bounds_and_direction",
+  "tests/test_transforms.py::test_long_passing_split_reads_only_long_metrics",
+  "tests/test_transforms.py::test_minutes_shrinkage_pulls_rookie_toward_group_mean",
+  "tests/test_transforms.py::test_outfield_players_get_flat_gk_attributes",
+  "tests/test_transforms.py::test_squash_center_clamp_and_bounds"
+]

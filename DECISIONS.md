@@ -3,6 +3,45 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-03 — data pipeline (pipeline/, Python, standalone)
+
+- Not a pnpm package: runs locally, outputs `seeds/players.sql` + review
+  reports. `MAPPING.md` is the derivation contract (attribute → metrics →
+  transform) and `config.py` the single tuning surface. Deterministic from
+  `cache/` — re-runs never touch the network.
+- **Sources**: fbref per-league season pages for 2024-25 (the completed
+  season — immutable and fully populated). Two source realities discovered
+  and worked around: (1) fbref's CDN blocks datacenter IPs, so alongside the
+  throttled `live` mode (6.5 s between requests, under their 10 req/min
+  budget) there is a `wayback` mode that primes the cache from archive.org,
+  including save-page-now for never-archived pages; (2) fbref's late-2025
+  provider change RETROACTIVELY emptied advanced columns (possession splits,
+  aerials, xG) on current snapshots — the pipeline pins snapshots to before
+  2025-10 (`FBREF_SNAPSHOT_BEFORE`) where the per-league pages are intact.
+  The Big-5 combined pages have no intact archive → per-league fetch (40
+  pages instead of 8).
+- **transfermarkt-datasets** open dump (HF mirror) for DOB/height/foot/market
+  value. It has **no injuries table** (checked) → `injuryProneness` uses the
+  age + minutes-load prior from data-sources.md, flagged low-confidence.
+- **Join**: fbref aggregate rows carry birth YEAR only (full DOB would need
+  the per-player crawl we ruled out) → key is unidecoded name + birth year,
+  club tiebreaker via `clubs_match` (TM uses long legal club names), then
+  token-sort / token-subset / surname+club passes, then difflib fuzzy ≥ 0.87,
+  then `manual-matches.csv`. **Auto-match 98.2%** (target ≥95%); the TM pool
+  deliberately includes recently-active non-Big-5 players because the fbref
+  season contains since-departed ones.
+- **Normalization deviation from the PR spec, on purpose**: attribute
+  z-scores are LEAGUE-WIDE, not within position group — the engine reads
+  attributes absolutely, and within-group z handed defenders striker-grade
+  finishing (caught by the distribution report's top-20 eyeball). Positional
+  identity comes from the shrinkage target instead: low-minutes players
+  shrink toward their position-group mean (`w = m/(m+900)`, hard floor 270').
+  GK-only attributes stay within-GK-cohort; outfielders get flat 3s.
+- Missing xG/aerials in the pinned snapshots → finishing uses conversion
+  rates, heading/jumping lean on TM height; all proxy-based attributes are
+  listed per player in `source_meta.low_confidence`.
+- CI runs `pytest pipeline/tests` only (fixtures, no network).
+
 ## 2026-07-03 — monorepo (pnpm workspaces) + CI as the merge gate
 
 - Three packages: `@fm/engine` (engine/), `@fm/server` (server/), `@fm/web`
