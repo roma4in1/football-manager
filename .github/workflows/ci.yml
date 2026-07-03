@@ -109,3 +109,14 @@ jobs:
           psql -h localhost -U postgres -c 'CREATE DATABASE smoke_test'
           psql -h localhost -U postgres -d smoke_test -v ON_ERROR_STOP=1 -q -f server/schema.sql
           psql -h localhost -U postgres -d smoke_test -v ON_ERROR_STOP=1 -q -f server/smoke.sql
+
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r pipeline/requirements.txt
+      # transform-layer tests only — fixtures on disk, no network
+      - run: python -m pytest pipeline/tests -q
