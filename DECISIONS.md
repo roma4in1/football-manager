@@ -3,6 +3,29 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-03 — attribute split: longPassing out of passing (pre-pipeline)
+
+- `Attributes.longPassing` added to the technical block. Semantics:
+  **passing** = execution noise on ground/driven flights; **longPassing** =
+  lofted/high NON-CROSS deliveries (switches, over-the-top balls);
+  **crossing** keeps wide deliveries into the box.
+- AggregateEngine: long-ball attempts and completion read a `longPass` team
+  rating (longPassing 0.85 + vision 0.15) and are emitted as coarse `pass`
+  events with lofted/high flight — observable by the harness independently of
+  `stats.passAccuracy`, which stays on the ground game (`passing` via the
+  control composite). Plumbing sweep enforces the split: squad longPassing
+  up ⇒ long-ball completion up, ground pass accuracy unmoved.
+- bestXI: longPassing joins the DF (0.10) and MF (0.05) composites — CB
+  switches and deep-lying passers; the coarse position groups have no DM
+  subtype, so it is folded into both rather than a DM-only weight.
+- Engine and bestXI read `longPassing ?? passing` so pre-split attribute
+  blobs degrade gracefully until the pipeline re-derives everyone.
+- **Pipeline derivation note (the import PR inherits this)**: from FBref
+  passing tables, short+medium completion% → `passing`; long completion%
+  (and long attempt volume as a propensity prior) → `longPassing`; crosses
+  stay on `crossing` from the shooting/misc tables. Do not blend long
+  completion into `passing` anymore.
+
 ## 2026-07-03 — season-start auction + HT server enforcement
 
 - **HT enforcement is server-side now** (league-eligibility.validateHtResubmission,

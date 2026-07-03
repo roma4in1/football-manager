@@ -72,15 +72,15 @@ const PHASE_BLEND: Record<Phase, number> = {
 // attribute offsets per role, on top of player quality
 const ROLE_BIAS: Record<Role, Partial<Attributes>> = {
   GK: { tackling: -4, finishing: -5, dribbling: -4, crossing: -4, offTheBall: -4 },
-  CB: { tackling: 3, marking: 3, heading: 2.5, positioning: 2, strength: 2, jumping: 2, finishing: -3, dribbling: -2, crossing: -2 },
+  CB: { tackling: 3, marking: 3, heading: 2.5, positioning: 2, strength: 2, jumping: 2, longPassing: 1.5, finishing: -3, dribbling: -2, crossing: -2 },
   FB: { pace: 1.5, crossing: 1.5, tackling: 1.5, stamina: 1.5, workRate: 1, finishing: -2 },
-  CM: { passing: 2, vision: 2, decisions: 1.5, stamina: 1.5, firstTouch: 1, finishing: -1 },
+  CM: { passing: 2, vision: 2, decisions: 1.5, stamina: 1.5, longPassing: 1, firstTouch: 1, finishing: -1 },
   W: { pace: 2.5, dribbling: 2.5, crossing: 2, acceleration: 2, offTheBall: 1.5, tackling: -2, marking: -2 },
   ST: { finishing: 3, offTheBall: 2.5, composure: 1.5, heading: 1, tackling: -3, marking: -3 },
 };
 
 const ATTR_KEYS: Array<keyof Attributes> = [
-  'passing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
+  'passing', 'longPassing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
   'setPieceDelivery', 'pace', 'acceleration', 'stamina', 'strength', 'jumping', 'agility', 'decisions',
   'composure', 'positioning', 'offTheBall', 'anticipation', 'workRate', 'aggression',
   'gkReflexes', 'gkPositioning', 'gkDistribution',
@@ -192,6 +192,7 @@ interface MatchMetrics {
   aerialTotal: number;
   fouls: [number, number]; yellows: [number, number]; reds: [number, number];
   offsides: [number, number]; injuries: number;
+  longBalls: [number, number]; longBallsCompleted: [number, number];
   goalsSecondHalf: number; goalsSetPieceOrPen: number; goalsHeaded: number;
   fatigueEndMeanH: number;
 }
@@ -222,6 +223,8 @@ function extract(h1: HalfResult, h2: HalfResult, homePrefix: string): MatchMetri
     reds: count((e) => e.type === 'card' && e.meta?.card === 'red'),
     offsides: count((e) => e.type === 'offside'),
     injuries: both.filter((e) => e.type === 'injury').length,
+    longBalls: count((e) => e.type === 'pass' && (e.flight === 'lofted' || e.flight === 'high')),
+    longBallsCompleted: count((e) => e.type === 'pass' && (e.flight === 'lofted' || e.flight === 'high') && e.outcome === 'success'),
     goalsSecondHalf: goals.filter((e) => e.t >= HALF_SECONDS).length,
     goalsSetPieceOrPen: goals.filter((e) => e.meta?.source === 'setPiece' || e.meta?.source === 'penalty').length,
     goalsHeaded: goals.filter((e) => e.meta?.header === 1).length,
@@ -352,6 +355,13 @@ for (const seed of MASTER_SEEDS) {
   chk('injuries_per_player_match', m.reduce((s, x) => s + x.injuries, 0) / (m.length * 22), [0.025, 0.04]);
   chk('aerial_duels_per_match', mean(m.map((x) => x.aerialTotal)), [30, 50], 1);
   chk('offsides_per_team_match (info)', mean(perTeam((x) => x.offsides)), null, 2);
+  chk('long_balls_per_team_match (info)', mean(perTeam((x) => x.longBalls)), null, 1);
+  chk(
+    'long_ball_completion (info)',
+    m.reduce((s, x) => s + x.longBallsCompleted[0] + x.longBallsCompleted[1], 0) /
+      m.reduce((s, x) => s + x.longBalls[0] + x.longBalls[1], 0),
+    null,
+  );
 }
 
 // ── 4. instruction sweeps (directional, emergent) ────────────────────────────
@@ -417,6 +427,27 @@ const setAll = (club: Club, f: (i: PlayerInstructions) => void): void =>
   checkBool(SEED0, 'emergent', 'sweep crossBias↑ → aerial duels↑', airHi > airLo + 2, `${airHi.toFixed(1)} > ${airLo.toFixed(1)} + 2`);
   check(SEED0, 'emergent', 'sweep crossBias↑ headed share lo→hi (info)', hdHi - hdLo, null);
 }
+{
+  // plumbing: the passing/longPassing split — long balls read longPassing ONLY
+  const setLongPassing = (value: number) => (c: Club): void => {
+    for (const p of c.squad) p.attributes.longPassing = value;
+  };
+  const s = sweep('longPass', setLongPassing(4), setLongPassing(18));
+  const comp = (rows: MatchMetrics[]): number =>
+    rows.reduce((a, x) => a + x.longBallsCompleted[0], 0) / Math.max(1, rows.reduce((a, x) => a + x.longBalls[0], 0));
+  const compLo = comp(s.lo);
+  const compHi = comp(s.hi);
+  const accLo = mean(s.lo.map((x) => x.passAcc[0]));
+  const accHi = mean(s.hi.map((x) => x.passAcc[0]));
+  checkBool(
+    SEED0, 'plumbing', 'sweep longPassing↑ → long-ball completion↑',
+    compHi > compLo + 0.1, `${compHi.toFixed(3)} > ${compLo.toFixed(3)} + 0.1`,
+  );
+  checkBool(
+    SEED0, 'plumbing', 'sweep longPassing↑ → ground pass accuracy unmoved',
+    Math.abs(accHi - accLo) < 1, `|${accHi.toFixed(2)} − ${accLo.toFixed(2)}| < 1`,
+  );
+}
 
 // ── 5. sent-off resume: 10 men degrade; carried player frozen ────────────────
 
@@ -451,7 +482,10 @@ const setAll = (club: Club, f: (i: PlayerInstructions) => void): void =>
     const wasAt = h1.endState.playerState[victim];
     if (at45.minutesPlayed !== wasAt.minutesPlayed || at45.fatigue !== wasAt.fatigue || !at45.cards.sentOff) frozenOk = false;
     const teammate = homeClub.tactics.players[6].playerId;
-    if (s2.endState.playerState[teammate].minutesPlayed !== 90) teammatesOk = false;
+    // the teammate can legitimately stop at 45 if the H1 sim sent HIM off too
+    if (!h1.endState.playerState[teammate].cards.sentOff && s2.endState.playerState[teammate].minutesPlayed !== 90) {
+      teammatesOk = false;
+    }
   }
   checkBool(SEED0, 'plumbing', 'sent-off: zero half-2 minutes, frozen fatigue, flag carried', frozenOk);
   checkBool(SEED0, 'plumbing', 'sent-off: teammates still accrue to 90', teammatesOk);

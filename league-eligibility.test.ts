@@ -12,7 +12,7 @@ import { bestXI, validateTactics, type EligiblePlayer, type EligibilityIssue } f
 import type { Attributes, Tactics } from './engine-types.ts';
 
 const ATTR_KEYS: Array<keyof Attributes> = [
-  'passing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
+  'passing', 'longPassing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
   'setPieceDelivery', 'pace', 'acceleration', 'stamina', 'strength', 'jumping', 'agility', 'decisions',
   'composure', 'positioning', 'offTheBall', 'anticipation', 'workRate', 'aggression',
   'gkReflexes', 'gkPositioning', 'gkDistribution',

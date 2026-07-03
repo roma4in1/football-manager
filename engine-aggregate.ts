@@ -61,17 +61,17 @@ export const HALF_SECONDS = 2700;
 
 /** Calibration knobs. Tuned against calibration-reference.md via stat-harness.ts. */
 export const CAL = {
-  baseShotsPerHalf: 6.2, // per team, equal-strength, before boosts
+  baseShotsPerHalf: 6.45, // per team, equal-strength, before boosts
   shotStrengthExp: 1.25, // shots × (attack/oppDefense)^exp
-  homeShotBoost: 1.18,
-  awayShotBoost: 0.855,
-  h1Factor: 0.915, // → 2nd-half goal share ~53% after DC/send-off drag
-  h2Factor: 1.085,
+  homeShotBoost: 1.15,
+  awayShotBoost: 0.84,
+  h1Factor: 0.91, // → 2nd-half goal share ~53% after DC/send-off drag
+  h2Factor: 1.09,
   tempoShotGain: 0.2, // ×(0.9 + gain×meanTempo)
   fatigueAttackPenalty: 0.15, // attack/control ×(1 − pen×meanFatigue)
 
   pensPerHalf: 0.07,
-  srcSetPiece: 0.26, // shot source mix (rest open play)
+  srcSetPiece: 0.27, // shot source mix (rest open play)
   srcCounter: 0.1,
   xgOpen: [0.02, 0.45] as const, // xg = a + b·u^xgPow
   xgCounter: [0.03, 0.55] as const,
@@ -94,11 +94,15 @@ export const CAL = {
   redShotThin: 0.35, // own shots dropped after a red
   redOppShotGain: 0.25, // opponent extra-shot λ share after a red
   sentOffPenalty: 0.15, // attack+defense ratio hit per sent-off player on H2 resume
-  dixonColesTau: 0.08, // low-score dependence: 0-0 opener ×(1−τ), 0-1→1-1 equalizer ×(1+τ)
+  dixonColesTau: 0.072, // low-score dependence: 0-0 opener ×(1−τ), 0-1→1-1 equalizer ×(1+τ)
   offsidesPerHalf: 1.0, // ×(0.5 + opponent lineHeight)
   injuryBasePerHalf: 0.016,
 
   aerialDuelsPerHalf: 18, // both teams
+  longBallsPerHalf: 20, // per team; ≈8–10% of a ~450-pass match (calibration long-ball share band)
+  longBallPropensityGain: 0.7, // attempts ×(0.6 + gain×teamLongPass) — good long passers play more of them
+  longBallCompletionBase: 0.25, // completion p = base + gain×teamLongPass (~0.55 at league-average skill)
+  longBallCompletionGain: 0.5,
   possPerCtrlDiff: 55,
   possNoiseSd: 3,
   passAccBase: 82,
@@ -134,7 +138,8 @@ interface TeamCtx {
   gk: ActivePlayer;
   attack: number; // 0–1 scale (attr means /20)
   defense: number;
-  control: number;
+  control: number; // ground game — reads passing; feeds possession + passAccuracy
+  longPass: number; // lofted/high non-cross deliveries — reads longPassing only
   aerial: number;
   press: number; // 0–1 blended team+player pressing
   risk: number;
@@ -381,6 +386,34 @@ export class AggregateEngine implements SimEngine {
       }
     }
 
+    // ── long balls: attempts and completion read longPassing (never `passing`,
+    // which stays the ground game). Emitted as coarse 'pass' events with
+    // lofted/high flight so the harness can observe completion separately
+    // from stats.passAccuracy.
+    for (const [team] of pairs(home, away)) {
+      const attempts = rng.poisson(
+        CAL.longBallsPerHalf * (0.6 + CAL.longBallPropensityGain * team.longPass),
+      );
+      const pComplete = clamp(
+        CAL.longBallCompletionBase + CAL.longBallCompletionGain * team.longPass, 0.1, 0.85,
+      );
+      for (let i = 0; i < attempts; i++) {
+        const passer = pickByWeight(rng, team.players.filter((p) => !p.isGk), (p) =>
+          (p.sp.attributes.longPassing ?? p.sp.attributes.passing));
+        const fromRel: Vec2 = { x: rng.range(15, 42), y: rng.range(6, 62) };
+        const toRel: Vec2 = { x: clamp(fromRel.x + rng.range(25, 45), 0, 103), y: rng.range(6, 62) };
+        emit({
+          t: t0 + rng.range(10, HALF_SECONDS - 10),
+          type: 'pass',
+          playerId: passer.id,
+          from: team === home ? fromRel : flip(fromRel),
+          to: team === home ? toRel : flip(toRel),
+          flight: rng.chance(0.8) ? 'lofted' : 'high',
+          outcome: rng.chance(pComplete) ? 'success' : 'fail',
+        });
+      }
+    }
+
     // ── aerial duels: shared pool split by aerial strength, volume by crossBias
     const crossFactor = 0.7 + 0.3 * (home.cross + away.cross);
     const duels = rng.poisson(CAL.aerialDuelsPerHalf * crossFactor);
@@ -548,6 +581,8 @@ function buildTeam(
       0.85 * a((x) => x.tackling * 0.25 + x.marking * 0.25 + x.positioning * 0.2 + x.anticipation * 0.2 + x.strength * 0.1) +
       0.15 * ((gk.sp.attributes.gkReflexes + gk.sp.attributes.gkPositioning) / 40)),
     control: fatigueMul * a((x) => x.passing * 0.3 + x.vision * 0.2 + x.decisions * 0.2 + x.firstTouch * 0.15 + x.workRate * 0.1 + x.stamina * 0.05),
+    // `?? passing` tolerates pre-split attribute blobs (longPassing lands with the pipeline)
+    longPass: a((x) => (x.longPassing ?? x.passing) * 0.85 + x.vision * 0.15),
     aerial: a((x) => x.heading * 0.4 + x.jumping * 0.4 + x.strength * 0.2),
     press: 0.5 * tactics.team.pressTrigger + 0.5 * mean(outfield.map((p) => p.pt.instructions.pressingIntensity)),
     risk: mean(outfield.map((p) => p.pt.instructions.riskAppetite)),

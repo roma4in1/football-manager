@@ -11,7 +11,7 @@ import type pg from 'pg';
 import type { Attributes, Phase, Tactics, Vec2 } from './engine-types.ts';
 
 export const ATTR_KEYS: Array<keyof Attributes> = [
-  'passing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
+  'passing', 'longPassing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
   'setPieceDelivery', 'pace', 'acceleration', 'stamina', 'strength', 'jumping', 'agility', 'decisions',
   'composure', 'positioning', 'offTheBall', 'anticipation', 'workRate', 'aggression',
   'gkReflexes', 'gkPositioning', 'gkDistribution',

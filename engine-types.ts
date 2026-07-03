@@ -14,6 +14,8 @@
 export interface Attributes {
   // Technical
   passing: number;        // execution noise on ground/driven passes
+  longPassing: number;    // lofted/high NON-CROSS deliveries: switches, over-the-top balls
+                          // (crossing keeps wide deliveries into the box)
   vision: number;         // option-set size + scoring of line-breaking passes
   firstTouch: number;     // receive noise; touch quality under pressure
   dribbling: number;      // carry execution noise

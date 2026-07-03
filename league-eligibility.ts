@@ -135,10 +135,12 @@ export function validateHtResubmission(
 
 // ── best XI (4-4-2) ──────────────────────────────────────────────────────────
 
+// longPassing weighs into DF and MF composites (CB switches, deep-lying passers);
+// there is no DM subtype in the coarse groups, so it is folded into both — DECISIONS.md
 const SCORES: Record<Group, (a: Attributes) => number> = {
   GK: (a) => a.gkReflexes * 0.4 + a.gkPositioning * 0.35 + a.gkDistribution * 0.25,
-  DF: (a) => a.tackling * 0.25 + a.marking * 0.25 + a.positioning * 0.2 + a.strength * 0.15 + a.heading * 0.15,
-  MF: (a) => a.passing * 0.3 + a.vision * 0.25 + a.decisions * 0.2 + a.stamina * 0.15 + a.firstTouch * 0.1,
+  DF: (a) => a.tackling * 0.25 + a.marking * 0.25 + a.positioning * 0.2 + (a.longPassing ?? a.passing) * 0.1 + a.strength * 0.1 + a.heading * 0.1,
+  MF: (a) => a.passing * 0.3 + a.vision * 0.2 + a.decisions * 0.2 + a.stamina * 0.15 + a.firstTouch * 0.1 + (a.longPassing ?? a.passing) * 0.05,
   FW: (a) => a.finishing * 0.3 + a.offTheBall * 0.25 + a.pace * 0.2 + a.dribbling * 0.15 + a.composure * 0.1,
 };
 
