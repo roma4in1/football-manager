@@ -4,16 +4,15 @@ Standalone Python pipeline (not a pnpm package): FBref Big-5 player stats +
 transfermarkt-datasets open dump → `seeds/players.sql` for the league schema.
 
 **The pipeline never touches the network.** Populating `cache/` is a human
-step (fbref's CDN blocks automation; DECISIONS.md):
+step (DECISIONS.md):
 
-- save each fbref per-league season page from a browser as
-  `cache/fbref_{League}_{page}.html` — leagues `Premier-League`, `La-Liga`,
-  `Serie-A`, `Bundesliga`, `Ligue-1` × pages `stats`, `shooting`, `passing`,
-  `defense`, `possession`, `misc`, `playingtime`, `keepers`;
+- **primary**: drop the 2024-25 Big-5 season dump (worldfootballR_data
+  release or Kaggle equivalent) into `cache/csv/` — one CSV per stat type,
+  auto-detected; run.py prints a schema report if columns don't map;
+- fallback: fbref per-league pages saved from a browser as
+  `cache/fbref_{League}_{page}.html` (only used for stat types the dump
+  lacks; the parser handles tables inside HTML comments and in the live DOM);
 - drop the transfermarkt-datasets `players.csv` in as `cache/tm_players.csv`.
-
-Mixed provenance is fine — the parser handles fbref tables both inside HTML
-comments and in the live DOM.
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt

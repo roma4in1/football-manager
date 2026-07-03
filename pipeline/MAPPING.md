@@ -26,17 +26,46 @@ transfermarkt-datasets `players.csv` columns.
 5. **Confidence**: attributes derived from proxies (no direct measurement in
    the sources) are listed per player in `source_meta.low_confidence`.
 
-## Cache caveats
+## Sources & vintage
 
-The cache is human-populated (see README/DECISIONS.md) with mixed provenance.
-The available captures carry **no xG/npxG columns and no aerial-duel
-columns** — finishing uses conversion rates instead of np(G−xG), and
-heading/jumping/strength lean on TM height + defensive volume, all flagged
-low-confidence. A league page whose table is missing or empty doesn't block
-the run: each affected metric is treated as missing (never zero), z-stats are
+**CSV-first.** fbref's provider change gutted the passing/defense/possession
+HTML tables at the source (current and historical pages render empty), so the
+primary source is a human-downloaded **2024-25 Big-5 season dump**
+(worldfootballR_data release or Kaggle equivalent) dropped into
+`cache/csv/`. One coherent vintage — every stat from the completed 2024-25
+season; no season mixing within a player. The HTML parser remains as a
+fallback for any stat type the dump lacks; if CSV and HTML types ever mix in
+one run, `source_meta.sources` records which stat types came from which
+source (otherwise the field is omitted).
+
+### CSV schema (worldfootballR shape; Kaggle variants via aliases)
+
+One file per stat type (auto-detected from headers). Identity columns:
+`Player`, `Born` (birth year), `Squad`, `Comp`, `Pos`, `Age`,
+`Season_End_Year` (rows filtered to 2025), `Url` (fbref player id). Stat
+columns per type — canonical key ← dump column:
+
+| type | canonical ← dump |
+| --- | --- |
+| stats | minutes ← `Min_Playing_Time`, minutes_90s ← `Mins_Per_90_Playing_Time`, goals_pens ← `G_minus_PK`, npxg ← `npxG_Expected` |
+| shooting | shots ← `Sh_Standard`, shots_on_target_pct ← `SoT_percent_Standard`, goals_per_shot_on_target ← `G_per_SoT_Standard` |
+| passing | passes[_pct]_{short,medium,long} ← `Att/Cmp_percent_{Short,Medium,Long}`, assisted_shots ← `KP`, passes_into_final_third ← `Final_Third`, passes_into_penalty_area ← `PPA`, crosses_into_penalty_area ← `CrsPA` |
+| defense | tackles ← `Tkl_Tackles`, tackles_won ← `TklW_Tackles`, challenge_tackles_pct ← `Tkl_percent_Challenges`, blocks/`Sh`/`Pass` ← `*_Blocks`, interceptions ← `Int`, clearances ← `Clr`, errors ← `Err` |
+| possession | touches ← `Touches_Touches`, touches_att_pen_area ← `Att_Pen_Touches`, take_ons_won[_pct] ← `Succ[_percent]_Take_Ons`, carries ← `Carries_Carries`, prog distance/carries ← `PrgDist/PrgC_Carries`, miscontrols/dispossessed ← `Mis/Dis_Carries`, progressive_passes_received ← `PrgR_Receiving` |
+| misc | fouls ← `Fls_Performance`, cards_yellow ← `CrdY_Performance`, crosses ← `Crs_Performance`, aerials_won[_pct] ← `Won[_percent]_Aerial_Duels` |
+| playingtime | minutes_pct ← `Min_percent_Playing_Time` |
+| keepers | gk_saves/save_pct/cs_pct/ga90/pens ← `Saves`, `Save_percent`, `CS_percent`, `GA90`, `Save_percent_Penalty_Kicks` |
+
+Headers are slugged before lookup (`%`→percent, `+`→plus); unmapped columns
+are ignored and unpopulated canonical keys are printed by the schema report.
+
+### Missing data (either source)
+
+A metric absent for a player is treated as missing (never zero): z-stats are
 computed over players who have data, and affected players get the
-position-group mean imputed + a per-player `low_confidence` flag. If richer
-captures land later, only this table and `derive.py` change.
+position-group mean imputed + a per-player `low_confidence` flag. The CSV
+dump carries aerials and npxG (the gutted HTML pages don't) — the blends
+below include them; when the source lacks them the weights renormalize.
 
 ## Technical
 
@@ -48,8 +77,8 @@ captures land later, only this table and `derive.py` change.
 | vision | `assisted_shots`/90 (0.4) + `passes_into_penalty_area`/90 (0.3) + `passes_into_final_third`/90 (0.3) | |
 | firstTouch | −`miscontrols`/touch (0.7) + `passes_pct` (0.3) | |
 | dribbling | `take_ons_won_pct` (0.5) + `take_ons_won`/90 (0.3) + `progressive_carries`/90 (0.2) | |
-| finishing | `goals_per_shot_on_target` (0.4) + `shots_on_target_pct` (0.3) + `goals_pens`/90 (0.3) | non-penalty goals; np(G−xG) once xG returns |
-| heading | height z (0.6) + `clearances`/90 (0.2) + `goals_pens`/90 (0.2) | LOW confidence — no aerial columns in snapshot |
+| finishing | np(G−xG)/90 (0.3) + `goals_per_shot_on_target` (0.3) + `shots_on_target_pct` (0.2) + `goals_pens`/90 (0.2) | npxG term active with the CSV dump; renormalizes without it |
+| heading | `aerials_won_pct` (0.3) + `aerials_won`/90 (0.2) + height z (0.3) + `clearances`/90 (0.1) + `goals_pens`/90 (0.1) | LOW confidence only when aerials absent |
 | tackling | `challenge_tackles_pct` (0.5) + `tackles_won`/90 (0.5) | |
 | marking | `blocks`/90 (0.4) + `clearances`/90 (0.3) + `tackles_def_3rd`/90 (0.3) | |
 | setPieceDelivery | crossing z (0.5) + vision z (0.5) | LOW confidence — no dead-ball split in Big-5 pages |
@@ -61,8 +90,8 @@ captures land later, only this table and `derive.py` change.
 | pace | `carries_progressive_distance`/carry (0.4) + `take_ons_won`/90 (0.2) + age curve peak 24 (0.4) | LOW confidence — proxy |
 | acceleration | `take_ons_won`/90 (0.4) + `progressive_carries`/90 (0.2) + age curve peak 24 (0.4) | LOW confidence — proxy |
 | stamina | `minutes_pct` (0.6) + age curve peak 27 (0.4) | LOW confidence — availability proxy |
-| strength | height z (0.5) + −`dispossessed`/touch (0.3) + `fouls`/90 (0.2) | LOW confidence |
-| jumping | height z (0.7) + `clearances`/90 (0.3) | LOW confidence — no aerials |
+| strength | `aerials_won_pct` (0.25) + height z (0.35) + −`dispossessed`/touch (0.25) + `fouls`/90 (0.15) | LOW confidence |
+| jumping | `aerials_won_pct` (0.3) + height z (0.5) + `clearances`/90 (0.2) | LOW confidence |
 | agility | `take_ons_won_pct` (0.5) + −`miscontrols`/touch (0.5) | LOW confidence |
 | heightCm | TM `height_in_cm`, fallback 181 + flag | factual |
 | weightKg | height − 105 | estimate — TM dump has no weight; flagged |
@@ -95,7 +124,10 @@ Outfield players: all three = 3 (flat).
 
 FBref Big-5 rows carry birth **year** only (full DOB would require the
 per-player crawl that data-sources.md rules out), so the join key is
-`unidecode(name) + birth_year`, club as tiebreaker, then a difflib fuzzy pass
-(ratio ≥ 0.87) within the same birth year, then `manual-matches.csv`.
+`unidecode(name) + birth_year`. Club agreement is a TIEBREAKER, never a
+requirement — the dump's clubs are a season older than TM's current clubs —
+so token-sort / subset / surname candidates that are UNIQUE within the birth
+year match on their own; then a difflib fuzzy pass (ratio ≥ 0.87) within the
+same birth year, then `manual-matches.csv`.
 `players.birth_date` in the seed uses the TM full DOB.
 `source_meta` records `{fbref_id, tm_id, join, low_confidence[], minutes}`.

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import cachefiles
 import config
+import csv_ingest
 import derive
 import emit
 import fbref_parse
@@ -24,20 +25,34 @@ HERE = Path(__file__).parent
 
 
 def main() -> None:
-    cachefiles.verify_cache()
-
+    csv_pages, csv_prov = csv_ingest.load_csv_pages()
+    html_types = []
     pages = {}
     for page in config.FBREF_PAGES:
-        rows = []
+        if csv_pages.get(page):
+            pages[page] = csv_pages[page]  # CSV is the primary source
+            continue
+        rows = []  # HTML parser — fallback for stat types the dump lacks
         for _, league in config.FBREF_LEAGUES:
             path = cachefiles.fbref_page_path(league, page)
             if not path.exists():
-                continue  # verify_cache already reported the gap
+                continue
             try:
-                rows.extend(fbref_parse.parse_players(path.read_text(), fbref_parse.TABLE_IDS[page]))
+                html_rows = fbref_parse.parse_players(path.read_text(errors="replace"), fbref_parse.TABLE_IDS[page])
             except ValueError:
-                pass  # empty shell — verify_cache already reported it
+                continue
+            rows.extend(html_rows)
         pages[page] = rows
+        if rows:
+            html_types.append(page)
+    if csv_prov:
+        print(f"csv-first: {sorted(csv_prov)} ← cache/csv/  |  html fallback: {sorted(html_types) or 'none'}")
+        gaps = csv_ingest.schema_report(csv_pages)
+        if gaps:
+            print("CSV SCHEMA GAPS (fix aliases in csv_ingest.py):", "; ".join(gaps))
+    else:
+        cachefiles.verify_cache()
+    mixed_sources = bool(csv_prov) and bool(html_types)
     merged = derive.merge_tables(pages)
     print(f"fbref: {len(merged)} players across {len(pages)} tables")
 
@@ -107,6 +122,8 @@ def main() -> None:
                 "minutes": int(d["minutes"]),
                 "low_confidence": sorted(set(low_conf)),
                 "pipeline": "v1",
+                # vintage recorded only when sources actually mix (MAPPING.md)
+                **({"sources": {"csv": sorted(csv_prov), "html": sorted(html_types)}} if mixed_sources else {}),
             },
             "minutes": d["minutes"],
         })

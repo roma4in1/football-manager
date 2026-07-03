@@ -31,16 +31,29 @@ def coarse_position(pos: str) -> str:
 
 
 def merge_tables(pages: Dict[str, List[Dict]]) -> Dict[str, Dict]:
-    """fbref_id → merged metric row. `stats` is canonical for identity/minutes."""
+    """fbref_id → merged metric row. `stats` is canonical for identity/minutes.
+
+    A player can appear twice within a page (mid-season transfer rows in the
+    CSV dump) — keep the higher-minutes stint per page.
+    """
+    def better(row: Dict, incumbent: Dict, key: str) -> bool:
+        return num(row, key) >= num(incumbent, key)
+
     merged: Dict[str, Dict] = {}
     for row in pages["stats"]:
-        merged[row["fbref_id"]] = {"stats": row}
+        fid = row["fbref_id"]
+        if fid not in merged or better(row, merged[fid]["stats"], "minutes"):
+            merged[fid] = {"stats": row}
     for page, rows in pages.items():
         if page == "stats":
             continue
         for row in rows:
-            if row["fbref_id"] in merged:
-                merged[row["fbref_id"]][page] = row
+            fid = row["fbref_id"]
+            if fid not in merged:
+                continue
+            incumbent = merged[fid].get(page)
+            if incumbent is None or better(row, incumbent, "minutes_90s"):
+                merged[fid][page] = row
     return merged
 
 
@@ -77,6 +90,16 @@ class Metrics:
     def _pct(self, page: str, key: str) -> Optional[float]:
         return num(self.t[page], key) if self._present(page, key) else None
 
+    def _np_g_minus_xg(self) -> Optional[float]:
+        """np(G−xG) per 90 — only when the source carries npxG (the CSV dump)."""
+        if not (self._present("stats", "goals_pens") and self._present("stats", "npxg")):
+            return None
+        row = self.t["stats"]
+        n90 = num(row, "minutes_90s")
+        if n90 <= 0:
+            return None
+        return (num(row, "goals_pens") - num(row, "npxg")) / n90
+
     def raw(self) -> Dict[str, Optional[float]]:
         p, m = self._pct, self._per90
         sm_pct: Optional[float] = None
@@ -111,6 +134,9 @@ class Metrics:
             "gpsot": p("shooting", "goals_per_shot_on_target"),
             "sot_pct": p("shooting", "shots_on_target_pct"),
             "np_goals": m("stats", "goals_pens"),
+            "np_g_minus_xg": self._np_g_minus_xg(),
+            "aerials_won": m("misc", "aerials_won"),
+            "aerials_won_pct": p("misc", "aerials_won_pct"),
             "clearances": m("defense", "clearances"),
             "challenge_pct": p("defense", "challenge_tackles_pct"),
             "tackles_won": m("defense", "tackles_won"),
@@ -146,15 +172,15 @@ BLENDS: Dict[str, List[Tuple[str, float, bool]]] = {
     "vision": [("key_passes", 0.4, False), ("ppa", 0.3, False), ("pft", 0.3, False)],
     "firstTouch": [("miscontrol_pt", 0.7, True), ("pass_pct", 0.3, False)],
     "dribbling": [("takeon_pct", 0.5, False), ("takeon_won", 0.3, False), ("prog_carries", 0.2, False)],
-    "finishing": [("gpsot", 0.4, False), ("sot_pct", 0.3, False), ("np_goals", 0.3, False)],
-    "heading": [("height", 0.6, False), ("clearances", 0.2, False), ("np_goals", 0.2, False)],
+    "finishing": [("gpsot", 0.3, False), ("sot_pct", 0.2, False), ("np_goals", 0.2, False), ("np_g_minus_xg", 0.3, False)],
+    "heading": [("aerials_won_pct", 0.3, False), ("aerials_won", 0.2, False), ("height", 0.3, False), ("clearances", 0.1, False), ("np_goals", 0.1, False)],
     "tackling": [("challenge_pct", 0.5, False), ("tackles_won", 0.5, False)],
     "marking": [("blocks", 0.4, False), ("clearances", 0.3, False), ("tackles_def3", 0.3, False)],
     "pace": [("prog_carry_dist", 0.4, False), ("takeon_won", 0.2, False), ("age_curve_pace", 0.4, False)],
     "acceleration": [("takeon_won", 0.4, False), ("prog_carries", 0.2, False), ("age_curve_pace", 0.4, False)],
     "stamina": [("minutes_pct", 0.6, False), ("age_curve_stamina", 0.4, False)],
-    "strength": [("height", 0.5, False), ("dispossessed_pt", 0.3, True), ("fouls", 0.2, False)],
-    "jumping": [("height", 0.7, False), ("clearances", 0.3, False)],
+    "strength": [("aerials_won_pct", 0.25, False), ("height", 0.35, False), ("dispossessed_pt", 0.25, True), ("fouls", 0.15, False)],
+    "jumping": [("aerials_won_pct", 0.3, False), ("height", 0.5, False), ("clearances", 0.2, False)],
     "agility": [("takeon_pct", 0.5, False), ("miscontrol_pt", 0.5, True)],
     "decisions": [("pass_pct", 0.4, False), ("dispossessed_pt", 0.4, True), ("errors", 0.2, True)],
     "composure": [("errors", 0.5, True), ("miscontrol_pt", 0.5, True)],

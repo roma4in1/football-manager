@@ -9,6 +9,18 @@ Newest first. Keep entries short: what, why, where enforced.
   reports. `MAPPING.md` is the derivation contract (attribute → metrics →
   transform) and `config.py` the single tuning surface. Deterministic from
   `cache/`.
+- **CSV-first (2026-07-03 revision)**: fbref's provider change gutted the
+  passing/defense/possession tables AT THE SOURCE — current and historical
+  pages render empty, so HTML cache repair is impossible. The primary source
+  is now a human-downloaded 2024-25 Big-5 season dump (worldfootballR_data /
+  Kaggle) in `cache/csv/`; the HTML parser is demoted to a fallback for stat
+  types the dump lacks. One coherent vintage (all 2024-25); per-player source
+  provenance is recorded in `source_meta.sources` only when CSV and HTML
+  types actually mix in a run. The dump restores aerials and npxG, which the
+  gutted pages never had — heading/strength/jumping and finishing use them
+  when present. The join's club tiebreaker is now preference-only
+  (uniqueness within birth year suffices) because TM clubs are a season
+  newer than the 2024-25 fbref clubs.
 - **The pipeline has NO fetch code — populating `cache/` is a human step.**
   Rationale, learned the hard way: fbref's CDN blocks automated clients
   outright, and the archive.org record proved unreliable after fbref's

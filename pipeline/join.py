@@ -85,22 +85,32 @@ def join_players(
         subset = [t for t in year_pool if _tokens(t["norm_name"]) <= ptok or ptok <= _tokens(t["norm_name"])]
         strong = [t for t in subset if len(_tokens(t["norm_name"]) & ptok) >= 2]
         club_backed = [t for t in subset if clubs_match(t["norm_club"], p["norm_club"])]
+        # club agreement is a tiebreaker, not a requirement: fbref clubs are a
+        # season older than TM's current clubs (transfers) — uniqueness within
+        # the birth year is accepted on its own
         if len(strong) == 1:
             matched[p["fbref_id"]] = {**strong[0], "join": "subset"}
+            continue
+        if len(subset) == 1:
+            matched[p["fbref_id"]] = {**subset[0], "join": "subset"}
             continue
         if len(club_backed) == 1:
             matched[p["fbref_id"]] = {**club_backed[0], "join": "subset"}
             continue
 
-        # 4. surname + club + year ("Babis Lykogiannis" ↔ "Charalampos Lykogiannis")
+        # 4. surname + year ("Babis Lykogiannis" ↔ "Charalampos Lykogiannis");
+        # unique in the year stands alone, club only disambiguates collisions
         surname = p["norm_name"].split()[-1] if p["norm_name"] else ""
-        sur = [
+        sur_all = [
             t for t in year_pool
             if t["norm_name"].split() and t["norm_name"].split()[-1] == surname
-            and clubs_match(t["norm_club"], p["norm_club"])
         ]
-        if len(sur) == 1:
-            matched[p["fbref_id"]] = {**sur[0], "join": "surname_club"}
+        if len(sur_all) == 1:
+            matched[p["fbref_id"]] = {**sur_all[0], "join": "surname_unique"}
+            continue
+        sur_club = [t for t in sur_all if clubs_match(t["norm_club"], p["norm_club"])]
+        if len(sur_club) == 1:
+            matched[p["fbref_id"]] = {**sur_club[0], "join": "surname_club"}
             continue
 
         # 5. fuzzy within the same birth year (plain + token-sorted), club tiebreaker
