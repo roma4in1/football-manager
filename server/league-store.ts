@@ -8,9 +8,9 @@
  */
 
 import type { QueryResult } from 'pg';
-import type { HalfResult, HalfTimeState, MatchEvent, SquadPlayer, Tactics } from './engine-types.ts';
-import type { EligiblePlayer } from './league-eligibility.ts';
-import type { FixtureState } from './season-state-machine.ts';
+import type { HalfResult, HalfTimeState, MatchEvent, SquadPlayer, Tactics } from '@fm/engine/types';
+import type { EligiblePlayer } from '@fm/engine/eligibility';
+import type { FixtureState } from '@fm/engine/state-machine';
 
 /** Satisfied by pg.Pool, pg.Client and pg.PoolClient — callers pick the txn scope. */
 export interface Queryable {

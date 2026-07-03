@@ -5,8 +5,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { groupOf, type Group } from '@shared/league-eligibility.ts';
-import { LEAGUE_CFG } from '@shared/league-config.ts';
+import { groupOf, type Group } from '@fm/engine/eligibility';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import type { SquadPlayerView } from '../api.ts';
 import { issuesFor, type Selection } from './build.ts';
 

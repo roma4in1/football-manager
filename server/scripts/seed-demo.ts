@@ -14,7 +14,7 @@
  */
 
 import pg from 'pg';
-import { LEAGUE_CFG } from '../league-config.ts';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import { bootstrapSchema, seedBareClub, seedPoolPlayers, seedSeason } from '../league-test-helpers.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';

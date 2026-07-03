@@ -1,5 +1,5 @@
 {
-  "name": "fm-web",
+  "name": "@fm/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fm/engine": "workspace:*",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1"
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "^26.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
@@ -24,6 +26,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.1.3",
     "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "workbox-window": "^7.4.1"
   }
 }

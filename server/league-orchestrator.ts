@@ -50,12 +50,12 @@
 
 import pg from 'pg';
 import { PgBoss, type Job, type WorkOptions } from 'pg-boss';
-import { AggregateEngine } from './engine-aggregate.ts';
-import { Rng } from './engine-rng.ts';
-import type { SimEngine, Tactics } from './engine-types.ts';
+import { AggregateEngine } from '@fm/engine/aggregate';
+import { Rng } from '@fm/engine/rng';
+import type { SimEngine, Tactics } from '@fm/engine/types';
 import { createAuctionCore, type AuctionCore, type AuctionTuning } from './league-auction.ts';
-import { LEAGUE_CFG, medicalInjuryDurationMul } from './league-config.ts';
-import { bestXI, validateTactics } from './league-eligibility.ts';
+import { LEAGUE_CFG, medicalInjuryDurationMul } from '@fm/engine/config';
+import { bestXI, validateTactics } from '@fm/engine/eligibility';
 import * as store from './league-store.ts';
 
 export const QUEUES = {

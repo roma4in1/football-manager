@@ -4,7 +4,7 @@
  * the v0 stand-in for the two-anchor pitch input (DECISIONS.md).
  */
 
-import type { PlayerInstructions, Tactics, TeamInstructions } from '@shared/engine-types.ts';
+import type { PlayerInstructions, Tactics, TeamInstructions } from '@fm/engine/types';
 import {
   formationSlots,
   groupOf,
@@ -13,7 +13,7 @@ import {
   type EligiblePlayer,
   type EligibilityIssue,
   type LineupSlot,
-} from '@shared/league-eligibility.ts';
+} from '@fm/engine/eligibility';
 import type { SquadPlayerView } from '../api.ts';
 
 export interface Selection {

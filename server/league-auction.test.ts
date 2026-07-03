@@ -15,7 +15,7 @@ import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { createApi, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
 import { doubleRoundRobin, snakeNominator } from './league-auction.ts';
-import { wageFromMarketValue } from './league-config.ts';
+import { wageFromMarketValue } from '@fm/engine/config';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
 import { bootstrapSchema, seedBareClub, seedPoolPlayers, seedSeason, waitFor } from './league-test-helpers.ts';
 

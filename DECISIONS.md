@@ -3,6 +3,31 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-03 — monorepo (pnpm workspaces) + CI as the merge gate
+
+- Three packages: `@fm/engine` (engine/), `@fm/server` (server/), `@fm/web`
+  (web/). The pure league domain modules (eligibility, league-config, season
+  state machine) live in **@fm/engine**: the workspace has exactly three
+  packages and web must import them without dragging server's runtime deps.
+  @fm/engine has ZERO runtime dependencies and packs standalone (`pnpm pack`).
+- **Source-first packages**: exports maps point straight at `.ts` files — no
+  build step. Node's type stripping applies because pnpm symlinks resolve to
+  real paths outside node_modules; TS (nodenext) and Vite resolve the same
+  exports. The `@shared` vite alias is gone; web imports `@fm/engine/*`.
+- **Import-boundary enforcement — two layers** (picked dependency-cruiser over
+  an eslint rule: no eslint in this repo, and depcruise also catches cycles):
+  1. pnpm's isolated node_modules makes UNDECLARED package imports fail to
+     resolve at all (engine cannot see pg/fastify/@fm/server);
+  2. `pnpm boundaries` (dependency-cruiser, `.dependency-cruiser.cjs`) forbids
+     relative-path escapes: engine → server|web|node_modules, web → server,
+     plus any import cycle. Runs in `pnpm test` and the CI typecheck job.
+- **CI is the gate**: `.github/workflows/ci.yml` — six parallel jobs
+  (typecheck+boundaries, engine unit, server suites on a postgres:16 service,
+  web tests+build, 3-seed harness failing on any band miss, smoke.sql guards).
+  Rule: **no commit lands on main without a green workflow** — work on
+  branches, merge via PR. `pnpm test` at the root runs the same set locally
+  (sequentially; DB suites share the docker Postgres from `pnpm db:test:up`).
+
 ## 2026-07-03 — attribute split: longPassing out of passing (pre-pipeline)
 
 - `Attributes.longPassing` added to the technical block. Semantics:

@@ -6,8 +6,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import type { PlayerInstructions, TeamInstructions } from '@shared/engine-types.ts';
-import { LEAGUE_CFG } from '@shared/league-config.ts';
+import type { PlayerInstructions, TeamInstructions } from '@fm/engine/types';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import { api, ApiError, type SquadPlayerView } from '../api.ts';
 import { buildTactics, defaultTeamInstructions, type Selection } from './build.ts';
 import { LineupPicker } from './LineupPicker.tsx';

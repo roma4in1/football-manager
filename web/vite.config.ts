@@ -1,8 +1,8 @@
 /**
- * Vite config: React SPA + PWA. Shared league/engine modules are imported
- * straight from the repo root via the @shared alias (they are pure TS — the
- * import graph web/ touches must never reach pg/fastify/pg-boss).
- * Dev: /api proxies to the Fastify process (league-server.ts, :8080).
+ * Vite config: React SPA + PWA. Engine/league domain modules come from the
+ * @fm/engine workspace package (source-first: exports point at .ts files,
+ * Vite compiles them like local sources).
+ * Dev: /api proxies to the Fastify process (@fm/server, :8080).
  */
 
 import { fileURLToPath } from 'node:url';
@@ -30,12 +30,9 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: {
-    alias: { '@shared': repoRoot },
-  },
   server: {
     proxy: { '/api': 'http://127.0.0.1:8080' },
-    fs: { allow: [repoRoot] },
+    fs: { allow: [repoRoot] }, // workspace-linked @fm/engine sources live outside web/
   },
   test: {
     environment: 'jsdom',
