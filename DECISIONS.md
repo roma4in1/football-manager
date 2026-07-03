@@ -3,6 +3,58 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-03 — data pipeline (pipeline/, Python, standalone)
+
+- Not a pnpm package: runs locally, outputs `seeds/players.sql` + review
+  reports. `MAPPING.md` is the derivation contract (attribute → metrics →
+  transform) and `config.py` the single tuning surface. Deterministic from
+  `cache/`.
+- **CSV-first (2026-07-03 revision)**: fbref's provider change gutted the
+  passing/defense/possession tables AT THE SOURCE — current and historical
+  pages render empty, so HTML cache repair is impossible. The primary source
+  is now a human-downloaded 2024-25 Big-5 season dump (worldfootballR_data /
+  Kaggle) in `cache/csv/`; the HTML parser is demoted to a fallback for stat
+  types the dump lacks. One coherent vintage (all 2024-25); per-player source
+  provenance is recorded in `source_meta.sources` only when CSV and HTML
+  types actually mix in a run. The dump restores aerials and npxG, which the
+  gutted pages never had — heading/strength/jumping and finishing use them
+  when present. The join's club tiebreaker is now preference-only
+  (uniqueness within birth year suffices) because TM clubs are a season
+  newer than the 2024-25 fbref clubs.
+- **The pipeline has NO fetch code — populating `cache/` is a human step.**
+  Rationale, learned the hard way: fbref's CDN blocks automated clients
+  outright, and the archive.org record proved unreliable after fbref's
+  late-2025 data-provider change RETROACTIVELY emptied advanced columns
+  (possession, defense, passing splits) on many snapshots — several
+  league×page combinations have no populated capture at all. A person saves
+  the 40 per-league pages (5 leagues × 8 tables) from a browser into
+  `cache/fbref_{League}_{page}.html` plus the transfermarkt dump as
+  `cache/tm_players.csv`; mixed provenance is fine (the parser handles
+  fbref tables inside HTML comments and in the live DOM). `run.py` preflights
+  the cache and reports gaps; missing/empty tables degrade to position-group
+  imputation with per-player low-confidence flags rather than blocking.
+- **transfermarkt-datasets** open dump (HF mirror) for DOB/height/foot/market
+  value. It has **no injuries table** (checked) → `injuryProneness` uses the
+  age + minutes-load prior from data-sources.md, flagged low-confidence.
+- **Join**: fbref aggregate rows carry birth YEAR only (full DOB would need
+  the per-player crawl we ruled out) → key is unidecoded name + birth year,
+  club tiebreaker via `clubs_match` (TM uses long legal club names), then
+  token-sort / token-subset / surname+club passes, then difflib fuzzy ≥ 0.87,
+  then `manual-matches.csv`. **Auto-match 98.2%** (target ≥95%); the TM pool
+  deliberately includes recently-active non-Big-5 players because the fbref
+  season contains since-departed ones.
+- **Normalization deviation from the PR spec, on purpose**: attribute
+  z-scores are LEAGUE-WIDE, not within position group — the engine reads
+  attributes absolutely, and within-group z handed defenders striker-grade
+  finishing (caught by the distribution report's top-20 eyeball). Positional
+  identity comes from the shrinkage target instead: low-minutes players
+  shrink toward their position-group mean (`w = m/(m+900)`, hard floor 270').
+  GK-only attributes stay within-GK-cohort; outfielders get flat 3s.
+- Missing xG/aerials in the pinned snapshots → finishing uses conversion
+  rates, heading/jumping lean on TM height; all proxy-based attributes are
+  listed per player in `source_meta.low_confidence`.
+- CI runs `pytest pipeline/tests` only (fixtures, no network).
+
 ## 2026-07-03 — monorepo (pnpm workspaces) + CI as the merge gate
 
 - Three packages: `@fm/engine` (engine/), `@fm/server` (server/), `@fm/web`
