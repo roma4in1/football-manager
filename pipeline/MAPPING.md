@@ -26,13 +26,17 @@ transfermarkt-datasets `players.csv` columns.
 5. **Confidence**: attributes derived from proxies (no direct measurement in
    the sources) are listed per player in `source_meta.low_confidence`.
 
-## Snapshot caveats (this cache)
+## Cache caveats
 
-The cached Big-5 pages carry **no xG/npxG columns and no aerial-duel
+The cache is human-populated (see README/DECISIONS.md) with mixed provenance.
+The available captures carry **no xG/npxG columns and no aerial-duel
 columns** — finishing uses conversion rates instead of np(G−xG), and
 heading/jumping/strength lean on TM height + defensive volume, all flagged
-low-confidence. If a richer snapshot lands later, only this table and
-`derive.py` change.
+low-confidence. A league page whose table is missing or empty doesn't block
+the run: each affected metric is treated as missing (never zero), z-stats are
+computed over players who have data, and affected players get the
+position-group mean imputed + a per-player `low_confidence` flag. If richer
+captures land later, only this table and `derive.py` change.
 
 ## Technical
 

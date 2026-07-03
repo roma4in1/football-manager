@@ -1,6 +1,6 @@
 # Unmatched FBref players
 
-37 of 2113 FBref players (1.8%) had no TM match (target ≤ 5%).
+37 of 2111 FBref players (1.8%) had no TM match (target ≤ 5%).
 Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 
 | fbref_id | name | year | club | best fuzzy guess | ratio |
@@ -19,7 +19,7 @@ Add fixes to manual-matches.csv as `fbref_id,tm_id` rows and re-run.
 | 7fa4e703 | Gio Reyna | 2002 | Dortmund | Giovanni Reyna | 0.783 |
 | 49dbab27 | Isaac Palazón Camacho | 1994 | Rayo Vallecano | Isi Palazón | 0.625 |
 | fd01216a | John Joe | 2003 | Reims | Jonathan Rowe | 0.667 |
-| b684a484 | Jordan Pefok | 1996 | Union Berlin | Jordan | 0.667 |
+| b684a484 | Jordan Pefok | 1996 | Reims | Jordan | 0.667 |
 | 27dc1378 | José Luis García Vayá | 1998 | Valencia | Jorge García | 0.606 |
 | 3a18abe2 | Juan Herzog | 2003 | Las Palmas | Juan Viveros | 0.696 |
 | 414184f7 | Jáder Durán | 2003 | Aston Villa | Jhon Durán | 0.667 |

@@ -1,158 +1,158 @@
 # Attribute distribution report
 
-2076 players. Histograms span attribute values 1→20, bar height ∝ count.
+2074 players. Histograms span attribute values 1→20, bar height ∝ count.
 
 ## passing
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `               █▅   ` | 16.4 |
-| DF | 782 | `        ▁▄▆█▇▃      ` | 11.8 |
-| MF | 638 | `       ▂▄▆█▆▂       ` | 10.6 |
-| FW | 489 | ` ▁▂▃▅▇█▆▃▁          ` | 6.5 |
+| GK | 167 | `               █    ` | 16.0 |
+| DF | 782 | `          ▁█▁       ` | 12.0 |
+| MF | 637 | `        ▁▁█▁        ` | 10.8 |
+| FW | 488 | `    ▁█▁▁            ` | 6.2 |
 
-Top 20: Bernd Leno (GK, 17), Dean Henderson (GK, 17), Mile Svilar (GK, 17), Mike Maignan (GK, 17), Jan Oblak (GK, 17), André Onana (GK, 17), Giorgi Mamardashvili (GK, 17), Marco Carnesecchi (GK, 17), Yann Sommer (GK, 17), Nikola Vasilj (GK, 17), Gregor Kobel (GK, 17), Marco Bizot (GK, 17), Marko Dmitrovic (GK, 17), Robin Zentner (GK, 17), Dominik Greif (GK, 17), Karl Hein (GK, 17), Thibaut Courtois (GK, 17), Ivan Provedel (GK, 17), Nicola Leali (GK, 17), Kamil Grabara (GK, 17)
+Top 20: Dean Henderson (GK, 17), Jan Oblak (GK, 17), Dominik Greif (GK, 17), Rui Silva (GK, 17), Julen Agirrezabala (GK, 17), Lukasz Fabianski (GK, 17), Caoimhín Kelleher (GK, 17), Martin Dúbravka (GK, 17), Bernd Leno (GK, 16), David Raya (GK, 16), David Soria (GK, 16), Joan García (GK, 16), Jordan Pickford (GK, 16), Matz Sels (GK, 16), Mile Svilar (GK, 16), Wladimiro Falcone (GK, 16), Sergio Herrera (GK, 16), Vanja Milinković-Savić (GK, 16), Zion Suzuki (GK, 16), Mike Maignan (GK, 16)
 
 ## longPassing
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         ▂█▇▃       ` | 11.5 |
-| DF | 782 | `       ▁▄██▄▂       ` | 10.6 |
-| MF | 638 | `       ▁▂▅█▆▂▁      ` | 11.1 |
-| FW | 489 | `     ▁▂▅█▇▅▂▁       ` | 9.4 |
+| GK | 167 | `         ▁█▁        ` | 11.1 |
+| DF | 782 | `        ▁▁█▁        ` | 10.8 |
+| MF | 637 | `         ▁█▁▁       ` | 11.1 |
+| FW | 488 | `       ▁█▁▁         ` | 9.2 |
 
-Top 20: Vitinha (MF, 16), Joshua Kimmich (MF, 15), Azor Matusiwa (MF, 15), Dayot Upamecano (DF, 15), Marquinhos (DF, 15), Amir Rrahmani (DF, 14), Moisés Caicedo (MF, 14), Mattéo Guendouzi (MF, 14), William Saliba (DF, 14), Federico Valverde (MF, 14), Granit Xhaka (MF, 14), Julian Weigl (MF, 14), Éderson (MF, 14), Pedri (MF, 14), Andrey Santos (MF, 14), Manuel Locatelli (MF, 14), Daley Blind (DF, 14), Mario Gila (DF, 14), Stanislav Lobotka (MF, 14), Pau Cubarsí (DF, 14)
+Top 20: Scott McTominay (MF, 18), Roberto Fernández (FW, 15), Woyo Coulibaly (DF, 15), Moisés Caicedo (MF, 14), William Saliba (DF, 14), Federico Valverde (MF, 14), Pedri (MF, 14), Daley Blind (DF, 14), Aurélien Tchouaméni (DF, 14), Pau Cubarsí (DF, 14), Iñigo Martínez (DF, 14), Jude Bellingham (MF, 14), André (MF, 14), Dani Parejo (MF, 14), Sander Berge (MF, 14), Danny Welbeck (FW, 14), Iván Martín (MF, 14), José María Giménez (DF, 14), Sergi Altimira (MF, 14), Luka Modrić (MF, 14)
 
 ## vision
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 167 | `     █              ` | 6.0 |
-| DF | 782 | `       ▄██▅▂▁       ` | 9.9 |
-| MF | 638 | `        ▁▃█▇▄▃▁     ` | 12.1 |
-| FW | 489 | `        ▄█▇▄▂▂      ` | 11.0 |
+| DF | 782 | `       ▁▂█▁         ` | 9.9 |
+| MF | 637 | `         ▁▁█▁       ` | 12.1 |
+| FW | 488 | `        ▁▁█▁        ` | 11.0 |
 
-Top 20: Joshua Kimmich (MF, 20), Michael Olise (FW, 20), Pedri (MF, 19), Rayan Cherki (FW, 19), Luka Modrić (MF, 19), Bruno Fernandes (MF, 18), Álex Baena (MF, 18), Martin Ødegaard (MF, 18), Ousmane Dembélé (FW, 18), Kevin De Bruyne (MF, 18), Isco (MF, 18), Granit Xhaka (MF, 17), Romano Schmid (MF, 17), Angelo Stiller (MF, 17), Nadiem Amiri (MF, 17), Trent Alexander-Arnold (DF, 17), Rodrigo De Paul (MF, 17), Désiré Doué (FW, 17), Kang-in Lee (FW, 17), Kevin Stöger (MF, 17)
+Top 20: Pedri (MF, 19), Luka Modrić (MF, 19), Bruno Fernandes (MF, 18), Álex Baena (MF, 18), Martin Ødegaard (MF, 18), Kevin De Bruyne (MF, 18), Isco (MF, 18), Rodrigo De Paul (MF, 17), Giovani Lo Celso (MF, 17), Cole Palmer (MF, 16), Mikkel Damsgaard (MF, 16), Lamine Yamal (FW, 16), Raphinha (FW, 16), Trent Alexander-Arnold (DF, 16), Arda Güler (MF, 16), Mohamed Salah (FW, 15), Bruno Guimarães (MF, 15), Youri Tielemans (MF, 15), Alex Iwobi (FW, 15), Enzo Fernández (MF, 15)
 
 ## firstTouch
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `        ▄█▂         ` | 9.7 |
-| DF | 782 | `         ▂█▂        ` | 11.0 |
-| MF | 638 | `         ▃█▁        ` | 10.8 |
-| FW | 489 | `        ▇█▁         ` | 9.6 |
+| GK | 167 | `      ▁▁  █▃▂▁      ` | 11.1 |
+| DF | 782 | `          ▁▂█▁      ` | 12.7 |
+| MF | 637 | `        ▁▂█▂▁       ` | 10.9 |
+| FW | 488 | `   ▁▂█▂▂▁           ` | 6.2 |
 
-Top 20: Amir Rrahmani (DF, 12), Moisés Caicedo (MF, 12), Dan Burn (DF, 12), Virgil van Dijk (DF, 12), Cristhian Mosquera (DF, 12), Josko Gvardiol (DF, 12), Mattéo Guendouzi (MF, 12), Antonio Raíllo (DF, 12), Remo Freuler (MF, 12), Ryan Gravenberch (MF, 12), Levi Colwill (DF, 12), Calvin Bassey (DF, 12), William Saliba (DF, 12), Federico Valverde (MF, 12), Marc Cucurella (DF, 12), Jonathan Tah (DF, 12), Jan Paul van Hecke (DF, 12), Ezri Konsa (DF, 12), Kyle Walker-Peters (DF, 12), Granit Xhaka (MF, 12)
+Top 20: Pau Cubarsí (DF, 16), Carl Starfelt (DF, 16), Cristhian Mosquera (DF, 15), Aurélien Tchouaméni (DF, 15), Iñigo Martínez (DF, 15), Ladislav Krejčí (DF, 15), David López (DF, 15), Antonio Rüdiger (DF, 15), Robin Le Normand (DF, 15), José María Giménez (DF, 15), Raúl Asencio (DF, 15), Eric García (DF, 15), Ferland Mendy (DF, 15), Mile Svilar (GK, 14), Wladimiro Falcone (GK, 14), Amir Rrahmani (DF, 14), Vanja Milinković-Savić (GK, 14), Virgil van Dijk (DF, 14), Zion Suzuki (GK, 14), Mike Maignan (GK, 14)
 
 ## dribbling
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         █          ` | 10.0 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `      ▃█   ▁        ` | 8.2 |
+| DF | 782 | `        ▁█▁▁        ` | 10.0 |
+| MF | 637 | `        ▁▁█▁        ` | 10.8 |
+| FW | 488 | `        ▁▁█▁▁       ` | 11.1 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: Jérémy Doku (FW, 20), Mohammed Kudus (FW, 15), Ethan Nwaneri (FW, 15), Abdul Fatawu (FW, 15), Antoine Semenyo (FW, 14), Iliman Ndiaye (FW, 14), Kenan Yıldız (FW, 14), Rafael Leão (FW, 14), Callum Hudson-Odoi (FW, 14), Noni Madueke (FW, 14), Yankuba Minteh (FW, 14), Adama Traoré (FW, 14), Jadon Sancho (FW, 14), Bukayo Saka (FW, 14), Nuno Tavares (DF, 14), Francisco Conceição (FW, 14), David Neres (FW, 14), Samuel Chukwueze (FW, 14), Ismaël Bennacer (MF, 14), Mohamed Salah (FW, 13)
 
 ## finishing
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `      █             ` | 7.1 |
-| DF | 782 | `      ▁▆█▆▆▃▂       ` | 9.9 |
-| MF | 638 | `       ▁▅██▄▃▁      ` | 10.7 |
-| FW | 489 | `          ▄▇█▄▂▁    ` | 12.8 |
+| GK | 167 | `       █            ` | 7.9 |
+| DF | 782 | `      ▃█▆▅▃▂▁       ` | 9.3 |
+| MF | 637 | `       ▃▇█▇▄▁▁      ` | 10.3 |
+| FW | 488 | `         ▁▆█▇▃▂     ` | 12.5 |
 
-Top 20: Patrik Schick (FW, 18), Alexander Sørloth (FW, 18), Robert Lewandowski (FW, 17), Mateo Retegui (FW, 17), Ayoze Pérez (FW, 17), Ousmane Dembélé (FW, 17), Mika Biereth (FW, 17), Chris Wood (FW, 16), Yoane Wissa (FW, 16), Kylian Mbappé (FW, 16), Serhou Guirassy (FW, 16), Jonathan Burkardt (FW, 16), Lucas Stassin (FW, 16), Ermedin Demirovic (FW, 16), Omar Marmoush (FW, 16), Ferran Torres (FW, 16), Myron Boadu (FW, 16), Mohamed Salah (FW, 15), Alexander Isak (FW, 15), Tim Kleindienst (FW, 15)
+Top 20: Lucas Stassin (FW, 19), Patrik Schick (FW, 18), Ayoze Pérez (FW, 17), Ousmane Dembélé (FW, 17), Alexander Sørloth (FW, 17), Kylian Mbappé (FW, 16), Robert Lewandowski (FW, 16), Keito Nakamura (FW, 16), Arnaud Kalimuendo (FW, 16), Evann Guessand (FW, 16), Mateo Retegui (FW, 16), Jonathan Burkardt (FW, 16), Alexandre Lacazette (FW, 16), Ermedin Demirovic (FW, 16), Chris Wood (FW, 15), Yoane Wissa (FW, 15), Alexander Isak (FW, 15), Tim Kleindienst (FW, 15), Erling Haaland (FW, 15), Moise Kean (FW, 15)
 
 ## heading
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `          ▁██▃      ` | 12.6 |
-| DF | 782 | `      ▁▁▃▆█▄▁       ` | 10.6 |
-| MF | 638 | `      ▁▃▇█▄▁        ` | 9.7 |
-| FW | 489 | `       ▁▄██▆▂▁▁     ` | 10.8 |
+| GK | 167 | `          ▃█▇▄▁     ` | 12.7 |
+| DF | 782 | `      ▁▁▄▆█▇▃▁      ` | 10.9 |
+| MF | 637 | `      ▂▅▇█▄▁        ` | 9.4 |
+| FW | 488 | `      ▁▃▆██▆▂▁▁▁    ` | 10.6 |
 
-Top 20: Vanja Milinković-Savić (GK, 16), Lorenzo Lucca (FW, 16), Alexander Sørloth (FW, 16), Dan Burn (DF, 15), Marcin Bulka (GK, 15), Tim Kleindienst (FW, 15), Erling Haaland (FW, 15), Thibaut Courtois (GK, 15), Ludovic Ajorque (FW, 15), Benjamin Sesko (FW, 15), Emmanuel Emegha (FW, 15), Patrik Schick (FW, 15), Nick Woltemade (FW, 15), Paul Onuachu (FW, 15), Wladimiro Falcone (GK, 14), Nikola Milenković (DF, 14), Virgil van Dijk (DF, 14), Mark Flekken (GK, 14), Paulo Gazzaniga (GK, 14), Emiliano Martínez (GK, 14)
+Top 20: Erling Haaland (FW, 17), Dan Burn (DF, 16), Marcin Bulka (GK, 16), Tim Kleindienst (FW, 16), Ludovic Ajorque (FW, 16), Benjamin Sesko (FW, 16), Lorenzo Lucca (FW, 16), Emmanuel Emegha (FW, 16), Patrik Schick (FW, 16), Nick Woltemade (FW, 16), Alexander Sørloth (FW, 16), Nikola Milenković (DF, 15), Vanja Milinković-Savić (GK, 15), Alejandro Catena (DF, 15), César Tárrega (DF, 15), Lucas Perri (GK, 15), Chris Wood (FW, 15), Gregor Kobel (GK, 15), Robert Sánchez (GK, 15), Alexander Isak (FW, 15)
 
 ## crossing
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 167 | `      █             ` | 7.0 |
-| DF | 782 | `       ▂█▅▃▂▂▁▁▁    ` | 10.8 |
-| MF | 638 | `       ▁▇█▄▃▁▁▁     ` | 10.5 |
-| FW | 489 | `       ▁▆█▃▃▂▂▁     ` | 11.1 |
+| DF | 782 | `       ▄█▄▅▃▁▁▁▁    ` | 10.6 |
+| MF | 637 | `       ▁█▇█▃▂▁▁     ` | 10.9 |
+| FW | 488 | `        ▇██▃▂▂▂     ` | 11.1 |
 
-Top 20: Juan Miranda (DF, 20), Carlos Vicente (FW, 19), Junya Ito (FW, 19), Pedro Porro (DF, 19), Moses Simon (FW, 19), Maximilian Mittelstädt (DF, 19), Nuno Tavares (DF, 19), Franck Honorat (FW, 19), Sorba Thomas (FW, 19), Gerrit Holtmann (DF, 19), Luis Rioja (MF, 18), Matteo Politano (FW, 18), Johan Mojica (DF, 18), Tommaso Augello (DF, 18), Alejandro Grimaldo (DF, 18), Miguel Gutiérrez (DF, 18), Pedro Neto (FW, 18), Federico Dimarco (DF, 18), Florian Thauvin (FW, 18), José Gayà (DF, 18)
+Top 20: Aarón Martín (DF, 20), Gaëtan Perrin (MF, 20), Adrien Rabiot (MF, 20), Jonathan Clauss (DF, 20), Juan Miranda (DF, 20), Federico Dimarco (DF, 20), David Raum (DF, 20), Carlos Vicente (FW, 19), Matteo Politano (FW, 19), Tommaso Augello (DF, 19), Alejandro Grimaldo (DF, 19), Florian Thauvin (FW, 19), Charalampos Lykogiannis (DF, 19), Johan Mojica (DF, 18), Pedro Porro (DF, 18), Moses Simon (FW, 18), Dilane Bakwa (MF, 18), Miguel Gutiérrez (DF, 18), Marvin Ducksch (FW, 18), Pascal Groß (MF, 18)
 
 ## tackling
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `      █▁            ` | 7.1 |
-| DF | 782 | `         ▅█▄▁       ` | 11.1 |
-| MF | 638 | `         ▄█▅▂       ` | 11.2 |
-| FW | 489 | `       ▁█▆▁         ` | 9.5 |
+| GK | 167 | `  ▁▁█               ` | 5.1 |
+| DF | 782 | `          ▁█▁▁      ` | 12.1 |
+| MF | 637 | `         ▁█▁▁       ` | 11.0 |
+| FW | 488 | `      ▁█▁▁          ` | 8.1 |
 
-Top 20: Jon Aramburu (DF, 15), Tyler Adams (MF, 15), Casemiro (MF, 15), Mats Wieffer (DF, 15), Daniel Muñoz (DF, 14), Omar El Hilali (DF, 14), Idrissa Gueye (MF, 14), João Gomes (MF, 14), Andrey Santos (MF, 14), Noussair Mazraoui (DF, 14), Manu Sánchez (DF, 14), Viti Rozada (DF, 14), Nicolás Domínguez (MF, 14), Manuel Ugarte (MF, 14), Rabby Nzingoula (MF, 14), Alieu Fadera (FW, 14), Pierre Lees-Melou (MF, 14), Ayyoub Bouaddi (MF, 14), Paul Joly (DF, 14), Lars Ritzka (DF, 14)
+Top 20: Jon Aramburu (DF, 17), Omar El Hilali (DF, 16), Valentín Barco (MF, 16), Marcos Llorente (DF, 15), Viti Rozada (DF, 15), José Gayà (DF, 15), Ignace Van der Brempt (DF, 15), Giangiacomo Magnani (DF, 15), Alfonso Espino (DF, 15), Devyne Rensch (DF, 15), Junior Sambia (DF, 15), Stefan Posch (DF, 15), José Ángel Carmona (DF, 14), Nahuel Tenaglia (DF, 14), Alessio Romagnoli (DF, 14), Manu Sánchez (DF, 14), Jules Koundé (DF, 14), Valentin Rosier (DF, 14), Mattia Viti (DF, 14), Yerry Mina (DF, 14)
 
 ## marking
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         █          ` | 10.0 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `    █               ` | 5.0 |
+| DF | 782 | `           ▁█▁      ` | 13.0 |
+| MF | 637 | `        ▁▂█▁        ` | 10.8 |
+| FW | 488 | `      ▁█▂           ` | 8.1 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: Yerry Mina (DF, 17), Alfonso Espino (DF, 17), Omar El Hilali (DF, 16), Diego Coppola (DF, 16), Carlos Romero (DF, 16), Jon Aramburu (DF, 16), Matija Nastasić (DF, 16), Abdul Mumin (DF, 16), Jorge Sáenz (DF, 16), Nicolás Valentini (DF, 16), Lautaro Giannetti (DF, 16), Giorgio Altare (DF, 16), Fernando Calero (DF, 16), Alejandro Catena (DF, 15), César Tárrega (DF, 15), Marash Kumbulla (DF, 15), Omar Alderete (DF, 15), Enrico Delprato (DF, 15), Sergi Cardona (DF, 15), Juan Iglesias (DF, 15)
 
 ## setPieceDelivery
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 167 | `      █             ` | 7.0 |
-| DF | 782 | `       ▂█▇▄▃▁▁      ` | 10.3 |
-| MF | 638 | `        ▂▇█▅▂▁▁     ` | 11.3 |
-| FW | 489 | `        ▄█▆▃▃▁▁▁    ` | 11.0 |
+| DF | 782 | `       ▁██▃▂▁       ` | 10.1 |
+| MF | 637 | `         ▃█▄▂▁      ` | 11.5 |
+| FW | 488 | `        ▂▇█▃▂▁▁     ` | 11.0 |
 
-Top 20: Junya Ito (FW, 18), Juan Miranda (DF, 18), Joshua Kimmich (MF, 17), Romano Schmid (MF, 17), Pedro Porro (DF, 17), Álex Baena (MF, 17), Maximilian Mittelstädt (DF, 17), Trent Alexander-Arnold (DF, 17), Michael Olise (FW, 17), Kevin De Bruyne (MF, 17), Nuno Tavares (DF, 17), Carlos Vicente (FW, 16), Bruno Fernandes (MF, 16), Raphinha (FW, 16), Matteo Politano (FW, 16), Johan Mojica (DF, 16), Alejandro Grimaldo (DF, 16), Moses Simon (FW, 16), Téji Savanier (MF, 16), Pascal Groß (MF, 16)
+Top 20: Gaëtan Perrin (MF, 17), Álex Baena (MF, 17), Adrien Rabiot (MF, 17), Kevin De Bruyne (MF, 17), Bruno Fernandes (MF, 16), Raphinha (FW, 16), Pedro Porro (DF, 16), Trent Alexander-Arnold (DF, 16), Luka Modrić (MF, 16), Adama Traoré (FW, 16), Cole Palmer (MF, 15), Antonee Robinson (DF, 15), Carlos Vicente (FW, 15), Aarón Martín (DF, 15), Alex Iwobi (FW, 15), Mikkel Damsgaard (MF, 15), Pedri (MF, 15), Lamine Yamal (FW, 15), Luis Rioja (MF, 15), Diego Rico (DF, 15)
 
 ## pace
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `        ▁█          ` | 9.9 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `      ▁▃▆█▁         ` | 9.3 |
+| DF | 782 | `       ▁▅█▁         ` | 9.6 |
+| MF | 637 | `       ▁▄█▁         ` | 9.8 |
+| FW | 488 | `       ▁▂█▁▁▁       ` | 10.3 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: Jérémy Doku (FW, 19), Callum Hudson-Odoi (FW, 15), Noni Madueke (FW, 15), Morgan Rogers (FW, 14), Kaoru Mitoma (FW, 14), Iliman Ndiaye (FW, 14), Rafael Leão (FW, 14), Pedro Neto (FW, 14), Yankuba Minteh (FW, 14), Adama Traoré (FW, 14), Alessandro Zanoli (FW, 14), Nuno Tavares (DF, 14), Kamaldeen Sulemana (FW, 14), Abdul Fatawu (FW, 14), Antoine Semenyo (FW, 13), Dodô (DF, 13), Matheus Cunha (MF, 13), Mohammed Kudus (FW, 13), Omari Hutchinson (MF, 13), Anthony Elanga (FW, 13)
 
 ## acceleration
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `        ▁█          ` | 9.9 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `      ▂█▄▂          ` | 8.3 |
+| DF | 782 | `       ▂██▁         ` | 9.4 |
+| MF | 637 | `        ▃█▁         ` | 9.9 |
+| FW | 488 | `        ▂▆█▂▁▁      ` | 10.8 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: Jérémy Doku (FW, 20), Mohammed Kudus (FW, 16), Noni Madueke (FW, 15), Ethan Nwaneri (FW, 15), Abdul Fatawu (FW, 15), Antoine Semenyo (FW, 14), Nico Paz (MF, 14), Kaoru Mitoma (FW, 14), Matheus Cunha (MF, 14), Iliman Ndiaye (FW, 14), Kenan Yıldız (FW, 14), Rafael Leão (FW, 14), Amad Diallo (MF, 14), Tyler Dibling (FW, 14), Yankuba Minteh (FW, 14), Adama Traoré (FW, 14), Jadon Sancho (FW, 14), Bukayo Saka (FW, 14), Nuno Tavares (DF, 14), Kamaldeen Sulemana (FW, 14)
 
 ## stamina
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `        ▁█▂▂▃▃      ` | 11.5 |
-| DF | 782 | `        ▁█▃▃▃▁      ` | 11.0 |
-| MF | 638 | `        ▅█▄▄▃       ` | 10.6 |
-| FW | 489 | `        █▄▄▃▁       ` | 10.2 |
+| GK | 167 | `       ▂▂█▂▂▄▃      ` | 11.1 |
+| DF | 782 | `       ▁▃█▄▄▃▁      ` | 10.8 |
+| MF | 637 | `       ▁▂█▄▃▂       ` | 10.6 |
+| FW | 488 | `       ▂██▄▄▂       ` | 10.2 |
 
 Top 20: Bernd Leno (GK, 14), David Raya (GK, 14), David Soria (GK, 14), Dean Henderson (GK, 14), Federico Baschirotto (DF, 14), Joan García (GK, 14), Jordan Pickford (GK, 14), Matz Sels (GK, 14), Mile Svilar (GK, 14), Nathan Collins (DF, 14), Wladimiro Falcone (GK, 14), Bryan Mbeumo (FW, 14), Amir Rrahmani (DF, 14), Mohamed Salah (FW, 14), Moisés Caicedo (MF, 14), Maximilian Kilman (DF, 14), Milos Kerkez (DF, 14), Dan Burn (DF, 14), Giovanni Di Lorenzo (DF, 14), Nikola Milenković (DF, 14)
 
@@ -160,142 +160,142 @@ Top 20: Bernd Leno (GK, 14), David Raya (GK, 14), David Soria (GK, 14), Dean Hen
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         ▁█▆▁       ` | 11.5 |
-| DF | 782 | `       ▁▂▆█▄▁       ` | 10.7 |
-| MF | 638 | `       ▁▄█▅▂        ` | 10.1 |
-| FW | 489 | `       ▂▅█▇▃▁       ` | 10.3 |
+| GK | 167 | `          ▂▇█▂▁▁    ` | 12.7 |
+| DF | 782 | `       ▁▂▆██▄▁      ` | 11.1 |
+| MF | 637 | `      ▁▃▅█▅▂        ` | 9.8 |
+| FW | 488 | `      ▃▄█▇▆▂▁▁      ` | 9.6 |
 
-Top 20: Frank Onyeka (MF, 15), Lorenzo Lucca (FW, 15), Dan Burn (DF, 14), Vanja Milinković-Savić (GK, 14), Tim Kleindienst (FW, 14), Ibrahima Sissoko (MF, 14), Ludovic Ajorque (FW, 14), Thomas Kristensen (DF, 14), Paul Onuachu (FW, 14), Amir Rrahmani (DF, 13), Maximilian Kilman (DF, 13), Nikola Milenković (DF, 13), Virgil van Dijk (DF, 13), Alejandro Catena (DF, 13), Giorgi Mamardashvili (GK, 13), Marcin Bulka (GK, 13), César Tárrega (DF, 13), Jonathan Tah (DF, 13), Lucas Perri (GK, 13), Lucas Torró (MF, 13)
+Top 20: André Gomes (MF, 20), Marcin Bulka (GK, 18), Lucas Perri (GK, 17), Yahia Fofana (GK, 16), Djordje Petrovic (GK, 16), Gianluigi Donnarumma (GK, 16), Arthur Desmas (GK, 16), Dan Burn (DF, 15), Vanja Milinković-Savić (GK, 15), César Tárrega (DF, 15), Marco Bizot (GK, 15), Tim Kleindienst (FW, 15), Thibaut Courtois (GK, 15), Ibrahima Sissoko (MF, 15), Ludovic Ajorque (FW, 15), Mickaël Nadé (DF, 15), Emmanuel Emegha (FW, 15), Cédric Kipré (DF, 15), Nemanja Matić (MF, 15), Abdoulaye Ndiaye (DF, 15)
 
 ## jumping
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `           ▂█▇▄▁    ` | 13.7 |
-| DF | 782 | `      ▁▁▂▅█▇▃▁      ` | 11.0 |
-| MF | 638 | `      ▂▄█▇▅▁        ` | 9.6 |
-| FW | 489 | `      ▁▄▇█▇▄▁▁      ` | 10.0 |
+| GK | 167 | `           ▃██▄▃▁   ` | 14.0 |
+| DF | 782 | `      ▁▁▃▄▇█▆▄▂▁    ` | 11.6 |
+| MF | 637 | `     ▂▄▆██▄▂▁       ` | 9.1 |
+| FW | 488 | `    ▁▁▄▆██▆▃▁▁▁     ` | 9.5 |
 
-Top 20: Vanja Milinković-Savić (GK, 17), Dan Burn (DF, 16), Marcin Bulka (GK, 16), Thibaut Courtois (GK, 16), Nick Pope (GK, 16), Maduka Okoye (GK, 16), Joan García (GK, 15), Wladimiro Falcone (GK, 15), Mark Flekken (GK, 15), Paulo Gazzaniga (GK, 15), Emiliano Martínez (GK, 15), Giorgi Mamardashvili (GK, 15), Lucas Perri (GK, 15), Yahia Fofana (GK, 15), Devis Vásquez (GK, 15), Gregor Kobel (GK, 15), Robert Sánchez (GK, 15), Robin Zentner (GK, 15), Djordje Petrovic (GK, 15), Dominik Greif (GK, 15)
+Top 20: Dan Burn (DF, 19), Marcin Bulka (GK, 18), Nick Pope (GK, 18), Mark Flekken (GK, 17), Emiliano Martínez (GK, 17), Lucas Perri (GK, 17), Gregor Kobel (GK, 17), Robert Sánchez (GK, 17), Dean Huijsen (DF, 17), Gianluigi Donnarumma (GK, 17), Arijanet Murić (GK, 17), Fraser Forster (GK, 17), Maximilian Kilman (DF, 16), Nikola Milenković (DF, 16), Vanja Milinković-Savić (GK, 16), Virgil van Dijk (DF, 16), Bart Verbruggen (GK, 16), Alejandro Catena (DF, 16), Alexander Nübel (GK, 16), César Tárrega (DF, 16)
 
 ## agility
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         █          ` | 10.0 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `             ▂█ ▁   ` | 15.0 |
+| DF | 782 | `         ▁▂█▁       ` | 11.9 |
+| MF | 637 | `         █▂         ` | 10.2 |
+| FW | 488 | `     ▁▁█▁           ` | 7.8 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: David Raya (GK, 17), Mike Maignan (GK, 17), Mark Flekken (GK, 17), Bart Verbruggen (GK, 17), Emiliano Martínez (GK, 17), André Onana (GK, 17), Devis Vásquez (GK, 17), Kepa Arrizabalaga (GK, 17), José Sá (GK, 17), Alisson (GK, 17), Mads Hermansen (GK, 17), Lukasz Skorupski (GK, 17), Guglielmo Vicario (GK, 17), Nikola Milenković (DF, 16), Taylor Harwood-Bellis (DF, 16), Jan Bednarek (DF, 16), Matteo Gabbia (DF, 16), Ionuț Radu (GK, 16), Lukasz Fabianski (GK, 16), Federico Ravaglia (GK, 16)
 
 ## decisions
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `       ▂▇█▂         ` | 9.5 |
-| DF | 782 | `         ▂█▇        ` | 11.3 |
-| MF | 638 | `        ▁▄█▃        ` | 10.9 |
-| FW | 489 | `       ▂█▅▁         ` | 9.2 |
+| GK | 167 | `      ▁▁▂█▃▂▁       ` | 10.2 |
+| DF | 782 | `         ▁▂█▂▁      ` | 12.0 |
+| MF | 637 | `        ▁▂█▂▁       ` | 10.8 |
+| FW | 488 | `     ▁▂█▃▁          ` | 8.0 |
 
-Top 20: William Saliba (DF, 13), Jonathan Tah (DF, 13), Ezri Konsa (DF, 13), Bafodé Diakité (DF, 13), Aurélien Tchouaméni (DF, 13), Pau Cubarsí (DF, 13), Jan Bednarek (DF, 13), Mamadou Sarr (DF, 13), Pierre Kalulu (DF, 13), Leonardo Balerdi (DF, 13), Rúben Dias (DF, 13), Carl Starfelt (DF, 13), Federico Gatti (DF, 13), Willian Pacho (DF, 13), Manuel Akanji (DF, 13), Lucas Beraldo (DF, 13), Dayot Upamecano (DF, 13), Marquinhos (DF, 13), Raúl Asencio (DF, 13), Federico Baschirotto (DF, 12)
+Top 20: William Saliba (DF, 15), Dan Burn (DF, 14), Virgil van Dijk (DF, 14), Josko Gvardiol (DF, 14), Levi Colwill (DF, 14), Calvin Bassey (DF, 14), Jan Paul van Hecke (DF, 14), Ezri Konsa (DF, 14), Wout Faes (DF, 14), Aurélien Tchouaméni (DF, 14), Pau Cubarsí (DF, 14), Ibrahima Konaté (DF, 14), Jan Bednarek (DF, 14), Iñigo Martínez (DF, 14), Gabriel (DF, 14), Antonio Rüdiger (DF, 14), Rúben Dias (DF, 14), Matthijs de Ligt (DF, 14), Lewis Dunk (DF, 14), Pau Torres (DF, 14)
 
 ## composure
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         █          ` | 10.0 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `        ▁▁▁█▂▁      ` | 11.7 |
+| DF | 782 | `        ▁▁█▄▂       ` | 11.2 |
+| MF | 637 | `        ▁█▄▃        ` | 10.3 |
+| FW | 488 | `      ▁▂█▂▂▁        ` | 9.0 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: Bernd Leno (GK, 14), David Raya (GK, 14), Dean Henderson (GK, 14), Jordan Pickford (GK, 14), Matz Sels (GK, 14), Mark Flekken (GK, 14), Bart Verbruggen (GK, 14), Emiliano Martínez (GK, 14), André Onana (GK, 14), Robert Sánchez (GK, 14), Kepa Arrizabalaga (GK, 14), Nick Pope (GK, 14), Alphonse Areola (GK, 14), Nathan Collins (DF, 13), Maximilian Kilman (DF, 13), Dan Burn (DF, 13), Nikola Milenković (DF, 13), Virgil van Dijk (DF, 13), Josko Gvardiol (DF, 13), Murillo (DF, 13)
 
 ## positioning
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `       █            ` | 8.0 |
-| DF | 782 | `         ▂█▆▂▁      ` | 11.6 |
-| MF | 638 | `        ▁▇█▄▁       ` | 10.9 |
-| FW | 489 | `       ▁█▁          ` | 9.1 |
+| GK | 167 | `     █              ` | 6.0 |
+| DF | 782 | `           ▁█▁▁     ` | 13.1 |
+| MF | 637 | `        ▁█▁▁        ` | 10.1 |
+| FW | 488 | `      ▂█            ` | 7.9 |
 
-Top 20: José Ángel Carmona (DF, 15), Omar Mascarell (MF, 15), Lukas Kübler (DF, 15), Rocco Reitz (MF, 15), Jérémy Jacquet (DF, 15), Aaron Wan-Bissaka (DF, 14), Patrick Mainka (DF, 14), Kaishu Sano (MF, 14), Diego Coppola (DF, 14), Senne Lynen (MF, 14), Valentin Rosier (DF, 14), Chrislain Matsima (DF, 14), Diogo Leite (DF, 14), Jan Bednarek (DF, 14), Ardian Ismajli (DF, 14), Dean Huijsen (DF, 14), Clinton Mata (DF, 14), Jonathan Clauss (DF, 14), Gideon Mensah (DF, 14), Johnny Cardoso (MF, 14)
+Top 20: Ardian Ismajli (DF, 19), Diego Coppola (DF, 18), Pablo Marí (DF, 18), Yerry Mina (DF, 17), Marc Bartra (DF, 17), Jorge Sáenz (DF, 17), Yarek Gasiorowski (DF, 17), Cenk Özkacar (DF, 17), Giorgio Altare (DF, 17), Fernando Calero (DF, 17), Johan Vásquez (DF, 16), Marash Kumbulla (DF, 16), Omar Alderete (DF, 16), José Ángel Carmona (DF, 16), Saúl Coco (DF, 16), Valentin Rosier (DF, 16), Mattia Viti (DF, 16), Diego Llorente (DF, 16), Abdel Abqar (DF, 16), Armando Izzo (DF, 16)
 
 ## offTheBall
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         █          ` | 10.0 |
-| DF | 782 | `         █          ` | 10.0 |
-| MF | 638 | `         █          ` | 10.0 |
-| FW | 489 | `         █          ` | 10.0 |
+| GK | 167 | `     █              ` | 6.0 |
+| DF | 782 | `       ▂█▁          ` | 8.9 |
+| MF | 637 | `       ▁▁█▁▁        ` | 10.1 |
+| FW | 488 | `            ▁▁█▁    ` | 15.0 |
 
-Top 20: Bernd Leno (GK, 10), David Raya (GK, 10), David Soria (GK, 10), Dean Henderson (GK, 10), Federico Baschirotto (DF, 10), Joan García (GK, 10), Jordan Pickford (GK, 10), Matz Sels (GK, 10), Mile Svilar (GK, 10), Nathan Collins (DF, 10), Wladimiro Falcone (GK, 10), Bryan Mbeumo (FW, 10), Amir Rrahmani (DF, 10), Mohamed Salah (FW, 10), Moisés Caicedo (MF, 10), Maximilian Kilman (DF, 10), Milos Kerkez (DF, 10), Dan Burn (DF, 10), Giovanni Di Lorenzo (DF, 10), Nikola Milenković (DF, 10)
+Top 20: Mohamed Salah (FW, 20), Bukayo Saka (FW, 20), Jérémy Doku (FW, 20), Gabriel Martinelli (FW, 19), Ademola Lookman (MF, 19), Noni Madueke (FW, 19), Jack Grealish (FW, 19), Kaoru Mitoma (FW, 18), Luis Díaz (FW, 18), Rafael Leão (FW, 18), Alejandro Garnacho (MF, 18), Heung-min Son (FW, 18), Cody Gakpo (FW, 18), Yankuba Minteh (FW, 18), Jadon Sancho (FW, 18), Harvey Barnes (FW, 18), Simon Adingra (FW, 18), Timo Werner (FW, 18), Raheem Sterling (FW, 18), Alexander Isak (FW, 17)
 
 ## anticipation
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `      █             ` | 7.0 |
-| DF | 782 | `         ▂██▄▁      ` | 11.8 |
-| MF | 638 | `        ▁██▅▂▁      ` | 11.0 |
-| FW | 489 | `       ▇█▂          ` | 8.7 |
+| GK | 167 | `    █               ` | 5.0 |
+| DF | 782 | `         ▁▁█▁       ` | 11.9 |
+| MF | 637 | `         ▁▁█▁       ` | 11.8 |
+| FW | 488 | `       ▂█▁          ` | 8.9 |
 
-Top 20: Lukas Kübler (DF, 16), Rocco Reitz (MF, 16), Patrick Mainka (DF, 15), José Ángel Carmona (DF, 15), Diego Coppola (DF, 15), Senne Lynen (MF, 15), Diogo Leite (DF, 15), Jan Bednarek (DF, 15), Ardian Ismajli (DF, 15), Gideon Mensah (DF, 15), Johnny Cardoso (MF, 15), Omar Mascarell (MF, 15), Ivan Ordets (DF, 15), Rodrigo Bentancur (MF, 15), Julien Le Cardinal (DF, 15), Max Geschwill (DF, 15), Paul Joly (DF, 15), Abdukodir Khusanov (DF, 15), Yarek Gasiorowski (DF, 15), Jérémy Jacquet (DF, 15)
+Top 20: José Ángel Carmona (DF, 16), Diego Coppola (DF, 16), Juan Iglesias (DF, 16), Yarek Gasiorowski (DF, 16), Mats Hummels (DF, 16), Omar El Hilali (DF, 15), Morten Frendrup (MF, 15), Federico Valverde (MF, 15), Sergi Cardona (DF, 15), Valentin Rosier (DF, 15), Mattia Viti (DF, 15), Ardian Ismajli (DF, 15), Frédéric Guilbert (DF, 15), Mika Mármol (DF, 15), Johnny Cardoso (MF, 15), Pathé Ciss (MF, 15), Lucien Agoumé (MF, 15), Omar Mascarell (MF, 15), Dário Essugo (MF, 15), Adam Obert (DF, 15)
 
 ## workRate
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `         █▇▄        ` | 10.8 |
-| DF | 782 | `         ██▁        ` | 10.6 |
-| MF | 638 | `         █▇         ` | 10.5 |
-| FW | 489 | `         █▅         ` | 10.4 |
+| GK | 167 | `     ▂█▃▁▁▁  ▁▁     ` | 8.3 |
+| DF | 782 | `      ▂▂▂▃██▅▃▁▁    ` | 11.4 |
+| MF | 637 | `      ▂▂▃▆█▆▃▂▁     ` | 11.0 |
+| FW | 488 | `     ▁▄█▄▂▁▁        ` | 8.5 |
 
-Top 20: Bernd Leno (GK, 12), David Raya (GK, 12), David Soria (GK, 12), Dean Henderson (GK, 12), Federico Baschirotto (DF, 12), Joan García (GK, 12), Jordan Pickford (GK, 12), Matz Sels (GK, 12), Mile Svilar (GK, 12), Nathan Collins (DF, 12), Wladimiro Falcone (GK, 12), Bryan Mbeumo (FW, 12), Amir Rrahmani (DF, 12), Mohamed Salah (FW, 12), Moisés Caicedo (MF, 12), Maximilian Kilman (DF, 12), Milos Kerkez (DF, 12), Dan Burn (DF, 12), Giovanni Di Lorenzo (DF, 12), Nikola Milenković (DF, 12)
+Top 20: Virgil van Dijk (DF, 17), Josko Gvardiol (DF, 17), Omar El Hilali (DF, 16), Levi Colwill (DF, 16), Alexander Nübel (GK, 16), Danilho Doekhi (DF, 16), Jordan Lefort (DF, 16), Patrick Mainka (DF, 16), Kaishu Sano (MF, 16), William Saliba (DF, 16), Nikola Vasilj (GK, 16), José Ángel Carmona (DF, 16), Nahuel Tenaglia (DF, 16), Gregor Kobel (GK, 16), Maximilian Eggestein (MF, 16), Romano Schmid (MF, 16), Senne Lynen (MF, 16), Rani Khedira (MF, 16), Robin Koch (DF, 16), Matthias Ginter (DF, 16)
 
 ## aggression
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `     █▂             ` | 6.2 |
+| GK | 167 | `    ▁█              ` | 6.0 |
 | DF | 782 | `       ▁▄█▅▂▁       ` | 10.3 |
-| MF | 638 | `        ▁▅█▆▃▁▁     ` | 11.4 |
-| FW | 489 | `       ▁▄██▅▂▁      ` | 10.8 |
+| MF | 637 | `        ▂▄▇█▃▁▁     ` | 11.5 |
+| FW | 488 | `       ▁▄▅█▃▁       ` | 10.7 |
 
-Top 20: Frank Onyeka (MF, 20), Liam Henderson (MF, 16), Tomás Conechny (FW, 16), Jaime Mata (FW, 16), Leonardo Pavoletti (FW, 16), Ibrahima Sissoko (MF, 15), Liam Delap (FW, 15), Saša Lukić (MF, 15), Yangel Herrera (MF, 15), Will Hughes (MF, 15), Pol Lozano (MF, 15), Yéremy Pino (MF, 15), Ryan Yates (MF, 15), Mario Martín (MF, 15), Saúl Ñíguez (MF, 15), Randy Nteka (FW, 15), Gavi (MF, 15), Bertuğ Yıldırım (FW, 15), Álvaro Rodríguez (FW, 15), Dennis Geiger (MF, 15)
+Top 20: André Gomes (MF, 20), Saël Kumbedi (DF, 20), Adrien Rabiot (MF, 18), Rabby Nzingoula (MF, 17), Mitchel Bakker (FW, 17), Assane Dioussé (MF, 17), Ibrahima Sissoko (MF, 16), Liam Henderson (MF, 16), Emmanuel Emegha (FW, 16), Will Hughes (MF, 16), Pol Lozano (MF, 16), Morgan Guilavogui (FW, 16), Tomás Conechny (FW, 16), Fiete Arp (FW, 16), Antonio Blanco (MF, 15), Gaëtan Perrin (MF, 15), Liam Delap (FW, 15), Saša Lukić (MF, 15), Yangel Herrera (MF, 15), Moïse Bombito (DF, 15)
 
 ## gkReflexes
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `       ▂▅██▇▂▁      ` | 10.7 |
+| GK | 167 | `      ▁▂▆▇█▆▃▁      ` | 10.6 |
 | DF | 782 | `  █                 ` | 3.0 |
-| MF | 638 | `  █                 ` | 3.0 |
-| FW | 489 | `  █                 ` | 3.0 |
+| MF | 637 | `  █                 ` | 3.0 |
+| FW | 488 | `  █                 ` | 3.0 |
 
-Top 20: Jordan Pickford (GK, 15), Vanja Milinković-Savić (GK, 14), David de Gea (GK, 14), Nikola Vasilj (GK, 14), Noah Atubolu (GK, 14), Kevin Trapp (GK, 14), Unai Simón (GK, 14), Joan García (GK, 13), Mile Svilar (GK, 13), Mike Maignan (GK, 13), Marcin Bulka (GK, 13), Alex Meret (GK, 13), Frederik Rönnow (GK, 13), Nick Pope (GK, 13), Caoimhín Kelleher (GK, 13), Dean Henderson (GK, 12), Mark Flekken (GK, 12), Jan Oblak (GK, 12), Paulo Gazzaniga (GK, 12), Emiliano Martínez (GK, 12)
+Top 20: Jordan Pickford (GK, 15), Vanja Milinković-Savić (GK, 14), Kevin Trapp (GK, 14), Unai Simón (GK, 14), Joan García (GK, 13), Mile Svilar (GK, 13), David de Gea (GK, 13), Marcin Bulka (GK, 13), Yehvann Diouf (GK, 13), Alex Meret (GK, 13), Yann Sommer (GK, 13), Nikola Vasilj (GK, 13), Augusto Batalla (GK, 13), Robert Sánchez (GK, 13), Djordje Petrovic (GK, 13), Noah Atubolu (GK, 13), Julen Agirrezabala (GK, 13), Mattia Perin (GK, 13), Tiago Pereira Cardoso (GK, 13), David Raya (GK, 12)
 
 ## gkPositioning
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `      ▁▃▄██▅▄▁      ` | 10.6 |
+| GK | 167 | `      ▁▃▄▆█▅▄▁      ` | 10.7 |
 | DF | 782 | `  █                 ` | 3.0 |
-| MF | 638 | `  █                 ` | 3.0 |
-| FW | 489 | `  █                 ` | 3.0 |
+| MF | 637 | `  █                 ` | 3.0 |
+| FW | 488 | `  █                 ` | 3.0 |
 
-Top 20: Manuel Neuer (GK, 16), Alex Meret (GK, 15), Unai Simón (GK, 15), Mile Svilar (GK, 14), Jan Oblak (GK, 14), Michele Di Gregorio (GK, 14), Finn Dahmen (GK, 14), Wojciech Szczęsny (GK, 14), Elia Caprile (GK, 14), David Raya (GK, 13), Mike Maignan (GK, 13), Álex Remiro (GK, 13), Lucas Chevalier (GK, 13), Marco Carnesecchi (GK, 13), Yann Sommer (GK, 13), Thibaut Courtois (GK, 13), Péter Gulácsi (GK, 13), Nicola Leali (GK, 13), Alisson (GK, 13), Ederson (GK, 13)
+Top 20: Manuel Neuer (GK, 16), Alex Meret (GK, 15), Unai Simón (GK, 15), Mile Svilar (GK, 14), Jan Oblak (GK, 14), Michele Di Gregorio (GK, 14), Yann Sommer (GK, 14), Finn Dahmen (GK, 14), Brice Samba (GK, 14), Wojciech Szczęsny (GK, 14), David Raya (GK, 13), Mike Maignan (GK, 13), Álex Remiro (GK, 13), David de Gea (GK, 13), Lucas Chevalier (GK, 13), Marco Carnesecchi (GK, 13), Robert Sánchez (GK, 13), Thibaut Courtois (GK, 13), Péter Gulácsi (GK, 13), Nicola Leali (GK, 13)
 
 ## gkDistribution
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
-| GK | 167 | `     ▁▁▂▄█▅▅▁▁ ▁    ` | 10.5 |
+| GK | 167 | `        ▁█▁▁▁       ` | 10.3 |
 | DF | 782 | `  █                 ` | 3.0 |
-| MF | 638 | `  █                 ` | 3.0 |
-| FW | 489 | `  █                 ` | 3.0 |
+| MF | 637 | `  █                 ` | 3.0 |
+| FW | 488 | `  █                 ` | 3.0 |
 
-Top 20: Mike Maignan (GK, 16), Alex Meret (GK, 16), Yann Sommer (GK, 16), Ederson (GK, 16), Manuel Neuer (GK, 16), Marc-André ter Stegen (GK, 16), Gerónimo Rulli (GK, 15), Marcin Bulka (GK, 14), Péter Gulácsi (GK, 14), Gianluigi Donnarumma (GK, 14), Moritz Nicolas (GK, 14), Iñaki Peña (GK, 14), Brice Samba (GK, 14), Wojciech Szczęsny (GK, 14), Andriy Lunin (GK, 14), Jan Oblak (GK, 13), David de Gea (GK, 13), Michael Zetterer (GK, 13), Vicente Guaita (GK, 13), Thibaut Courtois (GK, 13)
+Top 20: Ederson (GK, 16), Marc-André ter Stegen (GK, 16), Jan Oblak (GK, 14), Iñaki Peña (GK, 14), Wojciech Szczęsny (GK, 14), Andriy Lunin (GK, 14), Bernd Leno (GK, 13), Emiliano Martínez (GK, 13), Vicente Guaita (GK, 13), Thibaut Courtois (GK, 13), Alisson (GK, 13), Guglielmo Vicario (GK, 13), Diego Conde (GK, 13), Sergio Herrera (GK, 12), Mark Flekken (GK, 12), Bart Verbruggen (GK, 12), Álex Remiro (GK, 12), Paulo Gazzaniga (GK, 12), Kepa Arrizabalaga (GK, 12), Adrián San Miguel (GK, 12)
 

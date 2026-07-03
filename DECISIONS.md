@@ -8,18 +8,19 @@ Newest first. Keep entries short: what, why, where enforced.
 - Not a pnpm package: runs locally, outputs `seeds/players.sql` + review
   reports. `MAPPING.md` is the derivation contract (attribute → metrics →
   transform) and `config.py` the single tuning surface. Deterministic from
-  `cache/` — re-runs never touch the network.
-- **Sources**: fbref per-league season pages for 2024-25 (the completed
-  season — immutable and fully populated). Two source realities discovered
-  and worked around: (1) fbref's CDN blocks datacenter IPs, so alongside the
-  throttled `live` mode (6.5 s between requests, under their 10 req/min
-  budget) there is a `wayback` mode that primes the cache from archive.org,
-  including save-page-now for never-archived pages; (2) fbref's late-2025
-  provider change RETROACTIVELY emptied advanced columns (possession splits,
-  aerials, xG) on current snapshots — the pipeline pins snapshots to before
-  2025-10 (`FBREF_SNAPSHOT_BEFORE`) where the per-league pages are intact.
-  The Big-5 combined pages have no intact archive → per-league fetch (40
-  pages instead of 8).
+  `cache/`.
+- **The pipeline has NO fetch code — populating `cache/` is a human step.**
+  Rationale, learned the hard way: fbref's CDN blocks automated clients
+  outright, and the archive.org record proved unreliable after fbref's
+  late-2025 data-provider change RETROACTIVELY emptied advanced columns
+  (possession, defense, passing splits) on many snapshots — several
+  league×page combinations have no populated capture at all. A person saves
+  the 40 per-league pages (5 leagues × 8 tables) from a browser into
+  `cache/fbref_{League}_{page}.html` plus the transfermarkt dump as
+  `cache/tm_players.csv`; mixed provenance is fine (the parser handles
+  fbref tables inside HTML comments and in the live DOM). `run.py` preflights
+  the cache and reports gaps; missing/empty tables degrade to position-group
+  imputation with per-player low-confidence flags rather than blocking.
 - **transfermarkt-datasets** open dump (HF mirror) for DOB/height/foot/market
   value. It has **no injuries table** (checked) → `injuryProneness` uses the
   age + minutes-load prior from data-sources.md, flagged low-confidence.

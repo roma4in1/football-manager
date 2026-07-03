@@ -1,9 +1,9 @@
 """End-to-end pipeline: cache → parse → join → derive → seed SQL + reports.
 
-  .venv/bin/python run.py            # uses cache; fetches only what's missing
-  FBREF_MODE=wayback ... run.py      # prime the cache from archive.org
+  .venv/bin/python run.py            # reads pipeline/cache/ ONLY — never the network
 
-Deterministic: same cache → identical outputs.
+Deterministic: same cache → identical outputs. Populating the cache is a
+human step (cachefiles.py / DECISIONS.md).
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cachefiles
 import config
 import derive
 import emit
-import fetch
 import fbref_parse
 import join as join_mod
 import tm_parse
@@ -24,18 +24,19 @@ HERE = Path(__file__).parent
 
 
 def main() -> None:
-    fetch.fetch_fbref()
-    fetch.fetch_tm()
+    cachefiles.verify_cache()
 
     pages = {}
     for page in config.FBREF_PAGES:
         rows = []
         for _, league in config.FBREF_LEAGUES:
-            html = fetch.fbref_page_path(league, page).read_text()
+            path = cachefiles.fbref_page_path(league, page)
+            if not path.exists():
+                continue  # verify_cache already reported the gap
             try:
-                rows.extend(fbref_parse.parse_players(html, fbref_parse.TABLE_IDS[page]))
+                rows.extend(fbref_parse.parse_players(path.read_text(), fbref_parse.TABLE_IDS[page]))
             except ValueError:
-                print(f"NOTE: no {page} data for {league} — affected metrics will be imputed")
+                pass  # empty shell — verify_cache already reported it
         pages[page] = rows
     merged = derive.merge_tables(pages)
     print(f"fbref: {len(merged)} players across {len(pages)} tables")
@@ -47,7 +48,7 @@ def main() -> None:
     }
     print(f"minutes floor {config.MINUTES_HARD_FLOOR}': {len(kept)} kept, {len(merged) - len(kept)} dropped")
 
-    tm_players = tm_parse.load_tm_players(fetch.tm_players_path())
+    tm_players = tm_parse.load_tm_players(cachefiles.tm_players_path())
     print(f"tm: {len(tm_players)} recent Big-5 players")
 
     fbref_join_rows = [

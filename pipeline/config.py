@@ -4,13 +4,8 @@ Everything a reviewer might want to nudge lives here; the transform code in
 derive.py reads these and MAPPING.md documents how they are applied.
 """
 
-# ── sources ──────────────────────────────────────────────────────────────────
+# ── cache layout (fetching is a HUMAN step — see cachefiles.py) ─────────────
 
-# pinned to the last COMPLETED season (immutable → reproducible), fetched
-# PER LEAGUE: the Big-5 combined pages lost their provider columns in the
-# late-2025 fbref data-provider change, while per-league season pages have
-# intact archived copies from before the cutoff (see FBREF_SNAPSHOT_BEFORE).
-FBREF_SEASON = "2024-2025"
 FBREF_LEAGUES = [
     (9, "Premier-League"),
     (12, "La-Liga"),
@@ -18,40 +13,11 @@ FBREF_LEAGUES = [
     (20, "Bundesliga"),
     (13, "Ligue-1"),
 ]
-FBREF_BASE = (
-    "https://fbref.com/en/comps/{comp_id}/" + FBREF_SEASON + "/{page}/" + FBREF_SEASON + "-{league}-Stats"
-)
 FBREF_PAGES = ["stats", "shooting", "passing", "defense", "possession", "misc", "playingtime", "keepers"]
-# snapshot preference window: the provider change emptied advanced columns on
-# snapshots taken from ~Jan 2026; data is intact through late Dec 2025. The
-# fetcher VALIDATES content and walks older snapshots when a capture is empty.
-FBREF_SNAPSHOT_BEFORE = "20260101"
-# when a 2024-25 league page has NO populated archive at all, fall back to the
-# same league's in-season 2025-26 page (Nov/Dec 2025 captures are intact and
-# carry ~15 matchweeks of per-90 sample). Season-mix noise is accepted and
-# noted in MAPPING.md.
-FBREF_FALLBACK_SEASON = "2025-2026"
 
-# fbref publishes a 10 req/min bot budget; stay under it with headroom
-FBREF_SECONDS_BETWEEN_REQUESTS = 6.5
-FBREF_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-)
-
-# 'live' hits fbref.com directly (residential IPs pass their Cloudflare);
-# 'wayback' primes the cache from web.archive.org snapshots when live is
-# blocked (datacenter IPs commonly are). Cached HTML is identical either way.
-FBREF_MODE = "live"  # overridden by env FBREF_MODE
-
-# transfermarkt-datasets open dump (player-scores file set), mirrored on
-# Hugging Face — no scraping, no auth. NOTE: the dump has NO injuries table,
-# so injuryProneness uses the age + minutes-load prior (see MAPPING.md).
-TM_PLAYERS_URL = "https://huggingface.co/datasets/ngeorgea/transfermarkt-player-scores/resolve/main/players.csv"
-
-# Big-5 domestic competitions in the TM dump
-TM_BIG5_COMPETITIONS = {"GB1", "ES1", "IT1", "L1", "FR1"}
-TM_MIN_LAST_SEASON = 2024  # keep recently active players only
+# transfermarkt-datasets players.csv filter: keep recently active players from
+# anywhere (the fbref season includes since-departed Big-5 players)
+TM_MIN_LAST_SEASON = 2024
 
 # ── join ─────────────────────────────────────────────────────────────────────
 
