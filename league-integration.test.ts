@@ -21,10 +21,8 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import {
-  AssertionFailure,
   createCore,
   createOrchestrator,
   injuryWeeks,
@@ -32,9 +30,8 @@ import {
   type Orchestrator,
   type OrchestratorCore,
 } from './league-orchestrator.ts';
-import type {
-  Attributes, HalfResult, HalfStats, MatchEvent, Phase, SimEngine, Tactics, Vec2,
-} from './engine-types.ts';
+import { bootstrapSchema, buildTactics as tacticsFor, seedClub, seedSeason, waitFor } from './league-test-helpers.ts';
+import type { HalfResult, HalfStats, MatchEvent, SimEngine, Tactics } from './engine-types.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 
@@ -47,115 +44,17 @@ const assertions: Error[] = [];
 let seasonId: string;
 let clubA: string;
 let clubB: string;
-let playersA: string[] = []; // 11 uuids, formation order (0 = GK, 10 = ST)
+let playersA: string[] = []; // 13 uuids: 0 = GK, 1–10 outfield lineup, 11–12 reserves
 let playersB: string[] = [];
 
 const q = (text: string, params?: unknown[]) => pool.query(text, params);
 
-async function waitFor(pred: () => Promise<boolean>, what: string, timeoutMs = 25_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await pred()) return;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`timeout waiting for: ${what}`);
-}
-
-// ── synthetic squad + tactics (deterministic, no rng — realism lives in the harness) ──
-
-const ATTR_KEYS: Array<keyof Attributes> = [
-  'passing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',
-  'setPieceDelivery', 'pace', 'acceleration', 'stamina', 'strength', 'jumping', 'agility', 'decisions',
-  'composure', 'positioning', 'offTheBall', 'anticipation', 'workRate', 'aggression',
-  'gkReflexes', 'gkPositioning', 'gkDistribution',
-];
-
-const FORMATION: Array<{ def: Vec2; att: Vec2 }> = [
-  { def: { x: 6, y: 34 }, att: { x: 13, y: 34 } },
-  { def: { x: 16, y: 25 }, att: { x: 40, y: 25 } },
-  { def: { x: 16, y: 43 }, att: { x: 40, y: 43 } },
-  { def: { x: 19, y: 9 }, att: { x: 58, y: 8 } },
-  { def: { x: 19, y: 59 }, att: { x: 58, y: 60 } },
-  { def: { x: 30, y: 34 }, att: { x: 55, y: 34 } },
-  { def: { x: 34, y: 20 }, att: { x: 66, y: 20 } },
-  { def: { x: 34, y: 48 }, att: { x: 66, y: 48 } },
-  { def: { x: 44, y: 10 }, att: { x: 86, y: 11 } },
-  { def: { x: 44, y: 58 }, att: { x: 86, y: 57 } },
-  { def: { x: 46, y: 34 }, att: { x: 93, y: 34 } },
-];
-
-const PHASE_BLEND: Record<Phase, number> = {
-  defensiveBlock: 0.05, buildUp: 0.3, counterPress: 0.55,
-  progression: 0.6, counterAttack: 0.85, finalThird: 1.0,
-};
-
-function flatAttributes(isGk: boolean): Attributes {
-  const attrs = {} as Attributes;
-  for (const k of ATTR_KEYS) {
-    attrs[k] = k.startsWith('gk') ? (isGk ? 16 : 4) : isGk ? 10 : 12;
-  }
-  return attrs;
-}
-
-function tacticsFor(playerIds: string[]): Tactics {
-  return {
-    players: playerIds.map((playerId, i) => {
-      const slot = FORMATION[i];
-      const anchors = {} as Record<Phase, Vec2>;
-      for (const [phase, t] of Object.entries(PHASE_BLEND) as Array<[Phase, number]>) {
-        anchors[phase] = { x: slot.def.x + (slot.att.x - slot.def.x) * t, y: slot.def.y + (slot.att.y - slot.def.y) * t };
-      }
-      return {
-        playerId,
-        anchors,
-        instructions: {
-          riskAppetite: 0.5, shootingBias: i === 10 ? 0.7 : 0.4, dribbleBias: 0.4,
-          pressingIntensity: 0.5, holdPosition: i === 0 ? 0.95 : 0.5, crossBias: 0.4,
-        },
-        zones: {},
-      };
-    }),
-    team: { lineHeight: 0.5, width: 0.5, compactness: 0.5, pressTrigger: 0.5, counterPressDuration: 6, tempo: 0.5 },
-    bench: [],
-    setPieceTakers: { corners: playerIds[8], freeKicks: playerIds[5], penalties: playerIds[10] },
-  };
-}
-
-async function seedClub(name: string, managerEmail: string): Promise<{ clubId: string; playerIds: string[] }> {
-  const manager = await q(`INSERT INTO managers (email, display_name) VALUES ($1, $2) RETURNING id`, [managerEmail, name]);
-  const club = await q(`INSERT INTO clubs (manager_id, name) VALUES ($1, $2) RETURNING id`, [manager.rows[0].id, name]);
-  const clubId = club.rows[0].id as string;
-  await q(
-    `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, 100000, 10000)`,
-    [clubId, seasonId],
-  );
-  const playerIds: string[] = [];
-  for (let i = 0; i < 11; i++) {
-    const p = await q(
-      `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [`${name} Player ${i}`, '2000-01-15', i === 0 ? 'GK' : 'MF', i === 0 ? 190 : 180, 78, 1_000_000,
-        JSON.stringify(flatAttributes(i === 0)), JSON.stringify({ injuryProneness: 10 })],
-    );
-    const playerId = p.rows[0].id as string;
-    playerIds.push(playerId);
-    await q(
-      `INSERT INTO contracts (player_id, club_id, season_signed, wage, duration) VALUES ($1, $2, $3, 100, 1)`,
-      [playerId, clubId, seasonId],
-    );
-    await q(
-      `INSERT INTO squad_players (club_id, season_id, player_id, fatigue) VALUES ($1, $2, $3, 0.1)`,
-      [clubId, seasonId, playerId],
-    );
-  }
-  await q(`INSERT INTO default_tactics (club_id, payload) VALUES ($1, $2)`, [clubId, JSON.stringify(tacticsFor(playerIds))]);
-  return { clubId, playerIds };
-}
-
-async function mkMatchweek(number: number, opensAt: Date, deadlineAt: Date): Promise<string> {
+async function mkMatchweek(
+  number: number, opensAt: Date, deadlineAt: Date, kind: 'regular' | 'transfer' = 'regular',
+): Promise<string> {
   const r = await q(
-    `INSERT INTO matchweeks (season_id, number, opens_at, deadline_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [seasonId, number, opensAt, deadlineAt],
+    `INSERT INTO matchweeks (season_id, number, kind, opens_at, deadline_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [seasonId, number, kind, opensAt, deadlineAt],
   );
   return r.rows[0].id;
 }
@@ -168,12 +67,15 @@ async function mkFixture(matchweekId: string, seed: string): Promise<string> {
   return r.rows[0].id;
 }
 
-async function submitTactics(fixtureId: string, clubId: string, half: 1 | 2): Promise<void> {
-  const ids = clubId === clubA ? playersA : playersB;
+async function submitPayload(fixtureId: string, clubId: string, half: 1 | 2, payload: Tactics): Promise<void> {
   await q(
     `INSERT INTO tactics_submissions (fixture_id, club_id, half, payload) VALUES ($1, $2, $3, $4)`,
-    [fixtureId, clubId, half, JSON.stringify(tacticsFor(ids))],
+    [fixtureId, clubId, half, JSON.stringify(payload)],
   );
+}
+
+async function submitTactics(fixtureId: string, clubId: string, half: 1 | 2): Promise<void> {
+  await submitPayload(fixtureId, clubId, half, tacticsFor(clubId === clubA ? playersA : playersB));
 }
 
 const fixtureState = async (id: string): Promise<{ state: string; ht: Date | null }> => {
@@ -189,24 +91,11 @@ const future = (h: number): Date => new Date(Date.now() + h * 3_600_000);
 
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
-  try {
-    await pool.query('SELECT 1');
-  } catch (err) {
-    throw new Error(`cannot reach test database at ${DATABASE_URL} — run \`npm run db:test:up\` first`, { cause: err });
-  }
-  await pool.query(`DROP SCHEMA IF EXISTS pgboss CASCADE`);
-  await pool.query(`DROP SCHEMA public CASCADE; CREATE SCHEMA public`);
-  await pool.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  await bootstrapSchema(pool, DATABASE_URL);
+  seasonId = await seedSeason(pool);
 
-  const season = await q(
-    `INSERT INTO seasons (number, matchweek_count, transfer_week) VALUES (1, 10, 5) RETURNING id`,
-  );
-  seasonId = season.rows[0].id;
-  await q(`UPDATE seasons SET phase = 'auction' WHERE id = $1`, [seasonId]);
-  await q(`UPDATE seasons SET phase = 'regular' WHERE id = $1`, [seasonId]);
-
-  ({ clubId: clubA, playerIds: playersA } = await seedClub('Alpha', 'alpha@test.io'));
-  ({ clubId: clubB, playerIds: playersB } = await seedClub('Beta', 'beta@test.io'));
+  ({ clubId: clubA, playerIds: playersA } = await seedClub(pool, seasonId, 'Alpha', 'alpha@test.io'));
+  ({ clubId: clubB, playerIds: playersB } = await seedClub(pool, seasonId, 'Beta', 'beta@test.io'));
 
   orch = await createOrchestrator({
     pool,
@@ -228,9 +117,9 @@ test('both submit early: queue sims half 1, 12h HT window, then half 2', async (
   const f = await mkFixture(mw, 'itest-1');
 
   await submitTactics(f, clubA, 1);
-  assert.equal(await orch.notifyTacticsSubmitted(f, 1), 'waiting');
+  assert.equal(await orch.notifyTacticsSubmitted(f, clubA, 1), 'waiting');
   await submitTactics(f, clubB, 1);
-  assert.equal(await orch.notifyTacticsSubmitted(f, 1), 'enqueued');
+  assert.equal(await orch.notifyTacticsSubmitted(f, clubB, 1), 'enqueued');
 
   await waitFor(async () => (await fixtureState(f)).state === 'awaiting_ht', 'half 1 sim via queue');
   const { ht } = await fixtureState(f);
@@ -242,15 +131,18 @@ test('both submit early: queue sims half 1, 12h HT window, then half 2', async (
   assert.equal(fr.rowCount, 1);
 
   await submitTactics(f, clubA, 2);
-  assert.equal(await orch.notifyTacticsSubmitted(f, 2), 'waiting');
+  assert.equal(await orch.notifyTacticsSubmitted(f, clubA, 2), 'waiting');
   await submitTactics(f, clubB, 2);
-  assert.equal(await orch.notifyTacticsSubmitted(f, 2), 'enqueued');
+  assert.equal(await orch.notifyTacticsSubmitted(f, clubB, 2), 'enqueued');
 
   await waitFor(async () => (await fixtureState(f)).state === 'final', 'half 2 sim via queue');
   const h2 = await q(`SELECT end_state FROM half_results WHERE fixture_id = $1 AND half = 2`, [f]);
   assert.equal(h2.rowCount, 1);
-  const minutes = Object.values(h2.rows[0].end_state.playerState as Record<string, { minutesPlayed: number }>);
-  assert.ok(minutes.every((p) => p.minutesPlayed === 90));
+  assert.equal(h2.rows[0].end_state.v, 2, 'end_state is versioned');
+  const players = Object.values(
+    h2.rows[0].end_state.playerState as Record<string, { minutesPlayed: number; cards: { sentOff: boolean } }>,
+  );
+  assert.ok(players.every((p) => p.minutesPlayed === 90 || (p.cards.sentOff && p.minutesPlayed === 45)));
 
   // week-close before deadline must not touch it
   assert.equal(await orch.runWeekClose(mw), 'skipped:early');
@@ -316,22 +208,29 @@ test('week-close: force-completes, bookkeeps, reveals', async () => {
 
   assert.equal((await fixtureState(f4)).state, 'final');
 
+  const marker = await q(`SELECT bookkept_at FROM fixtures WHERE id = $1`, [f4]);
+  assert.ok(marker.rows[0].bookkept_at !== null, 'bookkept_at set by bookkeeping txn');
+
   const wages = await q(
     `SELECT club_id, amount FROM transactions WHERE kind = 'wage_payment' AND memo = $1 ORDER BY club_id`,
     [`fixture:${f4}`],
   );
-  assert.equal(wages.rowCount, 2, 'one wage txn per club');
-  assert.ok(wages.rows.every((r) => Number(r.amount) === 1100), '11 contracts × wage 100');
+  assert.equal(wages.rowCount, 2, 'one wage txn per club (memo kept for traceability)');
+  assert.ok(wages.rows.every((r) => Number(r.amount) === 1300), '13 contracts × wage 100');
 
   const sp = await q(
     `SELECT fatigue, season_minutes FROM squad_players WHERE season_id = $1`, [seasonId],
   );
-  assert.equal(sp.rowCount, 22);
-  assert.ok(sp.rows.every((r) => r.season_minutes === 90), 'exactly one bookkept match so far');
-  assert.ok(sp.rows.every((r) => r.fatigue > 0.1), 'fatigue advanced from the 0.1 baseline');
+  assert.equal(sp.rowCount, 26);
+  assert.equal(sp.rows.filter((r) => r.season_minutes === 90).length, 22, 'both lineups played the full match');
+  assert.equal(sp.rows.filter((r) => r.season_minutes === 0).length, 4, 'reserves did not play');
+  // between-week tick ran inside week-close: players who played carry real fatigue
+  // (recovered once), unused reserves decayed below their 0.1 seed
+  assert.ok(sp.rows.filter((r) => r.season_minutes === 90).every((r) => r.fatigue > 0.12));
+  assert.ok(sp.rows.filter((r) => r.season_minutes === 0).every((r) => r.fatigue < 0.1));
 
   const fam = await q(`SELECT count(*) FROM familiarity WHERE season_id = $1`, [seasonId]);
-  assert.equal(Number(fam.rows[0].count), 110, '55 dyads per club');
+  assert.equal(Number(fam.rows[0].count), 110, '55 dyads per club — lineup players only');
 });
 
 // ── 5. idempotency: every job no-ops on re-run ───────────────────────────────
@@ -343,6 +242,7 @@ test('idempotent re-runs: sim jobs, bookkeeping, week-close all no-op', async ()
     minutes: (await q(`SELECT sum(season_minutes) FROM squad_players WHERE season_id = $1`, [seasonId])).rows[0].sum,
     fam: (await q(`SELECT sum(value) FROM familiarity WHERE season_id = $1`, [seasonId])).rows[0].sum,
     revealed: (await q(`SELECT revealed_at FROM matchweeks WHERE id = $1`, [mw4])).rows[0].revealed_at,
+    bookkeptAt: (await q(`SELECT bookkept_at FROM fixtures WHERE id = $1`, [f4])).rows[0].bookkept_at,
   });
 
   const beforeSnap = await snapshot();
@@ -355,25 +255,33 @@ test('idempotent re-runs: sim jobs, bookkeeping, week-close all no-op', async ()
 
 // ── 6. bookkeeping detail via stub engine ────────────────────────────────────
 
-test('bookkeeping: injuries, red cards, just_returned, familiarity increments', async () => {
+test('bookkeeping: injuries, red cards, sent-off minutes, just_returned, familiarity', async () => {
   const injuredPlayer = playersA[3];
-  const redPlayer = playersB[4];
+  const redPlayer = playersB[4]; // sent off in half 1 → zero half-2 minutes
   const returnedPlayer = playersA[7];
 
   const stubEngine: SimEngine = {
-    simulateHalf(fixture, squads) {
-      const ids = [...squads.home, ...squads.away].map((p) => p.playerId);
+    simulateHalf(fixture, _squads, tactics) {
+      const ids = [...tactics.home.players, ...tactics.away.players].map((p) => p.playerId);
       const half = fixture.half;
-      const playerState = Object.fromEntries(ids.map((id) => [
-        id, { fatigue: half === 1 ? 0.3 : 0.55, cards: 0 as const, injured: id === injuredPlayer && half === 2, minutesPlayed: half === 1 ? 45 : 90 },
-      ]));
+      const playerState = Object.fromEntries(ids.map((id) => {
+        const sentOff = id === redPlayer;
+        return [id, {
+          fatigue: half === 1 || sentOff ? 0.3 : 0.55, // sent-off: frozen at H1 value
+          cards: { yellows: 0 as const, sentOff },
+          injured: id === injuredPlayer && half === 2,
+          minutesPlayed: half === 1 || sentOff ? 45 : 90, // sent-off: zero half-2 minutes
+        }];
+      }));
       const events: MatchEvent[] = half === 2
         ? [
             { t: 3000, type: 'injury', playerId: injuredPlayer, outcome: 'fail' },
-            { t: 3100, type: 'card', playerId: redPlayer, meta: { card: 'red' } },
-            { t: 3200, type: 'goal', playerId: squads.home[10].playerId, outcome: 'success' },
+            { t: 3200, type: 'goal', playerId: playersA[10], outcome: 'success' },
           ]
-        : [{ t: 0, type: 'kickoff' }];
+        : [
+            { t: 0, type: 'kickoff' },
+            { t: 1800, type: 'card', playerId: redPlayer, meta: { card: 'red' } },
+          ];
       const zero: [number, number] = [0, 0];
       const stats: HalfStats = {
         possession: [50, 50], shots: zero, shotsOnTarget: zero, xg: zero, passAccuracy: [80, 80],
@@ -382,6 +290,7 @@ test('bookkeeping: injuries, red cards, just_returned, familiarity increments', 
       const result: HalfResult = {
         events, frames: [], stats,
         endState: {
+          v: 2,
           score: half === 1 ? [0, 0] : [1, 0],
           playerState, subsUsed: [0, 0], rngState: '0'.repeat(32),
         },
@@ -391,10 +300,15 @@ test('bookkeeping: injuries, red cards, just_returned, familiarity increments', 
   };
   const stub: OrchestratorCore = createCore({ pool, engine: stubEngine });
 
+  // heal whatever the real-engine match in the week-close test inflicted, so both
+  // stored defaults are valid again and this fixture reuses the exact t4 lineups
+  await q(`UPDATE squad_players SET injury_weeks_left = 0, suspended_next = FALSE, just_returned = FALSE WHERE season_id = $1`, [seasonId]);
   await q(`UPDATE squad_players SET just_returned = TRUE WHERE player_id = $1`, [returnedPlayer]);
-  const beforeMinutes = Number(
-    (await q(`SELECT season_minutes FROM squad_players WHERE player_id = $1`, [injuredPlayer])).rows[0].season_minutes,
+  const minutesBefore = async (playerId: string): Promise<number> => Number(
+    (await q(`SELECT season_minutes FROM squad_players WHERE player_id = $1`, [playerId])).rows[0].season_minutes,
   );
+  const beforeMinutes = await minutesBefore(injuredPlayer);
+  const beforeRedMinutes = await minutesBefore(redPlayer);
 
   const mw = await mkMatchweek(6, past(2), past(1));
   const f = await mkFixture(mw, 'itest-6');
@@ -408,8 +322,12 @@ test('bookkeeping: injuries, red cards, just_returned, familiarity increments', 
   assert.equal(injured.rows[0].injury_weeks_left, injuryWeeks('itest-6', injuredPlayer), 'deterministic severity draw');
   assert.ok(injured.rows[0].injury_weeks_left >= 1);
 
-  const red = await q(`SELECT suspended_next FROM squad_players WHERE player_id = $1`, [redPlayer]);
+  const red = await q(
+    `SELECT suspended_next, season_minutes, fatigue FROM squad_players WHERE player_id = $1`, [redPlayer],
+  );
   assert.equal(red.rows[0].suspended_next, true);
+  assert.equal(red.rows[0].season_minutes, beforeRedMinutes + 45, 'sent off at HT → zero half-2 minutes');
+  assert.ok(Math.abs(red.rows[0].fatigue - 0.3) < 1e-6, 'sent-off fatigue frozen at the H1 value');
 
   const returned = await q(`SELECT just_returned FROM squad_players WHERE player_id = $1`, [returnedPlayer]);
   assert.equal(returned.rows[0].just_returned, false, 'playing consumes the just_returned flag');
@@ -453,11 +371,137 @@ test('DB trigger violations classify as assertion failures, not retryable', asyn
   }
 });
 
-test('missing default_tactics at force time is an assertion failure', async () => {
+test('missing default_tactics at force time falls back to a synthesized best XI', async () => {
   await q(`DELETE FROM default_tactics WHERE club_id = $1`, [clubB]);
   const mw = await mkMatchweek(7, past(2), past(1));
   const f = await mkFixture(mw, 'itest-7');
-  await assert.rejects(orch.runSimHalf1(f), (err: unknown) => err instanceof AssertionFailure);
-  assert.equal((await fixtureState(f)).state, 'scheduled', 'failed force leaves fixture untouched');
+  assert.equal((await orch.runSimHalf1(f)).status, 'simmed', 'the league never blocks on a missing default');
+
+  const sub = await q(
+    `SELECT payload, is_default FROM tactics_submissions WHERE fixture_id = $1 AND club_id = $2 AND half = 1`,
+    [f, clubB],
+  );
+  assert.equal(sub.rows[0].is_default, true);
+  const ids: string[] = sub.rows[0].payload.players.map((p: { playerId: string }) => p.playerId);
+  assert.equal(new Set(ids).size, 11, 'synthesized lineup fields 11 unique players');
+  assert.ok(ids.includes(playersB[0]), 'GK drafted');
+  assert.ok(!ids.includes(playersB[4]), 'suspended player (red card in the stub match) excluded');
+
   await q(`INSERT INTO default_tactics (club_id, payload) VALUES ($1, $2)`, [clubB, JSON.stringify(tacticsFor(playersB))]);
+});
+
+// ── between-week tick ────────────────────────────────────────────────────────
+
+function mkTickStub(redCardH1: string): SimEngine {
+  return {
+    simulateHalf(fixture, _squads, tactics) {
+      const ids = [...tactics.home.players, ...tactics.away.players].map((p) => p.playerId);
+      const half = fixture.half;
+      const playerState = Object.fromEntries(ids.map((id) => [
+        id, { fatigue: half === 1 ? 0.3 : 0.55, cards: { yellows: 0 as const, sentOff: false }, injured: false, minutesPlayed: half === 1 ? 45 : 90 },
+      ]));
+      const events: MatchEvent[] = half === 1
+        ? [{ t: 0, type: 'kickoff' }, { t: 1800, type: 'card', playerId: redCardH1, meta: { card: 'red' } }]
+        : [{ t: 5400, type: 'halfEnd' }];
+      const zero: [number, number] = [0, 0];
+      const stats: HalfStats = {
+        possession: [50, 50], shots: zero, shotsOnTarget: zero, xg: zero, passAccuracy: [80, 80],
+        aerialsWon: zero, ppda: [12, 12], fieldTilt: [50, 50], playerRatings: {}, heatmaps: {},
+      };
+      return {
+        events, frames: [], stats,
+        endState: { v: 2, score: [0, 0], playerState, subsUsed: [0, 0], rngState: '0'.repeat(32) },
+      } satisfies HalfResult;
+    },
+  };
+}
+
+test('tick: injuries heal (just_returned at 0), served suspensions clear, issued ones stay, fatigue recovers', async () => {
+  const healed = playersA[8]; // 1 week left → returns
+  const stillOut = playersA[9]; // 3 weeks left → 2
+  const served = playersB[7]; // suspended FOR this week
+  const sentOffNow = playersA[2]; // red card DURING this week
+  await q(`UPDATE squad_players SET injury_weeks_left = 1 WHERE player_id = $1`, [healed]);
+  await q(`UPDATE squad_players SET injury_weeks_left = 3, just_returned = FALSE WHERE player_id = $1`, [stillOut]);
+  await q(`UPDATE squad_players SET suspended_next = TRUE WHERE player_id = $1`, [served]);
+  const fatigueBefore = (await q(`SELECT fatigue FROM squad_players WHERE player_id = $1`, [stillOut])).rows[0].fatigue;
+
+  const tickCore: OrchestratorCore = createCore({ pool, engine: mkTickStub(sentOffNow) });
+  const mw = await mkMatchweek(8, past(2), past(1));
+  await mkFixture(mw, 'itest-8');
+  assert.equal(await tickCore.runWeekClose(mw), 'closed');
+
+  const state = async (id: string) =>
+    (await q(`SELECT injury_weeks_left, just_returned, suspended_next, fatigue FROM squad_players WHERE player_id = $1`, [id])).rows[0];
+
+  const h = await state(healed);
+  assert.equal(h.injury_weeks_left, 0);
+  assert.equal(h.just_returned, true, 'decrement reaching 0 raises the re-injury flag');
+  const s = await state(stillOut);
+  assert.equal(s.injury_weeks_left, 2);
+  assert.equal(s.just_returned, false, 'flag only on the week the player returns');
+
+  assert.equal((await state(served)).suspended_next, false, 'suspension served this week is cleared');
+  assert.equal((await state(sentOffNow)).suspended_next, true, 'suspension issued this week survives the tick');
+
+  // stillOut did not play (injured → excluded by the auto-lineup): pure recovery, level-0 medical = ×0.6
+  assert.ok(Math.abs(s.fatigue - fatigueBefore * 0.6) < 1e-6, `expected ${fatigueBefore} × 0.6, got ${s.fatigue}`);
+
+  // exactly-once: a re-run after reveal must not decrement or recover again
+  assert.equal(await tickCore.runWeekClose(mw), 'skipped:revealed');
+  assert.equal((await state(stillOut)).injury_weeks_left, 2, 'no double decrement on retry');
+});
+
+test('transfer-week tick: recovery runs, one-match bans are NOT consumed by a bye', async () => {
+  const suspended = playersA[2]; // still suspended from the previous test
+  const injured = playersA[9]; // 2 weeks left
+  const fatigueBefore = (await q(`SELECT fatigue FROM squad_players WHERE player_id = $1`, [injured])).rows[0].fatigue;
+
+  const mw = await mkMatchweek(9, past(2), past(1), 'transfer');
+  assert.equal(await orch.runWeekClose(mw), 'closed');
+
+  const rows = await q(
+    `SELECT player_id, injury_weeks_left, suspended_next, fatigue FROM squad_players WHERE player_id = ANY($1)`,
+    [[suspended, injured]],
+  );
+  const byId = new Map(rows.rows.map((r) => [r.player_id, r]));
+  assert.equal(byId.get(suspended)!.suspended_next, true, 'ban carries past the bye to the next played matchweek');
+  assert.equal(byId.get(injured)!.injury_weeks_left, 1, 'injuries heal through the transfer week');
+  assert.ok(Math.abs(byId.get(injured)!.fatigue - fatigueBefore * 0.6) < 1e-6, 'fatigue recovers through the bye');
+  const revealed = await q(`SELECT revealed_at FROM matchweeks WHERE id = $1`, [mw]);
+  assert.ok(revealed.rows[0].revealed_at !== null);
+});
+
+// ── eligibility ──────────────────────────────────────────────────────────────
+// (Rejection of invalid fresh submissions moved to the API layer — validation
+// now happens BEFORE insert; see league-api.test.ts. The sim-path fallback
+// below is the orchestration-side guarantee.)
+
+test('stale default: an injured starter is excluded by the next auto-lineup', async () => {
+  // clean slate, then injure one of club B's default starters
+  await q(`UPDATE squad_players SET injury_weeks_left = 0, suspended_next = FALSE, just_returned = FALSE WHERE season_id = $1`, [seasonId]);
+  const victim = playersB[5];
+  await q(`UPDATE squad_players SET injury_weeks_left = 4 WHERE player_id = $1`, [victim]);
+
+  const mw = await mkMatchweek(11, past(2), past(1));
+  const f = await mkFixture(mw, 'itest-11');
+  assert.equal((await orch.runSimHalf1(f)).status, 'simmed');
+
+  const subB = await q(
+    `SELECT payload, is_default FROM tactics_submissions WHERE fixture_id = $1 AND club_id = $2 AND half = 1`,
+    [f, clubB],
+  );
+  assert.equal(subB.rows[0].is_default, true);
+  const idsB: string[] = subB.rows[0].payload.players.map((p: { playerId: string }) => p.playerId);
+  assert.equal(new Set(idsB).size, 11);
+  assert.ok(!idsB.includes(victim), 'injured starter excluded from the auto-lineup');
+  assert.ok(idsB.includes(playersB[0]), 'GK still drafted');
+
+  // club A's stored default is fully valid → used verbatim, not replaced
+  const subA = await q(
+    `SELECT payload FROM tactics_submissions WHERE fixture_id = $1 AND club_id = $2 AND half = 1`,
+    [f, clubA],
+  );
+  const idsA: string[] = subA.rows[0].payload.players.map((p: { playerId: string }) => p.playerId);
+  assert.deepEqual(idsA, playersA.slice(0, 11), 'valid default passes through untouched');
 });

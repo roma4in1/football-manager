@@ -40,6 +40,16 @@ CREATE TABLE managers (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Auth sessions. id is NOT client-random: the API derives it as
+-- HMAC(secret, magic-link jti), so redeeming the same link twice conflicts on
+-- the PK — single-use enforcement without a token table. Cookie carries id.
+CREATE TABLE sessions (
+  id          UUID PRIMARY KEY,
+  manager_id  UUID NOT NULL REFERENCES managers(id),
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE seasons (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   number          INT NOT NULL UNIQUE,               -- 1, 2, ...
@@ -158,6 +168,7 @@ CREATE TABLE fixtures (
   away_club_id  UUID NOT NULL REFERENCES clubs(id),
   state         fixture_state NOT NULL DEFAULT 'scheduled',
   ht_deadline   TIMESTAMPTZ,                         -- set when entering awaiting_ht
+  bookkept_at   TIMESTAMPTZ,                         -- post-match bookkeeping applied-marker; set first in its txn
   seed          TEXT NOT NULL,                       -- engine seed, fixed at creation
   CHECK (home_club_id <> away_club_id)
 );

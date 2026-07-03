@@ -14,11 +14,20 @@
  *    opponent offsides, crossBias→aerials/headers). Anchors drive heatmaps and
  *    frames. `zones` are IGNORED here — only the agent engine consumes them.
  *
+ * Cards v2 (HalfTimeState v: 2 — resume throws on any other version):
+ *  - Second yellow (incl. cross-half: H1 yellow + H2 yellow) or straight red →
+ *    cards.sentOff in end_state. Within the half, a red thins own shots and
+ *    boosts the opponent from its timestamp.
+ *  - On H2 resume, sent-off players are excluded entirely (no minutes, no
+ *    fatigue delta, no events) and the shorthanded team's attack AND defense
+ *    ratios take CAL.sentOffPenalty per missing player (rough 10-men-concede-
+ *    more behavior; exact calibration deferred to the agent engine).
+ *  - Scorelines get a Dixon-Coles-style low-score adjustment (CAL.dixonColesTau):
+ *    openers at 0-0 damped ×(1−τ), 0-1 → 1-1 equalizers boosted ×(1+τ).
+ *
  * Not modeled (known stub gaps):
- *  - Subs: bench unused, no 'sub' events; minutesPlayed is 45/half for all.
- *  - Red cards apply a within-half rate penalty but CANNOT carry across halves:
- *    HalfTimeState.playerState has no sent-off field (cards is 0|1). Interface
- *    gap — raise before freezing v2.
+ *  - Subs: bench unused, no 'sub' events; minutesPlayed is 45/half for every
+ *    active player (a mid-half send-off still counts the full 45 that half).
  *  - Injured players are flagged but keep playing (no sub model).
  *
  * Determinism: all randomness via Rng seeded from `${fixtureId}|${seed}`; half 2
@@ -54,10 +63,10 @@ export const HALF_SECONDS = 2700;
 export const CAL = {
   baseShotsPerHalf: 6.2, // per team, equal-strength, before boosts
   shotStrengthExp: 1.25, // shots × (attack/oppDefense)^exp
-  homeShotBoost: 1.14,
-  awayShotBoost: 0.88,
-  h1Factor: 0.93, // → 2nd-half goal share ~53.5%
-  h2Factor: 1.07,
+  homeShotBoost: 1.18,
+  awayShotBoost: 0.855,
+  h1Factor: 0.915, // → 2nd-half goal share ~53% after DC/send-off drag
+  h2Factor: 1.085,
   tempoShotGain: 0.2, // ×(0.9 + gain×meanTempo)
   fatigueAttackPenalty: 0.15, // attack/control ×(1 − pen×meanFatigue)
 
@@ -80,9 +89,12 @@ export const CAL = {
 
   foulsPerHalf: 5.5,
   yellowPerFoul: 0.18,
-  redPerFoul: 0.008,
+  redPerFoul: 0.005, // straight reds only; second yellows add on top
+  cardedFoulWeight: 0.18, // booked players foul much less (tightrope) — tunes 2nd-yellow rate
   redShotThin: 0.35, // own shots dropped after a red
   redOppShotGain: 0.25, // opponent extra-shot λ share after a red
+  sentOffPenalty: 0.15, // attack+defense ratio hit per sent-off player on H2 resume
+  dixonColesTau: 0.08, // low-score dependence: 0-0 opener ×(1−τ), 0-1→1-1 equalizer ×(1+τ)
   offsidesPerHalf: 1.0, // ×(0.5 + opponent lineHeight)
   injuryBasePerHalf: 0.016,
 
@@ -117,7 +129,8 @@ interface ActivePlayer {
 interface TeamCtx {
   side: 'home' | 'away';
   tactics: Tactics;
-  players: ActivePlayer[];
+  players: ActivePlayer[]; // active this half (resume sent-offs excluded)
+  inactive: ActivePlayer[]; // sent off in a previous half; state carried, never simmed
   gk: ActivePlayer;
   attack: number; // 0–1 scale (attr means /20)
   defense: number;
@@ -142,8 +155,9 @@ interface PlayerTally {
   goals: number;
   sot: number;
   saves: number;
-  cards: 0 | 1;
-  red: boolean;
+  yellows: 0 | 1; // seeded from resume state so a H1 yellow + H2 yellow = send-off
+  sentOff: boolean;
+  sentOffAt: number; // sim seconds; Infinity when not sent off
   injured: boolean;
 }
 
@@ -169,6 +183,9 @@ export class AggregateEngine implements SimEngine {
     const resume = fixture.resumeState;
     if (fixture.half === 2 && !resume) throw new Error('half 2 requires resumeState');
     if (fixture.half === 1 && resume) throw new Error('half 1 must not carry resumeState');
+    if (resume && (resume as { v?: unknown }).v !== 2) {
+      throw new Error('unsupported HalfTimeState version: expected v=2 (no migration path — v1 blobs must not exist)');
+    }
 
     const rng = fixture.half === 1
       ? Rng.fromSeed(`${fixture.fixtureId}|${seed}`)
@@ -178,7 +195,9 @@ export class AggregateEngine implements SimEngine {
 
     const home = buildTeam('home', squads.home, tactics.home, resume);
     const away = buildTeam('away', squads.away, tactics.away, resume);
-    const all = [...home.players, ...away.players];
+    const all = [...home.players, ...away.players]; // active this half
+    const everyone = [...all, ...home.inactive, ...away.inactive]; // + carried sent-offs
+    const prevScore = resume?.score ?? [0, 0];
 
     const events: Array<MatchEvent & { seq: number }> = [];
     let seq = 0;
@@ -188,32 +207,53 @@ export class AggregateEngine implements SimEngine {
     emit({ t: t0, type: 'kickoff' });
 
     const tally = new Map<string, PlayerTally>();
-    for (const p of all) tally.set(p.id, { goals: 0, sot: 0, saves: 0, cards: 0, red: false, injured: false });
+    for (const p of all) {
+      tally.set(p.id, {
+        goals: 0, sot: 0, saves: 0,
+        yellows: resume?.playerState[p.id]?.cards.yellows ?? 0,
+        sentOff: false, sentOffAt: Infinity, injured: false,
+      });
+    }
+    const onPitch = (p: ActivePlayer, t: number): boolean => {
+      const pt = tally.get(p.id)!;
+      return !(pt.sentOff && pt.sentOffAt <= t);
+    };
 
-    // ── fouls / cards first: reds modulate shot volume for the rest of the half
-    const redTime = new Map<TeamCtx, number>(); // team → earliest red timestamp
+    // ── fouls / cards first: send-offs modulate shot volume for the rest of the half.
+    // Chronological so an early send-off excludes that player from later fouls.
+    const redTime = new Map<TeamCtx, number>(); // team → earliest send-off timestamp
     for (const [team] of pairs(home, away)) {
       const lambda = CAL.foulsPerHalf * (0.8 + 0.4 * team.aggression) * (0.9 + 0.2 * team.press);
       const n = rng.poisson(lambda);
-      for (let i = 0; i < n; i++) {
-        const t = t0 + rng.range(30, HALF_SECONDS - 10);
-        let fouler = pickByWeight(rng, team.players.filter((p) => !p.isGk), (p) =>
-          p.sp.attributes.aggression + p.sp.attributes.tackling * 0.5);
+      const times: number[] = [];
+      for (let i = 0; i < n; i++) times.push(t0 + rng.range(30, HALF_SECONDS - 10));
+      times.sort((a, b) => a - b);
+      for (const t of times) {
+        const candidates = team.players.filter((p) => !p.isGk && onPitch(p, t));
+        if (candidates.length === 0) continue;
+        const fouler = pickByWeight(rng, candidates, (p) =>
+          (p.sp.attributes.aggression + p.sp.attributes.tackling * 0.5) *
+          (tally.get(p.id)!.yellows === 1 ? CAL.cardedFoulWeight : 1));
         emit({ t, type: 'foul', playerId: fouler.id, outcome: 'fail' });
-        if (rng.chance(CAL.redPerFoul)) {
-          tally.get(fouler.id)!.red = true;
-          tally.get(fouler.id)!.cards = 1;
-          emit({ t: t + 0.3, type: 'card', playerId: fouler.id, meta: { card: 'red' } });
+        const ft = tally.get(fouler.id)!;
+        const sendOff = (secondYellow: boolean): void => {
+          ft.sentOff = true;
+          ft.sentOffAt = t;
+          emit({
+            t: t + 0.3, type: 'card', playerId: fouler.id,
+            meta: secondYellow ? { card: 'red', secondYellow: 1 } : { card: 'red' },
+          });
           if (!redTime.has(team) || t < redTime.get(team)!) redTime.set(team, t);
+        };
+        if (rng.chance(CAL.redPerFoul)) {
+          sendOff(false);
         } else if (rng.chance(CAL.yellowPerFoul)) {
-          if (tally.get(fouler.id)!.cards === 1) {
-            // keep yellow volume calibrated: hand it to an uncarded teammate
-            const clean = team.players.filter((p) => !p.isGk && tally.get(p.id)!.cards === 0);
-            if (clean.length === 0) continue;
-            fouler = pickByWeight(rng, clean, (p) => p.sp.attributes.aggression);
+          if (ft.yellows === 1) {
+            sendOff(true); // second yellow (possibly carried from half 1)
+          } else {
+            ft.yellows = 1;
+            emit({ t: t + 0.3, type: 'card', playerId: fouler.id, meta: { card: 'yellow' } });
           }
-          tally.get(fouler.id)!.cards = 1;
-          emit({ t: t + 0.3, type: 'card', playerId: fouler.id, meta: { card: 'yellow' } });
         }
       }
     }
@@ -261,9 +301,12 @@ export class AggregateEngine implements SimEngine {
     for (const shot of shots) {
       const team = shot.team;
       const opp = team === home ? away : home;
+      const eligible = team.players.filter((p) => !p.isGk && onPitch(p, shot.t));
+      if (eligible.length === 0) continue;
+      const preferredTaker = team.players.find((p) => p.id === team.tactics.setPieceTakers.penalties);
       const shooter = shot.source === 'penalty'
-        ? (team.players.find((p) => p.id === team.tactics.setPieceTakers.penalties) ?? team.gk)
-        : pickByWeight(rng, team.players.filter((p) => !p.isGk && !tally.get(p.id)!.red), (p) =>
+        ? (preferredTaker && onPitch(preferredTaker, shot.t) ? preferredTaker : pickByWeight(rng, eligible, () => 1))
+        : pickByWeight(rng, eligible, (p) =>
             Math.pow(p.pt.anchors.finalThird.x / 105, 2) *
             (0.5 + p.pt.instructions.shootingBias) *
             (p.sp.attributes.finishing / 20 + p.sp.attributes.offTheBall / 40));
@@ -283,7 +326,14 @@ export class AggregateEngine implements SimEngine {
       xg = clamp(xg, 0.01, 0.95);
 
       const skill = header ? shooter.sp.attributes.heading : shooter.sp.attributes.finishing;
-      const pGoal = shot.source === 'penalty' ? xg : clamp(xg * (1 + CAL.finishAdjPerPt * (skill - 12)), 0.01, 0.92);
+      let pGoal = shot.source === 'penalty' ? xg : clamp(xg * (1 + CAL.finishAdjPerPt * (skill - 12)), 0.01, 0.92);
+
+      // Dixon-Coles low-score adjustment on the MATCH score (resume-aware):
+      // damp the opener at 0-0, boost the 0-1 → 1-1 equalizer.
+      const ownTotal = (team === home ? prevScore[0] : prevScore[1]) + score[team.side];
+      const oppTotal = (team === home ? prevScore[1] : prevScore[0]) + score[opp.side];
+      if (ownTotal === 0 && oppTotal === 0) pGoal = clamp(pGoal * (1 - CAL.dixonColesTau), 0.005, 0.95);
+      else if (ownTotal === 0 && oppTotal === 1) pGoal = clamp(pGoal * (1 + CAL.dixonColesTau), 0.005, 0.95);
 
       const from = team === home ? shooter.pt.anchors.finalThird : flip(shooter.pt.anchors.finalThird);
       const to: Vec2 = team === home ? { x: 105, y: 30.5 + rng.range(0, 7) } : { x: 0, y: 30.5 + rng.range(0, 7) };
@@ -373,8 +423,8 @@ export class AggregateEngine implements SimEngine {
         const t = tally.get(p.id)!;
         let r = 6.4 + 0.85 * t.goals + 0.12 * (t.sot - t.goals) + resultTerm + rng.gauss(0, 0.32);
         if (p.isGk) r += 0.16 * t.saves - 0.12 * score[team.side === 'home' ? 'away' : 'home'];
-        if (t.red) r -= 1.2;
-        else if (t.cards === 1) r -= 0.3;
+        if (t.sentOff) r -= 1.2;
+        else if (t.yellows === 1) r -= 0.3;
         playerRatings[p.id] = clamp(round(r, 1), 4, 9.8);
       }
     }
@@ -390,16 +440,24 @@ export class AggregateEngine implements SimEngine {
       for (const p of team.players) heatmaps[p.id] = heatmapFor(p, possFrac);
     }
 
-    // ── end state
-    const prevScore = resume?.score ?? [0, 0];
+    // ── end state (v2). Sent-off carry-overs are frozen: no minutes, no fatigue delta.
     const endState: HalfTimeState = {
+      v: 2,
       score: [prevScore[0] + score.home, prevScore[1] + score.away],
-      playerState: Object.fromEntries(all.map((p) => {
-        const t = tally.get(p.id)!;
+      playerState: Object.fromEntries(everyone.map((p) => {
+        const t = tally.get(p.id); // absent = inactive (sent off in a previous half)
         const prev = resume?.playerState[p.id];
+        if (!t) {
+          return [p.id, {
+            fatigue: prev!.fatigue,
+            cards: prev!.cards,
+            injured: prev!.injured,
+            minutesPlayed: prev!.minutesPlayed,
+          }];
+        }
         return [p.id, {
           fatigue: endFatigue.get(p.id)!,
-          cards: (prev?.cards === 1 ? 1 : t.cards) as 0 | 1,
+          cards: { yellows: t.yellows, sentOff: t.sentOff },
           injured: (prev?.injured ?? false) || t.injured,
           minutesPlayed: (prev?.minutesPlayed ?? 0) + 45,
         }];
@@ -447,7 +505,7 @@ function buildTeam(
   resume: HalfTimeState | undefined,
 ): TeamCtx {
   const byId = new Map(squad.map((sp) => [sp.playerId, sp]));
-  const players: ActivePlayer[] = tactics.players.map((pt: PlayerTactic) => {
+  const starters: ActivePlayer[] = tactics.players.map((pt: PlayerTactic) => {
     const sp = byId.get(pt.playerId);
     if (!sp) throw new Error(`tactic references ${pt.playerId} not in squad`);
     return {
@@ -458,7 +516,13 @@ function buildTeam(
       startFatigue: resume?.playerState[pt.playerId]?.fatigue ?? sp.fatigue,
     };
   });
-  if (players.length !== 11) throw new Error(`expected 11 starters, got ${players.length}`);
+  if (starters.length !== 11) throw new Error(`expected 11 starters, got ${starters.length}`);
+
+  // players sent off in a previous half never re-enter; the team plays short
+  const inactive = starters.filter((p) => resume?.playerState[p.id]?.cards.sentOff === true);
+  const players = starters.filter((p) => !inactive.includes(p));
+  const shortBy = inactive.length;
+  const sentOffMul = Math.max(0.3, 1 - CAL.sentOffPenalty * shortBy);
 
   // no position field on SquadPlayer — GK is the strongest gk-attribute composite
   const gk = players.reduce((best, p) => {
@@ -476,11 +540,13 @@ function buildTeam(
     side,
     tactics,
     players,
+    inactive,
     gk,
-    attack: fatigueMul * a((x) => x.finishing * 0.3 + x.offTheBall * 0.2 + x.dribbling * 0.15 + x.vision * 0.15 + x.pace * 0.2),
-    defense:
+    attack: sentOffMul * fatigueMul *
+      a((x) => x.finishing * 0.3 + x.offTheBall * 0.2 + x.dribbling * 0.15 + x.vision * 0.15 + x.pace * 0.2),
+    defense: sentOffMul * (
       0.85 * a((x) => x.tackling * 0.25 + x.marking * 0.25 + x.positioning * 0.2 + x.anticipation * 0.2 + x.strength * 0.1) +
-      0.15 * ((gk.sp.attributes.gkReflexes + gk.sp.attributes.gkPositioning) / 40),
+      0.15 * ((gk.sp.attributes.gkReflexes + gk.sp.attributes.gkPositioning) / 40)),
     control: fatigueMul * a((x) => x.passing * 0.3 + x.vision * 0.2 + x.decisions * 0.2 + x.firstTouch * 0.15 + x.workRate * 0.1 + x.stamina * 0.05),
     aerial: a((x) => x.heading * 0.4 + x.jumping * 0.4 + x.strength * 0.2),
     press: 0.5 * tactics.team.pressTrigger + 0.5 * mean(outfield.map((p) => p.pt.instructions.pressingIntensity)),

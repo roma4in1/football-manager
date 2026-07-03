@@ -11,5 +11,5 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "scripts/*.ts"]
 }

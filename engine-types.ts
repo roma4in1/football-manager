@@ -131,8 +131,14 @@ export interface Fixture {
 }
 
 export interface HalfTimeState {
+  v: 2;                      // state-blob version; engines throw on anything else (no v1 blobs exist)
   score: [number, number];
-  playerState: Record<string, { fatigue: number; cards: 0 | 1; injured: boolean; minutesPlayed: number }>;
+  playerState: Record<string, {
+    fatigue: number;
+    cards: { yellows: 0 | 1; sentOff: boolean }; // sentOff = straight red or second yellow
+    injured: boolean;
+    minutesPlayed: number;
+  }>;
   subsUsed: [number, number];
   rngState: string;          // serialized RNG so 2nd half continues the same stream
 }
