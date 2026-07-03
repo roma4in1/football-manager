@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import type pg from 'pg';
-import type { Attributes, Phase, Tactics, Vec2 } from './engine-types.ts';
+import type { Attributes, Phase, Tactics, Vec2 } from '@fm/engine/types';
 
 export const ATTR_KEYS: Array<keyof Attributes> = [
   'passing', 'longPassing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',

@@ -3,9 +3,9 @@
  * from the shared modules — no duplication.
  */
 
-import type { Attributes, HalfStats, MatchEvent, Tactics } from '@shared/engine-types.ts';
-import type { EligibilityIssue } from '@shared/league-eligibility.ts';
-import type { FixtureState } from '@shared/season-state-machine.ts';
+import type { Attributes, HalfStats, MatchEvent, Tactics } from '@fm/engine/types';
+import type { EligibilityIssue } from '@fm/engine/eligibility';
+import type { FixtureState } from '@fm/engine/state-machine';
 
 export class ApiError extends Error {
   readonly status: number;

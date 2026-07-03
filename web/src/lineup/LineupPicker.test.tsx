@@ -7,7 +7,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { fireEvent } from '@testing-library/dom';
 import { afterEach, expect, test, vi } from 'vitest';
-import type { Attributes } from '@shared/engine-types.ts';
+import type { Attributes } from '@fm/engine/types';
 import type { SquadPlayerView } from '../api.ts';
 import { LineupPicker } from './LineupPicker.tsx';
 

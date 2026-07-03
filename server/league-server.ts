@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import pg from 'pg';
-import { LEAGUE_CFG } from './league-config.ts';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import { consoleLinkDelivery, createApi } from './league-api.ts';
 import { createOrchestrator } from './league-orchestrator.ts';
 
@@ -25,7 +25,7 @@ const api = await createApi({ pool, orchestrator, sessionSecret, delivery: conso
 
 // serve the built client when present (npm --prefix web run build); the SPA owns
 // every non-/api path, so unknown GETs fall back to index.html for client routing
-const webDist = fileURLToPath(new URL('./web/dist', import.meta.url));
+const webDist = fileURLToPath(new URL('../web/dist', import.meta.url));
 if (existsSync(webDist)) {
   await api.register(fastifyStatic, { root: webDist });
   api.setNotFoundHandler((req, reply) => {

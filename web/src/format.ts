@@ -1,4 +1,4 @@
-import type { MatchEvent } from '@shared/engine-types.ts';
+import type { MatchEvent } from '@fm/engine/types';
 
 export const minuteOf = (t: number): number => Math.max(1, Math.ceil(t / 60));
 

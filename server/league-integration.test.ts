@@ -31,7 +31,7 @@ import {
   type OrchestratorCore,
 } from './league-orchestrator.ts';
 import { bootstrapSchema, buildTactics as tacticsFor, seedClub, seedSeason, waitFor } from './league-test-helpers.ts';
-import type { HalfResult, HalfStats, MatchEvent, SimEngine, Tactics } from './engine-types.ts';
+import type { HalfResult, HalfStats, MatchEvent, SimEngine, Tactics } from '@fm/engine/types';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 

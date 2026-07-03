@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { HalfStats } from '@shared/engine-types.ts';
+import type { HalfStats } from '@fm/engine/types';
 import { fmtRemaining } from './format.ts';
 
 export function Countdown({ until }: { until: string }) {

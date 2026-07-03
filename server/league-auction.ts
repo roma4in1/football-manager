@@ -28,7 +28,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { LEAGUE_CFG, wageFromMarketValue } from './league-config.ts';
+import { LEAGUE_CFG, wageFromMarketValue } from '@fm/engine/config';
 import * as store from './league-store.ts';
 
 export class AuctionError extends Error {

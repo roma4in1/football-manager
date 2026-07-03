@@ -2,28 +2,21 @@
   "name": "football-manager",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.34.4",
   "scripts": {
-    "harness": "node stat-harness.ts",
-    "typecheck": "tsc --noEmit",
-    "db:test:up": "docker start fm-test-pg 2>/dev/null || docker run -d --name fm-test-pg -e POSTGRES_PASSWORD=fm -e POSTGRES_DB=fm_test -p 54329:5432 postgres:16-alpine",
-    "db:test:down": "docker rm -f fm-test-pg",
-    "test:unit": "node --test league-eligibility.test.ts",
-    "test:integration": "node --test league-integration.test.ts",
-    "test:api": "node --test league-api.test.ts",
-    "test:auction": "node --test league-auction.test.ts",
-    "test": "npm run test:unit && npm run test:integration && npm run test:api && npm run test:auction",
-    "serve": "node league-server.ts"
+    "typecheck": "pnpm -r run typecheck",
+    "boundaries": "depcruise engine server web/src --config .dependency-cruiser.cjs",
+    "test:unit": "pnpm --filter @fm/engine test",
+    "test:server": "pnpm --filter @fm/server test",
+    "test:web": "pnpm --filter @fm/web test && pnpm --filter @fm/web build",
+    "harness": "pnpm --filter @fm/engine harness",
+    "smoke": "docker exec fm-test-pg psql -U postgres -c 'DROP DATABASE IF EXISTS smoke_test' -c 'CREATE DATABASE smoke_test' > /dev/null && docker exec -i fm-test-pg psql -U postgres -d smoke_test -v ON_ERROR_STOP=1 -q < server/schema.sql && docker exec -i fm-test-pg psql -U postgres -d smoke_test -v ON_ERROR_STOP=1 -q < server/smoke.sql",
+    "db:test:up": "pnpm --filter @fm/server db:test:up",
+    "db:test:down": "pnpm --filter @fm/server db:test:down",
+    "serve": "pnpm --filter @fm/server serve",
+    "test": "pnpm typecheck && pnpm boundaries && pnpm test:unit && pnpm test:server && pnpm test:web && pnpm harness && pnpm smoke"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
-    "@types/pg": "^8.20.0",
-    "typescript": "^5.8.0"
-  },
-  "dependencies": {
-    "@fastify/cookie": "^11.0.2",
-    "@fastify/static": "^9.1.3",
-    "fastify": "^5.9.0",
-    "pg": "^8.22.0",
-    "pg-boss": "^12.24.1"
+    "dependency-cruiser": "^17.0.1"
   }
 }

@@ -18,7 +18,7 @@ import pg from 'pg';
 import { createApi, mintMagicToken, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
 import { bootstrapSchema, buildTactics, flatAttributes, seedClub, seedSeason, waitFor } from './league-test-helpers.ts';
-import type { Tactics } from './engine-types.ts';
+import type { Tactics } from '@fm/engine/types';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 const SECRET = 'api-test-secret';

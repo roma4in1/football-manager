@@ -30,10 +30,10 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import fastifyCookie from '@fastify/cookie';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type pg from 'pg';
-import type { Tactics } from './engine-types.ts';
+import type { Tactics } from '@fm/engine/types';
 import { AuctionError } from './league-auction.ts';
-import { LEAGUE_CFG } from './league-config.ts';
-import { validateHtResubmission, validateTactics } from './league-eligibility.ts';
+import { LEAGUE_CFG } from '@fm/engine/config';
+import { validateHtResubmission, validateTactics } from '@fm/engine/eligibility';
 import type { Orchestrator } from './league-orchestrator.ts';
 import * as store from './league-store.ts';
 
