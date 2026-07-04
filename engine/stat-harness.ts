@@ -20,7 +20,9 @@
  * Deterministic: squad generation and fixture seeds derive from the master seeds.
  */
 
+import { AgentEngine } from './agent-engine.ts';
 import { AggregateEngine, HALF_SECONDS } from './engine-aggregate.ts';
+import type { SimEngine } from './engine-types.ts';
 import { Rng } from './engine-rng.ts';
 import type {
   Attributes,
@@ -172,7 +174,9 @@ function makeClub(rng: Rng, clubId: string, quality: number): Club {
 
 // ── match runner + metric extraction ─────────────────────────────────────────
 
-const engine = new AggregateEngine();
+// ENGINE=agent runs the harness against the AgentEngine scaffold — bands are
+// expected to fail there until it's calibrated; the gate default stays aggregate
+const engine: SimEngine = process.env.ENGINE === 'agent' ? new AgentEngine() : new AggregateEngine();
 
 function runMatch(fixtureId: string, homeClub: Club, awayClub: Club, seed: string): { h1: HalfResult; h2: HalfResult } {
   const squads = { home: homeClub.squad, away: awayClub.squad };

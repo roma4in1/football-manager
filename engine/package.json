@@ -1,7 +1,7 @@
 {
   "name": "@fm/engine",
   "version": "0.1.0",
-  "description": "Pure football-sim engine + league domain logic (eligibility, config, state machine). Zero runtime dependencies by design — enforced by pnpm isolation and dependency-cruiser.",
+  "description": "Pure football-sim engine + league domain logic (eligibility, config, state machine). Zero runtime dependencies by design \u2014 enforced by pnpm isolation and dependency-cruiser.",
   "type": "module",
   "exports": {
     "./types": "./engine-types.ts",
@@ -9,17 +9,24 @@
     "./aggregate": "./engine-aggregate.ts",
     "./eligibility": "./league-eligibility.ts",
     "./config": "./league-config.ts",
-    "./state-machine": "./season-state-machine.ts"
+    "./state-machine": "./season-state-machine.ts",
+    "./agent": "./agent-engine.ts"
   },
   "files": [
-    "engine-types.ts",
-    "engine-rng.ts",
+    "agent-decision.ts",
+    "agent-engine.ts",
+    "agent-execution.ts",
+    "agent-model.ts",
+    "agent-positioning.ts",
+    "agent-rng.ts",
+    "calibration-reference.md",
     "engine-aggregate.ts",
-    "league-eligibility.ts",
+    "engine-rng.ts",
+    "engine-types.ts",
     "league-config.ts",
+    "league-eligibility.ts",
     "season-state-machine.ts",
-    "stat-harness.ts",
-    "calibration-reference.md"
+    "stat-harness.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",

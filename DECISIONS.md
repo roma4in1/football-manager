@@ -3,6 +3,50 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-04 — agent-engine architecture (SCAFFOLD — no behavior yet)
+
+- `AgentEngine` (engine/agent-engine.ts) implements the same frozen
+  `SimEngine` interface as `AggregateEngine` — same signature, same
+  HalfResult, same frame cadence (one frame per 6 s), same v2 resume
+  semantics (throws on non-v2, sent-off players frozen). Swappable today;
+  `ENGINE=agent` points the harness at it.
+- **Three-model split**, each a separate module with a constructor-injected
+  interface (clean seams for Wednesday's calibration):
+  1. `PositioningModel` (agent-positioning.ts) — per-phase anchors deformed
+     by attractors/repulsors; owns the Spearman-style pitch-control field
+     (coarse grid) both teams' decisions read;
+  2. `DecisionModel` (agent-decision.ts) — geometric option generation,
+     attribute-weighted scoring, softmax choice with temperature from
+     decisions/composure. Instructions bias SCORING ONLY (frozen invariant);
+  3. `ExecutionModel` (agent-execution.ts) — attribute-scaled directional/
+     velocity noise after the decision; the ball-flight enum routes lofted/
+     high arrivals through aerial-duel resolution (jumping/heading/height).
+  Sub-models never import each other; shared world-state types + AGENT_CAL
+  live below them in agent-model.ts. Dependency-cruiser's engine isolation
+  covers the package; the intra-module direction is enforced by review.
+- **Keyed randomness from birth** (agent-rng.ts): every draw is addressed by
+  (namespace, tick, playerId, purpose) instead of stream order. Rationale:
+  the aggregate engine's sequential stream made all outcomes sensitive to
+  draw order — adding one attribute (longPassing) reshuffled every harness
+  stream and forced a recalibration. Keyed draws make inserting a consumer
+  a no-op for existing ones. Corollary: HalfTimeState.rngState carries the
+  NAMESPACE token, not a serialized stream — half 2 derives a child
+  namespace.
+- Tick loop (0.5 s): perceive → position → decide (carrier, every 2nd tick)
+  → execute → resolve ball → phase transitions. `PhaseTracker` drives the
+  six phases from possession turnovers (counterPress/counterAttack windows)
+  plus ball x (buildUp/progression/finalThird vs defensiveBlock).
+- **Stubbed vs real** — real: tick loop, phase machine, keyed rng, movement,
+  emission contracts (frames/events/stats/heatmaps/endState), sent-off and
+  resume handling, execution-noise plumbing, softmax choice. Stubbed:
+  pitch-control computation (uniform 0.5), positioning deformation (anchor +
+  ball pull only), option generation/scoring (nearest-mates + progress),
+  success resolution (distance/skill logistic), xG (flat 0.1), ratings, ppda,
+  no foul/card/injury/offside/set-piece/GK models. Harness plumbing passes;
+  all bands fail by design until calibration.
+- Every tunable is in `AGENT_CAL` (agent-model.ts) with placeholder values —
+  same one-object discipline as the aggregate engine's CAL.
+
 ## 2026-07-03 — data pipeline (pipeline/, Python, standalone)
 
 - Not a pnpm package: runs locally, outputs `seeds/players.sql` + review
