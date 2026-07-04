@@ -3,6 +3,63 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-04 — agent-engine calibration (AGENT_CAL + behavior refinements)
+
+Non-obvious knob/mechanism choices (quick-batch n=60/seed; the full 600/seed
+run is the gate):
+
+- **softmaxBaseTemperature 0.55** — at 1.0 choices were near-uniform: shot
+  spam, random risk. Sharpness is the single biggest sanity lever.
+- **shotBaseScore −0.65** — volume gate. Cutting shotValueWeight instead
+  flattened the xG gradient (xg/shot went UP as range shrank); a negative
+  base suppresses marginal shots while the xg term keeps good ones.
+- **loftedSkillExtraLogit** — the drop-point receiver race forgives scatter
+  (someone runs onto anything), so longPassing barely moved lofted
+  completion; the extra technical term restores the attribute signal the
+  plumbing sweep asserts.
+- **Two-man pressure** (pressureSecondWeight) — nearest-opponent-only
+  pressure couldn't feel presser COUNT, so pressTrigger had no ppda channel.
+- **Urgency speed** (cruiseSpeedShare/urgencyDistM) — everyone sprinting
+  everywhere buried the press→fatigue differential; jog-vs-chase splits it.
+- **Interception vs technical miss** — every failed pass used to hand the
+  ball to the nearest opponent and count a defensive action; ppda sat at ~2.
+  Only lost races are interceptions now; technical misses are loose balls.
+  PPDA's numerator counts all pass attempts (lofted included), per the
+  metric's definition.
+- **bookedCautionFactor / boxFoulFactor** — reds were dominated by second
+  yellows (fouls concentrate on the nearest tackler) and pens by box
+  dribbles; carefulness when booked / in the box is real behavior, not a
+  fudge.
+- **Resisted bands (documented per the stop rule, not ground out):**
+  - *second_half_goal_share* (sits ~0.44–0.51 vs 0.52–0.56): pure fatigue
+    asymmetry is too weak — it slows attackers and defenders symmetrically.
+    Hypothesis: the missing mechanisms are score-state risk-taking (trailing
+    teams push) and fresh-legs substitutions, both absent by design (the
+    engine has no score-state instruction modulation and subs are HT-only).
+    Needs a design decision, not a knob.
+  - *home/away win shares*: the one home mechanism (homePressureRelief)
+    saturates near +0.05 win-share edge on identical-club A/B tests; the
+    band needs ~+0.14. A stronger home term (temperature or attribute
+    effectiveness) grazes the "execution noise is attribute-driven only"
+    invariant — user call. Venue asymmetry bugs were ruled out with
+    identical-club and strength-swap diagnostics (engine is symmetric;
+    relief off ⇒ 0.388/0.362 home/away at n=80).
+  - *risk↑ → passAcc↓ sweep*: risk reshuffles the option MIX (more lofted,
+    through balls) but ground-pass completion barely drops because the
+    generator only offers nearest-mate + two through candidates — the risky
+    ground pass pool is too small. Hypothesis: generation needs
+    distance-diverse ground candidates before this sweep can emerge.
+    (Also: riskTurnoverDiscount 1.0 made risk SELF-DEFEATING — cost hit zero
+    and risky teams spammed junk that inverted the xg/shot sweep; 0.8 keeps
+    both directions sane.)
+  - *press↑ → fatigue↑ sweep* (Δ≈0.015 vs required 0.02 after urgency-speed
+    and presser-count scaling — 6 attempts): presser run volume is bounded
+    by the pressMaxDistM catchment and by how fast possession turns over, so
+    chase episodes stay short. The clean wiring fix (scaling fatigue accrual
+    by pressingIntensity) is exactly the plumbing the emergent tag forbids.
+    Hypothesis: needs longer chase episodes (ball retention already close to
+    band) or a chase-specific movement mode; revisit after replay review.
+
 ## 2026-07-04 — agent-engine behavior (parts b–d: decision, execution, events)
 
 - **Option scoring** (agent-decision.ts): every ball-moving option scores

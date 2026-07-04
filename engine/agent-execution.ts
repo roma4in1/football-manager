@@ -52,6 +52,8 @@ export interface ExecutionOutcome {
   flight: BallFlight;
   /** set on shots: whether it beat the keeper */
   goal?: boolean;
+  /** failed pass family: a defender won the race (vs a technical miss → loose ball) */
+  intercepted?: boolean;
 }
 
 export interface AerialContest {
@@ -163,11 +165,16 @@ export class NoisyExecutionModel implements ExecutionModel {
       return { action, success, endPoint, flight: 'ground' };
     }
 
-    // pass family: technical completion × interception race on the real path
+    // pass family: technical completion × interception race on the real path.
+    // Lofted balls get an EXTRA technical skill term: the receiver race
+    // forgives scatter (someone runs onto anything), so without it the
+    // longPassing attribute barely moves completion.
     const d = dist(actor.pos, endPoint);
+    const lofted = action.flight === 'lofted' || action.flight === 'high';
     const pTechnical = sigmoid(
       AGENT_CAL.passExecBaseLogit +
-      AGENT_CAL.passExecSkillLogit * skillEdge(profile.skill(actor)) -
+      AGENT_CAL.passExecSkillLogit * skillEdge(profile.skill(actor)) +
+      (lofted ? AGENT_CAL.loftedSkillExtraLogit * skillEdge(profile.skill(actor)) : 0) -
       AGENT_CAL.passExecPressureLogit * feltPressure(actor, ctx.pressure),
     );
 
@@ -204,8 +211,11 @@ export class NoisyExecutionModel implements ExecutionModel {
       pSafe = sigmoid(AGENT_CAL.raceSteepness * (margin + AGENT_CAL.interceptOffsetS));
     }
 
-    const success = rng.chance(pTechnical * pSafe, tick, actor.id, 'outcome', action.type);
-    return { action, success, endPoint, flight: action.flight };
+    // two separate draws so the engine can tell a lost race (interception —
+    // a real defensive action) from a technical miss (loose ball)
+    const technicalOk = rng.chance(pTechnical, tick, actor.id, 'outcome', action.type);
+    const raceOk = rng.chance(pSafe, tick, actor.id, 'race', action.type);
+    return { action, success: technicalOk && raceOk, endPoint, flight: action.flight, intercepted: !raceOk };
   }
 
   resolveAerialDuel(contest: AerialContest, rng: KeyedRng, tick: number): AerialOutcome {

@@ -143,14 +143,16 @@ export class AnchorPositioningModel implements PositioningModel {
       side === 'home' ? Math.min(x, Math.max(offsideLine - 0.3, PITCH_LENGTH / 2))
       : Math.max(x, Math.min(offsideLine + 0.3, PITCH_LENGTH / 2));
 
-    // the press: nearest N outfielders to the ball, if close enough
+    // the press: nearest N outfielders to the ball, if close enough.
+    // pressTrigger scales HOW MANY join — a high press commits bodies
+    const nPressers = Math.max(1, Math.round(AGENT_CAL.pressersCount * (0.5 + team.pressTrigger)));
     const pressers = new Set(
       inPossession
         ? []
         : outfield
             .filter((p) => dist(p.pos, ctx.ball.pos) < AGENT_CAL.pressMaxDistM)
             .sort((a, b) => dist(a.pos, ctx.ball.pos) - dist(b.pos, ctx.ball.pos))
-            .slice(0, AGENT_CAL.pressersCount)
+            .slice(0, nPressers)
             .map((p) => p.id),
     );
 

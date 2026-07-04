@@ -324,8 +324,14 @@ export class AgentEngine implements SimEngine {
         const side = carrier.side;
         const mates = side === 'home' ? homeSnaps : awaySnaps;
         const opps = side === 'home' ? awaySnaps : homeSnaps;
-        const nearestOpp = opps.reduce((m, o) => Math.min(m, dist(o.pos, carrier.pos)), Infinity);
-        const rawPressure = Math.max(0, 1 - nearestOpp / 10);
+        // two nearest opponents: a double-team squeezes harder than one man
+        let d1 = Infinity, d2 = Infinity;
+        for (const o of opps) {
+          const d = dist(o.pos, carrier.pos);
+          if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+        }
+        const rawPressure = Math.min(1,
+          Math.max(0, 1 - d1 / 10) + AGENT_CAL.pressureSecondWeight * Math.max(0, 1 - d2 / 10));
         const ctx = {
           carrier: snapshotOf(carrier),
           teammates: mates,
@@ -397,8 +403,11 @@ export class AgentEngine implements SimEngine {
           } else {
             // dispossessed: the nearest opponent made the challenge
             const tackler = nearestTo(states, oppositeOf(side), carrier.pos);
-            const foulRate = AGENT_CAL.foulPerTackle *
+            let foulRate = AGENT_CAL.foulPerTackle *
               (tackler ? 1 + AGENT_CAL.aggressionFoulGain * (tackler.attributes.aggression / 20 - 0.5) : 1);
+            // booked players tackle carefully; nobody dives in inside their own box
+            if (tackler?.yellows) foulRate *= AGENT_CAL.bookedCautionFactor;
+            if (inAttackingBox(side, carrier.pos)) foulRate *= AGENT_CAL.boxFoulFactor;
             if (tackler && rng.chance(foulRate, tick, tackler.id, 'foul')) {
               bookFoul(tackler, carrier.pos, now, tick);
               if (inAttackingBox(side, carrier.pos)) {
@@ -422,10 +431,12 @@ export class AgentEngine implements SimEngine {
           // long-ball completion is measured from pass events instead).
           if (outcome.flight === 'ground' || outcome.flight === 'driven') {
             tallies.pass(carrier.id, outcome.success);
-            if (inBuildup(side, carrier.pos.x)) buildupPasses[side]++;
           }
-          if (outcome.flight === 'lofted' || outcome.flight === 'high') {
-            // long-ball metrics read these (ground passes stay event-silent)
+          // PPDA numerator counts every pass attempt, lofted included
+          if (inBuildup(side, carrier.pos.x)) buildupPasses[side]++;
+          if ((outcome.flight === 'lofted' || outcome.flight === 'high') && chosen.type !== 'cross') {
+            // long-ball metrics read these. Crosses are excluded (FBref-style:
+            // they read crossing, and would dilute the longPassing signal)
             events.push({
               t: now, type: 'pass', playerId: carrier.id,
               from: { ...carrier.pos }, to: outcome.endPoint, flight: outcome.flight,
@@ -451,12 +462,14 @@ export class AgentEngine implements SimEngine {
             receiver = byId.get(chosen.receiverId);
           } else if (outcome.success) {
             receiver = nearestAny(states, outcome.endPoint); // clear: loose ball, nearest body
-          } else {
-            receiver = nearestTo(states, side === 'home' ? 'away' : 'home', outcome.endPoint); // turnover
+          } else if (outcome.intercepted) {
+            receiver = nearestTo(states, side === 'home' ? 'away' : 'home', outcome.endPoint); // race lost
             if (receiver && (outcome.flight === 'ground' || outcome.flight === 'driven')) {
               events.push({ t: now, type: 'interception', playerId: receiver.id });
               if (inBuildup(side, outcome.endPoint.x)) defActions[receiver.side]++;
             }
+          } else {
+            receiver = nearestAny(states, outcome.endPoint); // technical miss: loose ball
           }
           if (receiver) {
             receiver.pos = clampToPitch({ ...outcome.endPoint });
@@ -596,8 +609,12 @@ function setup(
 
 /** Returns the distance actually covered (feeds work-based fatigue). */
 function stepToward(s: AgentState, target: Vec2): number {
+  // urgency: sprint at distant targets (chases), jog positional shuffles —
+  // this is what concentrates fatigue on pressers instead of everyone
+  const urgency = Math.min(1, dist(s.pos, target) / AGENT_CAL.urgencyDistM);
   const speed =
-    AGENT_CAL.maxSpeedMps * (s.attributes.pace / 20) * (1 - AGENT_CAL.fatigueSpeedPenalty * s.fatigue);
+    AGENT_CAL.maxSpeedMps * (s.attributes.pace / 20) * (1 - AGENT_CAL.fatigueSpeedPenalty * s.fatigue) *
+    (AGENT_CAL.cruiseSpeedShare + (1 - AGENT_CAL.cruiseSpeedShare) * urgency);
   const step = speed * AGENT_CAL.tickSeconds;
   const d = dist(s.pos, target);
   const prev = s.pos;

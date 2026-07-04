@@ -132,6 +132,19 @@ export class GeometricDecisionModel implements DecisionModel {
       });
     }
 
+    // through balls ON THE DECK: the most advanced mates, led hard into
+    // space. Higher value, lower completion — risk/reward scoring decides.
+    // Never lofted (that's what longPass switches are for), so out-of-range
+    // targets are simply not options.
+    const advanced = [...mates]
+      .sort((a, b) => (b.pos.x - a.pos.x) * attackSign)
+      .slice(0, AGENT_CAL.throughOptionCount);
+    for (const mate of advanced) {
+      const target: Vec2 = { x: clampX(mate.pos.x + AGENT_CAL.throughLeadM * attackSign), y: mate.pos.y };
+      if (dist(ctx.carrier.pos, target) > AGENT_CAL.passRangeM) continue;
+      options.push({ type: 'pass', target, flight: 'ground', receiverId: mate.id });
+    }
+
     // carries: straight at goal plus two diagonals
     const carryAngles = [0, Math.PI / 5, -Math.PI / 5].slice(0, AGENT_CAL.carryOptionCount);
     for (const a of carryAngles) {
@@ -166,6 +179,9 @@ export class GeometricDecisionModel implements DecisionModel {
     // pitch control is stored as HOME share — flip for away
     const ourControl = (p: Vec2): number =>
       ctx.side === 'home' ? ctx.pitchControl.controlAtPoint(p) : 1 - ctx.pitchControl.controlAtPoint(p);
+    // risk appetite discounts how much losing the ball is feared (scoring only)
+    const turnoverCost = AGENT_CAL.turnoverCostWeight *
+      (1 - AGENT_CAL.riskTurnoverDiscount * (ctx.instructions.riskAppetite - 0.5) * 2);
     // V(target): where would the ball be worth having, weighted by who'd have it
     const valueAt = (p: Vec2): number =>
       positionValue(p, goalX) + AGENT_CAL.valueControlWeight * (ourControl(p) - 0.5);
@@ -183,7 +199,9 @@ export class GeometricDecisionModel implements DecisionModel {
           break;
         }
         case 'shot': {
-          score = AGENT_CAL.shotValueWeight * xgProxy(ctx.carrier.pos, goalX) +
+          // negative base gates volume; the xg term keeps the quality gradient
+          score = AGENT_CAL.shotBaseScore +
+            AGENT_CAL.shotValueWeight * xgProxy(ctx.carrier.pos, goalX) +
             AGENT_CAL.shootingBiasScoreBias * ctx.instructions.shootingBias;
           break;
         }
@@ -196,7 +214,7 @@ export class GeometricDecisionModel implements DecisionModel {
             AGENT_CAL.controlCompletionLogit * (ourControl(t) - 0.5),
           );
           score = p * valueAt(t) -
-            AGENT_CAL.turnoverCostWeight * (1 - p) * positionValue(t, oppGoalX) +
+            turnoverCost * (1 - p) * positionValue(t, oppGoalX) +
             AGENT_CAL.dribbleBiasScoreBias * ctx.instructions.dribbleBias;
           break;
         }
@@ -213,7 +231,7 @@ export class GeometricDecisionModel implements DecisionModel {
             AGENT_CAL.laneRiskLogit * laneRisk(ctx.carrier.pos, t, ctx.opponents) +
             AGENT_CAL.controlCompletionLogit * (ourControl(t) - 0.5),
           );
-          score = p * valueAt(t) - AGENT_CAL.turnoverCostWeight * (1 - p) * positionValue(t, oppGoalX);
+          score = p * valueAt(t) - turnoverCost * (1 - p) * positionValue(t, oppGoalX);
           if (option.type === 'longPass' || option.type === 'cross') {
             score += AGENT_CAL.riskAppetiteScoreBias * (ctx.instructions.riskAppetite - 0.5);
           }
