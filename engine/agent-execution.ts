@@ -184,7 +184,9 @@ export class NoisyExecutionModel implements ExecutionModel {
           if (t < tDef) tDef = t;
         }
         const margin = tDef - tBall; // positive: ball beats the defender
-        pSafe *= 1 - sigmoid(-AGENT_CAL.raceSteepness * (margin - AGENT_CAL.interceptOffsetS));
+        // same convention as the lofted branch: the defender only gets even
+        // odds when he beats the ball by the offset (σ at margin = −offset)
+        pSafe *= sigmoid(AGENT_CAL.raceSteepness * (margin + AGENT_CAL.interceptOffsetS));
       }
     } else {
       // lofted/high: mid-flight is unplayable; the race is at the drop point,
