@@ -3,6 +3,45 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-04 — agent-engine behavior (parts b–d: decision, execution, events)
+
+- **Option scoring** (agent-decision.ts): every ball-moving option scores
+  `P(complete)·V(target) − turnoverCost·(1−P)·V_opp(target)`. V = xT-style
+  `positionValue` (power curve toward goal, touchline-damped) + pitch-control
+  share; P = logistic over distance, lane exposure (nearest opponent
+  projected onto the lane), control at target, and the relevant technical
+  attribute. Shots score from the shared `xgProxy`. `positionValue`/`xgProxy`
+  live in agent-model so decision and resolution can never disagree.
+- **Success resolution** (agent-execution.ts): pass family = technical
+  logistic × interception race (defender arrival times, anticipation-shaved,
+  vs ball travel along the real noised path; lofted balls race only at the
+  drop point and fall through to the aerial duel). Shots: on-target logistic
+  then an xG-conditioned keeper beat (gkReflexes/gkPositioning). Execution
+  reads context (control closure, opponents, receiver, GK) — the ExecContext
+  keeps the no-sideways-imports rule.
+- **passAccuracy counts GROUND passes only** (engine tallies): the
+  passing/longPassing split means lofted completion moves with longPassing —
+  folding it into passAccuracy made the "ground accuracy unmoved" plumbing
+  row unpassable. Long-ball metrics read the typed lofted/high pass events.
+- **Event models live in the engine loop**, not sub-models: foul + card
+  ladder off failed-carry challenges and aerial losers (aggression-scaled;
+  second yellow sends off mid-half — clock stops, player leaves every
+  lookup via active()); injuries as one aggregate per-tick hazard draw
+  (keyed rng stays insertion-safe); offsides from the second-last defender
+  at the moment of the kick; corners/attacking-third free kicks resolved as
+  parameterized deliveries through the aerial-duel model (headed goal prob
+  IS the header-discounted xgProxy); penalties as a flat outcome table.
+  HT subs consumption: XI players without a half-1 record increment
+  subsUsed; subbed-out players' records carry through endState untouched.
+- **Home advantage is ONE mechanism**: the home carrier feels
+  `homePressureRelief` less pressure (context, not execution noise, not an
+  instruction) — it propagates to decision temperature and execution
+  logistics through the same pressure input everything else uses.
+- Real stats: sot from on-target outcomes, xg from the shared proxy
+  (+0.76/penalty), ppda = opponent build-up passes per own defensive action
+  (tackles/interceptions/fouls inside `ppdaZoneOwnRelXM`), fieldTilt from
+  attacking-third ball ticks.
+
 ## 2026-07-04 — agent-engine architecture (SCAFFOLD — no behavior yet)
 
 - `AgentEngine` (engine/agent-engine.ts) implements the same frozen
@@ -52,11 +91,10 @@ Newest first. Keep entries short: what, why, where enforced.
   squeeze toward the block centroid, offTheBall forward runs in possession,
   teammate space repulsion — all weighted attractor pulls from AGENT_CAL;
   fatigue now accrues proportional to distance actually run via
-  fatigueWorkShare, so press intensity costs legs). Stubbed: option
-  generation/scoring (nearest-mates + progress),
-  success resolution (distance/skill logistic), xG (flat 0.1), ratings, ppda,
-  no foul/card/injury/offside/set-piece/GK models. Harness plumbing passes;
-  all bands fail by design until calibration.
+  fatigueWorkShare, so press intensity costs legs). The remaining stubs —
+  option scoring, success resolution, xG, event models, real stats — were
+  replaced the same day; see the "agent-engine behavior" entry above.
+  Bands await calibration.
 - Every tunable is in `AGENT_CAL` (agent-model.ts) with placeholder values —
   same one-object discipline as the aggregate engine's CAL.
 

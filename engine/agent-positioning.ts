@@ -134,6 +134,15 @@ export class AnchorPositioningModel implements PositioningModel {
     const outfield = ctx.teammates.filter((p) => !p.isGk);
     const centroidX = outfield.reduce((s, p) => s + p.pos.x, 0) / Math.max(1, outfield.length);
 
+    // offside line: second-last opponent (GK included). In possession,
+    // attackers hold this line instead of camping beyond it — offsides then
+    // come from timing (line pushes up, runners lag), not from standing there.
+    const oppXs = ctx.opponents.map((o) => o.pos.x).sort((a, b) => (side === 'home' ? b - a : a - b));
+    const offsideLine = oppXs[1] ?? oppXs[0] ?? (side === 'home' ? PITCH_LENGTH : 0);
+    const holdLineX = (x: number): number =>
+      side === 'home' ? Math.min(x, Math.max(offsideLine - 0.3, PITCH_LENGTH / 2))
+      : Math.max(x, Math.min(offsideLine + 0.3, PITCH_LENGTH / 2));
+
     // the press: nearest N outfielders to the ball, if close enough
     const pressers = new Set(
       inPossession
@@ -209,6 +218,8 @@ export class AnchorPositioningModel implements PositioningModel {
         const push = (AGENT_CAL.repulsionRadiusM - d) * AGENT_CAL.spaceRepulsion;
         target = { x: target.x + ((target.x - nearest.pos.x) / d) * push, y: target.y + ((target.y - nearest.pos.y) / d) * push };
       }
+
+      if (inPossession) target.x = holdLineX(target.x); // play on the shoulder
 
       targets.set(p.id, clampToPitch(target));
     }

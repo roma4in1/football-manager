@@ -1,10 +1,11 @@
 /**
  * agent-model.ts — shared world-state types + AGENT_CAL for the agent engine.
  *
- * SCAFFOLD (see DECISIONS.md, agent-engine architecture): types and module
- * boundaries are the deliverable; behavior is stubbed. Every tunable lives in
- * AGENT_CAL from day one — Wednesday's calibration must never chase constants
- * across modules (same discipline as the aggregate engine's CAL).
+ * Every tunable lives in AGENT_CAL — calibration never chases constants
+ * across modules (same discipline as the aggregate engine's CAL). The shared
+ * helpers here (arrivalTime, positionValue, xgProxy) are the single source of
+ * truth all three sub-models read, so decision and execution can never
+ * disagree about geometry or chance quality.
  *
  * Dependency direction (enforced by review + dependency-cruiser's engine
  * isolation): agent-model ← {agent-positioning, agent-decision,
@@ -133,10 +134,29 @@ export const AGENT_CAL = {
   finalThirdX: 70, // own-relative x beyond which possession is 'finalThird'
   buildUpX: 35, // below which controlled possession is 'buildUp'
 
+  // ── events: fouls / cards / injuries / offsides / set pieces ──────────────
+  foulPerTackle: 0.03, // P(foul | failed-carry challenge), aggression-scaled
+  aggressionFoulGain: 0.8, // ×(1 + gain·(aggression/20 − 0.5))
+  aerialFoulRate: 0.02, // duel loser brings the man down
+  yellowPerFoul: 0.15,
+  redPerFoul: 0.006, // straight red; second yellow also sends off
+  injuryPerTickBase: 0.0000019, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
+  injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
+  offsideToleranceM: 1.0, // receiver this far beyond the second-last defender → flagged
+  penaltyGoalProb: 0.76,
+  cornerProb: 0.25, // P(corner | shot saved or off target)
+  setPieceHeaderXgFactor: 0.7, // headers convert worse than feet from the same spot
+  setPieceDeliveryNoiseM: 3.5, // ×(20 − setPieceDelivery)/20
+  homePressureRelief: 0.06, // crowd effect: home carrier feels less pressure
+
   // ── bookkeeping ────────────────────────────────────────────────────────────
   fatiguePerTick: 0.00009, // ~0.24/half at tick 0.5 s before stamina scaling
   fatigueWorkShare: 0.6, // share of the tick's fatigue that scales with distance run
   staminaFatigueRelief: 0.5, // ×(1 − relief·stamina/20)
+  ppdaZoneOwnRelXM: 63, // build-up zone: passer's own-relative x below this
+  ratingGoalBonus: 0.8, // playerRatings: base 6.5 ± these
+  ratingAerialBonus: 0.05,
+  ratingCardPenalty: 0.4,
 } as const;
 
 // ── world state ───────────────────────────────────────────────────────────────
