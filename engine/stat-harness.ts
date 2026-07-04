@@ -21,6 +21,8 @@
  */
 
 import { AgentEngine } from './agent-engine.ts';
+import { AnchorPositioningModel } from './agent-positioning.ts';
+import type { AgentSnapshot } from './agent-model.ts';
 import { AggregateEngine, HALF_SECONDS } from './engine-aggregate.ts';
 import type { SimEngine } from './engine-types.ts';
 import { Rng } from './engine-rng.ts';
@@ -40,8 +42,14 @@ import type {
 const MASTER_SEEDS = ['harness-v1', 'harness-v2', 'harness-v3'] as const;
 const SEED0 = MASTER_SEEDS[0];
 const argv = process.argv.slice(2);
-const N_MATCHES = argv.includes('--n') ? parseInt(argv[argv.indexOf('--n') + 1], 10) : 600;
-const N_SWEEP = 150;
+// --quick: shrink every section for slow-engine dev loops (agent ticks are
+// ~0.7 s per half). Never used by the CI gate — bands are meaningless at
+// this scale; plumbing rows are the point.
+const QUICK = argv.includes('--quick');
+const N_MATCHES = argv.includes('--n') ? parseInt(argv[argv.indexOf('--n') + 1], 10) : QUICK ? 20 : 600;
+const N_SWEEP = QUICK ? 8 : 150;
+const N_SENTOFF = QUICK ? 12 : 250;
+const N_STRENGTH = QUICK ? 12 : 200;
 const JSON_ONLY = argv.includes('--json');
 
 // ── synthetic squad generation (4-3-3) ───────────────────────────────────────
@@ -456,7 +464,7 @@ const setAll = (club: Club, f: (i: PlayerInstructions) => void): void =>
 // ── 5. sent-off resume: 10 men degrade; carried player frozen ────────────────
 
 {
-  const N = 250;
+  const N = N_SENTOFF;
   const rng = Rng.fromSeed(`${SEED0}|sentoff`);
   const ctrl = { forShots: 0, forXg: 0, againstShots: 0, againstXg: 0 };
   const short = { forShots: 0, forXg: 0, againstShots: 0, againstXg: 0 };
@@ -505,12 +513,80 @@ const setAll = (club: Club, f: (i: PlayerInstructions) => void): void =>
   );
 }
 
+// ── 5b. agent pitch control (plumbing — engine-agnostic module checks) ───────
+
+{
+  const model = new AnchorPositioningModel();
+  const snap = (id: string, side: 'home' | 'away', x: number, y: number, pace = 14, acceleration = 14): AgentSnapshot => {
+    const attrs = {} as Attributes;
+    for (const k of ATTR_KEYS) attrs[k] = 12;
+    attrs.pace = pace;
+    attrs.acceleration = acceleration;
+    return {
+      id, side, isGk: false, pos: { x, y }, vel: { x: 0, y: 0 }, attributes: attrs, fatigue: 0.1,
+      instructions: { riskAppetite: 0.5, shootingBias: 0.5, dribbleBias: 0.5, pressingIntensity: 0.5, holdPosition: 0.5, crossBias: 0.5 },
+    };
+  };
+  const ball = { pos: { x: 52.5, y: 34 }, flight: 'ground' as const, carrierId: null, lastTouchSide: 'home' as const };
+  const sample = (field: { cols: number; rows: number; controlAt(c: number, r: number): number }): number[] => {
+    const out: number[] = [];
+    for (let r = 0; r < field.rows; r++) for (let c = 0; c < field.cols; c++) out.push(field.controlAt(c, r));
+    return out;
+  };
+
+  // shares sum to 1: swapping the sides must mirror the field exactly
+  const home = [snap('h1', 'home', 40, 30), snap('h2', 'home', 60, 40)];
+  const away = [snap('a1', 'away', 55, 20), snap('a2', 'away', 70, 45)];
+  const field = sample(model.computePitchControl(home, away, ball));
+  const mirrored = sample(new AnchorPositioningModel().computePitchControl(away, home, ball));
+  const sumsToOne = field.every((v, i) => v >= 0 && v <= 1 && Math.abs(v + mirrored[i] - 1) < 1e-9);
+  checkBool(SEED0, 'plumbing', 'pitch control: cell shares sum to 1 (side-swap mirror)', sumsToOne);
+
+  // pace shifts control: identical geometry, one side faster
+  const mkDuel = (homePace: number) =>
+    new AnchorPositioningModel()
+      .computePitchControl([snap('h', 'home', 45, 34, homePace, homePace)], [snap('a', 'away', 60, 34)], ball)
+      .controlAtPoint({ x: 52.5, y: 34 });
+  const evenPace = mkDuel(14);
+  const fastHome = mkDuel(19);
+  checkBool(
+    SEED0, 'plumbing', 'pitch control: pacier player pulls the midpoint',
+    fastHome > evenPace + 0.02, `${fastHome.toFixed(3)} > ${evenPace.toFixed(3)} + .02`,
+  );
+
+  // numerical advantage: 3v1 around a zone → majority control there
+  const zone = { x: 80, y: 34 };
+  const crowd = [snap('h1', 'home', 75, 28), snap('h2', 'home', 84, 34), snap('h3', 'home', 78, 42)];
+  const lone = [snap('a1', 'away', 88, 34)];
+  const crowded = new AnchorPositioningModel().computePitchControl(crowd, lone, ball);
+  let zoneCells = 0;
+  let zoneMajority = 0;
+  for (let r = 0; r < crowded.rows; r++) {
+    for (let c = 0; c < crowded.cols; c++) {
+      const x = ((c + 0.5) * 105) / crowded.cols;
+      const y = ((r + 0.5) * 68) / crowded.rows;
+      if (Math.hypot(x - zone.x, y - zone.y) <= 10) {
+        zoneCells++;
+        if (crowded.controlAt(c, r) > 0.5) zoneMajority++;
+      }
+    }
+  }
+  checkBool(
+    SEED0, 'plumbing', 'pitch control: numerical advantage → zone majority',
+    zoneCells > 0 && zoneMajority / zoneCells > 0.6, `${zoneMajority}/${zoneCells} cells > 0.5`,
+  );
+
+  // deterministic: same inputs, byte-identical field
+  const again = sample(new AnchorPositioningModel().computePitchControl(home, away, ball));
+  checkBool(SEED0, 'plumbing', 'pitch control: deterministic (byte-identical)', JSON.stringify(field) === JSON.stringify(again));
+}
+
 // ── 6. strength sanity (info) ────────────────────────────────────────────────
 
 {
   const rng = Rng.fromSeed(`${SEED0}|strength`);
   let wins = 0, draws = 0;
-  const n = 200;
+  const n = N_STRENGTH;
   for (let i = 0; i < n; i++) {
     const strong = makeClub(rng, `S${i}`, 15);
     const weak = makeClub(rng, `W${i}`, 9);

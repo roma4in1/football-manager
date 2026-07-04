@@ -356,14 +356,18 @@ function stepToward(s: AgentState, target: Vec2): void {
     AGENT_CAL.maxSpeedMps * (s.attributes.pace / 20) * (1 - AGENT_CAL.fatigueSpeedPenalty * s.fatigue);
   const step = speed * AGENT_CAL.tickSeconds;
   const d = dist(s.pos, target);
-  if (d <= step) {
-    s.pos = clampToPitch({ ...target });
-    return;
-  }
-  s.pos = clampToPitch({
-    x: s.pos.x + ((target.x - s.pos.x) / d) * step,
-    y: s.pos.y + ((target.y - s.pos.y) / d) * step,
-  });
+  const prev = s.pos;
+  s.pos = d <= step
+    ? clampToPitch({ ...target })
+    : clampToPitch({
+        x: s.pos.x + ((target.x - s.pos.x) / d) * step,
+        y: s.pos.y + ((target.y - s.pos.y) / d) * step,
+      });
+  // velocity feeds the pitch-control arrival model (reaction-window carry)
+  s.vel = {
+    x: (s.pos.x - prev.x) / AGENT_CAL.tickSeconds,
+    y: (s.pos.y - prev.y) / AGENT_CAL.tickSeconds,
+  };
 }
 
 const snapshots = (states: AgentState[], side: Side): AgentSnapshot[] =>

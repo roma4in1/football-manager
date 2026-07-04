@@ -38,8 +38,15 @@ Newest first. Keep entries short: what, why, where enforced.
   plus ball x (buildUp/progression/finalThird vs defensiveBlock).
 - **Stubbed vs real** — real: tick loop, phase machine, keyed rng, movement,
   emission contracts (frames/events/stats/heatmaps/endState), sent-off and
-  resume handling, execution-noise plumbing, softmax choice. Stubbed:
-  pitch-control computation (uniform 0.5), positioning deformation (anchor +
+  resume handling, execution-noise plumbing, softmax choice, and
+  **pitch control** (2026-07-04: Spearman-style arrival-time race on the
+  AGENT_CAL grid — reaction window carried at current velocity, then an
+  accelerate-to-vmax run scaled by pace/acceleration/fatigue; home share is
+  a logistic on the best-arrival differential; the grid buffer is allocated
+  once per model and refilled in place, and the returned field aliases it
+  until the next tick. Full match ≈ 1.5 s. Harness plumbing rows verify
+  sum-to-1 via side-swap mirroring, pace pull, numerical-advantage majority,
+  and byte-identical determinism). Stubbed: positioning deformation (anchor +
   ball pull only), option generation/scoring (nearest-mates + progress),
   success resolution (distance/skill logistic), xG (flat 0.1), ratings, ppda,
   no foul/card/injury/offside/set-piece/GK models. Harness plumbing passes;
