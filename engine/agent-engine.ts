@@ -210,7 +210,15 @@ export class AgentEngine implements SimEngine {
         };
         const options = this.decision.generateOptions(ctx);
         const chosen = this.decision.choose(this.decision.scoreOptions(ctx, options), ctx, rng, tick);
-        const outcome = this.execution.execute(chosen, ctx.carrier, rng, tick);
+        const outcome = this.execution.execute(chosen, {
+          actor: ctx.carrier,
+          ourControl: (p) => (side === 'home' ? control.controlAtPoint(p) : 1 - control.controlAtPoint(p)),
+          opponents: opps,
+          receiver: chosen.receiverId ? mates.find((m) => m.id === chosen.receiverId) : undefined,
+          defendingGk: opps.find((o) => o.isGk),
+          pressure: ctx.pressure,
+          attackingGoalX: ctx.attackingGoal.x,
+        }, rng, tick);
 
         // ── resolve ball + detect events
         if (chosen.type === 'shot') {

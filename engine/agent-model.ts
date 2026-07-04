@@ -102,6 +102,30 @@ export const AGENT_CAL = {
   aerialHeightCmWeight: 0.02, // duel score: height contribution per cm over 170
   aerialJumpingWeight: 0.6,
   aerialHeadingWeight: 0.4,
+  aerialStrengthWeight: 0.25,
+  aerialArrivalPerSecond: 3, // duel-score points per second of arrival advantage
+  aerialNoiseSigma: 2,
+  // success resolution (execution owns the truth; decision only estimates)
+  groundPassSpeedMps: 14,
+  loftedPassSpeedMps: 16, // chord speed of the arc — hang time favors defenders
+  raceSteepness: 2.5, // logit per second of ball-vs-defender arrival margin
+  interceptOffsetS: 0.35, // defender must beat the ball by this for even odds
+  anticipationRaceS: 0.06, // seconds shaved off arrival per anticipation point over 10
+  execComposureRelief: 0.025, // pressure attenuation ×composure (execution side)
+  passExecBaseLogit: 2.2, // technical completion given no interception
+  passExecSkillLogit: 1.2, // ×(attr/20 − 0.5)·2
+  passExecPressureLogit: 1.0,
+  carryExecBaseLogit: 1.6,
+  carryExecSkillLogit: 1.2,
+  carryExecPressureLogit: 1.8,
+  carryControlLogit: 0.8, // ×(ourControl(end) − 0.5)
+  shotOnTargetBase: 0.4,
+  shotSkillLogit: 1.0,
+  shotDistDecayM: 18, // logit −d/decay
+  shotPressureLogit: 0.8,
+  gkBeatBase: -0.4, // P(goal | on target) logit vs keeper quality
+  gkXgWeight: 3.0, // ×(xgProxy − 0.1): big chances beat keepers
+  gkQualityLogit: 1.2, // ×(mean(gkReflexes, gkPositioning)/20 − 0.5)·2
 
   // ── phases ─────────────────────────────────────────────────────────────────
   counterPressSeconds: 6, // window after losing the ball (types.ts note: ~6 s)
