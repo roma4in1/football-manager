@@ -23,8 +23,9 @@ export const AGENT_CAL = {
   // ── pitch control (Spearman-style, coarse grid) ───────────────────────────
   pitchControlCols: 21, // 5 m cells across 105 m
   pitchControlRows: 14, // ~4.9 m cells across 68 m
-  arrivalTimeReactionSeconds: 0.7, // stub prior; real model uses pace/agility
-  controlSteepness: 4, // logistic slope on arrival-time difference
+  arrivalTimeReactionSeconds: 0.7, // velocity carries the player through this window
+  controlSteepness: 4, // logistic slope on best-arrival-time differential (per second)
+  maxAccelMps2: 6, // ×(acceleration/20) at use sites — accel phase of the arrival model
 
   // ── positioning ────────────────────────────────────────────────────────────
   anchorPull: 1.0, // weight toward the phase anchor
