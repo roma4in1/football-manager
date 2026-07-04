@@ -31,10 +31,21 @@ export const AGENT_CAL = {
   anchorPull: 1.0, // weight toward the phase anchor
   ballAttraction: 0.35, // attractor: ball position
   markingAttraction: 0.5, // attractor: assigned opponent (out of possession)
+  markingRadiusM: 16, // opponents beyond this aren't picked up
   spaceRepulsion: 0.3, // repulsor: teammate crowding
   repulsionRadiusM: 8,
   maxSpeedMps: 7.5, // scaled by pace/20 at use sites
   fatigueSpeedPenalty: 0.25, // ×(1 − penalty·fatigue)
+  lineHeightShiftM: 12, // defensive base x shift across lineHeight 0→1
+  widthSpreadBase: 0.7, // y spread = base + gain×width
+  widthSpreadGain: 0.6,
+  compactnessPull: 0.4, // ×team.compactness toward team centroid, out of possession
+  pressPullWeight: 1.4, // nearest defenders chase the ball
+  pressersCount: 2, // how many join the press
+  pressMaxDistM: 30, // beyond this nobody presses
+  forwardRunPull: 0.3, // ×(offTheBall/20), possession phases, off-ball players
+  gkBoxX: 5.5, // GK holds this deep
+  gkBallTrackY: 0.3, // GK lateral ball tracking share
 
   // ── decision ───────────────────────────────────────────────────────────────
   softmaxBaseTemperature: 1.0,
@@ -67,6 +78,7 @@ export const AGENT_CAL = {
 
   // ── bookkeeping ────────────────────────────────────────────────────────────
   fatiguePerTick: 0.00009, // ~0.24/half at tick 0.5 s before stamina scaling
+  fatigueWorkShare: 0.6, // share of the tick's fatigue that scales with distance run
   staminaFatigueRelief: 0.5, // ×(1 − relief·stamina/20)
 } as const;
 
@@ -130,3 +142,27 @@ export const clampToPitch = (p: Vec2): Vec2 => ({
 });
 
 export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+/**
+ * Time for one player to reach a point: the reaction window carries them at
+ * their current velocity, then they accelerate toward the point up to vmax.
+ * vmax scales with pace and fatigue, the acceleration phase with the
+ * acceleration attribute (kinematics: d_accel = vmax²/2a).
+ */
+export function arrivalTime(p: AgentSnapshot, x: number, y: number): number {
+  const vmax = Math.max(
+    0.5,
+    AGENT_CAL.maxSpeedMps * (p.attributes.pace / 20) * (1 - AGENT_CAL.fatigueSpeedPenalty * p.fatigue),
+  );
+  const accel = Math.max(0.5, AGENT_CAL.maxAccelMps2 * (p.attributes.acceleration / 20));
+  const tReact = AGENT_CAL.arrivalTimeReactionSeconds;
+  const px = p.pos.x + p.vel.x * tReact;
+  const py = p.pos.y + p.vel.y * tReact;
+  const dx = x - px;
+  const dy = y - py;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  const dAccel = (vmax * vmax) / (2 * accel);
+  const tRun = d <= dAccel ? Math.sqrt((2 * d) / accel) : vmax / accel + (d - dAccel) / vmax;
+  return tReact + tRun;
+}
+

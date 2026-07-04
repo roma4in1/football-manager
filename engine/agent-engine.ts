@@ -153,6 +153,7 @@ export class AgentEngine implements SimEngine {
     const heat = new HeatAccumulator(states.map((s) => s.id));
     const possessionTicks: Record<Side, number> = { home: 0, away: 0 };
 
+    const workOf = new Map<string, number>(); // per-tick share of max sprint, feeds fatigue
     const ticks = Math.floor(HALF_SECONDS / AGENT_CAL.tickSeconds);
     const framePeriod = Math.round(AGENT_CAL.frameEverySeconds / AGENT_CAL.tickSeconds);
 
@@ -182,7 +183,9 @@ export class AgentEngine implements SimEngine {
         });
         for (const s of states) {
           if (s.side !== side) continue;
-          stepToward(s, targets.get(s.id) ?? s.pos);
+          const moved = stepToward(s, targets.get(s.id) ?? s.pos);
+          const maxStep = AGENT_CAL.maxSpeedMps * AGENT_CAL.tickSeconds;
+          workOf.set(s.id, moved / maxStep);
         }
       }
 
@@ -267,9 +270,11 @@ export class AgentEngine implements SimEngine {
 
       // ── bookkeeping
       for (const s of states) {
+        // base metabolic cost + a share that scales with distance actually run
+        const work = 1 - AGENT_CAL.fatigueWorkShare + AGENT_CAL.fatigueWorkShare * 2 * (workOf.get(s.id) ?? 0);
         s.fatigue = Math.min(
           1,
-          s.fatigue + AGENT_CAL.fatiguePerTick * (1 - AGENT_CAL.staminaFatigueRelief * (s.attributes.stamina / 20)),
+          s.fatigue + AGENT_CAL.fatiguePerTick * work * (1 - AGENT_CAL.staminaFatigueRelief * (s.attributes.stamina / 20)),
         );
       }
       if (tick % framePeriod === 0) {
@@ -351,7 +356,8 @@ function setup(
 
 // ── movement + lookups ────────────────────────────────────────────────────────
 
-function stepToward(s: AgentState, target: Vec2): void {
+/** Returns the distance actually covered (feeds work-based fatigue). */
+function stepToward(s: AgentState, target: Vec2): number {
   const speed =
     AGENT_CAL.maxSpeedMps * (s.attributes.pace / 20) * (1 - AGENT_CAL.fatigueSpeedPenalty * s.fatigue);
   const step = speed * AGENT_CAL.tickSeconds;
@@ -364,10 +370,12 @@ function stepToward(s: AgentState, target: Vec2): void {
         y: s.pos.y + ((target.y - s.pos.y) / d) * step,
       });
   // velocity feeds the pitch-control arrival model (reaction-window carry)
+  const moved = dist(prev, s.pos);
   s.vel = {
     x: (s.pos.x - prev.x) / AGENT_CAL.tickSeconds,
     y: (s.pos.y - prev.y) / AGENT_CAL.tickSeconds,
   };
+  return moved;
 }
 
 const snapshots = (states: AgentState[], side: Side): AgentSnapshot[] =>

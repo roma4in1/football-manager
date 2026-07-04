@@ -46,8 +46,14 @@ Newest first. Keep entries short: what, why, where enforced.
   once per model and refilled in place, and the returned field aliases it
   until the next tick. Full match ≈ 1.5 s. Harness plumbing rows verify
   sum-to-1 via side-swap mirroring, pace pull, numerical-advantage majority,
-  and byte-identical determinism). Stubbed: positioning deformation (anchor +
-  ball pull only), option generation/scoring (nearest-mates + progress),
+  and byte-identical determinism), and **positioning deformation**
+  (2026-07-04: anchors shaped by lineHeight/width team instructions, a
+  pressers set chasing the ball, marking pickups within radius, compactness
+  squeeze toward the block centroid, offTheBall forward runs in possession,
+  teammate space repulsion — all weighted attractor pulls from AGENT_CAL;
+  fatigue now accrues proportional to distance actually run via
+  fatigueWorkShare, so press intensity costs legs). Stubbed: option
+  generation/scoring (nearest-mates + progress),
   success resolution (distance/skill logistic), xG (flat 0.1), ratings, ppda,
   no foul/card/injury/offside/set-piece/GK models. Harness plumbing passes;
   all bands fail by design until calibration.
