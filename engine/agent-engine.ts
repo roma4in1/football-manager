@@ -34,6 +34,7 @@ import {
   dist,
   PITCH_LENGTH,
   PITCH_WIDTH,
+  xgProxy,
   type AgentSnapshot,
   type AgentState,
   type BallState,
@@ -217,7 +218,7 @@ export class AgentEngine implements SimEngine {
           events.push({
             t: now, type: 'shot', playerId: carrier.id,
             from: { ...carrier.pos }, to: outcome.endPoint, flight: outcome.flight,
-            meta: { xg: 0.1 }, // STUB xG — Wednesday's shot model owns this
+            meta: { xg: Math.round(xgProxy(carrier.pos, side === 'home' ? PITCH_LENGTH : 0) * 1000) / 1000 },
           });
           if (outcome.goal) {
             score[side]++;
@@ -232,8 +233,20 @@ export class AgentEngine implements SimEngine {
           ball.pos = { ...carrier.pos };
           ball.lastTouchSide = side;
         } else {
-          // pass-like: lofted/high arrivals may contest an aerial duel
-          tallies.pass(carrier.id, outcome.success);
+          // pass-like: lofted/high arrivals may contest an aerial duel.
+          // passAccuracy is GROUND passes only (the passing/longPassing split —
+          // long-ball completion is measured from pass events instead).
+          if (outcome.flight === 'ground' || outcome.flight === 'driven') {
+            tallies.pass(carrier.id, outcome.success);
+          }
+          if (outcome.flight === 'lofted' || outcome.flight === 'high') {
+            // long-ball metrics read these (ground passes stay event-silent)
+            events.push({
+              t: now, type: 'pass', playerId: carrier.id,
+              from: { ...carrier.pos }, to: outcome.endPoint, flight: outcome.flight,
+              outcome: outcome.success ? 'success' : 'fail',
+            });
+          }
           let receiver: AgentState | undefined;
           if (!outcome.success && (outcome.flight === 'lofted' || outcome.flight === 'high')) {
             const duel = this.execution.resolveAerialDuel(
@@ -244,6 +257,8 @@ export class AgentEngine implements SimEngine {
             receiver = byId.get(duel.winnerId);
           } else if (outcome.success && chosen.receiverId) {
             receiver = byId.get(chosen.receiverId);
+          } else if (outcome.success) {
+            receiver = nearestAny(states, outcome.endPoint); // clear: loose ball, nearest body
           } else {
             receiver = nearestTo(states, side === 'home' ? 'away' : 'home', outcome.endPoint); // turnover
           }

@@ -52,11 +52,44 @@ export const AGENT_CAL = {
   temperaturePerDecisionsPoint: 0.03, // T = base − k·(decisions−10), floored
   temperatureFloor: 0.25,
   composurePressureRelief: 0.02, // pressure penalty attenuation per composure point
-  passOptionCount: 5, // geometric candidates per decision
-  carryOptionCount: 3,
+  passOptionCount: 5, // geometric candidates per decision (vision widens toward this)
+  carryOptionCount: 3, // forward + two diagonals
   riskAppetiteScoreBias: 0.3, // instructions bias SCORING only (frozen invariant)
   shootingBiasScoreBias: 0.4,
   holdPositionScoreBias: 0.2,
+  dribbleBiasScoreBias: 0.15,
+  crossBiasScoreBias: 0.35,
+  // option geometry
+  passRangeM: 26, // beyond → longPass (lofted)
+  leadPassM: 2.5, // targets lead the receiver toward goal
+  shotRangeM: 28,
+  crossWideYOffsetM: 16, // |y − 34| beyond this in the final third → crossing zone
+  carryStepM: 8,
+  clearOwnRelXM: 30, // inside own-relative x AND pressured → clear is an option
+  clearPressureFloor: 0.45,
+  // scoring: score = P(complete)·V(target) − turnoverCost·(1−P)·V_opp(target)
+  valueControlWeight: 0.5, // pitch-control share folded into V(target)
+  turnoverCostWeight: 0.6,
+  xtProgressExp: 1.6, // positionValue = (x_rel/105)^exp × width falloff
+  xtWidthPenalty: 0.5,
+  passBaseLogit: 1.9, // P(complete) logit intercept
+  passSkillLogit: 1.0, // ×(skill/20 − 0.5)·2
+  passDistDecayM: 20, // logit −d/decay
+  laneRiskLogit: 1.6, // ×(1 − nearest-opponent-to-lane / laneRadius)
+  laneRadiusM: 4,
+  controlCompletionLogit: 0.8, // ×(ourControl(target) − 0.5)
+  carryBaseLogit: 1.4,
+  carryPressureLogit: 1.5,
+  shotValueWeight: 1.4, // shot score = weight × xgProxy + biases
+  holdBaseScore: -0.15,
+  holdPressurePenalty: 0.5,
+  tempoHoldPenalty: 0.25, // high tempo teams hate standing on the ball
+  clearBaseScore: -0.5,
+  clearPressureGain: 1.0,
+  // shared xG proxy (decision scoring now, shot/GK models in parts c–d)
+  xgMax: 0.75,
+  xgDistDecayM: 11,
+  xgCentralityFloor: 0.25, // angle factor: floor + (1−floor)×centrality
 
   // ── execution ──────────────────────────────────────────────────────────────
   passDirectionNoiseRad: 0.12, // ×(20 − passing)/20 at use sites
@@ -149,6 +182,30 @@ export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.
  * vmax scales with pace and fatigue, the acceleration phase with the
  * acceleration attribute (kinematics: d_accel = vmax²/2a).
  */
+/**
+ * Value of holding the ball at a point for the side attacking goalX — an
+ * xT-style proxy: grows toward the opponent goal (power curve), damped
+ * toward the touchlines. In [0, 1].
+ */
+export function positionValue(p: Vec2, goalX: number): number {
+  const xRel = goalX === 0 ? PITCH_LENGTH - p.x : p.x;
+  const progress = Math.pow(Math.max(0, xRel) / PITCH_LENGTH, AGENT_CAL.xtProgressExp);
+  const widthFalloff = 1 - AGENT_CAL.xtWidthPenalty * Math.pow(Math.abs(p.y - PITCH_WIDTH / 2) / (PITCH_WIDTH / 2), 2);
+  return progress * widthFalloff;
+}
+
+/**
+ * Shared xG proxy — distance decay × centrality. Used by decision scoring
+ * now, and by the shot/GK resolution models (parts c–d) so the two never
+ * disagree about what a good chance is.
+ */
+export function xgProxy(shotPos: Vec2, goalX: number): number {
+  const d = dist(shotPos, { x: goalX, y: PITCH_WIDTH / 2 });
+  const centrality = 1 - Math.min(1, Math.abs(shotPos.y - PITCH_WIDTH / 2) / (PITCH_WIDTH / 2));
+  const angleFactor = AGENT_CAL.xgCentralityFloor + (1 - AGENT_CAL.xgCentralityFloor) * centrality;
+  return AGENT_CAL.xgMax * Math.exp(-d / AGENT_CAL.xgDistDecayM) * angleFactor;
+}
+
 export function arrivalTime(p: AgentSnapshot, x: number, y: number): number {
   const vmax = Math.max(
     0.5,
