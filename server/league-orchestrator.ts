@@ -54,7 +54,7 @@ import { AggregateEngine } from '@fm/engine/aggregate';
 import { Rng } from '@fm/engine/rng';
 import type { SimEngine, Tactics } from '@fm/engine/types';
 import { createAuctionCore, type AuctionCore, type AuctionTuning } from './league-auction.ts';
-import { LEAGUE_CFG, medicalInjuryDurationMul } from '@fm/engine/config';
+import { LEAGUE_CFG, medicalInjuryAvoidProb, medicalInjuryDurationMul } from '@fm/engine/config';
 import { bestXI, validateTactics } from '@fm/engine/eligibility';
 import * as store from './league-store.ts';
 
@@ -309,6 +309,9 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
       for (const playerId of injured) {
         if (!clubOf.has(playerId)) continue;
         const level = medical.get(clubOf.get(playerId)!) ?? 0;
+        // medical staff shrug off a share of knocks entirely — deterministic
+        // per (fixture seed, player) so retried bookkeeping agrees
+        if (Rng.fromSeed(`${fx!.seed}|injury-avoid|${playerId}`).float() < medicalInjuryAvoidProb(level)) continue;
         await store.applyInjury(c, mw!.seasonId, playerId, injuryWeeks(fx!.seed, playerId, level));
       }
 

@@ -160,3 +160,8 @@ table.stats, table.standings { width: 100%; border-collapse: collapse; margin: 0
   .replay-head { font-size: 0.9rem; }
   .replay-score { font-size: 1.2rem; }
 }
+
+/* ── facilities ─────────────────────────────────────────────────────────── */
+.facility-pips { display: flex; align-items: center; gap: 0.3rem; }
+.pip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); display: inline-block; }
+.pip.filled { background: var(--accent); border-color: var(--accent); }

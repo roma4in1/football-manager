@@ -21,10 +21,21 @@ export const LEAGUE_CFG = {
   // between-week tick
   fatigueWeeklyRecovery: 0.4, // fraction of fatigue shed per tick (before medical scaling)
 
-  // medical facility hooks — placeholder linear multipliers, level 0 = 1.0.
-  // Facility economy isn't built yet; these only need to be monotonic and neutral at 0.
-  medicalRecoveryBonusPerLevel: 0.05, // recovery ×(1 + bonus·level)
-  medicalInjuryReductionPerLevel: 0.06, // injury duration ×(1 − reduction·level), floored
+  // ── facilities (levels 0–5 on club_seasons; economy PR) ────────────────────
+  // Costs are for the NEXT level (index = current level): rising so maxing
+  // both facilities (2 × 130k) exceeds a default 100k budget — real tradeoffs.
+  facilityCostByLevel: [5_000, 10_000, 20_000, 35_000, 60_000],
+  facilityLevelMax: 5,
+  // Medical curve — real values (was placeholder). Neutral at 0; at level 5:
+  // 30% of match injuries shrugged off, duration ×0.70, fatigue recovery ×1.25.
+  // Injuries still happen at max medical by design.
+  medicalRecoveryBonusPerLevel: 0.05, // fatigue recovery ×(1 + bonus·level)
+  medicalInjuryReductionPerLevel: 0.06, // injury duration ×(1 − reduction·level), floor 0.5
+  medicalInjuryAvoidPerLevel: 0.06, // P(engine injury event not applied) = level × this
+  // Training — HOOK ONLY here: the training-focus + season-end-growth PR
+  // consumes trainingGrowthMul(training_level) as the per-player growth
+  // multiplier. No growth is applied anywhere yet.
+  trainingGrowthPerLevel: 0.15, // growth ×(1 + this·level) at season end (next PR)
 
   // squad rules
   startersRequired: 11,
@@ -59,3 +70,14 @@ export const medicalRecoveryMul = (medicalLevel: number): number =>
 
 export const medicalInjuryDurationMul = (medicalLevel: number): number =>
   Math.max(0.5, 1 - LEAGUE_CFG.medicalInjuryReductionPerLevel * medicalLevel);
+
+export const medicalInjuryAvoidProb = (medicalLevel: number): number =>
+  Math.min(0.5, LEAGUE_CFG.medicalInjuryAvoidPerLevel * medicalLevel);
+
+/** Season-end growth multiplier — the training-hook contract (next PR consumes). */
+export const trainingGrowthMul = (trainingLevel: number): number =>
+  1 + LEAGUE_CFG.trainingGrowthPerLevel * trainingLevel;
+
+/** Cost to buy the NEXT facility level; null when already at the cap. */
+export const facilityUpgradeCost = (currentLevel: number): number | null =>
+  currentLevel >= LEAGUE_CFG.facilityLevelMax ? null : LEAGUE_CFG.facilityCostByLevel[currentLevel];

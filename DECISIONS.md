@@ -3,6 +3,34 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-09 — facilities economy: training + medical (youth DEFERRED)
+
+- **Youth academy is explicitly deferred** — no schema column, no hook; it
+  arrives with a youth-intake design, not as a third level counter.
+- **Cost curve** (league-config `facilityCostByLevel`): 5k/10k/20k/35k/60k
+  for levels 1→5. Maxing one facility costs 130k, both 260k, against a 100k
+  default budget shared with auction spending — investment is a real
+  tradeoff, not a checkbox.
+- **Investment phases**: open during `regular` AND `transfer_window`
+  (facilities are a season-long management lever), closed during `auction`
+  — transfer_budget IS the live bidding balance there, and mutating it
+  mid-lot would race bid validation — and from `season_end` on. Budget
+  headroom = transfer_budget − Σ(auction_win + facility_investment) txns;
+  wage_payment rides the wage-cap system, not the transfer budget.
+- **Medical curve** (real values; the placeholder-linear hooks now carry
+  weight): at level 5 — 30% of match injuries shrugged off entirely
+  (`medicalInjuryAvoidPerLevel` 0.06, deterministic per fixture-seed+player
+  so retried bookkeeping agrees), injury duration ×0.70
+  (`medicalInjuryReductionPerLevel` 0.06, floor 0.5), weekly fatigue
+  recovery ×1.25 (`medicalRecoveryBonusPerLevel` 0.05). Neutral at level 0;
+  injuries still happen at max medical by design.
+- **Training hook contract** (growth is NOT implemented here): the
+  training-focus + season-end-growth PR consumes
+  `trainingGrowthMul(training_level)` (= 1 + 0.15·level, league-config) as
+  the per-player growth multiplier, reading levels via
+  `store.getTrainingLevels(seasonId, clubIds)`. Nothing else may interpret
+  training_level until that PR lands.
+
 ## 2026-07-09 — variable club count: supported N = 2–10, odd N via byes
 
 - **Schedule**: doubleRoundRobin (league-auction.ts) uses the circle method

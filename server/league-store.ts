@@ -235,6 +235,62 @@ export async function loadEligibilitySquad(c: Queryable, clubId: string, seasonI
 }
 
 /** clubId → medical facility level (club_seasons); missing rows read as level 0. */
+/** clubId → training facility level — the season-end-growth PR's input. */
+export async function getTrainingLevels(c: Queryable, seasonId: string, clubIds: string[]): Promise<Map<string, number>> {
+  const { rows } = await c.query(
+    `SELECT club_id, training_level FROM club_seasons WHERE season_id = $1 AND club_id = ANY($2)`,
+    [seasonId, clubIds],
+  );
+  return new Map(rows.map((r) => [r.club_id, r.training_level]));
+}
+
+export interface FacilitiesRow {
+  trainingLevel: number;
+  medicalLevel: number;
+  transferBudget: number;
+}
+
+export async function getFacilities(
+  c: Queryable, seasonId: string, clubId: string, forUpdate = false,
+): Promise<FacilitiesRow | null> {
+  const { rows } = await c.query(
+    `SELECT training_level, medical_level, transfer_budget FROM club_seasons
+     WHERE season_id = $1 AND club_id = $2 ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [seasonId, clubId],
+  );
+  return rows[0]
+    ? { trainingLevel: rows[0].training_level, medicalLevel: rows[0].medical_level, transferBudget: Number(rows[0].transfer_budget) }
+    : null;
+}
+
+/** Sum of the club's debiting transactions of the given kinds this season. */
+export async function debitedTotal(
+  c: Queryable, seasonId: string, clubId: string, kinds: string[],
+): Promise<number> {
+  const { rows } = await c.query(
+    `SELECT COALESCE(SUM(amount), 0)::bigint AS total FROM transactions
+     WHERE season_id = $1 AND club_id = $2 AND kind = ANY($3::txn_kind[])`,
+    [seasonId, clubId, kinds],
+  );
+  return Number(rows[0].total);
+}
+
+/** Raise a facility one level + record the txn — caller holds the row lock. */
+export async function applyFacilityInvestment(
+  c: Queryable, seasonId: string, clubId: string, facility: 'training' | 'medical', cost: number,
+): Promise<void> {
+  const column = facility === 'training' ? 'training_level' : 'medical_level';
+  await c.query(
+    `UPDATE club_seasons SET ${column} = ${column} + 1 WHERE season_id = $1 AND club_id = $2`,
+    [seasonId, clubId],
+  );
+  await c.query(
+    `INSERT INTO transactions (season_id, kind, club_id, amount, memo)
+     VALUES ($1, 'facility_investment', $2, $3, $4)`,
+    [seasonId, clubId, cost, `${facility} facility upgrade`],
+  );
+}
+
 export async function getMedicalLevels(c: Queryable, seasonId: string, clubIds: string[]): Promise<Map<string, number>> {
   const { rows } = await c.query(
     `SELECT club_id, medical_level FROM club_seasons WHERE season_id = $1 AND club_id = ANY($2)`,
