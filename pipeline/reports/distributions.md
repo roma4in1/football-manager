@@ -7,11 +7,11 @@
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
-| DF | 801 | `         ▂▅█▆▂      ` | 12.0 |
-| MF | 652 | `        ▂▄█▆▃▁      ` | 11.3 |
-| FW | 507 | `   ▁▂▄█▆▃▁          ` | 7.1 |
+| DF | 801 | `         ▂█▇▁       ` | 11.4 |
+| MF | 652 | `        ▁▄█▇▂▁      ` | 11.3 |
+| FW | 507 | `    ▁▂▅█▆▃▂         ` | 8.1 |
 
-Top 20: Joshua Kimmich (MF, 16), Iñigo Martínez (DF, 16), Nico Schlotterbeck (DF, 16), Amir Rrahmani (DF, 15), Virgil van Dijk (DF, 15), Mattéo Guendouzi (MF, 15), Jonathan Tah (DF, 15), Jan Paul van Hecke (DF, 15), Granit Xhaka (MF, 15), Pedri (MF, 15), Manuel Locatelli (MF, 15), Daley Blind (DF, 15), Angelo Stiller (MF, 15), Alexsandro (DF, 15), Pierre-Emile Højbjerg (MF, 15), Marcos Alonso (DF, 15), Pau Cubarsí (DF, 15), Min-jae Kim (DF, 15), Leonardo Balerdi (DF, 15), Rúben Dias (DF, 15)
+Top 20: Martin Ødegaard (MF, 16), Bruno Guimarães (MF, 15), Pedri (MF, 15), Joshua Kimmich (MF, 15), Rodrigo De Paul (MF, 15), Florian Tardieu (MF, 15), Mattéo Guendouzi (MF, 14), Tijjani Reijnders (MF, 14), Bruno Fernandes (MF, 14), Granit Xhaka (MF, 14), Romano Schmid (MF, 14), Daley Blind (DF, 14), Angelo Stiller (MF, 14), Pierre-Emile Højbjerg (MF, 14), Marcos Alonso (DF, 14), Facundo Medina (DF, 14), Nadiem Amiri (MF, 14), Alessandro Bastoni (DF, 14), Pedro Chirivella (MF, 14), Michael Olise (FW, 14)
 
 ## longPassing
 
@@ -29,33 +29,33 @@ Top 20: Vitinha (MF, 19), Marquinhos (DF, 18), Granit Xhaka (MF, 17), Joshua Kim
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
-| DF | 801 | `      ▁▆█▅▄▁▁       ` | 9.5 |
-| MF | 652 | `        ▂▄█▆▃▂▁     ` | 11.7 |
-| FW | 507 | `       ▁▆█▅▃▁▁      ` | 10.6 |
+| DF | 801 | `      ▁▆█▆▄▁▁       ` | 9.5 |
+| MF | 652 | `        ▁▄█▆▄▂▁     ` | 11.8 |
+| FW | 507 | `       ▂▆█▅▃▂▁      ` | 10.5 |
 
-Top 20: Joshua Kimmich (MF, 20), Michael Olise (FW, 20), Pedri (MF, 19), Luka Modrić (MF, 19), Bruno Fernandes (MF, 18), Álex Baena (MF, 18), Martin Ødegaard (MF, 18), Rayan Cherki (FW, 18), Ousmane Dembélé (FW, 18), Kevin De Bruyne (MF, 18), Isco (MF, 18), Granit Xhaka (MF, 17), Romano Schmid (MF, 17), Angelo Stiller (MF, 17), Nadiem Amiri (MF, 17), Trent Alexander-Arnold (DF, 17), Rodrigo De Paul (MF, 17), Kang-in Lee (FW, 17), Kevin Stöger (MF, 17), Giovani Lo Celso (MF, 17)
+Top 20: Álex Baena (MF, 19), Bruno Fernandes (MF, 18), Romano Schmid (MF, 18), Nadiem Amiri (MF, 18), Martin Ødegaard (MF, 18), Rayan Cherki (FW, 18), Mikkel Damsgaard (MF, 17), Joshua Kimmich (MF, 17), Junya Ito (FW, 17), Rodrigo De Paul (MF, 17), Luka Modrić (MF, 17), Isco (MF, 17), Dwight McNeil (MF, 17), Pedri (MF, 16), Téji Savanier (MF, 16), Michael Olise (FW, 16), Kevin De Bruyne (MF, 16), Kevin Stöger (MF, 16), Giovani Lo Celso (MF, 16), Joan Jordán (MF, 16)
 
 ## firstTouch
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
-| DF | 801 | `         ▂██▁       ` | 11.4 |
-| MF | 652 | `        ▁▄█▂        ` | 10.7 |
-| FW | 507 | `     ▁▃▇█▇▃▁        ` | 8.9 |
+| DF | 801 | `         █▅▁        ` | 10.5 |
+| MF | 652 | `        ▁█▇▂        ` | 10.6 |
+| FW | 507 | `       ▁▅█▆▃▁       ` | 10.3 |
 
-Top 20: Raúl Asencio (DF, 16), Matheus Nunes (DF, 15), Leny Yoro (DF, 15), Bernardo Silva (MF, 14), Boubacar Kamara (MF, 14), Oumar Solet (DF, 14), Arthur Melo (MF, 14), Lucas Hernández (DF, 14), Josip Stanisic (DF, 14), Finn Jeltsch (DF, 14), Nathan Wood (DF, 14), Ronald Araujo (DF, 14), Andrew Omobamidele (DF, 14), Kyle Walker-Peters (DF, 13), Pervis Estupiñán (DF, 13), Florian Wirtz (MF, 13), Lucas Vázquez (DF, 13), David Nemeth (DF, 13), Nikola Vlašić (MF, 13), Achraf Hakimi (DF, 13)
+Top 20: David Brooks (FW, 18), Kasey McAteer (FW, 17), Carlos Alcaraz (FW, 17), Mattia De Sciglio (DF, 16), Matheus Nunes (DF, 15), Raúl Asencio (DF, 15), Ethan Nwaneri (FW, 15), Bernardo Silva (MF, 14), Florian Wirtz (MF, 14), Amad Diallo (MF, 14), Boubacar Kamara (MF, 14), Oumar Solet (DF, 14), Leny Yoro (DF, 14), Arthur Melo (MF, 14), Lucas Hernández (DF, 14), Josip Stanisic (DF, 14), Juan Cuadrado (DF, 14), Nathan Wood (DF, 14), Harvey Elliott (MF, 14), Kylian Mbappé (FW, 13)
 
 ## dribbling
 
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
-| DF | 801 | `       ▂██▃▂▁       ` | 9.9 |
-| MF | 652 | `       ▁▅█▆▃▂       ` | 10.4 |
-| FW | 507 | `       ▁▄▆█▄▂▁      ` | 10.9 |
+| DF | 801 | `       ▁██▄▁▁       ` | 9.9 |
+| MF | 652 | `       ▁▅█▆▄▂       ` | 10.5 |
+| FW | 507 | `       ▁▄▆█▄▂ ▁     ` | 10.8 |
 
-Top 20: Ethan Nwaneri (FW, 20), Herba Guirassy (FW, 19), Rayan Cherki (FW, 18), Moses Simon (FW, 17), Jadon Sancho (FW, 17), Chidera Ejuke (FW, 17), Michael Kayode (DF, 17), Dodi Lukébakio (FW, 16), Junya Ito (FW, 16), Rafael Leão (FW, 16), Ademola Lookman (MF, 16), Enzo Millot (MF, 16), Brahim Díaz (FW, 16), Francisco Conceição (FW, 16), Pablo Sarabia (MF, 16), Carlos Alcaraz (FW, 16), Mohammed Kudus (FW, 15), Omari Hutchinson (MF, 15), Callum Hudson-Odoi (FW, 15), Dennis Appiah (DF, 15)
+Top 20: Ethan Nwaneri (FW, 20), Herba Guirassy (FW, 20), Rayan Cherki (FW, 18), Carlos Alcaraz (FW, 18), Moses Simon (FW, 17), Michael Kayode (DF, 17), Junya Ito (FW, 16), Enzo Millot (MF, 16), Jadon Sancho (FW, 16), Brahim Díaz (FW, 16), Chidera Ejuke (FW, 16), Pablo Sarabia (MF, 16), Bruno Guimarães (MF, 15), Dodi Lukébakio (FW, 15), Mohammed Kudus (FW, 15), Omari Hutchinson (MF, 15), Hugo Ekitiké (FW, 15), Rafael Leão (FW, 15), Ademola Lookman (MF, 15), Callum Hudson-Odoi (FW, 15)
 
 ## finishing
 
@@ -118,10 +118,10 @@ Top 20: Conor Coady (DF, 20), Stanley Nsoki (DF, 20), Kasey McAteer (FW, 20), Mo
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
 | DF | 801 | `       ▅█▅▃▂▁▁      ` | 10.0 |
-| MF | 652 | `        ▃█▇▄▂▁▁     ` | 11.0 |
-| FW | 507 | `       ▁▆█▄▃▂▁▁     ` | 10.7 |
+| MF | 652 | `        ▃█▆▃▂▁      ` | 11.0 |
+| FW | 507 | `       ▁▆█▄▄▂▁▁     ` | 10.6 |
 
-Top 20: Juan Miranda (DF, 18), Joshua Kimmich (MF, 17), Romano Schmid (MF, 17), Junya Ito (FW, 17), Álex Baena (MF, 17), Maximilian Mittelstädt (DF, 17), Michael Olise (FW, 17), Kevin De Bruyne (MF, 17), Bruno Fernandes (MF, 16), Raphinha (FW, 16), Alejandro Grimaldo (DF, 16), Pedro Porro (DF, 16), Trent Alexander-Arnold (DF, 16), Téji Savanier (MF, 16), Florian Thauvin (FW, 16), Adama Traoré (FW, 16), Désiré Doué (FW, 16), Nuno Tavares (DF, 16), Kevin Stöger (MF, 16), Franck Honorat (FW, 16)
+Top 20: Junya Ito (FW, 18), Álex Baena (MF, 18), Romano Schmid (MF, 17), Juan Miranda (DF, 17), Carlos Vicente (FW, 16), Bruno Fernandes (MF, 16), Mikkel Damsgaard (MF, 16), Johan Mojica (DF, 16), Pedro Porro (DF, 16), Moses Simon (FW, 16), Nadiem Amiri (MF, 16), Maximilian Mittelstädt (DF, 16), Trent Alexander-Arnold (DF, 16), Téji Savanier (MF, 16), Florian Thauvin (FW, 16), Adama Traoré (FW, 16), Kevin De Bruyne (MF, 16), Nuno Tavares (DF, 16), Franck Honorat (FW, 16), Dwight McNeil (MF, 16)
 
 ## pace
 
@@ -130,9 +130,9 @@ Top 20: Juan Miranda (DF, 18), Joshua Kimmich (MF, 17), Romano Schmid (MF, 17), 
 | GK | 168 | `  █                 ` | 3.0 |
 | DF | 801 | `       ▁▄█▂         ` | 9.9 |
 | MF | 652 | `        ▅█▃▁        ` | 10.0 |
-| FW | 507 | `       ▁▄██▄▁▁      ` | 10.8 |
+| FW | 507 | `       ▁▃▇█▃▁▁      ` | 10.7 |
 
-Top 20: Herba Guirassy (FW, 20), Ethan Nwaneri (FW, 19), Leroy Sané (FW, 17), Mahamadou Diawara (MF, 16), Dodi Lukébakio (FW, 15), Matheus Nunes (DF, 15), Jérémy Doku (FW, 15), David Neres (FW, 15), Julien Duranville (FW, 15), Moses Simon (FW, 14), Kaoru Mitoma (FW, 14), Iliman Ndiaye (FW, 14), Raúl Moro (MF, 14), Vinicius Junior (FW, 14), Callum Hudson-Odoi (FW, 14), Rayan Cherki (FW, 14), Noni Madueke (FW, 14), Jamie Gittens (FW, 14), Léo Scienza (FW, 14), Mamadou Diakhon (FW, 14)
+Top 20: Herba Guirassy (FW, 20), Ethan Nwaneri (FW, 19), Leroy Sané (FW, 16), Mahamadou Diawara (MF, 16), Dodi Lukébakio (FW, 15), Jérémy Doku (FW, 15), David Neres (FW, 15), Moses Simon (FW, 14), Hugo Ekitiké (FW, 14), Iliman Ndiaye (FW, 14), Raúl Moro (MF, 14), Callum Hudson-Odoi (FW, 14), Rayan Cherki (FW, 14), Noni Madueke (FW, 14), Jamie Gittens (FW, 14), Matheus Nunes (DF, 14), Léo Scienza (FW, 14), Mamadou Diakhon (FW, 14), Kiliann Sildillia (DF, 14), Carlos Alcaraz (FW, 14)
 
 ## acceleration
 
@@ -140,10 +140,10 @@ Top 20: Herba Guirassy (FW, 20), Ethan Nwaneri (FW, 19), Leroy Sané (FW, 17), M
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
 | DF | 801 | `        █▆▁         ` | 9.5 |
-| MF | 652 | `        ▃█▂▁        ` | 10.1 |
-| FW | 507 | `        ▁▆█▃▁▁      ` | 11.0 |
+| MF | 652 | `        ▂█▃▁        ` | 10.2 |
+| FW | 507 | `        ▁▇█▃▁       ` | 11.0 |
 
-Top 20: Ethan Nwaneri (FW, 20), Herba Guirassy (FW, 20), Michael Kayode (DF, 17), Rayan Cherki (FW, 16), Pablo Sarabia (MF, 16), Carlos Alcaraz (FW, 16), Matheus Nunes (DF, 15), Jérémy Doku (FW, 15), Lamine Yamal (FW, 14), Moses Simon (FW, 14), Mohammed Kudus (FW, 14), Hugo Ekitiké (FW, 14), Jamie Gittens (FW, 14), Savinho (FW, 14), Jadon Sancho (FW, 14), Ousmane Dembélé (FW, 14), Leroy Sané (FW, 14), Brahim Díaz (FW, 14), Francisco Conceição (FW, 14), David Neres (FW, 14)
+Top 20: Ethan Nwaneri (FW, 20), Herba Guirassy (FW, 20), Carlos Alcaraz (FW, 18), Michael Kayode (DF, 17), Pablo Sarabia (MF, 16), Mattia De Sciglio (DF, 16), Hugo Ekitiké (FW, 15), Rayan Cherki (FW, 15), Moses Simon (FW, 14), Mohammed Kudus (FW, 14), Iliman Ndiaye (FW, 14), Matheus Nunes (DF, 14), Jérémy Doku (FW, 14), David Neres (FW, 14), Léo Scienza (FW, 14), Chidera Ejuke (FW, 14), Antoine Joujou (MF, 14), Mattia Felici (MF, 14), Mamadou Diakhon (FW, 14), Nelson Weiper (FW, 14)
 
 ## stamina
 
@@ -228,10 +228,10 @@ Top 20: Chrislain Matsima (DF, 20), Conor Coady (DF, 20), Mikel Merino (MF, 20),
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
 | DF | 801 | `      ▁█▆▂▁         ` | 8.8 |
-| MF | 652 | `       ▄██▃▂▁       ` | 9.9 |
-| FW | 507 | `          ▁▄▇█▃▂▁   ` | 13.8 |
+| MF | 652 | `       ▄██▄▂▁▁      ` | 9.9 |
+| FW | 507 | `          ▁▄▇█▄▁▁   ` | 13.7 |
 
-Top 20: Kylian Mbappé (FW, 20), Nick Woltemade (FW, 20), Harry Wilson (FW, 20), David Brooks (FW, 20), Ethan Nwaneri (FW, 20), Kasey McAteer (FW, 20), Carlos Alcaraz (FW, 20), Mohamed Salah (FW, 19), Savinho (FW, 19), Matheus Nunes (DF, 19), Leroy Sané (FW, 19), Simon Adingra (FW, 19), Marko Arnautovic (FW, 19), Ademola Lookman (MF, 18), Bradley Barcola (FW, 18), Brennan Johnson (FW, 18), Ousmane Dembélé (FW, 18), Bukayo Saka (FW, 18), Eldor Shomurodov (FW, 18), Jack Grealish (FW, 18)
+Top 20: Nick Woltemade (FW, 20), Harry Wilson (FW, 20), David Brooks (FW, 20), Ethan Nwaneri (FW, 20), Kasey McAteer (FW, 20), Carlos Alcaraz (FW, 20), Kylian Mbappé (FW, 18), Bukayo Saka (FW, 18), Simon Adingra (FW, 18), Mohamed Salah (FW, 17), Gabriel Martinelli (FW, 17), Ademola Lookman (MF, 17), Dango Ouattara (FW, 17), Abde Ezzalzouli (FW, 17), Savinho (FW, 17), Leroy Sané (FW, 17), David Neres (FW, 17), Noah Weißhaupt (FW, 17), Eldor Shomurodov (FW, 17), Álvaro Rodríguez (FW, 17)
 
 ## anticipation
 
@@ -249,11 +249,11 @@ Top 20: Conor Coady (DF, 20), Bence Dárdai (MF, 20), Tim Siersleben (DF, 20), K
 | position | n | histogram (1→20) | mean |
 | --- | --- | --- | --- |
 | GK | 168 | `  █                 ` | 3.0 |
-| DF | 801 | `        ▃▄█▅▂▁      ` | 11.1 |
-| MF | 652 | `        ▄██▄▂▁      ` | 10.9 |
-| FW | 507 | `      ▂█▅▂▁         ` | 8.6 |
+| DF | 801 | `        ▃▄█▆▃       ` | 11.1 |
+| MF | 652 | `        ▄██▅▃▁      ` | 10.9 |
+| FW | 507 | `      ▃█▅▂▁         ` | 8.5 |
 
-Top 20: Timothy Castagne (DF, 20), Mikel Merino (MF, 20), Kasey McAteer (FW, 20), Amadou Koné (MF, 19), Stefan Lainer (DF, 18), Paul Nebel (MF, 16), Conor Coady (DF, 16), Lucas Bergvall (MF, 16), Mitchel Bakker (FW, 16), Pierre-Emile Højbjerg (MF, 15), Christian Mawissa (DF, 15), Bence Dárdai (MF, 15), Tim Siersleben (DF, 15), Jaydee Canvot (DF, 15), Pablo Sarabia (MF, 15), Carlos Alcaraz (FW, 15), Oscar Højlund (MF, 15), Elseid Hysaj (DF, 15), Moisés Caicedo (MF, 14), Virgil van Dijk (DF, 14)
+Top 20: Timothy Castagne (DF, 20), Mikel Merino (MF, 20), Kasey McAteer (FW, 20), Amadou Koné (MF, 19), Paul Nebel (MF, 17), Conor Coady (DF, 17), Carlos Alcaraz (FW, 17), Stefan Lainer (DF, 17), Tim Siersleben (DF, 16), Mitchel Bakker (FW, 16), Pablo Sarabia (MF, 16), Pierre-Emile Højbjerg (MF, 15), Pierre Lees-Melou (MF, 15), Christian Mawissa (DF, 15), Bence Dárdai (MF, 15), Lucas Bergvall (MF, 15), Jaydee Canvot (DF, 15), Oscar Højlund (MF, 15), Elseid Hysaj (DF, 15), Moisés Caicedo (MF, 14)
 
 ## aggression
 

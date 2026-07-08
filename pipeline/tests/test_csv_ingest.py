@@ -166,3 +166,17 @@ def test_load_team_possession_empty_without_team_file(tmp_path, monkeypatch):
     monkeypatch.setattr(csv_ingest, "CSV_DIR", tmp_path)
     _write(tmp_path, "standard.csv", WFR_STANDARD)
     assert csv_ingest.load_team_possession() == {}
+
+
+TEAM_POSSESSION_WFR = """Season_End_Year,Squad,Comp,Team_or_Opponent,Poss,Touches_Touches
+2025,Bayern Munich,Bundesliga,team,69.7,30000
+2025,Bayern Munich,Bundesliga,opponent,30.3,15000
+2025,Empoli,Serie A,team,35.9,17000
+"""
+
+
+def test_load_team_possession_filters_opponent_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(csv_ingest, "CSV_DIR", tmp_path)
+    _write(tmp_path, "big5_team_possession.csv", TEAM_POSSESSION_WFR)
+    poss = csv_ingest.load_team_possession()
+    assert poss == {"Bayern Munich": 69.7, "Empoli": 35.9}

@@ -9,15 +9,17 @@ transfermarkt-datasets `players.csv` columns.
 
 1. **Rates**: volume metrics are per-90 (`x / minutes_90s` of the row's own
    table); "per touch" metrics divide by `touches`. **Possession adjustment**:
-   on-ball VOLUME metrics from the possession table (`touches`,
-   `touches_att_pen_area`, `take_ons_won`, `progressive_carries`,
-   `progressive_passes_received`, and passing's `progressive_passes`) are
-   normalized to a 50%-possession baseline (`× 50 / team_poss`) **when a team
-   possession table is present in `cache/csv/`** (worldfootballR
-   `big5_team_possession`, detected as Poss+Squad columns without Player).
-   The current cache carries only the `big5_player_*` files, so the
-   adjustment is INACTIVE until the human fetch step adds the team file —
-   `run.py` prints which, and nothing is approximated silently.
+   on-ball VOLUME metrics (`touches`, `touches_att_pen_area`,
+   `touches_att_3rd`, `take_ons_won`, `progressive_carries`,
+   `progressive_passes_received`, and the passing-table creation volumes
+   `progressive_passes`, `passes_into_penalty_area`,
+   `passes_into_final_third`, `assisted_shots`) are normalized to a
+   50%-possession baseline (`× 50 / team_poss`) **when a team possession
+   table is present in `cache/csv/`** (worldfootballR
+   `big5_team_possession`: Poss+Squad columns without Player;
+   `Team_or_Opponent` opponent rows and `vs `-prefixed squads are skipped).
+   ACTIVE with the current cache. Without the team file the adjustment is
+   inactive — `run.py` prints which, and nothing is approximated silently.
 2. **Minutes floor**: players under 270 league minutes are dropped. Everyone
    else is **shrunk toward their position-group mean** (empirical Bayes):
    `z_final = w·z_player + (1−w)·z̄_group` with `w = m/(m + 900)` — at 900'
@@ -74,7 +76,7 @@ columns per type — canonical key ← dump column:
 | shooting | shots ← `Sh_Standard`, shots_on_target ← `SoT_Standard`, shots_on_target_pct ← `SoT_percent_Standard`, goals_per_shot_on_target ← `G_per_SoT_Standard` |
 | passing | passes[_pct]_{short,medium,long} ← `Att/Cmp_percent_{Short,Medium,Long}`, passes_total ← `Att_Total`, assisted_shots ← `KP`, passes_into_final_third ← `Final_Third`, passes_into_penalty_area ← `PPA`, crosses_into_penalty_area ← `CrsPA`, progressive_passes ← `PrgP`, passes_[total,progressive]_distance ← `TotDist/PrgDist_Total` |
 | defense | tackles ← `Tkl_Tackles`, tackles_won ← `TklW_Tackles`, challenge_tackles_pct ← `Tkl_percent_Challenges`, blocks/`Sh`/`Pass` ← `*_Blocks`, interceptions ← `Int`, clearances ← `Clr`, errors ← `Err` |
-| possession | touches ← `Touches_Touches`, touches_att_pen_area ← `Att_Pen_Touches`, take_ons ← `Att_Take_Ons`, take_ons_won[_pct] ← `Succ[_percent]_Take_Ons`, carries ← `Carries_Carries`, prog distance/carries ← `PrgDist/PrgC_Carries`, miscontrols/dispossessed ← `Mis/Dis_Carries`, progressive_passes_received ← `PrgR_Receiving` |
+| possession | touches ← `Touches_Touches`, touches_att_pen_area ← `Att_Pen_Touches`, touches_att_3rd ← `Att 3rd_Touches`, take_ons ← `Att_Take_Ons`, take_ons_won[_pct] ← `Succ[_percent]_Take_Ons`, carries ← `Carries_Carries`, prog distance/carries ← `PrgDist/PrgC_Carries`, miscontrols/dispossessed ← `Mis/Dis_Carries`, progressive_passes_received ← `PrgR_Receiving` |
 | misc | fouls ← `Fls_Performance`, cards_yellow ← `CrdY_Performance`, crosses ← `Crs_Performance`, aerials_won[_pct] ← `Won[_percent]_Aerial_Duels`, aerials_lost ← `Lost_Aerial_Duels` |
 | playingtime | minutes_pct ← `Min_percent_Playing_Time` |
 | keepers | gk_saves/save_pct/cs_pct/ga90/pens ← `Saves`, `Save_percent`, `CS_percent`, `GA90`, `Save_percent_Penalty_Kicks` |
@@ -95,11 +97,11 @@ below include them; when the source lacks them the weights renormalize.
 
 | Attribute | Sources (weight) | Notes |
 | --- | --- | --- |
-| passing | short+medium completion (0.6) + `progressive_passes`/90 (0.25) + `PrgDist/TotDist` share (0.15) | completion weighted by **difficulty** — safe sideways recycling no longer scores like line-breaking (short+medium only per the DECISIONS.md split) |
+| passing | short+medium completion (0.55) + `passes_into_penalty_area`/90 (0.25) + `progressive_passes`/90 (0.15) + `PrgDist/TotDist` share (0.05) | completion weighted by **difficulty**, with the tight-space dimension carrying more than raw progressiveness (which structurally favors deep positions) — a threaded ball through a block outweighs an unpressured switch |
 | longPassing | `passes_pct_long` (0.7) + z(`passes_long`/90) (0.3) | completion + attempt-volume prior; never blended into `passing` |
 | crossing | `crosses_into_penalty_area`/90 (0.6) + `crosses`/90 (0.4) | wide deliveries stay separate |
 | vision | `assisted_shots`/90 (0.4) + `passes_into_penalty_area`/90 (0.3) + `passes_into_final_third`/90 (0.3) | |
-| firstTouch | −`miscontrols`/touch (0.5) + `passes_pct` (0.2) + `progressive_passes_received`/90 (0.15) + `touches_att_pen_area`/90 (0.15) | clean touches only count with volume/progressiveness — no-risk touch profiles no longer top the attribute |
+| firstTouch | −`miscontrols`/touch (0.3) + `passes_pct` (0.15) + `progressive_passes_received`/90 (0.25) + `touches_att_3rd`/90 (0.15) + `touches_att_pen_area`/90 (0.15) | weight sits on press-resistance (receiving progressive balls) and final-third/box touch volume, not on the miscontrol rate that rewards attempting nothing hard |
 | dribbling | `take_ons_won_pct` (0.5) + `take_ons_won`/90 (0.3) + `progressive_carries`/90 (0.2) | |
 | finishing | np(G−xG)/90 (0.3) + `goals_per_shot_on_target` (0.3) + `shots_on_target_pct` (0.2) + `goals_pens`/90 (0.2) | npxG term active with the CSV dump; renormalizes without it |
 | heading | `aerials_won_pct` (0.3) + `aerials_won`/90 (0.2) + height z (0.3) + `clearances`/90 (0.1) + `goals_pens`/90 (0.1) | LOW confidence only when aerials absent |
@@ -113,7 +115,7 @@ below include them; when the source lacks them the weights renormalize.
 | --- | --- | --- |
 | pace | `carries_progressive_distance`/carry (0.4) + `take_ons_won`/90 (0.2) + age curve peak 24 (0.4) | LOW confidence — proxy |
 | acceleration | `take_ons_won`/90 (0.4) + `progressive_carries`/90 (0.2) + age curve peak 24 (0.4) | LOW confidence — proxy |
-| stamina | `minutes_pct` (0.6) + age curve peak 27 (0.4) | LOW confidence — availability proxy |
+| stamina | `minutes_pct` (0.6) + age curve peak 27 (0.4) | LOW confidence — **availability proxy, known-soft**: measures who keeps getting picked, not endurance. Ever-present CBs rank high. Do not read as engine-grade endurance downstream; a real fix needs data the dump lacks (sprint/distance covered). |
 | strength | `aerials_won_pct` (0.25) + height z (0.35) + −`dispossessed`/touch (0.25) + `fouls`/90 (0.15) | LOW confidence |
 | jumping | `aerials_won_pct` (0.3) + height z (0.5) + `clearances`/90 (0.2) | LOW confidence |
 | agility | `take_ons_won_pct` (0.5) + −`miscontrols`/touch (0.5) | LOW confidence |

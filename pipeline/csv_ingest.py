@@ -93,6 +93,7 @@ ALIASES: Dict[str, Dict[str, List[str]]] = {
         "minutes_90s": ["mins_per_90", "x90s", "90s"],
         "touches": ["touches_touches", "touches"],
         "touches_att_pen_area": ["att_pen_touches", "touches_att_pen_area"],
+        "touches_att_3rd": ["att_3rd_touches", "touches_att_3rd"],
         "take_ons": ["att_take", "att_take_ons"],
         "take_ons_won": ["succ_take", "succ_take_ons", "succ_take_ons_take_ons"],
         "take_ons_won_pct": ["succ_percent_take", "succ_percent_take_ons"],
@@ -247,12 +248,17 @@ def load_team_possession() -> Dict[str, float]:
             if not poss_col or not squad_col or player_col:
                 continue  # not a team possession table
             season_col = _resolve(header_slugs, ["season_end_year", "season"])
+            side_col = _resolve(header_slugs, ["team_or_opponent"])
             for row in reader:
                 if season_col and (row.get(season_col) or "").strip() not in ("2025", "2024-2025", "2024/2025"):
                     continue
+                # opponent-side rows: a Team_or_Opponent column (worldfootballR
+                # team dumps) or a "vs " squad prefix (fbref share exports)
+                if side_col and (row.get(side_col) or "").strip().lower() not in ("team", ""):
+                    continue
                 squad = (row.get(squad_col) or "").strip()
                 if squad.lower().startswith("vs "):
-                    continue  # opponent-side rows in the team dumps
+                    continue
                 raw = (row.get(poss_col) or "").strip()
                 try:
                     poss = float(raw)

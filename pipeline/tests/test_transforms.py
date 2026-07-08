@@ -247,3 +247,41 @@ def test_possession_adjustment_scales_volumes_only_when_team_poss_known():
     # rates and per-touch metrics are untouched — they are already share-free
     assert adjusted["takeon_pct"] == unadjusted["takeon_pct"]
     assert adjusted["miscontrol_pt"] == unadjusted["miscontrol_pt"]
+
+
+def test_possession_adjustment_covers_creation_volumes():
+    minutes_90s = str(2700 / 90)
+    tables = {
+        "stats": {
+            "fbref_id": "C", "player": "C", "position": "MF",
+            "minutes": "2700", "minutes_90s": minutes_90s, "age": "25-000", "goals_pens": "1",
+        },
+        "passing": {
+            "minutes_90s": minutes_90s, "passes_pct": "85",
+            "assisted_shots": "60", "passes_into_penalty_area": "90",
+            "passes_into_final_third": "120", "progressive_passes": "150",
+        },
+        "playingtime": {"minutes_pct": "80"},
+    }
+    raw_off = Metrics(dict(tables), height_cm=182).raw()
+    raw_on = Metrics(dict(tables), height_cm=182, team_possession=62.5).raw()
+    for metric in ("key_passes", "ppa", "pft", "prog_passes"):
+        assert abs(raw_on[metric] - raw_off[metric] * 0.8) < 1e-9, metric
+
+
+def test_passing_tight_space_outweighs_unpressured_progressiveness():
+    # same completion and progressive volume; the block-threader plays into
+    # the penalty area, the deep switcher racks progressive DISTANCE only
+    def mk(fid, pos, ppa, prog_dist):
+        p = _mk_passer(fid, pos, pct=86, prog_passes=140, prog_dist=prog_dist, tot_dist=15000)
+        p.t["passing"]["passes_into_penalty_area"] = str(ppa)
+        return p
+    squad = [
+        mk("THREADER", "MF", ppa=120, prog_dist=3000),
+        mk("SWITCHER", "DF", ppa=15, prog_dist=8000),
+        mk("AVG1", "MF", ppa=50, prog_dist=4000),
+        mk("AVG2", "FW", ppa=40, prog_dist=3500),
+    ]
+    derived = derive_all(squad)
+    by_id = dict(zip(["THREADER", "SWITCHER", "AVG1", "AVG2"], derived))
+    assert by_id["THREADER"]["attributes"]["passing"] > by_id["SWITCHER"]["attributes"]["passing"]

@@ -151,9 +151,9 @@ class Metrics:
             "crs_pa": m("passing", "crosses_into_penalty_area"),
             # crossing volume: passing_types' Crs_Pass first, misc's Crs as fallback
             "crs": self._first(m("passing_types", "crosses"), m("misc", "crosses")),
-            "key_passes": m("passing", "assisted_shots"),
-            "ppa": m("passing", "passes_into_penalty_area"),
-            "pft": m("passing", "passes_into_final_third"),
+            "key_passes": self._padj(m("passing", "assisted_shots")),
+            "ppa": self._padj(m("passing", "passes_into_penalty_area")),
+            "pft": self._padj(m("passing", "passes_into_final_third")),
             "miscontrol_pt": self._per_touch("miscontrols"),
             "dispossessed_pt": self._per_touch("dispossessed"),
             "takeon_pct": p("possession", "take_ons_won_pct"),
@@ -179,6 +179,7 @@ class Metrics:
             "errors": m("defense", "errors"),
             "touches": self._padj(m("possession", "touches")),
             "touches_pen": self._padj(m("possession", "touches_att_pen_area")),
+            "touches_att3": self._padj(m("possession", "touches_att_3rd")),
             "prog_received": self._padj(m("possession", "progressive_passes_received")),
             "fouls": m("misc", "fouls"),
             "yellows": m("misc", "cards_yellow"),
@@ -219,15 +220,17 @@ class Metrics:
 
 # attribute → [(metric, weight, invert)]; age-curve metrics enter as raw z offsets
 BLENDS: Dict[str, List[Tuple[str, float, bool]]] = {
-    # completion weighted by difficulty: progressive volume + distance profile
-    # keep safe sideways recycling from scoring like line-breaking passing
-    "passing": [("pass_sm_pct", 0.6, False), ("prog_passes", 0.25, False), ("prog_dist_share", 0.15, False)],
+    # completion weighted by difficulty: progressiveness alone favors deep
+    # positions with space ahead, so penalty-area entries carry the tight-
+    # space dimension — a threaded ball through a block outweighs a switch
+    "passing": [("pass_sm_pct", 0.55, False), ("ppa", 0.25, False), ("prog_passes", 0.15, False), ("prog_dist_share", 0.05, False)],
     "longPassing": [("pass_long_pct", config.LONG_PASS_COMPLETION_W, False), ("pass_long_vol", config.LONG_PASS_VOLUME_W, False)],
     "crossing": [("crs_pa", 0.6, False), ("crs", 0.4, False)],
     "vision": [("key_passes", 0.4, False), ("ppa", 0.3, False), ("pft", 0.3, False)],
-    # clean touches only count if the profile attempts something: receiving
-    # volume/progressiveness stops no-risk touch maps from topping the attr
-    "firstTouch": [("miscontrol_pt", 0.5, True), ("pass_pct", 0.2, False), ("prog_received", 0.15, False), ("touches_pen", 0.15, False)],
+    # clean touches only count where touches are hard: weight sits on press-
+    # resistance (receiving progressive balls) and final-third/box volume,
+    # not on the miscontrol rate that rewards attempting nothing
+    "firstTouch": [("miscontrol_pt", 0.3, True), ("pass_pct", 0.15, False), ("prog_received", 0.25, False), ("touches_att3", 0.15, False), ("touches_pen", 0.15, False)],
     "dribbling": [("takeon_pct", 0.5, False), ("takeon_won", 0.3, False), ("prog_carries", 0.2, False)],
     "finishing": [("gpsot", 0.3, False), ("sot_pct", 0.2, False), ("np_goals", 0.2, False), ("np_g_minus_xg", 0.3, False)],
     "heading": [("aerials_won_pct", 0.3, False), ("aerials_won", 0.2, False), ("height", 0.3, False), ("clearances", 0.1, False), ("np_goals", 0.1, False)],
