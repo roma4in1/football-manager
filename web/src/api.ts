@@ -149,6 +149,48 @@ export interface AuctionStateView {
   squadMax: number;
 }
 
+export interface OfferView {
+  id: string;
+  playerId: string;
+  playerName: string;
+  buyerClubId: string;
+  buyerName: string;
+  sellerClubId: string;
+  sellerName: string;
+  fee: number;
+  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  createdAt: string;
+}
+
+export interface TransferStateView {
+  phase: string;
+  windowOpen: boolean;
+  deadlineAt: string | null;
+  you: {
+    budgetRemaining: number;
+    wageBill: number;
+    wageCap: number;
+    squadCount: number;
+    squadMin: number;
+    squadMax: number;
+  };
+  offers: OfferView[];
+}
+
+export interface MarketPlayerView {
+  playerId: string;
+  fullName: string;
+  position: string;
+  wage: number;
+  marketValue: number;
+  injuryWeeksLeft: number;
+}
+
+export interface MarketView {
+  pool: Array<PoolPlayerView & { wage: number }>;
+  clubs: Array<{ clubId: string; name: string; you: boolean; players: MarketPlayerView[] }>;
+}
+
 export const api = {
   me: () => req<Me>('GET', '/api/me'),
   requestLink: (email: string) => req<void>('POST', '/api/auth/request-link', { email }),
@@ -162,6 +204,13 @@ export const api = {
   replay: (fixtureId: string) => req<ReplayView>('GET', `/api/fixture/${fixtureId}/replay`),
   facilities: () => req<FacilitiesView>('GET', '/api/facilities'),
   investFacility: (facility: 'training' | 'medical') => req<void>('POST', '/api/facilities/invest', { facility }),
+  transferState: () => req<TransferStateView>('GET', '/api/transfer/state'),
+  transferMarket: () => req<MarketView>('GET', '/api/transfer/market'),
+  makeOffer: (playerId: string, fee: number) =>
+    req<{ offerId: string }>('POST', '/api/transfer/offer', { playerId, fee }),
+  acceptOffer: (offerId: string) => req<void>('POST', `/api/transfer/offer/${offerId}/accept`),
+  rejectOffer: (offerId: string) => req<void>('POST', `/api/transfer/offer/${offerId}/reject`),
+  signPoolPlayer: (playerId: string) => req<void>('POST', '/api/transfer/sign', { playerId }),
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),
