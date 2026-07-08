@@ -284,6 +284,17 @@ export class AgentEngine implements SimEngine {
       }
     };
 
+    // score-state urgency: full-MATCH goal difference (resume carries h1's),
+    // scaled by how late it is. Positive = chasing. Deterministic per tick.
+    const priorScore = resume?.score ?? [0, 0];
+    const scoreStateFor = (side: Side, now: number): number => {
+      const diffHome = (priorScore[0] + score.home) - (priorScore[1] + score.away);
+      const diff = side === 'home' ? diffHome : -diffHome;
+      const matchFrac = now / (2 * HALF_SECONDS);
+      const urgency = AGENT_CAL.stateUrgencyBase + AGENT_CAL.stateUrgencyTimeGain * matchFrac;
+      return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, -diff * urgency));
+    };
+
     for (let tick = 0; tick < ticks; tick++) {
       const now = t0 + tick * AGENT_CAL.tickSeconds;
       tracker.advance(AGENT_CAL.tickSeconds);
@@ -309,6 +320,7 @@ export class AgentEngine implements SimEngine {
           teammates: snaps,
           opponents: opps,
           anchors: anchorsOf(states, side),
+          scoreState: scoreStateFor(side, now),
         });
         for (const s of states) {
           if (s.side !== side || s.sentOff) continue;
@@ -343,6 +355,7 @@ export class AgentEngine implements SimEngine {
           team: (side === 'home' ? homeCtx : awayCtx).tactics.team,
           // crowd effect: the ONE home-advantage mechanism (context, not noise)
           pressure: side === 'home' ? rawPressure * (1 - AGENT_CAL.homePressureRelief) : rawPressure,
+          scoreState: scoreStateFor(side, now),
         };
         const options = this.decision.generateOptions(ctx);
         const chosen = this.decision.choose(this.decision.scoreOptions(ctx, options), ctx, rng, tick);

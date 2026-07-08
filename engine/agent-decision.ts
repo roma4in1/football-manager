@@ -58,6 +58,8 @@ export interface DecisionContext {
   team: TeamInstructions;
   /** pressure on the carrier in [0,1] — nearest-opponent proximity */
   pressure: number;
+  /** score-state urgency: positive = chasing (open up), negative = seeing it out */
+  scoreState: number;
 }
 
 export interface DecisionModel {
@@ -179,9 +181,12 @@ export class GeometricDecisionModel implements DecisionModel {
     // pitch control is stored as HOME share — flip for away
     const ourControl = (p: Vec2): number =>
       ctx.side === 'home' ? ctx.pitchControl.controlAtPoint(p) : 1 - ctx.pitchControl.controlAtPoint(p);
-    // risk appetite discounts how much losing the ball is feared (scoring only)
-    const turnoverCost = AGENT_CAL.turnoverCostWeight *
-      (1 - AGENT_CAL.riskTurnoverDiscount * (ctx.instructions.riskAppetite - 0.5) * 2);
+    // risk appetite + score state discount how much losing the ball is
+    // feared (scoring only): a chasing team stops protecting the ball, a
+    // leading team protects it harder
+    const turnoverCost = Math.max(0.1, AGENT_CAL.turnoverCostWeight *
+      (1 - AGENT_CAL.riskTurnoverDiscount * (ctx.instructions.riskAppetite - 0.5) * 2 -
+        AGENT_CAL.stateRiskTurnoverDiscount * ctx.scoreState));
     // V(target): where would the ball be worth having, weighted by who'd have it
     const valueAt = (p: Vec2): number =>
       positionValue(p, goalX) + AGENT_CAL.valueControlWeight * (ourControl(p) - 0.5);
@@ -195,14 +200,16 @@ export class GeometricDecisionModel implements DecisionModel {
           score = AGENT_CAL.holdBaseScore +
             AGENT_CAL.holdPositionScoreBias * ctx.instructions.holdPosition -
             AGENT_CAL.holdPressurePenalty * ctx.pressure -
-            AGENT_CAL.tempoHoldPenalty * ctx.team.tempo;
+            AGENT_CAL.tempoHoldPenalty * ctx.team.tempo -
+            AGENT_CAL.stateHoldBias * ctx.scoreState; // leading: hold; chasing: move it
           break;
         }
         case 'shot': {
           // negative base gates volume; the xg term keeps the quality gradient
           score = AGENT_CAL.shotBaseScore +
             AGENT_CAL.shotValueWeight * xgProxy(ctx.carrier.pos, goalX) +
-            AGENT_CAL.shootingBiasScoreBias * ctx.instructions.shootingBias;
+            AGENT_CAL.shootingBiasScoreBias * ctx.instructions.shootingBias +
+            AGENT_CAL.stateShotBias * Math.max(0, ctx.scoreState); // chasers shoot earlier
           break;
         }
         case 'carry': {

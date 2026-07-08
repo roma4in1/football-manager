@@ -60,6 +60,18 @@ export const AGENT_CAL = {
   carryOptionCount: 3, // forward + two diagonals
   riskAppetiteScoreBias: 0.35, // instructions bias SCORING only (frozen invariant)
   riskTurnoverDiscount: 0.8, // riskAppetite shrinks the turnover-cost term
+  // score-state behavior (DECISIONS.md): chasing teams open up, leading teams
+  // see the game out. scoreState ∈ [−stateMax, stateMax], positive = chasing,
+  // from goal difference × (base + timeGain·matchFraction). Decision biases +
+  // positioning shifts only — execution noise stays attribute-driven.
+  stateUrgencyBase: 0.25,
+  stateUrgencyTimeGain: 0.75,
+  stateMax: 1.2,
+  stateRiskTurnoverDiscount: 0.45, // chasing discounts turnover fear
+  stateShotBias: 0.15, // chasing shoots earlier
+  stateHoldBias: 0.3, // chasing hates holding; leading loves it
+  statePushShiftM: 7, // team base line shifts this far at full urgency
+  stateForwardRunGain: 0.5, // chasing off-ball runs push harder
   shootingBiasScoreBias: 0.25,
   holdPositionScoreBias: 0.2,
   dribbleBiasScoreBias: 0.15,
