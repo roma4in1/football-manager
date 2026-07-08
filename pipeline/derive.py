@@ -347,6 +347,29 @@ def derive_all(players: List[Metrics]) -> List[Dict]:
             zs[attr] = (z / w_present) if w_present > 0 else None
         raw_attr_z.append(zs)
 
+    # unit-variance normalization (MAPPING rule 3b): blended z has σ ≈ 0.4–0.9
+    # (multi-metric averaging cancels scale), which compressed the 1–20 range —
+    # elite passing topped out at 16. Normalize each attribute's z to σ=1 per
+    # cohort so the squash expresses the league DISTRIBUTION; the gain cap
+    # keeps proxy-heavy attributes (jumping, strength, pace) from inflating
+    # imputation noise into fake discrimination.
+    for attr in BLENDS:
+        for cohort_name, is_gk in (("OUTFIELD", False), ("GK", True)):
+            if (attr in GK_ONLY) != is_gk:
+                continue
+            vals = [
+                raw_attr_z[i][attr]
+                for i, p in enumerate(players)
+                if (p.position == "GK") == is_gk and raw_attr_z[i].get(attr) is not None
+            ]
+            if len(vals) < 2:
+                continue
+            sd = statistics.pstdev(vals)
+            gain = min(config.ATTR_NORM_MAX_GAIN, 1.0 / sd) if sd > 0 else 1.0
+            for i, p in enumerate(players):
+                if (p.position == "GK") == is_gk and raw_attr_z[i].get(attr) is not None:
+                    raw_attr_z[i][attr] *= gain
+
     # position-group mean of each attribute z — the shrinkage target
     group_sum: Dict[Tuple[str, str], List[float]] = defaultdict(lambda: [0.0, 0.0])
     for i, p in enumerate(players):
