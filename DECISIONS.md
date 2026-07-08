@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-09 — variable club count: supported N = 2–10, odd N via byes
+
+- **Schedule**: doubleRoundRobin (league-auction.ts) uses the circle method
+  with a null pad for odd N — every club byes EXACTLY once per leg, no club
+  twice in a round, every pairing twice with venues swapped, each club hosts
+  N−1. Regular weeks: 2(N−1) even, 2N odd (`expectedRounds`). Verified pure
+  for N ∈ 2..10 and end-to-end (setup → auction completion → schedule) for
+  N ∈ 5..10 in league-season.test.ts; odd N is load-bearing, not tolerated.
+- **Season setup** is now one N-agnostic entry point (league-setup.ts
+  `setupSeason`): matchweek_count is exact from N at INSERT (the schema
+  CHECK `0 < transfer_week < matchweek_count` holds from creation, not just
+  after auction completion), transfer week defaults to halfway and clamps
+  to (0, rounds). The transfer week is an extra numbered bye week —
+  matchweek_count stays "regular weeks" per the schema comment.
+- **Pool-supply guards fail at setup, never mid-auction**: completability
+  floor `pool ≥ (N−1)·squadMax + squadMin` (max hoarding cannot strand the
+  last club below squadMin) and per-position floor `supply ≥ N × 4-4-2
+  demand` (GK 1 / DF 4 / MF 4 / FW 2 — bestXI's shape). The guard takes the
+  same squadMin/squadMax the auction will run, so tuned test auctions and
+  the real config validate consistently. At N=10 against the ~2,128-player
+  seed both floors clear with room (175 total / 10 GKs needed).
+- seed-demo now goes through setupSeason; the old hand-inserted
+  (matchweek_count 10, transfer_week 5) placeholder is test-helper-only.
+
 ## 2026-07-09 — replay viewer v0 (web) + /replay endpoint
 
 - One Canvas 2D component (web/src/replay/) — no Pixi/Phaser for 23 dots and
