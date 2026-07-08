@@ -3,6 +3,57 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-09 — mid-season transfer window (the second market + the bye)
+
+- **Two markets only**: the season-start auction and this one fixed week.
+  The window is NOT a second auction — inter-club offers + fixed-price pool
+  signings (league-transfers.ts), open only while phase='transfer_window'.
+- **Window boundaries ride week-close** (league-orchestrator): closing the
+  last pre-transfer regular week transitions regular → transfer_window;
+  closing the transfer bye week itself IS the deadline — pending offers
+  expire and transfer_window → regular resumes the second half. Both flips
+  happen inside the tick+reveal transaction (revealed_at stays the
+  exactly-once marker) and go through the SQL season state machine. The
+  entry flip is skipped if the transfer week already revealed (late-retry
+  backstop). The bye tick was already right: recovery + healing run, a
+  one-match ban is NOT consumed by a bye.
+- **Transfer wage rule: the contract rides along unchanged** (wage AND
+  duration; the fee is the only new money). Rationale: duration never
+  changes the weekly wage in our model, so there is nothing to renegotiate
+  (same argument as the auction forfeit rule); re-deriving from market value
+  would silently rewrite a contract the seller signed; and the buyer
+  absorbing the existing wage is exactly what makes the wage-cap check at
+  accept time meaningful. Mechanically a move is two UPDATEs — contracts
+  .club_id and squad_players.club_id (PK is (season, player), so fatigue/
+  injury/suspension/minutes ride along) — plus the fee txn (kind
+  transfer_fee, club_id=buyer debited, to_club_id=seller credited).
+- **Contested pool players: FIRST-COME under the players row lock**, not
+  sealed bids. With the price fixed at market value there is no dimension
+  left to bid on — a sealed fee bid would reintroduce the auction this
+  window explicitly is not. First-come resolves instantly (the loser's txn
+  sees the new contract and 409s), keeps squads knowable mid-window, and
+  needs no deadline-resolution job or encumbrance of budget across pending
+  bids. Wage = wageFromMarketValue, duration = transferContractDuration (2,
+  no duration picker in the window).
+- **Budget is bidirectional now** (store.budgetRemaining): transfer_budget
+  minus all debits (auction_win, pool_signing, transfer_fee,
+  facility_investment) plus transfer_fee credits — a sale funds new
+  signings AND facilities (the
+  facilities endpoints switched to the same function; one budget, one rule).
+- **Offers**: one pending offer per (buyer, player) — re-offering replaces
+  the fee (partial unique index); resolved offers are immutable (SQL
+  trigger + smoke.sql guard). Offer-time checks are advisory; accept
+  re-validates everything under locks (offer row → contract row → both
+  club_seasons rows in club-id order — the club_seasons row lock is the
+  club's money lock, the same one facilities investment takes). A stale
+  accept (player already moved) expires the offer and 409s — the expiry
+  commits even though the accept fails. Accepting also expires every other
+  pending offer on that player.
+- **Familiarity-cold on ANY club change**: a transfer wipes the player's
+  dyads at the selling club and creates none at the buyer, so accrual
+  restarts from zero co-played minutes — same integration cost as an
+  auction signing (pool signings are cold by construction).
+
 ## 2026-07-09 — facilities economy: training + medical (youth DEFERRED)
 
 - **Youth academy is explicitly deferred** — no schema column, no hook; it
