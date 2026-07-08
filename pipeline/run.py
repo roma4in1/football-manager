@@ -91,8 +91,20 @@ def main() -> None:
         kinds[m["join"]] = kinds.get(m["join"], 0) + 1
     print(f"join: {rate:.1%} matched {kinds}; {len(unmatched)} unmatched → reports/unmatched.md")
 
+    # possession adjustment: active only when a TEAM possession table is in
+    # the cache (fetching is a human step — never silently approximated)
+    team_poss = csv_ingest.load_team_possession()
+    if team_poss:
+        print(f"possession adjustment: ACTIVE ({len(team_poss)} teams, baseline {config.POSS_ADJUST_BASELINE}%)")
+    else:
+        print("possession adjustment: INACTIVE — no big5_team possession CSV in cache/csv/ (MAPPING.md rule 1)")
+
     metrics = [
-        derive.Metrics(tables, matched.get(fid, {}).get("height_cm"))
+        derive.Metrics(
+            tables,
+            matched.get(fid, {}).get("height_cm"),
+            team_poss.get((tables["stats"].get("team") or "").strip()),
+        )
         for fid, tables in kept.items()
         if fid in matched
     ]

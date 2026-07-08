@@ -30,6 +30,39 @@ AUTO_MATCH_TARGET = 0.95
 
 MINUTES_HARD_FLOOR = 270  # below this, drop the player entirely (3 matches)
 SHRINK_M0 = 900  # z_shrunk = z · m/(m+M0): 900' → half-weight to cohort mean
+
+# GK cohort separation (MAPPING rule 3): GKs get a flat low baseline on every
+# outfield attribute and are EXCLUDED from the outfield z-distributions —
+# symmetric to outfielders' flat gk attributes (OUTFIELD_GK_ATTR in derive.py).
+GK_OUTFIELD_ATTR = 3
+
+# Per-metric attempt-count shrinkage (MAPPING rule 2b — distinct from the
+# minutes shrinkage above, which it does NOT replace): each RATE metric is
+# shrunk toward its cohort's attempt-weighted mean with weight n/(n+k), where
+# n is that metric's own attempt count. k = attempts at which a player keeps
+# half their own signal. Reasoning per family:
+#   - pass completion %s: high-volume events; a regular takes ~60 short+medium
+#     attempts in ~2 matches, so k=60 (overall pass% k=80, slightly stickier;
+#     long passes are rarer, k=25 ≈ 4-5 matches of switches).
+#   - take-on / aerial / challenge %s: contested-duel rates stabilize slowly
+#     and 5/10 samples are common — k=25 means 10 attempts keep only 29%.
+#   - shooting rates: shots are scarce (k=25 ≈ 8 matches for a midfielder);
+#     goals-per-SoT has the smallest denominators of all, k=12.
+SHRINK_PRIORS = {
+    "pass_sm_pct": 60,
+    "pass_pct": 80,
+    "pass_long_pct": 25,
+    "takeon_pct": 25,
+    "aerials_won_pct": 25,
+    "challenge_pct": 25,
+    "sot_pct": 25,
+    "gpsot": 12,
+}
+
+# Possession adjustment (MAPPING rule 1): possession-page VOLUME metrics are
+# normalized to a 50%-possession baseline when team possession is available
+# (a big5_team possession CSV in cache/csv/ — see load_team_possession).
+POSS_ADJUST_BASELINE = 50.0
 Z_CLAMP = 2.5  # clamp z at ±2.5 (~0.6/99.4 pctile tails) before squashing
 SQUASH_CENTER = 10.5
 SQUASH_SCALE = 9.5 / Z_CLAMP  # ±2.5σ maps onto 1..20

@@ -60,7 +60,7 @@ def merge_tables(pages: Dict[str, List[Dict]]) -> Dict[str, Dict]:
 class Metrics:
     """Raw metric extraction for one player (rates per MAPPING.md rule 1)."""
 
-    def __init__(self, tables: Dict[str, Dict], height_cm: Optional[int]):
+    def __init__(self, tables: Dict[str, Dict], height_cm: Optional[int], team_possession: Optional[float] = None):
         self.t = tables
         self.height_cm = height_cm
         # standard's Min_Playing, falling back to playing_time's Min_Playing.Time
@@ -68,6 +68,12 @@ class Metrics:
         self.position = coarse_position(tables["stats"].get("position", ""))
         age_raw = (tables["stats"].get("age") or "25").split("-")[0]
         self.age = float(age_raw) if age_raw.isdigit() else 25.0
+        # possession adjustment factor for on-ball VOLUME metrics (MAPPING
+        # rule 1); None (no team table in cache) → volumes stay raw per-90
+        self.poss_factor = (
+            config.POSS_ADJUST_BASELINE / team_possession
+            if team_possession and team_possession > 0 else None
+        )
 
     def _present(self, page: str, key: str) -> bool:
         row = self.t.get(page)
@@ -108,6 +114,12 @@ class Metrics:
             return None
         return (num(row, "goals_pens") - num(row, "npxg")) / n90
 
+    def _padj(self, value: Optional[float]) -> Optional[float]:
+        """Possession-adjust an on-ball volume: normalize to a 50% share."""
+        if value is None or self.poss_factor is None:
+            return value
+        return value * self.poss_factor
+
     def raw(self) -> Dict[str, Optional[float]]:
         p, m = self._pct, self._per90
         sm_pct: Optional[float] = None
@@ -121,10 +133,18 @@ class Metrics:
         if self._present("possession", "carries_progressive_distance"):
             carries = max(1.0, num(self.t.get("possession", {}), "carries"))
             carry_dist = num(self.t["possession"], "carries_progressive_distance") / carries
+        # pass difficulty: share of total pass distance that was progressive
+        prog_dist_share: Optional[float] = None
+        if self._present("passing", "passes_progressive_distance") and self._present("passing", "passes_total_distance"):
+            total_dist = num(self.t["passing"], "passes_total_distance")
+            if total_dist > 0:
+                prog_dist_share = num(self.t["passing"], "passes_progressive_distance") / total_dist
         age_z_pace = -config.PACE_AGE_SLOPE * max(0.0, self.age - config.PACE_AGE_PEAK)
         age_z_stam = -config.STAMINA_AGE_SLOPE * max(0.0, self.age - config.STAMINA_AGE_PEAK)
         return {
             "pass_sm_pct": sm_pct,
+            "prog_passes": self._padj(m("passing", "progressive_passes")),
+            "prog_dist_share": prog_dist_share,
             "pass_long_pct": p("passing", "passes_pct_long"),
             "pass_long_vol": m("passing", "passes_long"),
             "pass_pct": p("passing", "passes_pct"),
@@ -137,8 +157,8 @@ class Metrics:
             "miscontrol_pt": self._per_touch("miscontrols"),
             "dispossessed_pt": self._per_touch("dispossessed"),
             "takeon_pct": p("possession", "take_ons_won_pct"),
-            "takeon_won": m("possession", "take_ons_won"),
-            "prog_carries": m("possession", "progressive_carries"),
+            "takeon_won": self._padj(m("possession", "take_ons_won")),
+            "prog_carries": self._padj(m("possession", "progressive_carries")),
             "prog_carry_dist": carry_dist,
             "gpsot": p("shooting", "goals_per_shot_on_target"),
             "sot_pct": p("shooting", "shots_on_target_pct"),
@@ -157,9 +177,9 @@ class Metrics:
             "interceptions": m("defense", "interceptions"),
             "challenges": m("defense", "challenges"),
             "errors": m("defense", "errors"),
-            "touches": m("possession", "touches"),
-            "touches_pen": m("possession", "touches_att_pen_area"),
-            "prog_received": m("possession", "progressive_passes_received"),
+            "touches": self._padj(m("possession", "touches")),
+            "touches_pen": self._padj(m("possession", "touches_att_pen_area")),
+            "prog_received": self._padj(m("possession", "progressive_passes_received")),
             "fouls": m("misc", "fouls"),
             "yellows": m("misc", "cards_yellow"),
             "minutes_pct": self._pct("playingtime", "minutes_pct") or 0.0,
@@ -172,14 +192,42 @@ class Metrics:
             "gk_ga90": p("keepers", "gk_goals_against_per90"),
         }
 
+    def _count(self, page: str, *keys: str) -> Optional[float]:
+        """Sum of raw season counts; None if any component is unavailable."""
+        total = 0.0
+        for key in keys:
+            if not self._present(page, key):
+                return None
+            total += num(self.t[page], key)
+        return total
+
+    def attempts(self) -> Dict[str, Optional[float]]:
+        """Per-metric attempt counts for rate shrinkage (MAPPING rule 2b).
+        Keys mirror config.SHRINK_PRIORS; None = denominator unavailable
+        (the rate then keeps its raw value — nothing to shrink by)."""
+        return {
+            "pass_sm_pct": self._count("passing", "passes_short", "passes_medium"),
+            "pass_pct": self._count("passing", "passes_total"),
+            "pass_long_pct": self._count("passing", "passes_long"),
+            "takeon_pct": self._count("possession", "take_ons"),
+            "aerials_won_pct": self._count("misc", "aerials_won", "aerials_lost"),
+            "challenge_pct": self._count("defense", "challenges"),
+            "sot_pct": self._count("shooting", "shots"),
+            "gpsot": self._count("shooting", "shots_on_target"),
+        }
+
 
 # attribute → [(metric, weight, invert)]; age-curve metrics enter as raw z offsets
 BLENDS: Dict[str, List[Tuple[str, float, bool]]] = {
-    "passing": [("pass_sm_pct", 1.0, False)],
+    # completion weighted by difficulty: progressive volume + distance profile
+    # keep safe sideways recycling from scoring like line-breaking passing
+    "passing": [("pass_sm_pct", 0.6, False), ("prog_passes", 0.25, False), ("prog_dist_share", 0.15, False)],
     "longPassing": [("pass_long_pct", config.LONG_PASS_COMPLETION_W, False), ("pass_long_vol", config.LONG_PASS_VOLUME_W, False)],
     "crossing": [("crs_pa", 0.6, False), ("crs", 0.4, False)],
     "vision": [("key_passes", 0.4, False), ("ppa", 0.3, False), ("pft", 0.3, False)],
-    "firstTouch": [("miscontrol_pt", 0.7, True), ("pass_pct", 0.3, False)],
+    # clean touches only count if the profile attempts something: receiving
+    # volume/progressiveness stops no-risk touch maps from topping the attr
+    "firstTouch": [("miscontrol_pt", 0.5, True), ("pass_pct", 0.2, False), ("prog_received", 0.15, False), ("touches_pen", 0.15, False)],
     "dribbling": [("takeon_pct", 0.5, False), ("takeon_won", 0.3, False), ("prog_carries", 0.2, False)],
     "finishing": [("gpsot", 0.3, False), ("sot_pct", 0.2, False), ("np_goals", 0.2, False), ("np_g_minus_xg", 0.3, False)],
     "heading": [("aerials_won_pct", 0.3, False), ("aerials_won", 0.2, False), ("height", 0.3, False), ("clearances", 0.1, False), ("np_goals", 0.1, False)],
@@ -222,21 +270,51 @@ def squash(z: float) -> int:
     return max(1, min(20, round(config.SQUASH_CENTER + z * config.SQUASH_SCALE)))
 
 
+def shrink_rates(raws: List[Dict[str, Optional[float]]], attempts: List[Dict[str, Optional[float]]],
+                 cohort_of: List[str]) -> None:
+    """MAPPING rule 2b: shrink each rate metric toward its cohort's
+    attempt-weighted mean with weight n/(n+k), n = the metric's OWN attempt
+    count. Catches high-minutes players with tiny samples on one metric
+    (5/10 crosses shrinks hard; 100/200 keeps its signal). Mutates raws."""
+    for metric, k in config.SHRINK_PRIORS.items():
+        means: Dict[str, float] = {}
+        for cohort in ("OUTFIELD", "GK"):
+            num_sum = 0.0
+            den_sum = 0.0
+            for i, r in enumerate(raws):
+                v, n = r.get(metric), attempts[i].get(metric)
+                if v is None or not n or cohort_of[i] != cohort:
+                    continue
+                num_sum += v * n
+                den_sum += n
+            means[cohort] = num_sum / den_sum if den_sum > 0 else 0.0
+        for i, r in enumerate(raws):
+            v, n = r.get(metric), attempts[i].get(metric)
+            if v is None or n is None:
+                continue  # no rate, or no denominator to weigh it by
+            w = n / (n + k)
+            r[metric] = w * v + (1 - w) * means[cohort_of[i]]
+
+
 def derive_all(players: List[Metrics]) -> List[Dict]:
     """players → [{attributes, position, low_confidence, minutes, age, …}].
 
-    MAPPING.md rules 2–4: metric z LEAGUE-WIDE (attributes are absolute in
-    the engine), GK-only metrics z within the GK cohort, then each player's
+    MAPPING.md rules 2–4: outfield metric z over the OUTFIELD cohort only
+    (attributes are absolute in the engine; GKs neither receive outfield
+    attributes nor shift outfield distributions), GK-only metrics z within
+    the GK cohort, per-metric rate shrinkage before z, then each player's
     attribute z is shrunk toward the POSITION-GROUP mean of that attribute.
     """
     raws = [p.raw() for p in players]
-    league = list(range(len(players)))
+    cohort_of = ["GK" if p.position == "GK" else "OUTFIELD" for p in players]
+    shrink_rates(raws, [p.attempts() for p in players], cohort_of)
+    outfield = [i for i, p in enumerate(players) if p.position != "GK"]
     gks = [i for i, p in enumerate(players) if p.position == "GK"]
 
     metric_keys = {m for blend in BLENDS.values() for (m, _, _) in blend}
     ztable: Dict[Tuple[str, str], Tuple[float, float]] = {}
     for key in metric_keys:
-        ztable[(key, "LEAGUE")] = zstats([raws[i][key] for i in league])
+        ztable[(key, "OUTFIELD")] = zstats([raws[i][key] for i in outfield]) if outfield else (0.0, 1.0)
         ztable[(key, "GK")] = zstats([raws[i][key] for i in gks]) if gks else (0.0, 1.0)
 
     # pass 1: raw attribute z per player (pre-shrinkage)
@@ -246,7 +324,9 @@ def derive_all(players: List[Metrics]) -> List[Dict]:
         for attr, blend in BLENDS.items():
             if attr in GK_ONLY and p.position != "GK":
                 continue
-            cohort = "GK" if attr in GK_ONLY else "LEAGUE"
+            if attr not in GK_ONLY and p.position == "GK":
+                continue  # GKs take the flat outfield baseline, not a z
+            cohort = "GK" if attr in GK_ONLY else "OUTFIELD"
             z = 0.0
             w_present = 0.0
             for metric, weight, invert in blend:
@@ -285,6 +365,11 @@ def derive_all(players: List[Metrics]) -> List[Dict]:
             if attr in GK_ONLY and p.position != "GK":
                 attrs[attr] = OUTFIELD_GK_ATTR
                 continue
+            if attr not in GK_ONLY and p.position == "GK":
+                # symmetric to the outfielder→GK convention: flat low baseline,
+                # and GKs never float above below-mean outfielders on imputes
+                attrs[attr] = config.GK_OUTFIELD_ATTR
+                continue
             target = group_mean.get((attr, p.position), 0.0)
             own = raw_attr_z[i][attr]
             if own is None:
@@ -294,10 +379,13 @@ def derive_all(players: List[Metrics]) -> List[Dict]:
                 z = w * own + (1 - w) * target
             zcache[attr] = z
             attrs[attr] = squash(z)
-        # setPieceDelivery = blend of crossing/vision z (post-shrink)
-        attrs[SPD_DERIVED] = squash(0.5 * zcache.get("crossing", 0.0) + 0.5 * zcache.get("vision", 0.0))
+        # setPieceDelivery = blend of crossing/vision z (post-shrink); GKs flat
+        attrs[SPD_DERIVED] = (
+            config.GK_OUTFIELD_ATTR if p.position == "GK"
+            else squash(0.5 * zcache.get("crossing", 0.0) + 0.5 * zcache.get("vision", 0.0))
+        )
 
-        mu_m, sd_m = ztable[("minutes_pct", "LEAGUE")]
+        mu_m, sd_m = ztable[("minutes_pct", "OUTFIELD")]
         out.append({
             "attributes": {a: attrs[a] for a in ATTR_ORDER},
             "position": p.position,

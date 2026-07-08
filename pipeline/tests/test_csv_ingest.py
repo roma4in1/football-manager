@@ -143,3 +143,26 @@ def test_missing_dir_returns_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(csv_ingest, "CSV_DIR", tmp_path / "nope")
     pages, provenance = load_csv_pages()
     assert pages == {} and provenance == {}
+
+
+TEAM_POSSESSION = """Season_End_Year,Squad,Comp,Poss,Touches_Touches
+2025,Arsenal,Premier League,58.3,25000
+2025,vs Arsenal,Premier League,41.7,20000
+2024,Arsenal,Premier League,61.0,26000
+2025,Getafe,La Liga,42.1,19000
+"""
+
+
+def test_load_team_possession_reads_team_shaped_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(csv_ingest, "CSV_DIR", tmp_path)
+    _write(tmp_path, "big5_team_possession.csv", TEAM_POSSESSION)
+    _write(tmp_path, "standard.csv", WFR_STANDARD)  # player file must be ignored
+    poss = csv_ingest.load_team_possession()
+    # current season only, opponent ("vs ") rows skipped, player files skipped
+    assert poss == {"Arsenal": 58.3, "Getafe": 42.1}
+
+
+def test_load_team_possession_empty_without_team_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(csv_ingest, "CSV_DIR", tmp_path)
+    _write(tmp_path, "standard.csv", WFR_STANDARD)
+    assert csv_ingest.load_team_possession() == {}
