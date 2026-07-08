@@ -3,6 +3,32 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-08 — pipeline: attribute-spread fix (the realism-harness finding)
+
+- **Compression audit** (representative attrs, outfield pool): per-metric
+  attempt shrinkage costs 0–3% of spread (self-adapting — kept as-is, it is
+  the fluke suppressor); minutes shrinkage at M0=900 cost 24–42% (the
+  dominant compressor); the squash clamp cost ~0%. Hidden third compressor:
+  blended attribute z has σ ≈ 0.4–0.9 (metric averaging cancels scale), so
+  elite passing topped out at 16 — the 1–20 range was never used.
+- **Fix**: (1) unit-variance normalization of attribute z per cohort
+  (MAPPING rule 2c) with gain capped at 1.8 so proxy-heavy attributes
+  (jumping σ 0.39, strength 0.43, pace 0.52) don't inflate imputation noise
+  into fake discrimination; (2) SHRINK_M0 900 → 450 — rule 2b now owns
+  small-sample suppression, so the minutes prior only bites genuinely
+  low-minute players (2700' keeps 86%).
+- **Acceptance (realism harness)**: XI-mean spread 1.08 → 1.69 pts;
+  quality↔points r 0.34 → **0.74**; market-value anchor 0.40 → 0.49; elite
+  STs 1.00 vs 0.60 goals/match; GK check 0.73 vs 3.80 conceded. Top-20
+  stability ≥14/20 overlap on every attribute (no fluke invasion); marquee
+  absolutes land right (Ødegaard passing 20, Kimmich vision/longPassing 20,
+  Mbappé finishing 19, Van Dijk heading 20, Salah offTheBall 18).
+- **Remaining red**: top-8 vs bottom-8 win share 0.45 vs the 0.60 target,
+  with goal ratio 1.79:1 (Poisson-equivalent ≈ 0.55 wins). The gap is the
+  ENGINE's score-state draw equalization (synthetic draws also run 0.30) —
+  an engine calibration question, not seed spread. Documented, not chased
+  here (pipeline-only PR).
+
 ## 2026-07-08 — agent-engine mechanism pass + realism harness
 
 - **Score-state behavior** (the design behind two resisted bands):

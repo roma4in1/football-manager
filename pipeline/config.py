@@ -29,7 +29,22 @@ AUTO_MATCH_TARGET = 0.95
 # ── derivation (MAPPING.md documents usage) ─────────────────────────────────
 
 MINUTES_HARD_FLOOR = 270  # below this, drop the player entirely (3 matches)
-SHRINK_M0 = 900  # z_shrunk = z · m/(m+M0): 900' → half-weight to cohort mean
+# Minutes shrinkage prior. Was 900; the compression-budget diagnosis (PR #8
+# realism harness → DECISIONS.md) showed this stage removed 24-42% of
+# attribute spread — the dominant compressor — while the per-metric attempt
+# shrinkage (added later) already suppresses the small-sample flukes this
+# constant was originally sized for. 450' → a 2700' starter keeps 86% of his
+# signal, a 900' squad player 67%, a 450' fringe player half.
+SHRINK_M0 = 450
+
+# Blended attribute z-scores have σ ≈ 0.4–0.9 (multi-metric averaging cancels
+# scale), so the 1–20 squash never used its range: elite passing topped out at
+# 16. Attribute z is normalized to UNIT variance before shrinkage — the 1–20
+# scale then expresses the league distribution of the attribute, with real
+# outliers reaching 18–20. Proxy-heavy attributes (jumping σ 0.39, strength
+# 0.43, pace 0.52) get the gain CAPPED so imputation noise is not inflated
+# into fake discrimination.
+ATTR_NORM_MAX_GAIN = 1.8
 
 # GK cohort separation (MAPPING rule 3): GKs get a flat low baseline on every
 # outfield attribute and are EXCLUDED from the outfield z-distributions —

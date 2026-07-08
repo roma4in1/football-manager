@@ -285,3 +285,35 @@ def test_passing_tight_space_outweighs_unpressured_progressiveness():
     derived = derive_all(squad)
     by_id = dict(zip(["THREADER", "SWITCHER", "AVG1", "AVG2"], derived))
     assert by_id["THREADER"]["attributes"]["passing"] > by_id["SWITCHER"]["attributes"]["passing"]
+
+
+# ── unit-variance attribute z (MAPPING rule 2c) ──────────────────────────────
+
+def test_attribute_z_normalized_so_elites_reach_the_tail():
+    # longPassing blend has σ < 1 across a squad; normalization must stretch
+    # the clear specialist toward the top of the 1-20 range, not cap at ~15
+    squad = _squad()
+    derived = derive_all(squad)
+    by_id = dict(zip(["LONG", "SHORT", "AVG1", "AVG2", "DFAVG", "ROOKIE"], derived))
+    assert by_id["LONG"]["attributes"]["longPassing"] >= 15
+    # and the ordering/spread invariants still hold
+    assert by_id["LONG"]["attributes"]["longPassing"] > by_id["AVG1"]["attributes"]["longPassing"]
+
+
+def test_proxy_gain_cap_bounds_normalization(monkeypatch):
+    # the normalization gain is capped: spread with the cap must not exceed
+    # cap× the un-normalized spread (low-signal blends stay damped)
+    squad = [
+        _mk_dribbler("A", "MF", takeon_pct=70.0, attempts=100),
+        _mk_dribbler("B", "MF", takeon_pct=55.0, attempts=100),
+        _mk_dribbler("C", "MF", takeon_pct=45.0, attempts=100),
+        _mk_dribbler("D", "MF", takeon_pct=30.0, attempts=100),
+    ]
+    def spread(cap):
+        monkeypatch.setattr(config, "ATTR_NORM_MAX_GAIN", cap)
+        vals = [x["attributes"]["dribbling"] for x in derive_all(squad)]
+        return max(vals) - min(vals)
+    base = spread(1.0)      # gain disabled
+    capped = spread(1.8)
+    assert capped <= base * 1.8 + 2  # cap honored (+2 for 1-20 rounding)
+    assert capped >= base            # and normalization never shrinks spread

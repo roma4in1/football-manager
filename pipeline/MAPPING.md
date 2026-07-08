@@ -22,8 +22,11 @@ transfermarkt-datasets `players.csv` columns.
    inactive — `run.py` prints which, and nothing is approximated silently.
 2. **Minutes floor**: players under 270 league minutes are dropped. Everyone
    else is **shrunk toward their position-group mean** (empirical Bayes):
-   `z_final = w·z_player + (1−w)·z̄_group` with `w = m/(m + 900)` — at 900'
-   you keep half your own signal, at 2700' three quarters.
+   `z_final = w·z_player + (1−w)·z̄_group` with `w = m/(m + 450)` — at 450'
+   you keep half your own signal, at 2700' ~86%. (Was 900: the compression
+   audit showed minutes shrinkage removed 24–42% of attribute spread — the
+   dominant compressor — while rule 2b now suppresses the small-sample
+   flukes this constant was originally sized for.)
    **2b. Per-metric attempt shrinkage** (distinct from — and applied before —
    the minutes shrinkage, which it does not replace): every RATE metric is
    shrunk toward its cohort's attempt-weighted mean with `w = n/(n + k)`,
@@ -34,6 +37,15 @@ transfermarkt-datasets `players.csv` columns.
    pass-completion %s k=60/80/25 (short+medium / overall / long), duel rates
    (take-on/aerial/challenge) k=25, shooting rates k=25 (SoT%) and k=12
    (goals per SoT).
+2c. **Unit-variance attribute z** (the spread fix behind the realism
+   harness): blended attribute z-scores have σ ≈ 0.4–0.9 because averaging
+   metrics cancels scale, which compressed the 1–20 range (elite passing
+   topped out at 16). Each attribute's z is renormalized to σ = 1 within its
+   cohort before shrinkage, so the squash maps the league DISTRIBUTION onto
+   1–20 and genuine outliers reach 18–20. Proxy-heavy attributes (jumping
+   σ 0.39, strength 0.43, pace 0.52) have the gain capped at
+   `ATTR_NORM_MAX_GAIN = 1.8` so imputation noise never inflates into fake
+   discrimination — low-confidence attributes stay deliberately damped.
 3. **Normalization**: outfield metric z-scores are computed over the
    **outfield cohort** (all outfield positions together), because the engine
    reads attribute values absolutely (a 16 finishes like a 16 regardless of
