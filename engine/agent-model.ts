@@ -63,7 +63,7 @@ export const AGENT_CAL = {
   shootingBiasScoreBias: 0.25,
   holdPositionScoreBias: 0.2,
   dribbleBiasScoreBias: 0.15,
-  crossBiasScoreBias: 0.6,
+  crossBiasScoreBias: 0.75,
   // option geometry
   passRangeM: 33, // beyond → longPass (lofted)
   leadPassM: 2.5, // targets lead the receiver toward goal
@@ -87,7 +87,7 @@ export const AGENT_CAL = {
   controlCompletionLogit: 0.8, // ×(ourControl(target) − 0.5)
   carryBaseLogit: 1.0,
   carryPressureLogit: 1.5,
-  shotBaseScore: -0.6, // negative gate on shot volume (xg term restores good chances)
+  shotBaseScore: -0.76, // negative gate on shot volume (xg term restores good chances)
   shotValueWeight: 0.6, // shot score = base + weight × xgProxy + biases
   holdBaseScore: -0.15,
   holdPressurePenalty: 0.5,
@@ -132,7 +132,7 @@ export const AGENT_CAL = {
   shotSkillLogit: 1.0,
   shotDistDecayM: 14, // logit −d/decay
   shotPressureLogit: 0.8,
-  gkBeatBase: -0.5, // P(goal | on target) logit vs keeper quality
+  gkBeatBase: -0.15, // P(goal | on target) logit vs keeper quality
   gkXgWeight: 3.0, // ×(xgProxy − 0.1): big chances beat keepers
   gkQualityLogit: 1.2, // ×(mean(gkReflexes, gkPositioning)/20 − 0.5)·2
 
@@ -154,8 +154,8 @@ export const AGENT_CAL = {
   injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
   offsideToleranceM: 2.5, // receiver this far beyond the second-last defender → flagged
   penaltyGoalProb: 0.76,
-  cornerProb: 0.1, // P(corner | shot saved or off target)
-  setPieceHeaderXgFactor: 0.48, // headers convert worse than feet from the same spot
+  cornerProb: 0.12, // P(corner | shot saved or off target)
+  setPieceHeaderXgFactor: 0.62, // headers convert worse than feet from the same spot
   setPieceDeliveryNoiseM: 3.5, // ×(20 − setPieceDelivery)/20
   homePressureRelief: 0.45, // crowd effect: home carrier feels less pressure
 
