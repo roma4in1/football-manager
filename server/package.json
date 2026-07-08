@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test league-integration.test.ts && node --test league-api.test.ts && node --test league-auction.test.ts",
+    "test": "node --test league-integration.test.ts && node --test league-api.test.ts && node --test league-auction.test.ts && node --test league-season.test.ts",
     "serve": "node league-server.ts",
     "seed-demo": "node scripts/seed-demo.ts",
     "db:test:up": "docker start fm-test-pg 2>/dev/null || docker run -d --name fm-test-pg -e POSTGRES_PASSWORD=fm -e POSTGRES_DB=fm_test -p 54329:5432 postgres:16-alpine",

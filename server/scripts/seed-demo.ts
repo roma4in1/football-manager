@@ -15,17 +15,21 @@
 
 import pg from 'pg';
 import { LEAGUE_CFG } from '@fm/engine/config';
-import { bootstrapSchema, seedBareClub, seedPoolPlayers, seedSeason } from '../league-test-helpers.ts';
+import { bootstrapSchema, seedPoolPlayers } from '../league-test-helpers.ts';
+import { setupSeason } from '../league-setup.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 await bootstrapSchema(pool, DATABASE_URL);
-const seasonId = await seedSeason(pool, 'auction');
-
-await seedBareClub(pool, seasonId, 'Alpha FC', 'alice@demo.io');
-await seedBareClub(pool, seasonId, 'Beta United', 'bob@demo.io');
+// pool first — setupSeason's supply guards check it before any write
 const poolIds = await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8, 'Demo');
+const { seasonId } = await setupSeason(pool, {
+  clubs: [
+    { name: 'Alpha FC', managerEmail: 'alice@demo.io' },
+    { name: 'Beta United', managerEmail: 'bob@demo.io' },
+  ],
+});
 
 console.log(`demo season seeded on ${DATABASE_URL} — phase: auction`);
 console.log(`  season   ${seasonId}`);
