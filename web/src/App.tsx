@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { api, ApiError, type Me } from './api.ts';
 import { AuctionScreen } from './screens/AuctionScreen.tsx';
+import { FacilitiesScreen } from './screens/FacilitiesScreen.tsx';
 import { HalfTimeScreen } from './screens/HalfTimeScreen.tsx';
 import { Home } from './screens/Home.tsx';
 import { LineupScreen } from './screens/LineupScreen.tsx';
@@ -27,6 +28,7 @@ export function App() {
       <nav className="topnav">
         <Link to="/">Home</Link>
         <Link to="/standings">Standings</Link>
+        <Link to="/facilities">Facilities</Link>
         <span className="spacer" />
         <span className="muted">{me.club.name}</span>
       </nav>
@@ -38,6 +40,7 @@ export function App() {
         <Route path="/result/:fixtureId" element={<ResultScreen me={me} />} />
         <Route path="/replay/:fixtureId" element={<ReplayScreen me={me} />} />
         <Route path="/standings" element={<StandingsScreen />} />
+        <Route path="/facilities" element={<FacilitiesScreen />} />
         <Route path="*" element={<Home me={me} />} />
       </Routes>
     </BrowserRouter>

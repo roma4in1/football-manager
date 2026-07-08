@@ -32,7 +32,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type pg from 'pg';
 import type { Tactics } from '@fm/engine/types';
 import { AuctionError } from './league-auction.ts';
-import { LEAGUE_CFG } from '@fm/engine/config';
+import { LEAGUE_CFG, facilityUpgradeCost } from '@fm/engine/config';
 import { validateHtResubmission, validateTactics } from '@fm/engine/eligibility';
 import type { Orchestrator } from './league-orchestrator.ts';
 import * as store from './league-store.ts';
@@ -362,6 +362,76 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
         awayPlayers: sides[fx.awayClubId] ?? [],
         halves,
       };
+    });
+
+    // ── facilities (training + medical; youth deferred) ───────────────────
+    const facilitiesView = async (clubId: string) => {
+      const s = await season();
+      const row = await store.getFacilities(pool, s.id, clubId);
+      if (!row) return null;
+      const spent = await store.debitedTotal(pool, s.id, clubId, ['auction_win', 'facility_investment']);
+      return {
+        phase: s.phase,
+        investmentOpen: s.phase === 'regular' || s.phase === 'transfer_window',
+        budgetRemaining: row.transferBudget - spent,
+        training: { level: row.trainingLevel, nextCost: facilityUpgradeCost(row.trainingLevel) },
+        medical: { level: row.medicalLevel, nextCost: facilityUpgradeCost(row.medicalLevel) },
+      };
+    };
+
+    authed.get('/facilities', async (req, reply) => {
+      const view = await facilitiesView(req.ctx.clubId);
+      if (!view) return reply.code(404).send({ error: 'not_found' });
+      return view;
+    });
+
+    /**
+     * Invest one level in a facility, paying from transfer budget — one
+     * transaction under the club_seasons row lock. Open during 'regular'
+     * and 'transfer_window': facilities are a season-long management lever.
+     * Closed during the auction — transfer_budget IS the live bidding
+     * balance there and mutating it would race bid validation — and once
+     * the season ends.
+     */
+    authed.post('/facilities/invest', async (req, reply) => {
+      const { facility } = (req.body ?? {}) as { facility?: string };
+      if (facility !== 'training' && facility !== 'medical') {
+        return reply.code(400).send({ error: 'bad_facility' });
+      }
+      const s = await season();
+      if (s.phase !== 'regular' && s.phase !== 'transfer_window') {
+        return reply.code(409).send({ error: 'investment_closed', phase: s.phase });
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const row = await store.getFacilities(client, s.id, req.ctx.clubId, true);
+        if (!row) {
+          await client.query('ROLLBACK');
+          return reply.code(404).send({ error: 'not_found' });
+        }
+        const level = facility === 'training' ? row.trainingLevel : row.medicalLevel;
+        const cost = facilityUpgradeCost(level);
+        if (cost === null) {
+          await client.query('ROLLBACK');
+          return reply.code(422).send({ error: 'level_cap', level });
+        }
+        const spent = await store.debitedTotal(client, s.id, req.ctx.clubId, ['auction_win', 'facility_investment']);
+        const remaining = row.transferBudget - spent;
+        if (cost > remaining) {
+          await client.query('ROLLBACK');
+          return reply.code(422).send({ error: 'insufficient_budget', cost, remaining });
+        }
+        await store.applyFacilityInvestment(client, s.id, req.ctx.clubId, facility, cost);
+        await client.query('COMMIT');
+        return reply.code(204).send();
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     });
 
     authed.get('/standings', async () => {

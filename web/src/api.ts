@@ -76,6 +76,19 @@ export interface HtView {
   players: Record<string, string>;
 }
 
+export interface FacilityView {
+  level: number;
+  nextCost: number | null;
+}
+
+export interface FacilitiesView {
+  phase: string;
+  investmentOpen: boolean;
+  budgetRemaining: number;
+  training: FacilityView;
+  medical: FacilityView;
+}
+
 export interface ReplayView {
   fixtureId: string;
   home: string;
@@ -147,6 +160,8 @@ export const api = {
   ht: (fixtureId: string) => req<HtView>('GET', `/api/fixture/${fixtureId}/ht`),
   result: (fixtureId: string) => req<ResultView>('GET', `/api/fixture/${fixtureId}/result`),
   replay: (fixtureId: string) => req<ReplayView>('GET', `/api/fixture/${fixtureId}/replay`),
+  facilities: () => req<FacilitiesView>('GET', '/api/facilities'),
+  investFacility: (facility: 'training' | 'medical') => req<void>('POST', '/api/facilities/invest', { facility }),
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),
