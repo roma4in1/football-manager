@@ -144,6 +144,25 @@ export class GeometricDecisionModel implements DecisionModel {
       });
     }
 
+    // ambitious ground candidates: the most ADVANCED onside mates within
+    // ground range, regardless of proximity. These are the risky ground
+    // passes the risk slider promotes — without them the risky ground pool
+    // was 2 through balls and riskAppetite couldn't dent completion.
+    const candidateIds = new Set(mates.map((m) => m.id));
+    const ambitious = [...ctx.teammates]
+      .filter((t) => t.id !== ctx.carrier.id && !candidateIds.has(t.id) && looksOnside(t.pos) &&
+        dist(t.pos, ctx.carrier.pos) <= AGENT_CAL.passRangeM)
+      .sort((a, b) => (b.pos.x - a.pos.x) * attackSign)
+      .slice(0, AGENT_CAL.ambitiousOptionCount);
+    for (const mate of ambitious) {
+      options.push({
+        type: 'pass',
+        target: { x: clampX(mate.pos.x + AGENT_CAL.leadPassM * attackSign), y: mate.pos.y },
+        flight: 'ground',
+        receiverId: mate.id,
+      });
+    }
+
     // through balls ON THE DECK: the most advanced mates, led hard into
     // space. Higher value, lower completion — risk/reward scoring decides.
     // Never lofted (that's what longPass switches are for), so out-of-range

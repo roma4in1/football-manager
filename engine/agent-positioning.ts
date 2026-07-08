@@ -146,13 +146,23 @@ export class AnchorPositioningModel implements PositioningModel {
       : Math.max(x, Math.min(offsideLine + AGENT_CAL.lineHoldBufferM, PITCH_LENGTH / 2));
 
     // the press: nearest N outfielders to the ball, if close enough.
-    // pressTrigger scales HOW MANY join — a high press commits bodies
-    const nPressers = Math.max(1, Math.round(AGENT_CAL.pressersCount * (0.5 + team.pressTrigger)));
+    // pressTrigger scales HOW MANY join and HOW FAR they chase from — a
+    // high press is more bodies over longer chases (this range term is what
+    // makes press commitment cost legs; the sweep investigation showed the
+    // fatigue model reads distance fine, the press just wasn't running far)
+    // counter-pressing: the 6-second window after losing the ball is where
+    // high-press teams sprint hardest — an extra body and a wider net
+    const counterPressing = ctx.phase === 'counterPress' && team.pressTrigger > 0.5;
+    const nPressers = Math.max(1, Math.round(AGENT_CAL.pressersCount * (0.5 + team.pressTrigger))) +
+      (counterPressing ? 1 : 0);
+    const chaseRange = AGENT_CAL.pressMaxDistM *
+      (AGENT_CAL.pressRangeBase + AGENT_CAL.pressRangeGain * team.pressTrigger) *
+      (counterPressing ? AGENT_CAL.counterPressRangeBoost : 1);
     const pressers = new Set(
       inPossession
         ? []
         : outfield
-            .filter((p) => dist(p.pos, ctx.ball.pos) < AGENT_CAL.pressMaxDistM)
+            .filter((p) => dist(p.pos, ctx.ball.pos) < chaseRange)
             .sort((a, b) => dist(a.pos, ctx.ball.pos) - dist(b.pos, ctx.ball.pos))
             .slice(0, nPressers)
             .map((p) => p.id),

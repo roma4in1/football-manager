@@ -45,7 +45,10 @@ export const AGENT_CAL = {
   compactnessPull: 0.4, // ×team.compactness toward team centroid, out of possession
   pressPullWeight: 1.7, // nearest defenders chase the ball
   pressersCount: 2, // how many join the press
-  pressMaxDistM: 30, // beyond this nobody presses
+  pressMaxDistM: 30, // base chase radius, scaled by pressTrigger at use site
+  pressRangeBase: 0.6, // chase range = pressMaxDistM × (base + gain·pressTrigger)
+  pressRangeGain: 0.8, // trigger 0.9 chases from ~40 m; 0.1 from ~20 m
+  counterPressRangeBoost: 1.3, // gegenpressing window: wider net, extra body
   forwardRunPull: 0.3, // ×(offTheBall/20), possession phases, off-ball players
   gkBoxX: 5.5, // GK holds this deep
   gkBallTrackY: 0.3, // GK lateral ball tracking share
@@ -81,6 +84,7 @@ export const AGENT_CAL = {
   leadPassM: 2.5, // targets lead the receiver toward goal
   throughLeadM: 9, // through-ball variant: hard lead into space
   throughOptionCount: 2, // for the most advanced mates
+  ambitiousOptionCount: 2, // most-advanced onside mates beyond the nearest set
   shotRangeM: 26,
   crossWideYOffsetM: 13, // |y − 34| beyond this in the final third → crossing zone
   carryStepM: 8,
