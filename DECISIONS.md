@@ -3,6 +3,29 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-09 — replay viewer v0 (web) + /replay endpoint
+
+- One Canvas 2D component (web/src/replay/) — no Pixi/Phaser for 23 dots and
+  a ball. Pure playback logic (interpolation, score clock, timeline
+  filtering) lives in playback.ts and is vitest-covered; the canvas is dumb.
+- **Pacing**: frames are 6 sim-seconds apart (450/half). "1x" plays
+  SIM_PER_REAL=12 sim-seconds per wall second — a half in ~3¾ min, a match
+  in ~7½ (0.5x–4x range). Literal real-time would be 45 unwatchable minutes;
+  this is the "real-ish" compromise, one constant to retune.
+- Interpolation lerps between surrounding frames; gaps > 30 s snap (missing
+  chunks), players present in one frame only snap (HT subs). The 6-second
+  HT boundary lerp reads as a quick reset glide — acceptable at v0.
+- **Embargo**: /fixture/:id/replay reuses the SAME SQL predicate as
+  /result — extracted to EMBARGO_VISIBLE in league-store so the rule exists
+  once. Participant post-final, everyone post-reveal, 404 otherwise (the
+  results convention; not 403 — no existence leak). Tested alongside the
+  result-embargo tests.
+- Dot sides come from tactics_submissions (fixtureSides) — end_state does
+  not carry team membership. Payload ≈ 200 kB per match (450 frames × 2,
+  101 kB JSONB each); replay_frames prune after 4 matchweeks already.
+- Deliberately NOT built (post-season-1): sprites/camera/commentary/clip
+  export, heatmap overlay.
+
 ## 2026-07-08 — score-state equalization balance point (the PR #9 residual)
 
 - The chasing mechanism over-equalized: real dominance converted into

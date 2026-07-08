@@ -347,6 +347,23 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       };
     });
 
+    /** Replay frames for the viewer — same embargo as /result (store SQL). */
+    authed.get('/fixture/:id/replay', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const halves = await store.embargoedReplay(pool, id, req.ctx.clubId).catch(() => []);
+      if (halves.length !== 2) return reply.code(404).send({ error: 'not_found' });
+      const fx = (await store.getFixture(pool, id))!;
+      const sides = await store.fixtureSides(pool, id);
+      return {
+        fixtureId: id,
+        home: fx.homeClubId,
+        away: fx.awayClubId,
+        homePlayers: sides[fx.homeClubId] ?? [],
+        awayPlayers: sides[fx.awayClubId] ?? [],
+        halves,
+      };
+    });
+
     authed.get('/standings', async () => {
       const s = await season();
       return { season: { id: s.id, number: s.number }, table: await store.standings(pool, s.id) };

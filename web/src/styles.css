@@ -99,3 +99,64 @@ table.stats, table.standings { width: 100%; border-collapse: collapse; margin: 0
 
 .status-list { list-style: none; padding: 0; }
 .countdown { font-weight: 700; color: var(--accent); }
+
+/* ── replay viewer ──────────────────────────────────────────────────────── */
+
+.replay-head {
+  display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums; margin-bottom: 0.5rem;
+}
+.replay-score { font-size: 1.4rem; font-weight: 800; }
+.replay-team { font-weight: 600; }
+.replay-team.home { color: var(--accent); }
+.replay-team.away { color: var(--warn); }
+.replay-clock { margin-left: auto; font-weight: 700; color: var(--muted); }
+
+.replay-canvas-wrap { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.replay-canvas { display: block; width: 100%; touch-action: pan-y; }
+
+.replay-scrub { position: relative; margin: 0.9rem 0 0.2rem; }
+.replay-scrub input[type='range'] {
+  width: 100%; accent-color: var(--accent); height: 28px; margin: 0;
+  touch-action: none; /* horizontal drags scrub, they must not scroll */
+}
+.replay-markers { position: relative; height: 14px; }
+.replay-marker {
+  position: absolute; top: 2px; width: 10px; height: 10px; padding: 0;
+  margin-left: -5px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--muted);
+}
+.replay-marker-goal { background: var(--accent); width: 12px; height: 12px; top: 0; }
+.replay-marker-shot { background: #6b7d8f; width: 7px; height: 7px; top: 4px; }
+.replay-marker-card-yellow { background: var(--warn); border-radius: 2px; }
+.replay-marker-card-red { background: var(--danger); border-radius: 2px; }
+.replay-marker-sub { background: #5a8dc8; }
+.replay-marker-injury { background: var(--danger); }
+
+.replay-controls { display: flex; gap: 0.5rem; align-items: center; margin: 0.5rem 0; }
+.replay-controls button { min-width: 44px; min-height: 44px; } /* thumb-sized */
+.replay-play { font-size: 1.1rem; }
+.replay-speed.active { background: var(--accent); color: #08130c; border-color: var(--accent); }
+.replay-halflabel { margin-left: auto; }
+
+.replay-stats { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; margin: 0.3rem 0 0.8rem; }
+
+.replay-events { list-style: none; padding: 0; max-height: 14rem; overflow-y: auto; }
+.replay-events li { border-bottom: 1px dotted var(--line); }
+.linklike {
+  background: none; border: none; padding: 0.35rem 0; width: 100%;
+  text-align: left; color: var(--text); font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  display: inline-block; background: var(--accent); color: #08130c;
+  border-radius: 8px; padding: 0.5rem 0.9rem; font-weight: 700;
+  text-decoration: none;
+}
+
+@media (max-width: 420px) {
+  .replay-controls { flex-wrap: wrap; }
+  .replay-head { font-size: 0.9rem; }
+  .replay-score { font-size: 1.2rem; }
+}

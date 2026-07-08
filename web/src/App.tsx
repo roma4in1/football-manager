@@ -6,6 +6,7 @@ import { HalfTimeScreen } from './screens/HalfTimeScreen.tsx';
 import { Home } from './screens/Home.tsx';
 import { LineupScreen } from './screens/LineupScreen.tsx';
 import { Login } from './screens/Login.tsx';
+import { ReplayScreen } from './screens/ReplayScreen.tsx';
 import { ResultScreen } from './screens/ResultScreen.tsx';
 import { StandingsScreen } from './screens/StandingsScreen.tsx';
 
@@ -35,6 +36,7 @@ export function App() {
         <Route path="/lineup/:fixtureId" element={<LineupScreen />} />
         <Route path="/ht/:fixtureId" element={<HalfTimeScreen me={me} />} />
         <Route path="/result/:fixtureId" element={<ResultScreen me={me} />} />
+        <Route path="/replay/:fixtureId" element={<ReplayScreen me={me} />} />
         <Route path="/standings" element={<StandingsScreen />} />
         <Route path="*" element={<Home me={me} />} />
       </Routes>
