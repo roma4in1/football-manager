@@ -113,10 +113,20 @@ export class GeometricDecisionModel implements DecisionModel {
     const inFinalThird = ownRelX > AGENT_CAL.finalThirdX;
     const isWide = Math.abs(ctx.carrier.pos.y - PITCH_WIDTH / 2) > AGENT_CAL.crossWideYOffsetM;
 
+    // passers don't play teammates standing clearly offside — they wait for
+    // the runner to come back. The judgement band (passerLineJudgementM vs
+    // the tighter flag tolerance) is where real offsides come from.
+    const defXs = ctx.opponents.map((o) => o.pos.x).sort((a, b) => (goalX > 0 ? b - a : a - b));
+    const offsideLine = defXs[1] ?? defXs[0] ?? goalX;
+    const looksOnside = (p: Vec2): boolean =>
+      goalX > 0
+        ? p.x <= Math.max(offsideLine, PITCH_LENGTH / 2) + AGENT_CAL.passerLineJudgementM
+        : p.x >= Math.min(offsideLine, PITCH_LENGTH / 2) - AGENT_CAL.passerLineJudgementM;
+
     // pass candidates: nearest mates, set widened by vision
     const nMates = Math.max(2, Math.round(AGENT_CAL.passOptionCount * (0.5 + 0.5 * (ctx.carrier.attributes.vision / 20))));
     const mates = [...ctx.teammates]
-      .filter((t) => t.id !== ctx.carrier.id)
+      .filter((t) => t.id !== ctx.carrier.id && looksOnside(t.pos))
       .sort((a, b) => dist(a.pos, ctx.carrier.pos) - dist(b.pos, ctx.carrier.pos))
       .slice(0, nMates);
     for (const mate of mates) {

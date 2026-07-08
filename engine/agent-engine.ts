@@ -371,7 +371,15 @@ export class AgentEngine implements SimEngine {
           const beyondBall = side === 'home' ? passReceiver.pos.x > ball.pos.x : passReceiver.pos.x < ball.pos.x;
           const inOppHalf = ownRelX(side, passReceiver.pos.x) > PITCH_LENGTH / 2;
           if (beyondLine && beyondBall && inOppHalf) {
-            events.push({ t: now, type: 'offside', playerId: passReceiver.id, from: { ...passReceiver.pos } });
+            const margin = side === 'home' ? passReceiver.pos.x - line : line - passReceiver.pos.x;
+            events.push({
+              t: now, type: 'offside', playerId: passReceiver.id, from: { ...passReceiver.pos },
+              // diagnosis meta: how far beyond, and was the receiver moving
+              meta: {
+                margin: Math.round(margin * 10) / 10,
+                recvVx: Math.round(passReceiver.vel.x * 10) / 10,
+              },
+            });
             giveToKeeper(ball, states, tracker, oppositeOf(side));
             continue;
           }

@@ -165,7 +165,9 @@ export const AGENT_CAL = {
   boxFoulFactor: 0.18, // nobody dives in inside their own box
   injuryPerTickBase: 0.0000019, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
   injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
-  offsideToleranceM: 2.5, // receiver this far beyond the second-last defender → flagged
+  offsideToleranceM: 0.5, // linesman: receiver this far beyond the second-last defender → flagged
+  passerLineJudgementM: 1.2, // passers skip receivers beyond line+this; the flag band is tolerance..judgement
+  lineHoldBufferM: 2.0, // attackers hold this far INSIDE the line (onside-safe hover)
   penaltyGoalProb: 0.76,
   cornerProb: 0.12, // P(corner | shot saved or off target)
   setPieceHeaderXgFactor: 0.62, // headers convert worse than feet from the same spot

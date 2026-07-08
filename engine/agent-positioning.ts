@@ -142,8 +142,8 @@ export class AnchorPositioningModel implements PositioningModel {
     const oppXs = ctx.opponents.map((o) => o.pos.x).sort((a, b) => (side === 'home' ? b - a : a - b));
     const offsideLine = oppXs[1] ?? oppXs[0] ?? (side === 'home' ? PITCH_LENGTH : 0);
     const holdLineX = (x: number): number =>
-      side === 'home' ? Math.min(x, Math.max(offsideLine - 0.3, PITCH_LENGTH / 2))
-      : Math.max(x, Math.min(offsideLine + 0.3, PITCH_LENGTH / 2));
+      side === 'home' ? Math.min(x, Math.max(offsideLine - AGENT_CAL.lineHoldBufferM, PITCH_LENGTH / 2))
+      : Math.max(x, Math.min(offsideLine + AGENT_CAL.lineHoldBufferM, PITCH_LENGTH / 2));
 
     // the press: nearest N outfielders to the ball, if close enough.
     // pressTrigger scales HOW MANY join — a high press commits bodies
