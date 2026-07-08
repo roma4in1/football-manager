@@ -267,18 +267,51 @@ test('half 2: window, sub cap, no re-entry, sent-off exclusion, then sim to fina
   assert.equal(sixSwaps.statusCode, 422);
   assert.ok(sixSwaps.json().issues.some((i: { code: string }) => i.code === 'too_many_subs'));
 
-  // a legal 2-swap resubmission sticks
-  assert.equal((await putH2(cookieA, [...playersA.slice(0, 9), playersA[11], playersA[12]])).statusCode, 204);
+  // Half-2 XIs are built from what ACTUALLY happened in half 1: the sim is
+  // seeded by the fixture seed, but freshly-minted player UUIDs still vary
+  // outcomes per run, so an organic red card among fixed starters made the
+  // strict 204s below flaky (hit PR #10, green on rerun). A sent-off
+  // exclusion costs a sub like any other swap.
+  const endState = original as { playerState: Record<string, { cards?: { sentOff?: boolean } }> };
+  const survivors = (squad: string[]) => {
+    const h1XI = squad.slice(0, 11);
+    const fit = h1XI.filter((id) => !endState.playerState[id]?.cards?.sentOff);
+    return { h1XI, fit };
+  };
 
-  // no re-entry: playersA[9] was just substituted off — cannot return in a later resubmission
-  const reentry = await putH2(cookieA, [...playersA.slice(0, 10), playersA[11]]);
+  // a legal ≤2-swap resubmission sticks: keep 9 fit starters, bring the bench on
+  const A = survivors(playersA);
+  assert.ok(A.fit.length >= 9, `half 1 left ${A.fit.length} fit Alpha starters — cannot field a legal XI`);
+  assert.ok(A.fit.includes(playersA[0]), 'sole Alpha GK must survive half 1 for this test to field an XI');
+  const xiA = [...A.fit.slice(0, 9), playersA[11], playersA[12]];
+  assert.equal((await putH2(cookieA, xiA)).statusCode, 204);
+
+  // no re-entry: anyone out of the accepted XI (swapped or sent off) stays off
+  const droppedA = A.h1XI.filter((id) => !xiA.includes(id));
+  const probe = [...xiA.filter((id) => id !== playersA[12]), droppedA[0]];
+  const reentry = await putH2(cookieA, probe);
   assert.equal(reentry.statusCode, 422);
   assert.ok(
-    reentry.json().issues.some((i: { code: string; playerId?: string }) => i.code === 'reentry' && i.playerId === playersA[9]),
+    reentry.json().issues.some((i: { code: string; playerId?: string }) => i.code === 'reentry' && i.playerId === droppedA[0]),
     'substituted players stay off',
   );
 
-  assert.equal((await putH2(cookieB, playersB)).statusCode, 204);
+  // and the derived-XI approach fields a legal side when a red card DID
+  // happen — deterministic coverage of the branch that used to flake:
+  // doctor a current starter as sent off, resubmit without him (a squad
+  // extra comes on: 3 swaps vs half 1, within the cap)
+  const withRed = structuredClone(original);
+  withRed.playerState[playersA[5]].cards.sentOff = true;
+  await q(`UPDATE half_results SET end_state = $2 WHERE fixture_id = $1 AND half = 1`, [fixtureId, JSON.stringify(withRed)]);
+  const xiRed = [...xiA.filter((id) => id !== playersA[5]), extras[0]];
+  assert.equal((await putH2(cookieA, xiRed)).statusCode, 204, 'derived XI stays legal when a red card actually happened');
+  await q(`UPDATE half_results SET end_state = $2 WHERE fixture_id = $1 AND half = 1`, [fixtureId, JSON.stringify(original)]);
+
+  const B = survivors(playersB);
+  assert.ok(B.fit.length >= 9, `half 1 left ${B.fit.length} fit Beta starters — cannot field a legal XI`);
+  assert.ok(B.fit.includes(playersB[0]), 'sole Beta GK must survive half 1 for this test to field an XI');
+  const xiB = [...B.fit, playersB[11], playersB[12]].slice(0, 11);
+  assert.equal((await putH2(cookieB, xiB)).statusCode, 204);
   await waitFor(async () => (await q(`SELECT state FROM fixtures WHERE id = $1`, [fixtureId])).rows[0].state === 'final', 'half-2 sim via queue');
 
   const late = await call({ method: 'PUT', url: `/api/fixture/${fixtureId}/tactics/1`, cookie: cookieA, payload: buildTactics(playersA) });
