@@ -3,6 +3,22 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-08 — agent-engine calibration: final full-run state
+
+Full ENGINE=agent harness (600 matches × 3 seeds): **66 pass / 16 fail,
+plumbing 0 fails on every seed.** Green on all three seeds: goals, 0-0
+share, shots, SoT, xG/shot, possession spread, pass completion, PPDA,
+fouls, yellows, reds, set-piece share, headed share, injuries, aerial
+duels, lineHeight→offsides, crossBias→aerials, and both sent-off
+emergents. Aggregate gate 82/0 unchanged.
+
+Still red — all pre-documented below, stopping per the budget rule:
+scoreline shares (draws 0.20–0.22, home/away split lacks the home edge),
+second-half goal share, and the press→ppda/fatigue + risk→passAcc/xg
+sweeps (risk→xg/shot is marginal: it passed on several quick batches and
+misses the full threshold by 0.003). These need the design decisions
+described under "Resisted bands", not more knob passes.
+
 ## 2026-07-04 — agent-engine calibration (AGENT_CAL + behavior refinements)
 
 Non-obvious knob/mechanism choices (quick-batch n=60/seed; the full 600/seed
