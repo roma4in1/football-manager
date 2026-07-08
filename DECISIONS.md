@@ -3,6 +3,31 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-08 — score-state equalization balance point (the PR #9 residual)
+
+- The chasing mechanism over-equalized: real dominance converted into
+  draws (realism top-8 win share 0.45 at a 1.79:1 goal ratio; synthetic
+  draws 0.30 on two seeds). Tempered with three shape changes, no channel
+  removed: **gap taper** (each goal of deficit beyond the first adds only
+  stateGapTaper=0.3 of urgency — a 2+ goal underdog narrows, not erases),
+  **lead caution share** (leaders keep 0.6 of the see-it-out shift —
+  dominant sides stay themselves instead of parking and inviting), and
+  magnitude trims (stateMax 1.5→1.1, stateRiskTurnoverDiscount 0.45→0.32).
+- **Measured balance point** — untempered → tempered:
+  synthetic draw share 1/3 seeds (0.25/0.30/0.30) → **3/3 (0.253/0.260/
+  0.252)**; realism top-8 vs bottom-8 win share 0.45 → **0.575** at a
+  2.0:1 goal ratio; quality↔points r 0.74 → 0.71 (holds ≥0.70); home-win
+  2/3 both sides of the change (v1 0.425 misses by 0.005); strength
+  q15-vs-q9 0.98.
+- **Tradeoff curve finding**: second_half_goal_share barely responds to
+  equalization strength (0.477-0.508 → 0.463-0.505, Δ≈−0.01) — its band
+  miss (0.52–0.56) PREDATES tempering and is structural: leaders park as
+  effectively as chasers push, and the real-world drivers of late-goal
+  excess (fresh-legs subs, desperation quality drop) aren't modeled.
+  The balance point therefore optimizes draws + dominance and accepts
+  2nd-half at ~0.47–0.51; moving it needs in-play subs or a late-game
+  execution-fatigue channel — a design decision, not this dial.
+
 ## 2026-07-08 — pipeline: attribute-spread fix (the realism-harness finding)
 
 - **Compression audit** (representative attrs, outfield pool): per-metric

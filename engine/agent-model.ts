@@ -69,12 +69,14 @@ export const AGENT_CAL = {
   // positioning shifts only — execution noise stays attribute-driven.
   stateUrgencyBase: 0.25,
   stateUrgencyTimeGain: 1.0,
-  stateMax: 1.5,
-  stateRiskTurnoverDiscount: 0.45, // chasing discounts turnover fear
+  stateMax: 1.1,
+  stateRiskTurnoverDiscount: 0.32, // chasing discounts turnover fear (tempered)
   stateShotBias: 0.15, // chasing shoots earlier
   stateHoldBias: 0.26, // chasing hates holding; leading loves it
   statePushShiftM: 7, // team base line shifts this far at full urgency
   stateForwardRunGain: 0.5, // chasing off-ball runs push harder
+  stateGapTaper: 0.3, // each extra goal of deficit adds only this much urgency
+  stateLeadCautionShare: 0.6, // leaders keep this share of the see-it-out shift
   homeExpansiveness: 0.3, // constant home scoreState offset — expansive hosts
   shootingBiasScoreBias: 0.25,
   holdPositionScoreBias: 0.2,
