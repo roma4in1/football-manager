@@ -292,11 +292,21 @@ export class AgentEngine implements SimEngine {
       const diff = side === 'home' ? diffHome : -diffHome;
       const matchFrac = now / (2 * HALF_SECONDS);
       const urgency = AGENT_CAL.stateUrgencyBase + AGENT_CAL.stateUrgencyTimeGain * matchFrac;
+      // tempering (DECISIONS: equalization balance point): the mechanism
+      // narrows scorelines, it must not erase quality gaps —
+      // (1) extra goals of deficit add only stateGapTaper each: a 2+ goal
+      //     underdog does not gegenpress back to parity as often;
+      // (2) leaders keep stateLeadCautionShare of the see-it-out shift:
+      //     a dominant side stays itself instead of parking and inviting.
+      const gap = Math.abs(diff);
+      const tapered = gap === 0 ? 0 : 1 + AGENT_CAL.stateGapTaper * (gap - 1);
+      const raw = (diff < 0 ? 1 : -1) * tapered * urgency;
+      const shaped = raw >= 0 ? raw : raw * AGENT_CAL.stateLeadCautionShare;
       // home teams play more expansively (2b: decision-level home term —
       // anchor/risk shift through the same channels as chasing, never a
       // completion-rate thumb)
       const home = side === 'home' ? AGENT_CAL.homeExpansiveness : 0;
-      return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, -diff * urgency + home));
+      return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, shaped + home));
     };
 
     for (let tick = 0; tick < ticks; tick++) {
