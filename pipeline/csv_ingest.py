@@ -51,6 +51,7 @@ ALIASES: Dict[str, Dict[str, List[str]]] = {
     "shooting": {
         "minutes_90s": ["mins_per_90", "x90s", "90s", "mins_per_90_playing_time"],
         "shots": ["sh_standard", "sh", "shots"],
+        "shots_on_target": ["sot_standard", "sot"],
         "shots_on_target_pct": ["sot_percent_standard", "sot_percent", "so_t_percent"],
         "goals_per_shot_on_target": ["g_per_sot_standard", "g_per_sot", "goals_per_shot_on_target"],
         "npxg_shooting": ["npxg_expected", "npxg"],
@@ -58,6 +59,7 @@ ALIASES: Dict[str, Dict[str, List[str]]] = {
     "passing": {
         "minutes_90s": ["mins_per_90", "x90s", "90s"],
         "passes_pct": ["cmp_percent_total", "cmp_percent", "pass_completion_percent"],
+        "passes_total": ["att_total"],
         "passes_short": ["att_short"],
         "passes_pct_short": ["cmp_percent_short"],
         "passes_medium": ["att_medium"],
@@ -68,6 +70,9 @@ ALIASES: Dict[str, Dict[str, List[str]]] = {
         "passes_into_final_third": ["final_third", "passes_into_final_third", "x1_3"],
         "passes_into_penalty_area": ["ppa"],
         "crosses_into_penalty_area": ["crs_pa", "crspa"],
+        "progressive_passes": ["prg_p", "prgp", "prog"],
+        "passes_total_distance": ["tot_dist_total", "totdist_total"],
+        "passes_progressive_distance": ["prg_dist_total", "prgdist_total"],
     },
     "defense": {
         "minutes_90s": ["mins_per_90", "x90s", "90s"],
@@ -88,6 +93,8 @@ ALIASES: Dict[str, Dict[str, List[str]]] = {
         "minutes_90s": ["mins_per_90", "x90s", "90s"],
         "touches": ["touches_touches", "touches"],
         "touches_att_pen_area": ["att_pen_touches", "touches_att_pen_area"],
+        "touches_att_3rd": ["att_3rd_touches", "touches_att_3rd"],
+        "take_ons": ["att_take", "att_take_ons"],
         "take_ons_won": ["succ_take", "succ_take_ons", "succ_take_ons_take_ons"],
         "take_ons_won_pct": ["succ_percent_take", "succ_percent_take_ons"],
         "carries": ["carries_carries", "carries"],
@@ -103,6 +110,7 @@ ALIASES: Dict[str, Dict[str, List[str]]] = {
         "cards_yellow": ["crd_y_performance", "crdy_performance", "crd_y", "crdy"],
         "crosses": ["crs_performance", "crs"],
         "aerials_won": ["won_aerial", "won_aerial_duels", "aerials_won"],
+        "aerials_lost": ["lost_aerial", "lost_aerial_duels", "aerials_lost"],
         "aerials_won_pct": ["won_percent_aerial", "won_percent_aerial_duels", "aerials_won_pct"],
     },
     "playingtime": {
@@ -218,6 +226,47 @@ def load_csv_pages() -> Tuple[Dict[str, List[Dict[str, str]]], Dict[str, str]]:
             pages[stat_type].extend(out_rows)
             provenance[stat_type] = path.name
     return dict(pages), provenance
+
+
+def load_team_possession() -> Dict[str, float]:
+    """Squad → season possession %, from a TEAM-shaped CSV in cache/csv/
+    (has a Poss + Squad column, no Player column — e.g. worldfootballR's
+    big5_team_possession). Empty dict when no such file exists; the caller
+    reports the adjustment inactive rather than approximating (MAPPING.md)."""
+    out: Dict[str, float] = {}
+    if not CSV_DIR.exists():
+        return out
+    for path in sorted(CSV_DIR.glob("*.csv")):
+        with open(path, newline="", encoding="utf-8-sig") as fh:
+            reader = csv.DictReader(fh)
+            if not reader.fieldnames:
+                continue
+            header_slugs = {slug(h): h for h in reader.fieldnames}
+            poss_col = _resolve(header_slugs, ["poss", "poss_percent", "possession"])
+            squad_col = _resolve(header_slugs, ["squad", "team"])
+            player_col = _resolve(header_slugs, ["player"])
+            if not poss_col or not squad_col or player_col:
+                continue  # not a team possession table
+            season_col = _resolve(header_slugs, ["season_end_year", "season"])
+            side_col = _resolve(header_slugs, ["team_or_opponent"])
+            for row in reader:
+                if season_col and (row.get(season_col) or "").strip() not in ("2025", "2024-2025", "2024/2025"):
+                    continue
+                # opponent-side rows: a Team_or_Opponent column (worldfootballR
+                # team dumps) or a "vs " squad prefix (fbref share exports)
+                if side_col and (row.get(side_col) or "").strip().lower() not in ("team", ""):
+                    continue
+                squad = (row.get(squad_col) or "").strip()
+                if squad.lower().startswith("vs "):
+                    continue
+                raw = (row.get(poss_col) or "").strip()
+                try:
+                    poss = float(raw)
+                except ValueError:
+                    continue
+                if squad and 0 < poss <= 100:
+                    out[squad] = poss
+    return out
 
 
 # fields the whole derivation hangs on — 0% mapped means a schema mismatch,
