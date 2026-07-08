@@ -68,17 +68,18 @@ export const AGENT_CAL = {
   // from goal difference × (base + timeGain·matchFraction). Decision biases +
   // positioning shifts only — execution noise stays attribute-driven.
   stateUrgencyBase: 0.25,
-  stateUrgencyTimeGain: 0.75,
-  stateMax: 1.2,
+  stateUrgencyTimeGain: 1.0,
+  stateMax: 1.5,
   stateRiskTurnoverDiscount: 0.45, // chasing discounts turnover fear
   stateShotBias: 0.15, // chasing shoots earlier
   stateHoldBias: 0.26, // chasing hates holding; leading loves it
   statePushShiftM: 7, // team base line shifts this far at full urgency
   stateForwardRunGain: 0.5, // chasing off-ball runs push harder
+  homeExpansiveness: 0.3, // constant home scoreState offset — expansive hosts
   shootingBiasScoreBias: 0.25,
   holdPositionScoreBias: 0.2,
   dribbleBiasScoreBias: 0.15,
-  crossBiasScoreBias: 0.75,
+  crossBiasScoreBias: 0.9,
   // option geometry
   passRangeM: 30, // beyond → longPass (lofted)
   leadPassM: 2.5, // targets lead the receiver toward goal

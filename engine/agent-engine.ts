@@ -292,7 +292,11 @@ export class AgentEngine implements SimEngine {
       const diff = side === 'home' ? diffHome : -diffHome;
       const matchFrac = now / (2 * HALF_SECONDS);
       const urgency = AGENT_CAL.stateUrgencyBase + AGENT_CAL.stateUrgencyTimeGain * matchFrac;
-      return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, -diff * urgency));
+      // home teams play more expansively (2b: decision-level home term —
+      // anchor/risk shift through the same channels as chasing, never a
+      // completion-rate thumb)
+      const home = side === 'home' ? AGENT_CAL.homeExpansiveness : 0;
+      return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, -diff * urgency + home));
     };
 
     for (let tick = 0; tick < ticks; tick++) {
