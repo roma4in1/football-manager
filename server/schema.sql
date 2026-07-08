@@ -249,6 +249,32 @@ CREATE TABLE auction_bids (
   PRIMARY KEY (lot_id, club_id, placed_at)
 );
 
+-- ── Mid-season transfer window ────────────────────────────────────────────
+-- Inter-club offers only. On accept the fee moves buyer→seller (transfer_fee
+-- txn, club_id debited / to_club_id credited) and the CONTRACT rides along
+-- unchanged — wage and duration transfer with the player (DECISIONS.md).
+-- Pool signings need no table: fixed price, first-come, resolved instantly
+-- under the player row lock; the pool_signing txn is the record.
+
+CREATE TYPE transfer_offer_status AS ENUM ('pending', 'accepted', 'rejected', 'expired');
+
+CREATE TABLE transfer_offers (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  season_id       UUID NOT NULL REFERENCES seasons(id),
+  player_id       UUID NOT NULL REFERENCES players(id),
+  buyer_club_id   UUID NOT NULL REFERENCES clubs(id),
+  seller_club_id  UUID NOT NULL REFERENCES clubs(id),
+  fee             BIGINT NOT NULL CHECK (fee > 0),
+  status          transfer_offer_status NOT NULL DEFAULT 'pending',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at     TIMESTAMPTZ,
+  CHECK (buyer_club_id <> seller_club_id)
+);
+-- one live offer per buyer per player; re-offering replaces the fee
+CREATE UNIQUE INDEX transfer_offers_one_pending
+  ON transfer_offers(season_id, player_id, buyer_club_id) WHERE status = 'pending';
+CREATE INDEX transfer_offers_by_seller ON transfer_offers(seller_club_id) WHERE status = 'pending';
+
 -- ── State-machine enforcement ─────────────────────────────────────────────
 
 CREATE FUNCTION enforce_season_transition() RETURNS trigger AS $$
@@ -305,6 +331,18 @@ END $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER fixture_state_guard BEFORE UPDATE OF state ON fixtures
   FOR EACH ROW EXECUTE FUNCTION enforce_fixture_transition();
+
+-- Resolved offers are immutable: pending is the only state that may change.
+CREATE FUNCTION enforce_offer_transition() RETURNS trigger AS $$
+BEGIN
+  IF OLD.status <> 'pending' AND NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'transfer offer % already resolved (%)', OLD.id, OLD.status;
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER transfer_offer_guard BEFORE UPDATE OF status ON transfer_offers
+  FOR EACH ROW EXECUTE FUNCTION enforce_offer_transition();
 
 -- Embargo: reveal is one-way.
 CREATE FUNCTION enforce_reveal_oneway() RETURNS trigger AS $$

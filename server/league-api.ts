@@ -35,6 +35,7 @@ import { AuctionError } from './league-auction.ts';
 import { LEAGUE_CFG, facilityUpgradeCost } from '@fm/engine/config';
 import { validateHtResubmission, validateTactics } from '@fm/engine/eligibility';
 import type { Orchestrator } from './league-orchestrator.ts';
+import { createTransferCore, TransferError } from './league-transfers.ts';
 import * as store from './league-store.ts';
 
 export const SESSION_COOKIE = 'fm_session';
@@ -369,11 +370,10 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       const s = await season();
       const row = await store.getFacilities(pool, s.id, clubId);
       if (!row) return null;
-      const spent = await store.debitedTotal(pool, s.id, clubId, ['auction_win', 'facility_investment']);
       return {
         phase: s.phase,
         investmentOpen: s.phase === 'regular' || s.phase === 'transfer_window',
-        budgetRemaining: row.transferBudget - spent,
+        budgetRemaining: await store.budgetRemaining(pool, s.id, clubId),
         training: { level: row.trainingLevel, nextCost: facilityUpgradeCost(row.trainingLevel) },
         medical: { level: row.medicalLevel, nextCost: facilityUpgradeCost(row.medicalLevel) },
       };
@@ -417,8 +417,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
           await client.query('ROLLBACK');
           return reply.code(422).send({ error: 'level_cap', level });
         }
-        const spent = await store.debitedTotal(client, s.id, req.ctx.clubId, ['auction_win', 'facility_investment']);
-        const remaining = row.transferBudget - spent;
+        const remaining = await store.budgetRemaining(client, s.id, req.ctx.clubId);
         if (cost > remaining) {
           await client.query('ROLLBACK');
           return reply.code(422).send({ error: 'insufficient_budget', cost, remaining });
@@ -431,6 +430,71 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
         throw err;
       } finally {
         client.release();
+      }
+    });
+
+    // ── mid-season transfer window (league-transfers.ts) ───────────────────
+    const transfers = createTransferCore({ pool });
+    const transferReply = (reply: FastifyReply, err: unknown) => {
+      if (err instanceof TransferError) return reply.code(err.status).send(err.body);
+      throw err;
+    };
+    // malformed ids 404 up front — a bad uuid must not surface as a pg cast error
+    const isUuid = (s: string): boolean =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+    authed.get('/transfer/state', async (req, reply) => {
+      try {
+        return await transfers.state(req.ctx.clubId);
+      } catch (err) {
+        return transferReply(reply, err);
+      }
+    });
+
+    authed.get('/transfer/market', async (req, reply) => {
+      try {
+        return await transfers.market(req.ctx.clubId);
+      } catch (err) {
+        return transferReply(reply, err);
+      }
+    });
+
+    authed.post('/transfer/offer', async (req, reply) => {
+      const body = req.body as { playerId?: unknown; fee?: unknown } | null;
+      if (typeof body?.playerId !== 'string' || typeof body?.fee !== 'number') {
+        return reply.code(400).send({ error: 'offer_required' });
+      }
+      if (!isUuid(body.playerId)) return reply.code(404).send({ error: 'not_found' });
+      try {
+        return await transfers.makeOffer(req.ctx.clubId, body.playerId, body.fee);
+      } catch (err) {
+        return transferReply(reply, err);
+      }
+    });
+
+    for (const [verb, accept] of [['accept', true], ['reject', false]] as const) {
+      authed.post(`/transfer/offer/:id/${verb}`, async (req, reply) => {
+        const { id } = req.params as { id: string };
+        if (!isUuid(id)) return reply.code(404).send({ error: 'not_found' });
+        try {
+          await transfers.respondOffer(req.ctx.clubId, id, accept);
+          return reply.code(204).send();
+        } catch (err) {
+          return transferReply(reply, err);
+        }
+      });
+    }
+
+    /** Fixed-price pool signing — first-come (a lost race is 409 not_free). */
+    authed.post('/transfer/sign', async (req, reply) => {
+      const playerId = (req.body as { playerId?: unknown } | null)?.playerId;
+      if (typeof playerId !== 'string') return reply.code(400).send({ error: 'player_required' });
+      if (!isUuid(playerId)) return reply.code(404).send({ error: 'not_found' });
+      try {
+        await transfers.signPoolPlayer(req.ctx.clubId, playerId);
+        return reply.code(204).send();
+      } catch (err) {
+        return transferReply(reply, err);
       }
     });
 

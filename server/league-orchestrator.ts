@@ -396,6 +396,21 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
         c, mw!.seasonId, LEAGUE_CFG.fatigueWeeklyRecovery, LEAGUE_CFG.medicalRecoveryBonusPerLevel,
       );
       await store.revealMatchweek(c, matchweekId);
+
+      // transfer-window choreography, atomic with the reveal (revealed_at is
+      // the exactly-once marker): closing the last pre-transfer week opens
+      // the window; closing the transfer bye week itself is the deadline —
+      // pending offers expire and the second half of the season resumes.
+      // Both transitions go through the SQL season state machine.
+      if (locked!.kind === 'transfer') {
+        await store.expirePendingOffers(c, mw!.seasonId);
+        await store.transitionSeason(c, mw!.seasonId, 'regular');
+      } else {
+        const next = await store.matchweekByNumber(c, mw!.seasonId, locked!.number + 1);
+        if (next?.kind === 'transfer' && !next.revealedAt) {
+          await store.transitionSeason(c, mw!.seasonId, 'transfer_window');
+        }
+      }
     });
     return 'closed';
   }
