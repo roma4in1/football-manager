@@ -123,6 +123,7 @@ export const AGENT_CAL = {
   aerialJumpingWeight: 0.6,
   aerialHeadingWeight: 0.4,
   aerialStrengthWeight: 0.25,
+  gkAerialHandsBonus: 2, // keepers can catch — a reach edge in claim contests
   aerialArrivalPerSecond: 3, // duel-score points per second of arrival advantage
   aerialNoiseSigma: 2,
   // success resolution (execution owns the truth; decision only estimates)

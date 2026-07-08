@@ -226,8 +226,11 @@ export class GeometricDecisionModel implements DecisionModel {
           break;
         }
         default: {
-          // pass / longPass / cross / clear — the throw-catch family
-          const attr = option.type === 'pass' ? ctx.carrier.attributes.passing
+          // pass / longPass / cross / clear — the throw-catch family.
+          // GK carriers estimate with gkDistribution (their outfield pass
+          // attributes are seeded flat-low; execution reads the same source)
+          const attr = ctx.carrier.isGk ? ctx.carrier.attributes.gkDistribution
+            : option.type === 'pass' ? ctx.carrier.attributes.passing
             : option.type === 'cross' ? ctx.carrier.attributes.crossing
             : ctx.carrier.attributes.longPassing; // longPass + clear
           const d = dist(ctx.carrier.pos, t);
