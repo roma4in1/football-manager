@@ -3,6 +3,118 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-08 — agent-engine calibration: final full-run state
+
+Full ENGINE=agent harness (600 matches × 3 seeds): **66 pass / 16 fail,
+plumbing 0 fails on every seed.** Green on all three seeds: goals, 0-0
+share, shots, SoT, xG/shot, possession spread, pass completion, PPDA,
+fouls, yellows, reds, set-piece share, headed share, injuries, aerial
+duels, lineHeight→offsides, crossBias→aerials, and both sent-off
+emergents. Aggregate gate 82/0 unchanged.
+
+Still red — all pre-documented below, stopping per the budget rule:
+scoreline shares (draws 0.20–0.22, home/away split lacks the home edge),
+second-half goal share, and the press→ppda/fatigue + risk→passAcc/xg
+sweeps (risk→xg/shot is marginal: it passed on several quick batches and
+misses the full threshold by 0.003). These need the design decisions
+described under "Resisted bands", not more knob passes.
+
+## 2026-07-04 — agent-engine calibration (AGENT_CAL + behavior refinements)
+
+Non-obvious knob/mechanism choices (quick-batch n=60/seed; the full 600/seed
+run is the gate):
+
+- **softmaxBaseTemperature 0.55** — at 1.0 choices were near-uniform: shot
+  spam, random risk. Sharpness is the single biggest sanity lever.
+- **shotBaseScore −0.65** — volume gate. Cutting shotValueWeight instead
+  flattened the xG gradient (xg/shot went UP as range shrank); a negative
+  base suppresses marginal shots while the xg term keeps good ones.
+- **loftedSkillExtraLogit** — the drop-point receiver race forgives scatter
+  (someone runs onto anything), so longPassing barely moved lofted
+  completion; the extra technical term restores the attribute signal the
+  plumbing sweep asserts.
+- **Two-man pressure** (pressureSecondWeight) — nearest-opponent-only
+  pressure couldn't feel presser COUNT, so pressTrigger had no ppda channel.
+- **Urgency speed** (cruiseSpeedShare/urgencyDistM) — everyone sprinting
+  everywhere buried the press→fatigue differential; jog-vs-chase splits it.
+- **Interception vs technical miss** — every failed pass used to hand the
+  ball to the nearest opponent and count a defensive action; ppda sat at ~2.
+  Only lost races are interceptions now; technical misses are loose balls.
+  PPDA's numerator counts all pass attempts (lofted included), per the
+  metric's definition.
+- **bookedCautionFactor / boxFoulFactor** — reds were dominated by second
+  yellows (fouls concentrate on the nearest tackler) and pens by box
+  dribbles; carefulness when booked / in the box is real behavior, not a
+  fudge.
+- **Resisted bands (documented per the stop rule, not ground out):**
+  - *second_half_goal_share* (sits ~0.44–0.51 vs 0.52–0.56): pure fatigue
+    asymmetry is too weak — it slows attackers and defenders symmetrically.
+    Hypothesis: the missing mechanisms are score-state risk-taking (trailing
+    teams push) and fresh-legs substitutions, both absent by design (the
+    engine has no score-state instruction modulation and subs are HT-only).
+    Needs a design decision, not a knob.
+  - *home/away win shares*: the one home mechanism (homePressureRelief)
+    saturates near +0.05 win-share edge on identical-club A/B tests; the
+    band needs ~+0.14. A stronger home term (temperature or attribute
+    effectiveness) grazes the "execution noise is attribute-driven only"
+    invariant — user call. Venue asymmetry bugs were ruled out with
+    identical-club and strength-swap diagnostics (engine is symmetric;
+    relief off ⇒ 0.388/0.362 home/away at n=80).
+  - *risk↑ → passAcc↓ sweep*: risk reshuffles the option MIX (more lofted,
+    through balls) but ground-pass completion barely drops because the
+    generator only offers nearest-mate + two through candidates — the risky
+    ground pass pool is too small. Hypothesis: generation needs
+    distance-diverse ground candidates before this sweep can emerge.
+    (Also: riskTurnoverDiscount 1.0 made risk SELF-DEFEATING — cost hit zero
+    and risky teams spammed junk that inverted the xg/shot sweep; 0.8 keeps
+    both directions sane.)
+  - *press↑ → fatigue↑ sweep* (Δ≈0.015 vs required 0.02 after urgency-speed
+    and presser-count scaling — 6 attempts): presser run volume is bounded
+    by the pressMaxDistM catchment and by how fast possession turns over, so
+    chase episodes stay short. The clean wiring fix (scaling fatigue accrual
+    by pressingIntensity) is exactly the plumbing the emergent tag forbids.
+    Hypothesis: needs longer chase episodes (ball retention already close to
+    band) or a chase-specific movement mode; revisit after replay review.
+
+## 2026-07-04 — agent-engine behavior (parts b–d: decision, execution, events)
+
+- **Option scoring** (agent-decision.ts): every ball-moving option scores
+  `P(complete)·V(target) − turnoverCost·(1−P)·V_opp(target)`. V = xT-style
+  `positionValue` (power curve toward goal, touchline-damped) + pitch-control
+  share; P = logistic over distance, lane exposure (nearest opponent
+  projected onto the lane), control at target, and the relevant technical
+  attribute. Shots score from the shared `xgProxy`. `positionValue`/`xgProxy`
+  live in agent-model so decision and resolution can never disagree.
+- **Success resolution** (agent-execution.ts): pass family = technical
+  logistic × interception race (defender arrival times, anticipation-shaved,
+  vs ball travel along the real noised path; lofted balls race only at the
+  drop point and fall through to the aerial duel). Shots: on-target logistic
+  then an xG-conditioned keeper beat (gkReflexes/gkPositioning). Execution
+  reads context (control closure, opponents, receiver, GK) — the ExecContext
+  keeps the no-sideways-imports rule.
+- **passAccuracy counts GROUND passes only** (engine tallies): the
+  passing/longPassing split means lofted completion moves with longPassing —
+  folding it into passAccuracy made the "ground accuracy unmoved" plumbing
+  row unpassable. Long-ball metrics read the typed lofted/high pass events.
+- **Event models live in the engine loop**, not sub-models: foul + card
+  ladder off failed-carry challenges and aerial losers (aggression-scaled;
+  second yellow sends off mid-half — clock stops, player leaves every
+  lookup via active()); injuries as one aggregate per-tick hazard draw
+  (keyed rng stays insertion-safe); offsides from the second-last defender
+  at the moment of the kick; corners/attacking-third free kicks resolved as
+  parameterized deliveries through the aerial-duel model (headed goal prob
+  IS the header-discounted xgProxy); penalties as a flat outcome table.
+  HT subs consumption: XI players without a half-1 record increment
+  subsUsed; subbed-out players' records carry through endState untouched.
+- **Home advantage is ONE mechanism**: the home carrier feels
+  `homePressureRelief` less pressure (context, not execution noise, not an
+  instruction) — it propagates to decision temperature and execution
+  logistics through the same pressure input everything else uses.
+- Real stats: sot from on-target outcomes, xg from the shared proxy
+  (+0.76/penalty), ppda = opponent build-up passes per own defensive action
+  (tackles/interceptions/fouls inside `ppdaZoneOwnRelXM`), fieldTilt from
+  attacking-third ball ticks.
+
 ## 2026-07-04 — agent-engine architecture (SCAFFOLD — no behavior yet)
 
 - `AgentEngine` (engine/agent-engine.ts) implements the same frozen
@@ -46,11 +158,16 @@ Newest first. Keep entries short: what, why, where enforced.
   once per model and refilled in place, and the returned field aliases it
   until the next tick. Full match ≈ 1.5 s. Harness plumbing rows verify
   sum-to-1 via side-swap mirroring, pace pull, numerical-advantage majority,
-  and byte-identical determinism). Stubbed: positioning deformation (anchor +
-  ball pull only), option generation/scoring (nearest-mates + progress),
-  success resolution (distance/skill logistic), xG (flat 0.1), ratings, ppda,
-  no foul/card/injury/offside/set-piece/GK models. Harness plumbing passes;
-  all bands fail by design until calibration.
+  and byte-identical determinism), and **positioning deformation**
+  (2026-07-04: anchors shaped by lineHeight/width team instructions, a
+  pressers set chasing the ball, marking pickups within radius, compactness
+  squeeze toward the block centroid, offTheBall forward runs in possession,
+  teammate space repulsion — all weighted attractor pulls from AGENT_CAL;
+  fatigue now accrues proportional to distance actually run via
+  fatigueWorkShare, so press intensity costs legs). The remaining stubs —
+  option scoring, success resolution, xG, event models, real stats — were
+  replaced the same day; see the "agent-engine behavior" entry above.
+  Bands await calibration.
 - Every tunable is in `AGENT_CAL` (agent-model.ts) with placeholder values —
   same one-object discipline as the aggregate engine's CAL.
 
