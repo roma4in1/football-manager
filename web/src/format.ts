@@ -21,6 +21,31 @@ export function eventLines(events: MatchEvent[], names: Record<string, string>):
   return lines;
 }
 
+/** One label for ANY timeline-worthy event (replay markers + chip list). */
+export function eventLabel(e: MatchEvent, names: Record<string, string>): string {
+  const name = (id?: string): string => (id && names[id]) || 'Unknown';
+  switch (e.type) {
+    case 'goal': {
+      const pen = e.meta?.source === 'penalty' ? ' (pen)' : e.meta?.header === 1 ? ' (header)' : '';
+      return `GOAL${pen} — ${name(e.playerId)}`;
+    }
+    case 'shot': {
+      const sp = e.meta?.source === 'penalty' ? 'Penalty' : e.meta?.source === 'setPiece' ? 'Set-piece shot' : 'Shot';
+      return `${sp} — ${name(e.playerId)}`;
+    }
+    case 'card':
+      return e.meta?.card === 'red' ? `RED CARD — ${name(e.playerId)}` : `Yellow card — ${name(e.playerId)}`;
+    case 'sub':
+      return `Sub — ${name(e.playerId)} on${e.targetPlayerId ? ` for ${name(e.targetPlayerId)}` : ''}`;
+    case 'setPiece':
+      return `Free kick — ${name(e.playerId)}`;
+    case 'injury':
+      return `Injury — ${name(e.playerId)}`;
+    default:
+      return e.type;
+  }
+}
+
 export function fmtRemaining(until: Date, now = new Date()): string {
   let s = Math.max(0, Math.floor((until.getTime() - now.getTime()) / 1000));
   const d = Math.floor(s / 86_400); s -= d * 86_400;

@@ -3,7 +3,7 @@
  * from the shared modules — no duplication.
  */
 
-import type { Attributes, HalfStats, MatchEvent, Tactics } from '@fm/engine/types';
+import type { Attributes, HalfStats, MatchEvent, ReplayFrame, Tactics } from '@fm/engine/types';
 import type { EligibilityIssue } from '@fm/engine/eligibility';
 import type { FixtureState } from '@fm/engine/state-machine';
 
@@ -76,6 +76,15 @@ export interface HtView {
   players: Record<string, string>;
 }
 
+export interface ReplayView {
+  fixtureId: string;
+  home: string;
+  away: string;
+  homePlayers: string[];
+  awayPlayers: string[];
+  halves: Array<{ half: number; frames: ReplayFrame[] }>;
+}
+
 export interface ResultView {
   fixtureId: string;
   home: string;
@@ -137,6 +146,7 @@ export const api = {
   ownTactics: (fixtureId: string, half: 1 | 2) => req<OwnTactics>('GET', `/api/fixture/${fixtureId}/tactics/${half}`),
   ht: (fixtureId: string) => req<HtView>('GET', `/api/fixture/${fixtureId}/ht`),
   result: (fixtureId: string) => req<ResultView>('GET', `/api/fixture/${fixtureId}/result`),
+  replay: (fixtureId: string) => req<ReplayView>('GET', `/api/fixture/${fixtureId}/replay`),
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),

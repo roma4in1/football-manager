@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api, type Me, type ResultView } from '../api.ts';
 import { Ratings, StatsTable } from '../components.tsx';
 import { eventLines } from '../format.ts';
@@ -28,6 +28,10 @@ export function ResultScreen({ me }: { me: Me }) {
       <h1>
         Full time · {view.finalScore[0]}–{view.finalScore[1]}
       </h1>
+
+      <p>
+        <Link className="btn" to={`/replay/${fixtureId}`}>▶ Watch replay</Link>
+      </p>
 
       <section>
         <h3>Timeline</h3>

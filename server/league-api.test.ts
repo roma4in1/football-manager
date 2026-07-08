@@ -329,6 +329,24 @@ test('embargo: participant sees own final result pre-reveal; others do not', asy
 
   const outsider = await call({ method: 'GET', url: `/api/fixture/${fixtureId}/result`, cookie: cookieC });
   assert.equal(outsider.statusCode, 404, 'non-participant blocked until reveal');
+
+  // replay rides the SAME embargo predicate: participant 200, outsider 404
+  const replay = await call({ method: 'GET', url: `/api/fixture/${fixtureId}/replay`, cookie: cookieA });
+  assert.equal(replay.statusCode, 200, 'participant sees own replay before reveal');
+  const rbody = replay.json();
+  assert.equal(rbody.halves.length, 2);
+  for (const h of rbody.halves) {
+    assert.ok(Array.isArray(h.frames) && h.frames.length > 0, `half ${h.half} has frames`);
+    const f = h.frames[0];
+    assert.ok(typeof f.t === 'number' && f.ball && f.players, 'frames carry t/ball/players');
+  }
+  assert.ok(rbody.homePlayers.length === 11 || rbody.homePlayers.length > 11, 'home side listed (XI + HT subs)');
+  assert.ok(!JSON.stringify(rbody).includes('rngState'), 'no resume state in the replay payload');
+  assert.equal(
+    (await call({ method: 'GET', url: `/api/fixture/${fixtureId}/replay`, cookie: cookieC })).statusCode,
+    404,
+    'non-participant replay blocked until reveal',
+  );
 });
 
 test('embargo: standings ignore unrevealed fixtures — even for participants', async () => {
@@ -347,6 +365,11 @@ test('embargo: after reveal, result and standings open up consistently', async (
 
   const outsider = await call({ method: 'GET', url: `/api/fixture/${fixtureId}/result`, cookie: cookieC });
   assert.equal(outsider.statusCode, 200, 'revealed results are public');
+  assert.equal(
+    (await call({ method: 'GET', url: `/api/fixture/${fixtureId}/replay`, cookie: cookieC })).statusCode,
+    200,
+    'revealed replays are public',
+  );
   const [homeGoals, awayGoals] = outsider.json().finalScore as [number, number];
 
   const res = await call({ method: 'GET', url: '/api/standings', cookie: cookieC });

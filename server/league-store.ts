@@ -811,20 +811,57 @@ export interface HalfResultView { half: 1 | 2; stats: unknown; events: MatchEven
 /**
  * EMBARGO IS ENFORCED HERE, IN SQL: rows come back only when the matchweek is
  * revealed, or the viewer is a participant and the fixture is final. Callers
- * must not re-derive visibility in JS.
+ * must not re-derive visibility in JS. The predicate is shared by every
+ * post-final read (results, replays) — one rule, one place.
+ * Placeholders: $1 = fixtureId, $2 = viewerClubId.
  */
+const EMBARGO_VISIBLE = `f.id = $1 AND f.state = 'final'
+       AND (mw.revealed_at IS NOT NULL OR $2 IN (f.home_club_id, f.away_club_id))`;
+
 export async function embargoedResult(c: Queryable, fixtureId: string, viewerClubId: string): Promise<HalfResultView[]> {
   const { rows } = await c.query(
     `SELECT hr.half, hr.stats, hr.events, hr.end_state->'score' AS score
      FROM fixtures f
      JOIN matchweeks mw ON mw.id = f.matchweek_id
      JOIN half_results hr ON hr.fixture_id = f.id
-     WHERE f.id = $1 AND f.state = 'final'
-       AND (mw.revealed_at IS NOT NULL OR $2 IN (f.home_club_id, f.away_club_id))
+     WHERE ${EMBARGO_VISIBLE}
      ORDER BY hr.half`,
     [fixtureId, viewerClubId],
   );
   return rows.map((r) => ({ half: r.half, stats: r.stats, events: r.events, score: r.score }));
+}
+
+/** Replay frames under the SAME embargo rule as results. */
+export async function embargoedReplay(
+  c: Queryable,
+  fixtureId: string,
+  viewerClubId: string,
+): Promise<Array<{ half: number; frames: unknown[] }>> {
+  const { rows } = await c.query(
+    `SELECT rf.half, rf.frames
+     FROM fixtures f
+     JOIN matchweeks mw ON mw.id = f.matchweek_id
+     JOIN replay_frames rf ON rf.fixture_id = f.id
+     WHERE ${EMBARGO_VISIBLE}
+     ORDER BY rf.half`,
+    [fixtureId, viewerClubId],
+  );
+  return rows.map((r) => ({ half: r.half, frames: r.frames }));
+}
+
+/** Player ids per club from the fixture's accepted submissions (dot colors). */
+export async function fixtureSides(c: Queryable, fixtureId: string): Promise<Record<string, string[]>> {
+  const { rows } = await c.query(
+    `SELECT club_id, payload FROM tactics_submissions WHERE fixture_id = $1`,
+    [fixtureId],
+  );
+  const sides: Record<string, Set<string>> = {};
+  for (const r of rows) {
+    const ids = ((r.payload as Tactics).players ?? []).map((p: { playerId: string }) => p.playerId);
+    (sides[r.club_id] ??= new Set());
+    for (const id of ids) sides[r.club_id].add(id);
+  }
+  return Object.fromEntries(Object.entries(sides).map(([club, set]) => [club, [...set]]));
 }
 
 export interface StandingsRow {
