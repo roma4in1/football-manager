@@ -3,6 +3,65 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-08 — agent-engine mechanism pass + realism harness
+
+- **Score-state behavior** (the design behind two resisted bands):
+  scoreState = −goalDiff × (base + timeGain·matchFrac), clamped ±stateMax,
+  computed from the FULL match score. Chasing discounts turnover fear,
+  biases shots, penalizes holding, slides the block up (statePushShiftM)
+  and pushes off-ball runs; leading does the reverse. Decision + geometry
+  only — execution noise stays attribute-driven. second_half_goal_share
+  entered band on first measure (0.542 quick).
+- **Home advantage after score-state**: still evaluated on full runs; the
+  2b decision-level home term stays UNIMPLEMENTED until the full-run
+  read-out demands it (score-state compounds leads, which is the indirect
+  channel).
+- **Keepers read gk attributes** (engine half of the PR #7 MAPPING flag):
+  pass-family skill uses gkDistribution for GK actors (execution noise,
+  technical logit, decision estimates); aerial contests score keepers on
+  (gkReflexes+gkPositioning)/2 command + a hands bonus. Without this,
+  flat-3 seeded keepers passed like statues and lost every cross.
+- **Offsides: diagnosed, then fixed as behavior.** Event-meta study: 109
+  flags/match at MEDIAN 5.4 m beyond the line — turnover anchor-jumps
+  collapse the line ~20 m and forwards lag the retreating clamp; the
+  decision model passed to them anyway. Fix: passers skip receivers beyond
+  line + passerLineJudgementM (they wait); attackers hover
+  lineHoldBufferM INSIDE the line; linesman tolerance 0.5 m. Volume 66 →
+  ~13 per team with 0.5–1.5 m margins; lineHeight→offsides sweep intact.
+- **press→fatigue/ppda investigation** (question answered, not tuned):
+  fatigue DOES read commitment; the press's geometric footprint was too
+  small. Chase range now scales with pressTrigger and the counterPress
+  window adds a body + wider net (gegenpressing). ppda entered band
+  (10.6) for the first time. The fatigue sweep stays red with a measured
+  structural ceiling: 3-4 pressers × ~40% of ticks bounds the TEAM-MEAN
+  delta at ~0.013 vs the 0.02 band; pressers individually show 3-4× that.
+  press→ppda sweep also stays red: pressed teams attempt MORE short
+  passes per possession-second, inflating the numerator as fast as
+  defActions grow.
+- **risk→passAcc investigation**: the risky ground pool was 2 through
+  balls; added "ambitious" candidates (most-advanced onside mates in
+  ground range). Completion still barely moves — risk expresses through
+  option mix and xg/shot, not ground accuracy. Documented as a metric-
+  structure limit (accuracy is ground-only by the longPassing split).
+- **possession σ regression (13 vs 6–9), traded for offside realism**:
+  pre-fix, forward-ball wastage capped dominant teams' possession runs.
+  Four levers failed to compress it (raceSteepness, stateHoldBias,
+  judgement band, control/skill slopes). Hypothesis: quality compounds
+  multiplicatively across completion × races × control; restoring σ needs
+  a stylistic possession-preference dimension in squad generation or a
+  defensive-density completion penalty — design, not knobs.
+- **Realism harness** (engine/realism-harness.ts, tag realism): rebuilds
+  all 96 Big-5 XIs from the seeded pool (fbref_id→Squad join) and asserts
+  coarse ordering. Football-shaped: elite-finishing STs outscore filler
+  (0.97 vs 0.74 goals/match), keeper quality moves goals conceded, no
+  single-attribute dominance. BUT outcome ordering is weak (top-8 beats
+  bottom-8 0.40; quality↔points r=0.34; market-value anchor r=0.40):
+  XI-mean quality spans only 1.1 attribute points across the entire Big 5
+  (Liverpool 11.13 … Alavés 10.05) — the pipeline's triple shrinkage
+  compresses squad-level differences ~3-4× below what outcome separation
+  needs. PIPELINE DESIGN QUESTION: widen SQUASH_SCALE / relax shrinkage,
+  or accept flat leagues.
+
 ## 2026-07-08 — agent-engine calibration: final full-run state
 
 Full ENGINE=agent harness (600 matches × 3 seeds): **66 pass / 16 fail,

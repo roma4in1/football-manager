@@ -94,12 +94,18 @@ function applyNoise(
   return clampToPitch({ x: from.x + Math.cos(angle) * length, y: from.y + Math.sin(angle) * length });
 }
 
+// keepers' outfield attributes are seeded flat-low (MAPPING rule 3): their
+// distribution skill lives in gkDistribution, which pass-family execution
+// reads for GK actors
+const gkAware = (outfield: (a: AgentSnapshot) => number, forPass: boolean) =>
+  (a: AgentSnapshot): number => (a.isGk && forPass ? a.attributes.gkDistribution : outfield(a));
+
 const NOISE_BY_TYPE: Record<string, { dir: number; vel: number; skill: (a: AgentSnapshot) => number }> = {
-  pass: { dir: AGENT_CAL.passDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: (a) => a.attributes.passing },
-  longPass: { dir: AGENT_CAL.longPassDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: (a) => a.attributes.longPassing },
-  cross: { dir: AGENT_CAL.crossDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: (a) => a.attributes.crossing },
+  pass: { dir: AGENT_CAL.passDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: gkAware((a) => a.attributes.passing, true) },
+  longPass: { dir: AGENT_CAL.longPassDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: gkAware((a) => a.attributes.longPassing, true) },
+  cross: { dir: AGENT_CAL.crossDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: gkAware((a) => a.attributes.crossing, true) },
   shot: { dir: AGENT_CAL.shotDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: (a) => a.attributes.finishing },
-  clear: { dir: AGENT_CAL.longPassDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: (a) => a.attributes.longPassing },
+  clear: { dir: AGENT_CAL.longPassDirectionNoiseRad, vel: AGENT_CAL.passVelocityNoise, skill: gkAware((a) => a.attributes.longPassing, true) },
   carry: { dir: 0.08, vel: 0.05, skill: (a) => a.attributes.dribbling },
 };
 
@@ -227,10 +233,17 @@ export class NoisyExecutionModel implements ExecutionModel {
       let bestOther = Infinity;
       for (let j = 0; j < arrivals.length; j++) if (j !== i && arrivals[j] < bestOther) bestOther = arrivals[j];
       const advantage = Math.max(-1, Math.min(1, bestOther - arrivals[i]));
+      // keepers contest with their COMMAND (gk attributes + hands), not the
+      // flat-low outfield jumping/heading the seed gives them
+      const command = c.isGk ? (c.attributes.gkReflexes + c.attributes.gkPositioning) / 2 : 0;
+      const jump = c.isGk ? command : c.attributes.jumping;
+      const head = c.isGk ? command : c.attributes.heading;
+      const strength = c.isGk ? command : c.attributes.strength;
       return (
-        AGENT_CAL.aerialJumpingWeight * c.attributes.jumping +
-        AGENT_CAL.aerialHeadingWeight * c.attributes.heading +
-        AGENT_CAL.aerialStrengthWeight * c.attributes.strength +
+        AGENT_CAL.aerialJumpingWeight * jump +
+        AGENT_CAL.aerialHeadingWeight * head +
+        AGENT_CAL.aerialStrengthWeight * strength +
+        (c.isGk ? AGENT_CAL.gkAerialHandsBonus : 0) +
         AGENT_CAL.aerialHeightCmWeight * Math.max(0, height - 170) * 20 +
         AGENT_CAL.aerialArrivalPerSecond * advantage +
         rng.gauss(0, AGENT_CAL.aerialNoiseSigma, tick, c.id, 'aerial')

@@ -284,6 +284,21 @@ export class AgentEngine implements SimEngine {
       }
     };
 
+    // score-state urgency: full-MATCH goal difference (resume carries h1's),
+    // scaled by how late it is. Positive = chasing. Deterministic per tick.
+    const priorScore = resume?.score ?? [0, 0];
+    const scoreStateFor = (side: Side, now: number): number => {
+      const diffHome = (priorScore[0] + score.home) - (priorScore[1] + score.away);
+      const diff = side === 'home' ? diffHome : -diffHome;
+      const matchFrac = now / (2 * HALF_SECONDS);
+      const urgency = AGENT_CAL.stateUrgencyBase + AGENT_CAL.stateUrgencyTimeGain * matchFrac;
+      // home teams play more expansively (2b: decision-level home term —
+      // anchor/risk shift through the same channels as chasing, never a
+      // completion-rate thumb)
+      const home = side === 'home' ? AGENT_CAL.homeExpansiveness : 0;
+      return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, -diff * urgency + home));
+    };
+
     for (let tick = 0; tick < ticks; tick++) {
       const now = t0 + tick * AGENT_CAL.tickSeconds;
       tracker.advance(AGENT_CAL.tickSeconds);
@@ -309,6 +324,7 @@ export class AgentEngine implements SimEngine {
           teammates: snaps,
           opponents: opps,
           anchors: anchorsOf(states, side),
+          scoreState: scoreStateFor(side, now),
         });
         for (const s of states) {
           if (s.side !== side || s.sentOff) continue;
@@ -343,6 +359,7 @@ export class AgentEngine implements SimEngine {
           team: (side === 'home' ? homeCtx : awayCtx).tactics.team,
           // crowd effect: the ONE home-advantage mechanism (context, not noise)
           pressure: side === 'home' ? rawPressure * (1 - AGENT_CAL.homePressureRelief) : rawPressure,
+          scoreState: scoreStateFor(side, now),
         };
         const options = this.decision.generateOptions(ctx);
         const chosen = this.decision.choose(this.decision.scoreOptions(ctx, options), ctx, rng, tick);
@@ -358,7 +375,15 @@ export class AgentEngine implements SimEngine {
           const beyondBall = side === 'home' ? passReceiver.pos.x > ball.pos.x : passReceiver.pos.x < ball.pos.x;
           const inOppHalf = ownRelX(side, passReceiver.pos.x) > PITCH_LENGTH / 2;
           if (beyondLine && beyondBall && inOppHalf) {
-            events.push({ t: now, type: 'offside', playerId: passReceiver.id, from: { ...passReceiver.pos } });
+            const margin = side === 'home' ? passReceiver.pos.x - line : line - passReceiver.pos.x;
+            events.push({
+              t: now, type: 'offside', playerId: passReceiver.id, from: { ...passReceiver.pos },
+              // diagnosis meta: how far beyond, and was the receiver moving
+              meta: {
+                margin: Math.round(margin * 10) / 10,
+                recvVx: Math.round(passReceiver.vel.x * 10) / 10,
+              },
+            });
             giveToKeeper(ball, states, tracker, oppositeOf(side));
             continue;
           }

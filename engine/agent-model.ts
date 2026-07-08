@@ -45,7 +45,10 @@ export const AGENT_CAL = {
   compactnessPull: 0.4, // ×team.compactness toward team centroid, out of possession
   pressPullWeight: 1.7, // nearest defenders chase the ball
   pressersCount: 2, // how many join the press
-  pressMaxDistM: 30, // beyond this nobody presses
+  pressMaxDistM: 30, // base chase radius, scaled by pressTrigger at use site
+  pressRangeBase: 0.6, // chase range = pressMaxDistM × (base + gain·pressTrigger)
+  pressRangeGain: 0.8, // trigger 0.9 chases from ~40 m; 0.1 from ~20 m
+  counterPressRangeBoost: 1.3, // gegenpressing window: wider net, extra body
   forwardRunPull: 0.3, // ×(offTheBall/20), possession phases, off-ball players
   gkBoxX: 5.5, // GK holds this deep
   gkBallTrackY: 0.3, // GK lateral ball tracking share
@@ -60,15 +63,29 @@ export const AGENT_CAL = {
   carryOptionCount: 3, // forward + two diagonals
   riskAppetiteScoreBias: 0.35, // instructions bias SCORING only (frozen invariant)
   riskTurnoverDiscount: 0.8, // riskAppetite shrinks the turnover-cost term
+  // score-state behavior (DECISIONS.md): chasing teams open up, leading teams
+  // see the game out. scoreState ∈ [−stateMax, stateMax], positive = chasing,
+  // from goal difference × (base + timeGain·matchFraction). Decision biases +
+  // positioning shifts only — execution noise stays attribute-driven.
+  stateUrgencyBase: 0.25,
+  stateUrgencyTimeGain: 1.0,
+  stateMax: 1.5,
+  stateRiskTurnoverDiscount: 0.45, // chasing discounts turnover fear
+  stateShotBias: 0.15, // chasing shoots earlier
+  stateHoldBias: 0.26, // chasing hates holding; leading loves it
+  statePushShiftM: 7, // team base line shifts this far at full urgency
+  stateForwardRunGain: 0.5, // chasing off-ball runs push harder
+  homeExpansiveness: 0.3, // constant home scoreState offset — expansive hosts
   shootingBiasScoreBias: 0.25,
   holdPositionScoreBias: 0.2,
   dribbleBiasScoreBias: 0.15,
-  crossBiasScoreBias: 0.75,
+  crossBiasScoreBias: 0.9,
   // option geometry
-  passRangeM: 33, // beyond → longPass (lofted)
+  passRangeM: 30, // beyond → longPass (lofted)
   leadPassM: 2.5, // targets lead the receiver toward goal
   throughLeadM: 9, // through-ball variant: hard lead into space
   throughOptionCount: 2, // for the most advanced mates
+  ambitiousOptionCount: 2, // most-advanced onside mates beyond the nearest set
   shotRangeM: 26,
   crossWideYOffsetM: 13, // |y − 34| beyond this in the final third → crossing zone
   carryStepM: 8,
@@ -111,6 +128,7 @@ export const AGENT_CAL = {
   aerialJumpingWeight: 0.6,
   aerialHeadingWeight: 0.4,
   aerialStrengthWeight: 0.25,
+  gkAerialHandsBonus: 2, // keepers can catch — a reach edge in claim contests
   aerialArrivalPerSecond: 3, // duel-score points per second of arrival advantage
   aerialNoiseSigma: 2,
   // success resolution (execution owns the truth; decision only estimates)
@@ -132,7 +150,7 @@ export const AGENT_CAL = {
   shotSkillLogit: 1.0,
   shotDistDecayM: 14, // logit −d/decay
   shotPressureLogit: 0.8,
-  gkBeatBase: -0.15, // P(goal | on target) logit vs keeper quality
+  gkBeatBase: -0.05, // P(goal | on target) logit vs keeper quality
   gkXgWeight: 3.0, // ×(xgProxy − 0.1): big chances beat keepers
   gkQualityLogit: 1.2, // ×(mean(gkReflexes, gkPositioning)/20 − 0.5)·2
 
@@ -143,18 +161,20 @@ export const AGENT_CAL = {
   buildUpX: 35, // below which controlled possession is 'buildUp'
 
   // ── events: fouls / cards / injuries / offsides / set pieces ──────────────
-  foulPerTackle: 0.12, // P(foul | failed-carry challenge), aggression-scaled
+  foulPerTackle: 0.14, // P(foul | failed-carry challenge), aggression-scaled
   aggressionFoulGain: 0.4, // ×(1 + gain·(aggression/20 − 0.5))
   aerialFoulRate: 0.02, // duel loser brings the man down
-  yellowPerFoul: 0.19,
+  yellowPerFoul: 0.17,
   redPerFoul: 0.006, // straight red; second yellow also sends off
-  bookedCautionFactor: 0.12, // players on a yellow tackle carefully
+  bookedCautionFactor: 0.1, // players on a yellow tackle carefully
   boxFoulFactor: 0.18, // nobody dives in inside their own box
   injuryPerTickBase: 0.0000019, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
   injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
-  offsideToleranceM: 2.5, // receiver this far beyond the second-last defender → flagged
+  offsideToleranceM: 0.5, // linesman: receiver this far beyond the second-last defender → flagged
+  passerLineJudgementM: 1.5, // passers skip receivers beyond line+this; the flag band is tolerance..judgement
+  lineHoldBufferM: 2.0, // attackers hold this far INSIDE the line (onside-safe hover)
   penaltyGoalProb: 0.76,
-  cornerProb: 0.12, // P(corner | shot saved or off target)
+  cornerProb: 0.1, // P(corner | shot saved or off target)
   setPieceHeaderXgFactor: 0.62, // headers convert worse than feet from the same spot
   setPieceDeliveryNoiseM: 3.5, // ×(20 − setPieceDelivery)/20
   homePressureRelief: 0.45, // crowd effect: home carrier feels less pressure

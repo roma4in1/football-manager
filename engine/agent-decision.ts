@@ -58,6 +58,8 @@ export interface DecisionContext {
   team: TeamInstructions;
   /** pressure on the carrier in [0,1] — nearest-opponent proximity */
   pressure: number;
+  /** score-state urgency: positive = chasing (open up), negative = seeing it out */
+  scoreState: number;
 }
 
 export interface DecisionModel {
@@ -111,10 +113,20 @@ export class GeometricDecisionModel implements DecisionModel {
     const inFinalThird = ownRelX > AGENT_CAL.finalThirdX;
     const isWide = Math.abs(ctx.carrier.pos.y - PITCH_WIDTH / 2) > AGENT_CAL.crossWideYOffsetM;
 
+    // passers don't play teammates standing clearly offside — they wait for
+    // the runner to come back. The judgement band (passerLineJudgementM vs
+    // the tighter flag tolerance) is where real offsides come from.
+    const defXs = ctx.opponents.map((o) => o.pos.x).sort((a, b) => (goalX > 0 ? b - a : a - b));
+    const offsideLine = defXs[1] ?? defXs[0] ?? goalX;
+    const looksOnside = (p: Vec2): boolean =>
+      goalX > 0
+        ? p.x <= Math.max(offsideLine, PITCH_LENGTH / 2) + AGENT_CAL.passerLineJudgementM
+        : p.x >= Math.min(offsideLine, PITCH_LENGTH / 2) - AGENT_CAL.passerLineJudgementM;
+
     // pass candidates: nearest mates, set widened by vision
     const nMates = Math.max(2, Math.round(AGENT_CAL.passOptionCount * (0.5 + 0.5 * (ctx.carrier.attributes.vision / 20))));
     const mates = [...ctx.teammates]
-      .filter((t) => t.id !== ctx.carrier.id)
+      .filter((t) => t.id !== ctx.carrier.id && looksOnside(t.pos))
       .sort((a, b) => dist(a.pos, ctx.carrier.pos) - dist(b.pos, ctx.carrier.pos))
       .slice(0, nMates);
     for (const mate of mates) {
@@ -128,6 +140,25 @@ export class GeometricDecisionModel implements DecisionModel {
         type: isCross ? 'cross' : far ? 'longPass' : 'pass',
         target,
         flight: isCross ? 'lofted' : far ? 'lofted' : 'ground',
+        receiverId: mate.id,
+      });
+    }
+
+    // ambitious ground candidates: the most ADVANCED onside mates within
+    // ground range, regardless of proximity. These are the risky ground
+    // passes the risk slider promotes — without them the risky ground pool
+    // was 2 through balls and riskAppetite couldn't dent completion.
+    const candidateIds = new Set(mates.map((m) => m.id));
+    const ambitious = [...ctx.teammates]
+      .filter((t) => t.id !== ctx.carrier.id && !candidateIds.has(t.id) && looksOnside(t.pos) &&
+        dist(t.pos, ctx.carrier.pos) <= AGENT_CAL.passRangeM)
+      .sort((a, b) => (b.pos.x - a.pos.x) * attackSign)
+      .slice(0, AGENT_CAL.ambitiousOptionCount);
+    for (const mate of ambitious) {
+      options.push({
+        type: 'pass',
+        target: { x: clampX(mate.pos.x + AGENT_CAL.leadPassM * attackSign), y: mate.pos.y },
+        flight: 'ground',
         receiverId: mate.id,
       });
     }
@@ -179,9 +210,12 @@ export class GeometricDecisionModel implements DecisionModel {
     // pitch control is stored as HOME share — flip for away
     const ourControl = (p: Vec2): number =>
       ctx.side === 'home' ? ctx.pitchControl.controlAtPoint(p) : 1 - ctx.pitchControl.controlAtPoint(p);
-    // risk appetite discounts how much losing the ball is feared (scoring only)
-    const turnoverCost = AGENT_CAL.turnoverCostWeight *
-      (1 - AGENT_CAL.riskTurnoverDiscount * (ctx.instructions.riskAppetite - 0.5) * 2);
+    // risk appetite + score state discount how much losing the ball is
+    // feared (scoring only): a chasing team stops protecting the ball, a
+    // leading team protects it harder
+    const turnoverCost = Math.max(0.1, AGENT_CAL.turnoverCostWeight *
+      (1 - AGENT_CAL.riskTurnoverDiscount * (ctx.instructions.riskAppetite - 0.5) * 2 -
+        AGENT_CAL.stateRiskTurnoverDiscount * ctx.scoreState));
     // V(target): where would the ball be worth having, weighted by who'd have it
     const valueAt = (p: Vec2): number =>
       positionValue(p, goalX) + AGENT_CAL.valueControlWeight * (ourControl(p) - 0.5);
@@ -195,14 +229,16 @@ export class GeometricDecisionModel implements DecisionModel {
           score = AGENT_CAL.holdBaseScore +
             AGENT_CAL.holdPositionScoreBias * ctx.instructions.holdPosition -
             AGENT_CAL.holdPressurePenalty * ctx.pressure -
-            AGENT_CAL.tempoHoldPenalty * ctx.team.tempo;
+            AGENT_CAL.tempoHoldPenalty * ctx.team.tempo -
+            AGENT_CAL.stateHoldBias * ctx.scoreState; // leading: hold; chasing: move it
           break;
         }
         case 'shot': {
           // negative base gates volume; the xg term keeps the quality gradient
           score = AGENT_CAL.shotBaseScore +
             AGENT_CAL.shotValueWeight * xgProxy(ctx.carrier.pos, goalX) +
-            AGENT_CAL.shootingBiasScoreBias * ctx.instructions.shootingBias;
+            AGENT_CAL.shootingBiasScoreBias * ctx.instructions.shootingBias +
+            AGENT_CAL.stateShotBias * Math.max(0, ctx.scoreState); // chasers shoot earlier
           break;
         }
         case 'carry': {
@@ -219,8 +255,11 @@ export class GeometricDecisionModel implements DecisionModel {
           break;
         }
         default: {
-          // pass / longPass / cross / clear — the throw-catch family
-          const attr = option.type === 'pass' ? ctx.carrier.attributes.passing
+          // pass / longPass / cross / clear — the throw-catch family.
+          // GK carriers estimate with gkDistribution (their outfield pass
+          // attributes are seeded flat-low; execution reads the same source)
+          const attr = ctx.carrier.isGk ? ctx.carrier.attributes.gkDistribution
+            : option.type === 'pass' ? ctx.carrier.attributes.passing
             : option.type === 'cross' ? ctx.carrier.attributes.crossing
             : ctx.carrier.attributes.longPassing; // longPass + clear
           const d = dist(ctx.carrier.pos, t);

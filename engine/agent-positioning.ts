@@ -53,6 +53,8 @@ export interface PositioningContext {
   opponents: AgentSnapshot[];
   /** GLOBAL-frame per-phase anchors, keyed by player id */
   anchors: ReadonlyMap<string, Record<Phase, Vec2>>;
+  /** score-state urgency: positive = chasing (push up), negative = seeing it out */
+  scoreState: number;
 }
 
 export interface PositioningModel {
@@ -140,17 +142,27 @@ export class AnchorPositioningModel implements PositioningModel {
     const oppXs = ctx.opponents.map((o) => o.pos.x).sort((a, b) => (side === 'home' ? b - a : a - b));
     const offsideLine = oppXs[1] ?? oppXs[0] ?? (side === 'home' ? PITCH_LENGTH : 0);
     const holdLineX = (x: number): number =>
-      side === 'home' ? Math.min(x, Math.max(offsideLine - 0.3, PITCH_LENGTH / 2))
-      : Math.max(x, Math.min(offsideLine + 0.3, PITCH_LENGTH / 2));
+      side === 'home' ? Math.min(x, Math.max(offsideLine - AGENT_CAL.lineHoldBufferM, PITCH_LENGTH / 2))
+      : Math.max(x, Math.min(offsideLine + AGENT_CAL.lineHoldBufferM, PITCH_LENGTH / 2));
 
     // the press: nearest N outfielders to the ball, if close enough.
-    // pressTrigger scales HOW MANY join — a high press commits bodies
-    const nPressers = Math.max(1, Math.round(AGENT_CAL.pressersCount * (0.5 + team.pressTrigger)));
+    // pressTrigger scales HOW MANY join and HOW FAR they chase from — a
+    // high press is more bodies over longer chases (this range term is what
+    // makes press commitment cost legs; the sweep investigation showed the
+    // fatigue model reads distance fine, the press just wasn't running far)
+    // counter-pressing: the 6-second window after losing the ball is where
+    // high-press teams sprint hardest — an extra body and a wider net
+    const counterPressing = ctx.phase === 'counterPress' && team.pressTrigger > 0.5;
+    const nPressers = Math.max(1, Math.round(AGENT_CAL.pressersCount * (0.5 + team.pressTrigger))) +
+      (counterPressing ? 1 : 0);
+    const chaseRange = AGENT_CAL.pressMaxDistM *
+      (AGENT_CAL.pressRangeBase + AGENT_CAL.pressRangeGain * team.pressTrigger) *
+      (counterPressing ? AGENT_CAL.counterPressRangeBoost : 1);
     const pressers = new Set(
       inPossession
         ? []
         : outfield
-            .filter((p) => dist(p.pos, ctx.ball.pos) < AGENT_CAL.pressMaxDistM)
+            .filter((p) => dist(p.pos, ctx.ball.pos) < chaseRange)
             .sort((a, b) => dist(a.pos, ctx.ball.pos) - dist(b.pos, ctx.ball.pos))
             .slice(0, nPressers)
             .map((p) => p.id),
@@ -171,9 +183,11 @@ export class AnchorPositioningModel implements PositioningModel {
       }
 
       const anchor = ctx.anchors.get(p.id)?.[ctx.phase] ?? p.pos;
-      // team-instruction shaping of the base point
+      // team-instruction shaping of the base point; the score state slides
+      // the whole block up when chasing, back when seeing the game out
       const base: Vec2 = {
-        x: anchor.x + (inPossession ? 0 : (team.lineHeight - 0.5) * AGENT_CAL.lineHeightShiftM * attackSign),
+        x: anchor.x + (inPossession ? 0 : (team.lineHeight - 0.5) * AGENT_CAL.lineHeightShiftM * attackSign) +
+          ctx.scoreState * AGENT_CAL.statePushShiftM * attackSign,
         y: PITCH_WIDTH / 2 +
           (anchor.y - PITCH_WIDTH / 2) * (AGENT_CAL.widthSpreadBase + AGENT_CAL.widthSpreadGain * team.width),
       };
@@ -202,10 +216,11 @@ export class AnchorPositioningModel implements PositioningModel {
         pull(ctx.ball.pos, AGENT_CAL.ballAttraction * 0.5);
       } else {
         pull(ctx.ball.pos, AGENT_CAL.ballAttraction * (1 - 0.5 * p.instructions.holdPosition));
-        // off-ball forward runs, stronger deep in the attack
+        // off-ball forward runs, stronger deep in the attack — and when chasing
         const runW = AGENT_CAL.forwardRunPull * (p.attributes.offTheBall / 20) *
           (ctx.phase === 'finalThird' || ctx.phase === 'counterAttack' ? 1.4 : 1) *
-          (1 - 0.6 * p.instructions.holdPosition);
+          (1 - 0.6 * p.instructions.holdPosition) *
+          (1 + AGENT_CAL.stateForwardRunGain * Math.max(0, ctx.scoreState));
         pull({ x: goalX, y: p.pos.y }, runW);
       }
 
