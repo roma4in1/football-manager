@@ -235,7 +235,11 @@ test('last regular week closes the season: growth + age curve applied, audited, 
   await insertFinalFixture(mwFinal, 'train-final');
   await q(`UPDATE matchweeks SET deadline_at = now() - interval '1 minute' WHERE id = $1`, [mwFinal]);
   assert.equal(await core.runWeekClose(mwFinal), 'closed');
-  assert.equal(await seasonPhase(), 'season_end', '2 regular weeks revealed = matchweek_count → season over');
+  // season_end and complete flash by in one transaction since the rollover
+  // PR — season 1 ends complete and season 2 opens in the auction phase
+  assert.equal(await seasonPhase(), 'complete', '2 regular weeks revealed = matchweek_count → season over');
+  const next = await q(`SELECT phase FROM seasons WHERE number = 2`);
+  assert.equal(next.rows[0]?.phase, 'auction', 'the rollover opened season 2');
 
   // the age arc: young net-grow, peak drift up slightly, old net-decline
   const youngAfter = await attrsOf(youngId);

@@ -15,6 +15,9 @@ export const LEAGUE_CFG = {
 
   // post-match bookkeeping
   familiarityPerMatch: 0.05, // dyadic increment for 90 co-played minutes
+  // season rollover: continuously-contracted pairs keep this share of their
+  // chemistry across the break; anyone whose contract broke comes back cold
+  familiarityCarryOver: 0.5,
   injuryWeeksMin: 1,
   injuryWeeksMax: 8,
 

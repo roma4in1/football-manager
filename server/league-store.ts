@@ -941,6 +941,89 @@ export async function insertFixture(
   return rows[0].id;
 }
 
+// ── season rollover (league-rollover.ts orchestrates) ───────────────────────
+
+/**
+ * Expire contracts that have consumed their duration: signed season S with
+ * duration d covers seasons S … S+d−1, so it expires when season S+d−1 ends.
+ * Runs AFTER season-end growth (an expiring player leaves at his GROWN
+ * state) and releases by setting released_at — the player re-freezes in the
+ * pool by NOTHING ever touching uncontracted attributes (the locked rule).
+ * Returns the released player ids (test/report visibility).
+ */
+export async function expireContracts(c: Queryable, seasonNumber: number): Promise<string[]> {
+  const { rows } = await c.query(
+    `UPDATE contracts ct SET released_at = now()
+     FROM seasons s
+     WHERE ct.season_signed = s.id AND ct.released_at IS NULL
+       AND s.number + ct.duration <= $1 + 1
+     RETURNING ct.player_id`,
+    [seasonNumber],
+  );
+  return rows.map((r) => r.player_id);
+}
+
+/**
+ * Season N+1 in the auction phase: same clubs, configured budget/wage-cap
+ * VALUES copied (spend is per-season txns, so money is fresh), facility
+ * levels and the training dial carried (buildings and habits persist —
+ * budgets do not, until the reserve-growth economy exists). matchweek_count
+ * and transfer_week copy the old values to satisfy the schema CHECK; auction
+ * completion recomputes them for the real club count.
+ */
+export async function createNextSeason(c: Queryable, prevSeasonId: string): Promise<string> {
+  const { rows } = await c.query(
+    `INSERT INTO seasons (number, matchweek_count, transfer_week)
+     SELECT number + 1, matchweek_count, transfer_week FROM seasons WHERE id = $1
+     RETURNING id`,
+    [prevSeasonId],
+  );
+  const nextId = rows[0].id as string;
+  await c.query(`UPDATE seasons SET phase = 'auction' WHERE id = $1`, [nextId]);
+  await c.query(
+    `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap,
+                               training_level, medical_level, training_focus, training_intensity)
+     SELECT club_id, $2, transfer_budget, wage_cap, training_level, medical_level, training_focus, training_intensity
+     FROM club_seasons WHERE season_id = $1`,
+    [prevSeasonId, nextId],
+  );
+  return nextId;
+}
+
+/**
+ * Fresh squad rows for players whose contracts CARRY into the new season —
+ * schema defaults apply: fatigue 0, sharpness cold (pre-season rust),
+ * injuries healed, bans not carried (within-season sanctions, v1), training
+ * progress consumed by the growth that just ran.
+ */
+export async function carrySquadsForward(c: Queryable, nextSeasonId: string): Promise<void> {
+  await c.query(
+    `INSERT INTO squad_players (club_id, season_id, player_id)
+     SELECT ct.club_id, $1, ct.player_id FROM contracts ct WHERE ct.released_at IS NULL`,
+    [nextSeasonId],
+  );
+}
+
+/**
+ * Cross-season familiarity (DECISIONS.md): pairs whose contracts BOTH carry
+ * at the same club keep familiarityCarryOver of their chemistry; any broken
+ * contract (expiry, release) comes back cold — retention pays on the
+ * chemistry axis, the break still costs.
+ */
+export async function carryFamiliarityForward(
+  c: Queryable, prevSeasonId: string, nextSeasonId: string, carryOver: number,
+): Promise<void> {
+  await c.query(
+    `INSERT INTO familiarity (club_id, season_id, player_a, player_b, value)
+     SELECT f.club_id, $2, f.player_a, f.player_b, LEAST(1.0, f.value * $3)
+     FROM familiarity f
+     JOIN contracts ca ON ca.player_id = f.player_a AND ca.released_at IS NULL AND ca.club_id = f.club_id
+     JOIN contracts cb ON cb.player_id = f.player_b AND cb.released_at IS NULL AND cb.club_id = f.club_id
+     WHERE f.season_id = $1 AND f.value * $3 > 0`,
+    [prevSeasonId, nextSeasonId, carryOver],
+  );
+}
+
 // ── between-week tick ────────────────────────────────────────────────────────
 // All tick statements run in ONE transaction with revealMatchweek, under the
 // matchweek row lock — revealed_at doubles as the tick's applied-marker.
