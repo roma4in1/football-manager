@@ -78,6 +78,11 @@ before(async () => {
 
   const setup = await setupSeason(pool, {
     clubs: [{ name: 'Alpha', managerEmail: 'a@ro.io' }, { name: 'Beta', managerEmail: 'b@ro.io' }],
+    // toy economy, explicitly: the file's leftover/reserve math is written
+    // against 100k (production defaults are LEAGUE_CFG's 2B/150k since the
+    // economy rescale)
+    defaultBudget: 100_000,
+    defaultWageCap: 10_000,
   });
   season1 = setup.seasonId;
   [clubA, clubB] = setup.clubIds;
@@ -110,7 +115,7 @@ before(async () => {
     pool,
     armClose: async () => {},
     scheduleWeekClose: async () => {},
-    tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2 },
+    tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2, bidIncrementMin: 1 },
   });
 });
 

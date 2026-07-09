@@ -78,7 +78,7 @@ before(async () => {
     pool,
     connectionString: DATABASE_URL,
     pollingIntervalSeconds: 0.5,
-    auctionTuning: { lotSeconds: 3, softCloseSeconds: 1.5, squadMin: 2, squadMax: 3 },
+    auctionTuning: { lotSeconds: 3, softCloseSeconds: 1.5, bidIncrementMin: 1, squadMin: 2, squadMax: 3 },
   });
   api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery: captureDelivery });
   cookieAlpha = await login('alpha@test.io');

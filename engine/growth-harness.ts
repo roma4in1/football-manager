@@ -255,7 +255,10 @@ function trajectory(clubs: ClubSim[]): number[][] {
 
 {
   const reserveRate = Number(process.env.RESERVE_RATE ?? LEAGUE_CFG.reserveGrowthRate);
-  const ALLOTMENT = 100_000;
+  // the max-hoard bound = banking the ENTIRE season allotment; must track the
+  // shipped economy or the facility-vs-interest proportions the gates check
+  // are a fiction (the 2026 rescale moved this from a hardcoded 100k)
+  const ALLOTMENT = LEAGUE_CFG.defaultTransferBudget;
   const clubs = buildClubs(() => 0, () => 0.5);
   const hoarder = new Map<string, { reserve: number; banked: number; interest: number }>();
   clubs.forEach((c, rank) => {
@@ -305,7 +308,7 @@ function trajectory(clubs: ClubSim[]): number[][] {
   const totals = [...hoarder.values()];
   const interestShare = mean(totals.map((h) => h.interest / h.banked));
   check(`growth: 6b interest share of principal after ${SEASONS} max-hoard seasons`,
-    `${(interestShare * 100).toFixed(1)}% (reserve ends ~${Math.round(mean(reserves) / 1000)}k of ${SEASONS * ALLOTMENT / 1000}k banked)`,
+    `${(interestShare * 100).toFixed(1)}% (reserve ends ~${Math.round(mean(reserves) / 1e6)}M of ${SEASONS * ALLOTMENT / 1e6}M banked)`,
     '< 30% — banking, not investing (the cash pile proxies un-modeled window power)', interestShare < 0.3);
 }
 

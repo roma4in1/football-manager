@@ -46,7 +46,7 @@ before(async () => {
     pool,
     armClose: async () => {},
     scheduleWeekClose: async () => {},
-    tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2, squadMin: 2, squadMax: 3 },
+    tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2, bidIncrementMin: 1, squadMin: 2, squadMax: 3 },
   });
 });
 
@@ -127,6 +127,10 @@ test('completion half-converts unspent bring to reserve — over-bringing costs'
 });
 
 test('facilities spend the reserve', async () => {
+  // the toy auction banked ~72.5k; facilities cost real millions since the
+  // economy rescale — top up so the level is affordable, then check the debit
+  await q(`UPDATE club_seasons SET reserve_balance = reserve_balance + $3 WHERE club_id = $1 AND season_id = $2`,
+    [clubA, seasonId, LEAGUE_CFG.facilityCostByLevel[0]]);
   const before_ = (await moneyOf(clubA)).reserveBalance;
   await store.applyFacilityInvestment(pool, seasonId, clubA, 'medical', LEAGUE_CFG.facilityCostByLevel[0]);
   const after_ = await moneyOf(clubA);

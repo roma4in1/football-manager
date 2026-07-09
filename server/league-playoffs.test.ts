@@ -179,7 +179,7 @@ test('e2e: a 5-club season crowns a champion through the playoffs, then rolls ov
     pool,
     armClose: async () => {},
     scheduleWeekClose: async () => {},
-    tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2 },
+    tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2, bidIncrementMin: 1 },
   });
 
   // one real lot completes the auction and generates the schedule

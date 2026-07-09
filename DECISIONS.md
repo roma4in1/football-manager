@@ -3,6 +3,42 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-24 — the economy reconciled onto the realistic-millions scale
+
+- **The bug** (live test season): market values are real euros (elite ~200M)
+  but budgets (100k) and wage caps (10k) were placeholders — one star's wage
+  broke the cap and nothing was affordable; the auction was unplayable.
+- **The scale** (LEAGUE_CFG): `defaultTransferBudget` 2B, `defaultWageCap`
+  150k/wk, `wagePerMarketValue` 0.0001 → **0.000093**, `bidIncrementMin` 1 →
+  **1M** (fixed, not a %: the minimum next bid stays head-computable
+  mid-timer; 0.5% of an elite lot), `facilityCostByLevel` →
+  **[50M, 100M, 200M, 350M, 600M]** (one facility maxes at 1.3B = 65% of a
+  budget; both at 2.6B > budget — the PR #14 "can't max everything" rule
+  survives the rescale). setupSeason defaults now read LEAGUE_CFG.
+- **THE WAGE CAP IS THE PRIMARY BINDER** — and the parity lever to revisit
+  after playtest. The formula is derived, not picked: the design basket
+  (4×200M elite + 9×90M starters = 1.61B of value) must land just under the
+  cap → 150k/1.61B ≈ 9.3e-5. That basket wages to 149,730 (99.8% of cap); a
+  5th elite breaks it even trading a starter down; filling to squadMax
+  breaks it; and the basket costs 1.61B of a 2B budget (≤85%), so money
+  never binds first. All of this is a CI invariant
+  (engine/league-economy.test.ts), so a future retune must re-derive.
+- **6b re-calibrated on the new scale**: the growth harness's max-hoard
+  ALLOTMENT was a hardcoded 100k — a fiction after the rescale (a hoarder
+  could never afford a 50M facility and unspent compounding would trip the
+  interest gate). It now tracks `defaultTransferBudget`. Re-run: 15/15 on
+  fixture AND real pool — hoard-vs-bring gap +0.22/5yr (<0.5), increments
+  decelerating, interest share 26.4% (<30%). X=0.10 and leftover→reserve 0.5
+  are rate knobs and stayed put.
+- Tests keep their toy economies via `AuctionTuning.bidIncrementMin` (the
+  same pattern as the timer knobs); the split-lock 409 is scale-free and
+  still covered.
+- **Auction UI**: the lot now shows the player's WAGE and the cap impact
+  ("wages if won 96k/150k", OVER CAP inline warning) — wage was invisible
+  until a rejected bid; the money pane shows wage ROOM; `fmtMoney` (2.0B /
+  350M / 18.6k) everywhere in the room because ten-digit numbers don't fit
+  a 375px pane; bid controls step by the real increment (min / +10M).
+
 ## 2026-08-23 — production league setup is script-only, safe by construction
 
 - `scripts/setup-production.ts` creates the league (managers/clubs/season →

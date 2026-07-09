@@ -85,6 +85,8 @@ export interface AuctionTuning {
   softCloseSeconds?: number;
   squadMin?: number;
   squadMax?: number;
+  /** tests run toy-scale economies; production is LEAGUE_CFG (1M) */
+  bidIncrementMin?: number;
 }
 
 export interface AuctionCoreOptions {
@@ -139,6 +141,7 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
   const softCloseSeconds = opts.tuning?.softCloseSeconds ?? LEAGUE_CFG.auctionSoftCloseSeconds;
   const squadMin = opts.tuning?.squadMin ?? LEAGUE_CFG.squadMin;
   const squadMax = opts.tuning?.squadMax ?? LEAGUE_CFG.squadMax;
+  const bidIncrementMin = opts.tuning?.bidIncrementMin ?? LEAGUE_CFG.bidIncrementMin;
 
   async function withTxn<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
     const client = await pool.connect();
@@ -229,7 +232,7 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       }
 
       const high = await store.highBid(c, lotId, lot.opensAt);
-      const minimum = (high?.amount ?? 0) + LEAGUE_CFG.bidIncrementMin;
+      const minimum = (high?.amount ?? 0) + bidIncrementMin;
       if (!Number.isInteger(amount) || amount < minimum) {
         // covers the simultaneous-bid race: second txn sees the first bid
         throw new AuctionError(409, { error: 'outbid', highBid: high?.amount ?? 0, minimum });
