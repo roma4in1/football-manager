@@ -208,6 +208,15 @@ export interface MarketView {
   clubs: Array<{ clubId: string; name: string; you: boolean; players: MarketPlayerView[] }>;
 }
 
+export interface ResultsView {
+  matchweeks: Array<{
+    number: number;
+    kind: 'regular' | 'transfer' | 'playoff';
+    fixtures: Array<{ fixtureId: string; home: string; away: string; score: [number, number] }>;
+  }>;
+  clubNames: Record<string, string>;
+}
+
 export interface PlayoffTieView {
   round: 'semi1' | 'semi2' | 'final';
   highSeed: number;
@@ -255,6 +264,7 @@ export const api = {
   rejectOffer: (offerId: string) => req<void>('POST', `/api/transfer/offer/${offerId}/reject`),
   signPoolPlayer: (playerId: string) => req<void>('POST', '/api/transfer/sign', { playerId }),
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
+  results: () => req<ResultsView>('GET', '/api/results'),
   playoffs: () => req<PlayoffsView>('GET', '/api/playoffs'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),

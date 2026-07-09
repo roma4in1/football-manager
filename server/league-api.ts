@@ -536,6 +536,15 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       return { season: { id: s.id, number: s.number }, table: await store.standings(pool, s.id) };
     });
 
+    /** The season's results list — revealed matchweeks only (SQL embargo). */
+    authed.get('/results', async () => {
+      const s = await season();
+      const weeks = await store.revealedResults(pool, s.id);
+      const clubIds = [...new Set(weeks.flatMap((w) => w.fixtures.flatMap((f) => [f.home, f.away])))];
+      const names = await store.clubNames(pool, clubIds);
+      return { matchweeks: weeks, clubNames: Object.fromEntries(names) };
+    });
+
     /** The playoff bracket: seeds, legs (revealed scores only), shootouts, champion. */
     authed.get('/playoffs', async (_req, reply) => {
       const s = await season();
