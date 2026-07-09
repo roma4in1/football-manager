@@ -129,3 +129,39 @@ jobs:
       - run: pip install -r pipeline/requirements.txt
       # transform-layer tests only — fixtures on disk, no network
       - run: python -m pytest pipeline/tests -q
+
+  # the deployable artifact (Dockerfile = what `fly deploy` builds): web build
+  # + engine/server sources + prod deps. Boot it against a real Postgres and
+  # probe the same /api/health endpoint the Fly checks use (docs/DEPLOY.md).
+  deploy-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: fm
+          POSTGRES_DB: fm_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t fm-deploy .
+      - name: boot the image and probe health + SPA
+        run: |
+          docker run -d --name smoke --network host \
+            -e HOST=0.0.0.0 -e SESSION_SECRET=ci-smoke \
+            -e DATABASE_URL=postgres://postgres:fm@localhost:5432/fm_test \
+            fm-deploy
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/health > /dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then docker logs smoke; exit 1; fi
+          curl -sf http://localhost:8080/ | grep -qi '<!doctype html'
+          curl -sf http://localhost:8080/season/standings | grep -qi '<!doctype html'

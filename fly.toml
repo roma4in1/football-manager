@@ -1,0 +1,45 @@
+# fly.toml — one always-on machine running server/league-server.ts
+# (Fastify API + pg-boss worker in a single process, per DECISIONS.md).
+#
+# ALWAYS-ON IS LOAD-BEARING: pg-boss timers drive matchweek deadlines, HT
+# windows, and auction soft-closes. An auto-stopped machine would fire them
+# only when the next HTTP request happens to wake it — so auto-stop stays off
+# and min_machines_running stays 1. At shared-cpu-1x/512MB this is ~$3–5/mo.
+#
+# Secrets (never here, never committed — `fly secrets set`, see docs/DEPLOY.md):
+#   DATABASE_URL     Supabase session-pooler connection string
+#   SESSION_SECRET   HMAC key for magic links + sessions
+#   RESEND_API_KEY   transactional email (login links)
+
+app = "topfootballgame"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  BASE_URL = "https://topfootballgame.com"
+  EMAIL_FROM = "FM League <login@topfootballgame.com>"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[restart]]
+  policy = "always"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

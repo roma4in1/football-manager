@@ -100,6 +100,14 @@ after(async () => {
   await pool?.end();
 });
 
+// ── health ───────────────────────────────────────────────────────────────────
+
+test('health: 200 without a session (the Fly check probes unauthenticated)', async () => {
+  const res = await call({ method: 'GET', url: '/api/health' });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json(), { ok: true });
+});
+
 // ── auth ─────────────────────────────────────────────────────────────────────
 
 test('request-link: unknown email → 204 and nothing delivered', async () => {

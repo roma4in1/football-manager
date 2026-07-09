@@ -1,0 +1,56 @@
+# Nightly encrypted pg_dump of the production Supabase DB → GitHub artifact.
+#
+# Why this exists: Supabase's FREE plan has NO automated backups, and the
+# league save is irreplaceable (docs/DEPLOY.md § backups). This is the
+# supplementary net; upgrade to Supabase Pro if you want provider-side PITR.
+#
+# ENCRYPTION IS MANDATORY: this repo is public, and public-repo artifacts are
+# downloadable by any logged-in GitHub user. A raw dump carries manager emails
+# and live session ids. AES-256, passphrase in the BACKUP_PASSPHRASE secret.
+#
+# Restore (docs/DEPLOY.md has the full walkthrough):
+#   openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
+#     -in league-YYYY-MM-DD.sql.gz.enc | gunzip | psql "$DATABASE_URL"
+#
+# No-ops harmlessly until the PROD_DATABASE_URL + BACKUP_PASSPHRASE secrets
+# are set (pre-launch), so it can merge ahead of go-live.
+
+name: backup
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # nightly, 03:17 UTC — off the :00 crunch
+  workflow_dispatch:
+
+jobs:
+  pg-dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: dump + encrypt
+        shell: bash # explicit → runs with -o pipefail, so a failed pg_dump fails the job
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$PROD_DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "secrets not configured — skipping (pre-launch)"
+            exit 0
+          fi
+          # pg_dump from the postgres:17 image so the client is never older
+          # than the Supabase server (new projects are Postgres 17)
+          docker run --rm postgres:17-alpine \
+            pg_dump --no-owner --no-privileges --dbname "$PROD_DATABASE_URL" \
+            | gzip \
+            | openssl enc -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
+            > "league-$(date -u +%F).sql.gz.enc"
+          ls -lh league-*.sql.gz.enc
+
+      - name: upload artifact (30-day retention)
+        if: hashFiles('league-*.sql.gz.enc') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: league-backup-${{ github.run_id }}
+          path: league-*.sql.gz.enc
+          retention-days: 30
+          if-no-files-found: error
