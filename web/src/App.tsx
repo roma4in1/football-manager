@@ -10,8 +10,8 @@ import { HalfTimeScreen } from './screens/HalfTimeScreen.tsx';
 import { Home } from './screens/Home.tsx';
 import { LineupScreen } from './screens/LineupScreen.tsx';
 import { Login } from './screens/Login.tsx';
-import { ReplayScreen } from './screens/ReplayScreen.tsx';
-import { ResultScreen } from './screens/ResultScreen.tsx';
+import { MatchDetailScreen } from './screens/MatchDetailScreen.tsx';
+import { ResultsListScreen } from './screens/ResultsListScreen.tsx';
 import { StandingsScreen } from './screens/StandingsScreen.tsx';
 import { TrainingScreen } from './screens/TrainingScreen.tsx';
 import { TransferScreen } from './screens/TransferScreen.tsx';
@@ -25,9 +25,15 @@ const MARKET_TABS = [
   { to: '/market/facilities', label: 'facilities' },
 ];
 const SEASON_TABS = [
+  { to: '/season/results', label: 'results' },
   { to: '/season/standings', label: 'standings' },
   { to: '/season/bracket', label: 'bracket' },
 ];
+
+function MatchDetailRedirect() {
+  const id = window.location.pathname.split('/').pop();
+  return <Navigate to={`/season/match/${id}`} replace />;
+}
 
 export function App() {
   const [me, setMe] = useState<Me | 'anon' | 'loading'>('loading');
@@ -89,9 +95,13 @@ export function App() {
               <Section title="market" tabs={MARKET_TABS}><FacilitiesScreen /></Section>
             } />
 
-            <Route path="/season" element={<Navigate to="/season/standings" replace />} />
+            <Route path="/season" element={<Navigate to="/season/results" replace />} />
+            <Route path="/season/results" element={
+              <Section title="season" tabs={SEASON_TABS}><ResultsListScreen me={me} /></Section>
+            } />
+            <Route path="/season/match/:fixtureId" element={<MatchDetailScreen me={me} />} />
             <Route path="/season/standings" element={
-              <Section title="season" tabs={SEASON_TABS}><StandingsScreen /></Section>
+              <Section title="season" tabs={SEASON_TABS}><StandingsScreen me={me} /></Section>
             } />
             <Route path="/season/bracket" element={
               <Section title="season" tabs={SEASON_TABS}><BracketScreen /></Section>
@@ -100,8 +110,8 @@ export function App() {
             {/* per-fixture flows (reached from home) */}
             <Route path="/lineup/:fixtureId" element={<LineupScreen />} />
             <Route path="/ht/:fixtureId" element={<HalfTimeScreen me={me} />} />
-            <Route path="/result/:fixtureId" element={<ResultScreen me={me} />} />
-            <Route path="/replay/:fixtureId" element={<ReplayScreen me={me} />} />
+            <Route path="/result/:fixtureId" element={<MatchDetailRedirect />} />
+            <Route path="/replay/:fixtureId" element={<MatchDetailRedirect />} />
 
             {/* legacy paths → their section homes */}
             <Route path="/auction" element={<Navigate to="/market/auction" replace />} />

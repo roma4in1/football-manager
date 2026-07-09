@@ -31,9 +31,11 @@ export interface ReplayViewerProps {
   homePlayerIds: string[];
   homeName: string;
   awayName: string;
+  /** cue playback ~6s before this sim-second (match detail's "watch" jump) */
+  cueT?: number | null;
 }
 
-export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds, homeName, awayName }: ReplayViewerProps) {
+export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds, homeName, awayName, cueT }: ReplayViewerProps) {
   const frames = useMemo(() => stitchFrames(halves), [halves]);
   const markers = useMemo(() => keyEvents(events), [events]);
   const homeSet = useMemo(() => new Set(homePlayerIds), [homePlayerIds]);
@@ -56,6 +58,16 @@ export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds
     simT.current = Math.max(tMin, Math.min(tMax, t));
     forceUi((n) => n + 1);
   };
+
+  // "watch" jump from the match-detail timeline: cue 6s before, roll
+  useEffect(() => {
+    if (cueT === null || cueT === undefined) return;
+    simT.current = Math.max(tMin, Math.min(tMax, cueT - 6));
+    playingRef.current = true;
+    setPlaying(true);
+    forceUi((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cueT]);
 
   // playback + draw loop
   useEffect(() => {

@@ -1052,6 +1052,36 @@ export async function setChampion(c: Queryable, seasonId: string, clubId: string
   await c.query(`UPDATE seasons SET champion_club_id = $2 WHERE id = $1`, [seasonId, clubId]);
 }
 
+export interface RevealedWeekRow {
+  number: number;
+  kind: 'regular' | 'transfer' | 'playoff';
+  fixtures: Array<{ fixtureId: string; home: string; away: string; score: [number, number] }>;
+}
+
+/** The season's results list — REVEALED matchweeks only (the embargo lives in the join). */
+export async function revealedResults(c: Queryable, seasonId: string): Promise<RevealedWeekRow[]> {
+  const { rows } = await c.query(
+    `SELECT mw.number, mw.kind, f.id AS fixture_id, f.home_club_id, f.away_club_id,
+            hr.end_state->'score' AS score
+     FROM matchweeks mw
+     LEFT JOIN fixtures f ON f.matchweek_id = mw.id AND f.state = 'final'
+     LEFT JOIN half_results hr ON hr.fixture_id = f.id AND hr.half = 2
+     WHERE mw.season_id = $1 AND mw.revealed_at IS NOT NULL
+     ORDER BY mw.number DESC, f.id`,
+    [seasonId],
+  );
+  const weeks = new Map<number, RevealedWeekRow>();
+  for (const r of rows) {
+    if (!weeks.has(r.number)) weeks.set(r.number, { number: r.number, kind: r.kind, fixtures: [] });
+    if (r.fixture_id && r.score) {
+      weeks.get(r.number)!.fixtures.push({
+        fixtureId: r.fixture_id, home: r.home_club_id, away: r.away_club_id, score: r.score as [number, number],
+      });
+    }
+  }
+  return [...weeks.values()];
+}
+
 /** Scores of REVEALED final fixtures only — the bracket view's embargo. */
 export async function revealedScores(c: Queryable, fixtureIds: string[]): Promise<Map<string, [number, number]>> {
   const { rows } = await c.query(
