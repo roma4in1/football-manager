@@ -57,6 +57,7 @@ import { createAuctionCore, type AuctionCore, type AuctionTuning } from './leagu
 import { LEAGUE_CFG, medicalInjuryAvoidProb, medicalInjuryDurationMul } from '@fm/engine/config';
 import { bestXI, validateTactics } from '@fm/engine/eligibility';
 import { accrueWeeklyTraining, applySeasonEndGrowth } from './league-training.ts';
+import { rolloverSeason } from './league-rollover.ts';
 import * as store from './league-store.ts';
 
 export const QUEUES = {
@@ -414,9 +415,11 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
       //  - closing the last pre-transfer week opens the window; closing the
       //    transfer bye week is the deadline — offers expire, play resumes;
       //  - revealing the LAST regular week ends the season: regular →
-      //    season_end, and season-end growth (training + age curve) applies
-      //    to contracted players with attribute_audit rows as per-player
-      //    applied-markers.
+      //    season_end, season-end growth (training + age curve) applies to
+      //    contracted players with attribute_audit rows as per-player
+      //    applied-markers, and the ROLLOVER runs — contracts expire (at
+      //    grown state), the season completes, and season N+1 opens in the
+      //    auction phase (league-rollover.ts). The game repeats.
       if (locked!.kind === 'transfer') {
         await store.expirePendingOffers(c, mw!.seasonId);
         await store.transitionSeason(c, mw!.seasonId, 'regular');
@@ -424,7 +427,8 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
         const season = await store.getSeasonRow(c, mw!.seasonId);
         if ((await store.regularRevealedCount(c, mw!.seasonId)) >= season!.matchweekCount) {
           await store.transitionSeason(c, mw!.seasonId, 'season_end');
-          await applySeasonEndGrowth(c, mw!.seasonId);
+          await applySeasonEndGrowth(c, mw!.seasonId); // growth FIRST — leavers depart grown
+          await rolloverSeason(c, mw!.seasonId);
         } else {
           const next = await store.matchweekByNumber(c, mw!.seasonId, locked!.number + 1);
           if (next?.kind === 'transfer' && !next.revealedAt) {

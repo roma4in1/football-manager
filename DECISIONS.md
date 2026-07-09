@@ -3,6 +3,49 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-02 — season rollover: the multi-season loop (season_end → complete → N+1)
+
+- **The rollover rides the final week-close transaction**, immediately after
+  season-end growth: growth → contract expiry → complete → season N+1 in the
+  auction phase (league-rollover.ts). revealed_at stays the single
+  exactly-once marker, so a crashed rollover replays from the reveal.
+  season_end and complete flash by unobserved — nothing needs the pause
+  until a renegotiation feature exists. Zero admin: the game repeats.
+- **ORDER IS THE INVARIANT**: growth applies to contracted players FIRST, so
+  an expiring player departs at his GROWN state and re-freezes in the pool
+  by the locked rule (nothing ever touches uncontracted attributes). A
+  re-draft picks him up exactly where the audit left him — verified both
+  directions (audit.after == current state; never re-applied, never lost).
+- **Retention scope v1: expiry only.** A contract signed season S with
+  duration d covers seasons S…S+d−1 and expires when S+d−1 completes. NO
+  renegotiation and NO manual release window: duration IS the retention
+  mechanism (picked 1–4 at signing, wage flat by model — the forfeit-rule
+  argument again: renegotiating wage would need a negotiation model we
+  don't have), and the next auction re-acquires leavers on an open market.
+  released_at remains the admin escape hatch.
+- **Cross-season familiarity** (the transfer-PR open question, closed):
+  pairs whose contracts BOTH carry at the same club keep
+  familiarityCarryOver (0.5) of their end-of-season chemistry; any broken
+  contract comes back cold — even re-drafted by the same club next week.
+  Rationale: retention investment pays on the chemistry axis (duration > 1
+  would be pointless there under a full reset), while the break still costs
+  (full carry would ignore the off-season).
+- **Money fresh, buildings carried**: season N+1 club_seasons copy the
+  configured transfer_budget/wage_cap VALUES (spend resets automatically —
+  transactions are per-season) until the reserve-growth economy exists;
+  facility levels and the training dial carry (they're buildings/habits,
+  and the growth harness already modeled persistent facility advantage as
+  bounded). Carried players get fresh squad rows: the off-season heals —
+  fatigue 0, injuries cleared, bans not carried (within-season sanctions,
+  v1), sharpness back to the 0.3 cold start (pre-season rust for everyone).
+- matchweek_count/transfer_week copy the old values at INSERT (schema CHECK)
+  and are recomputed at auction completion, as always.
+- **Proven repeatable**: league-rollover.test.ts plays TWO full seasons end
+  to end through the production paths (real auction lots, real sims, real
+  week-closes) and season 3 opens at the end — auction → weeks → window →
+  weeks → growth+expiry+rollover → auction → … with every invariant above
+  asserted, in ~2 s.
+
 ## 2026-07-27 — sharpness: the second fitness axis (condition/sharpness split)
 
 - **Model**: condition = acute fatigue (existing `fatigue`); sharpness =
