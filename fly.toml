@@ -11,7 +11,9 @@
 #   SESSION_SECRET   HMAC key for magic links + sessions
 #   RESEND_API_KEY   transactional email (login links)
 
-app = "topfootballgame"
+# the name fly launch actually created (the runbook's `fly apps create
+# topfootballgame` was not used) — must match or `fly deploy` targets nothing
+app = "football-manager---594q"
 primary_region = "cdg"
 
 [build]
