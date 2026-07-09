@@ -404,6 +404,7 @@ button.watch { padding: 0.14rem 0.55rem; font-size: 0.78rem; color: var(--accent
 .bid-row input[type='number'] { flex: 1; min-width: 70px; margin: 0; }
 .pool-filter input[type='text'] { margin: 0 0 0.35rem; }
 .pool-list { overflow-y: auto; min-height: 0; flex: 1; }
+.pool-count { padding: 0.4rem 0; text-align: center; font-size: 0.75rem; list-style: none; }
 .squad-progress { display: flex; align-items: center; gap: 0.5rem; margin: 0.2rem 0 0.4rem; }
 .progress { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; display: inline-block; }
 .progress > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
