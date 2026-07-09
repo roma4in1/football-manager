@@ -85,6 +85,20 @@ export async function getMatchweek(c: Queryable, id: string, forUpdate = false):
   };
 }
 
+export async function matchweekByNumber(c: Queryable, seasonId: string, number: number): Promise<MatchweekRow | null> {
+  const { rows } = await c.query(
+    `SELECT id, season_id, number, kind, opens_at, deadline_at, revealed_at FROM matchweeks
+     WHERE season_id = $1 AND number = $2`,
+    [seasonId, number],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: r.id, seasonId: r.season_id, number: r.number, kind: r.kind,
+    opensAt: r.opens_at, deadlineAt: r.deadline_at, revealedAt: r.revealed_at,
+  };
+}
+
 export async function listFixtures(c: Queryable, matchweekId: string): Promise<FixtureRow[]> {
   const { rows } = await c.query(
     `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed
@@ -263,16 +277,23 @@ export async function getFacilities(
     : null;
 }
 
-/** Sum of the club's debiting transactions of the given kinds this season. */
-export async function debitedTotal(
-  c: Queryable, seasonId: string, clubId: string, kinds: string[],
-): Promise<number> {
+/**
+ * Spendable budget: transfer_budget minus every debiting txn kind that draws
+ * on it, PLUS transfer-fee credits — selling a player mid-season funds new
+ * signings and facilities. wage_payment rides the wage-cap system, not this.
+ */
+export async function budgetRemaining(c: Queryable, seasonId: string, clubId: string): Promise<number> {
   const { rows } = await c.query(
-    `SELECT COALESCE(SUM(amount), 0)::bigint AS total FROM transactions
-     WHERE season_id = $1 AND club_id = $2 AND kind = ANY($3::txn_kind[])`,
-    [seasonId, clubId, kinds],
+    `SELECT cs.transfer_budget
+       - COALESCE((SELECT SUM(t.amount) FROM transactions t
+           WHERE t.season_id = $1 AND t.club_id = $2
+             AND t.kind IN ('auction_win', 'pool_signing', 'transfer_fee', 'facility_investment')), 0)
+       + COALESCE((SELECT SUM(t.amount) FROM transactions t
+           WHERE t.season_id = $1 AND t.to_club_id = $2 AND t.kind = 'transfer_fee'), 0) AS remaining
+     FROM club_seasons cs WHERE cs.season_id = $1 AND cs.club_id = $2`,
+    [seasonId, clubId],
   );
-  return Number(rows[0].total);
+  return rows[0] ? Number(rows[0].remaining) : 0;
 }
 
 /** Raise a facility one level + record the txn — caller holds the row lock. */
@@ -653,6 +674,217 @@ export async function ownSignings(c: Queryable, seasonId: string, clubId: string
     playerId: r.player_id, fullName: r.full_name, position: r.position,
     wage: Number(r.wage), duration: r.duration, price: Number(r.price),
   }));
+}
+
+// ── mid-season transfer window ───────────────────────────────────────────────
+// Offers live in transfer_offers (resolved rows immutable — SQL trigger); the
+// player move itself is UPDATEs: contracts.club_id and squad_players.club_id
+// (the PK is (season, player), so fatigue/injury/suspension state rides along)
+// plus a familiarity wipe at the selling club — a club change is always
+// familiarity-cold (DECISIONS.md).
+
+export type TransferOfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+
+export interface TransferOfferRow {
+  id: string;
+  seasonId: string;
+  playerId: string;
+  buyerClubId: string;
+  sellerClubId: string;
+  fee: number;
+  status: TransferOfferStatus;
+  createdAt: Date;
+}
+
+const offerFromRow = (r: Record<string, unknown>): TransferOfferRow => ({
+  id: r.id as string,
+  seasonId: r.season_id as string,
+  playerId: r.player_id as string,
+  buyerClubId: r.buyer_club_id as string,
+  sellerClubId: r.seller_club_id as string,
+  fee: Number(r.fee),
+  status: r.status as TransferOfferStatus,
+  createdAt: r.created_at as Date,
+});
+
+export async function getOffer(c: Queryable, id: string, forUpdate = false): Promise<TransferOfferRow | null> {
+  const { rows } = await c.query(
+    `SELECT id, season_id, player_id, buyer_club_id, seller_club_id, fee, status, created_at
+     FROM transfer_offers WHERE id = $1 ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [id],
+  );
+  return rows[0] ? offerFromRow(rows[0]) : null;
+}
+
+/** One live offer per (buyer, player) — re-offering replaces the fee. */
+export async function upsertPendingOffer(
+  c: Queryable, seasonId: string, playerId: string, buyerClubId: string, sellerClubId: string, fee: number,
+): Promise<string> {
+  const { rows } = await c.query(
+    `INSERT INTO transfer_offers (season_id, player_id, buyer_club_id, seller_club_id, fee)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (season_id, player_id, buyer_club_id) WHERE status = 'pending'
+     DO UPDATE SET fee = EXCLUDED.fee, seller_club_id = EXCLUDED.seller_club_id, created_at = now()
+     RETURNING id`,
+    [seasonId, playerId, buyerClubId, sellerClubId, fee],
+  );
+  return rows[0].id;
+}
+
+/** pending → resolved; false when the offer was already resolved (or missing). */
+export async function resolveOffer(c: Queryable, offerId: string, status: TransferOfferStatus): Promise<boolean> {
+  const res = await c.query(
+    `UPDATE transfer_offers SET status = $2, resolved_at = now() WHERE id = $1 AND status = 'pending'`,
+    [offerId, status],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+/** A player just moved: every OTHER pending offer on them is dead. */
+export async function expirePendingOffersForPlayer(
+  c: Queryable, seasonId: string, playerId: string, exceptOfferId: string,
+): Promise<void> {
+  await c.query(
+    `UPDATE transfer_offers SET status = 'expired', resolved_at = now()
+     WHERE season_id = $1 AND player_id = $2 AND status = 'pending' AND id <> $3`,
+    [seasonId, playerId, exceptOfferId],
+  );
+}
+
+/** Window deadline: everything still pending expires with the week close. */
+export async function expirePendingOffers(c: Queryable, seasonId: string): Promise<void> {
+  await c.query(
+    `UPDATE transfer_offers SET status = 'expired', resolved_at = now()
+     WHERE season_id = $1 AND status = 'pending'`,
+    [seasonId],
+  );
+}
+
+export interface OfferView extends TransferOfferRow {
+  playerName: string;
+  buyerName: string;
+  sellerName: string;
+}
+
+/** Every offer the club made or received this season, newest first. */
+export async function listOffers(c: Queryable, seasonId: string, clubId: string): Promise<OfferView[]> {
+  const { rows } = await c.query(
+    `SELECT o.id, o.season_id, o.player_id, o.buyer_club_id, o.seller_club_id, o.fee, o.status, o.created_at,
+            p.full_name AS player_name, cb.name AS buyer_name, cs.name AS seller_name
+     FROM transfer_offers o
+     JOIN players p ON p.id = o.player_id
+     JOIN clubs cb ON cb.id = o.buyer_club_id
+     JOIN clubs cs ON cs.id = o.seller_club_id
+     WHERE o.season_id = $1 AND (o.buyer_club_id = $2 OR o.seller_club_id = $2)
+     ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
+    [seasonId, clubId],
+  );
+  return rows.map((r) => ({
+    ...offerFromRow(r),
+    playerName: r.player_name,
+    buyerName: r.buyer_name,
+    sellerName: r.seller_name,
+  }));
+}
+
+export interface ActiveContractRow { clubId: string; wage: number; duration: number }
+
+/** forUpdate locks the contract row — transfers of one player serialize here. */
+export async function activeContract(c: Queryable, playerId: string, forUpdate = false): Promise<ActiveContractRow | null> {
+  const { rows } = await c.query(
+    `SELECT club_id, wage, duration FROM contracts WHERE player_id = $1 AND released_at IS NULL
+     ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [playerId],
+  );
+  return rows[0] ? { clubId: rows[0].club_id, wage: Number(rows[0].wage), duration: rows[0].duration } : null;
+}
+
+/** Lock the player row (pool-signing races serialize here); null = unknown id. */
+export async function lockPlayer(c: Queryable, playerId: string): Promise<{ marketValue: number } | null> {
+  const { rows } = await c.query(`SELECT market_value FROM players WHERE id = $1 FOR UPDATE`, [playerId]);
+  return rows[0] ? { marketValue: Number(rows[0].market_value) } : null;
+}
+
+/**
+ * Move a contracted player buyer←seller: contract and per-season state keep
+ * their values (wage, duration, fatigue, injuries, suspension — only club_id
+ * changes); the player's dyads at the selling club are wiped so a club change
+ * is familiarity-cold everywhere; the fee txn debits buyer, credits seller.
+ */
+export async function transferPlayer(
+  c: Queryable, seasonId: string, playerId: string, buyerClubId: string, sellerClubId: string, fee: number,
+): Promise<void> {
+  await c.query(
+    `UPDATE contracts SET club_id = $2 WHERE player_id = $1 AND released_at IS NULL`,
+    [playerId, buyerClubId],
+  );
+  await c.query(
+    `UPDATE squad_players SET club_id = $3 WHERE season_id = $1 AND player_id = $2`,
+    [seasonId, playerId, buyerClubId],
+  );
+  await c.query(
+    `DELETE FROM familiarity WHERE club_id = $1 AND season_id = $2 AND (player_a = $3 OR player_b = $3)`,
+    [sellerClubId, seasonId, playerId],
+  );
+  await c.query(
+    `INSERT INTO transactions (season_id, kind, club_id, to_club_id, player_id, amount, memo)
+     VALUES ($1, 'transfer_fee', $2, $3, $4, $5, 'transfer window')`,
+    [seasonId, buyerClubId, sellerClubId, playerId, fee],
+  );
+}
+
+/** Fixed-price pool signing during the window; price = market value. */
+export async function signFromPool(
+  c: Queryable, seasonId: string, clubId: string, playerId: string, wage: number, duration: number, price: number,
+): Promise<void> {
+  await c.query(
+    `INSERT INTO contracts (player_id, club_id, season_signed, wage, duration) VALUES ($1, $2, $3, $4, $5)`,
+    [playerId, clubId, seasonId, wage, duration],
+  );
+  await c.query(
+    `INSERT INTO squad_players (club_id, season_id, player_id) VALUES ($1, $2, $3)`,
+    [clubId, seasonId, playerId],
+  );
+  await c.query(
+    `INSERT INTO transactions (season_id, kind, club_id, player_id, amount, memo)
+     VALUES ($1, 'pool_signing', $2, $3, $4, 'transfer window pool signing')`,
+    [seasonId, clubId, playerId, price],
+  );
+}
+
+export interface MarketPlayerRow {
+  playerId: string;
+  fullName: string;
+  position: string;
+  wage: number;
+  marketValue: number;
+  injuryWeeksLeft: number;
+}
+
+/** Every club's contracted squad with wages — the browse-other-squads view. */
+export async function contractedSquads(
+  c: Queryable, seasonId: string,
+): Promise<Array<{ clubId: string; name: string; players: MarketPlayerRow[] }>> {
+  const { rows } = await c.query(
+    `SELECT cl.id AS club_id, cl.name, sp.player_id, p.full_name, p.position, p.market_value,
+            ct.wage, sp.injury_weeks_left
+     FROM clubs cl
+     JOIN club_seasons cs ON cs.club_id = cl.id AND cs.season_id = $1
+     JOIN squad_players sp ON sp.club_id = cl.id AND sp.season_id = $1
+     JOIN players p ON p.id = sp.player_id
+     JOIN contracts ct ON ct.player_id = sp.player_id AND ct.released_at IS NULL
+     ORDER BY cl.name, p.full_name`,
+    [seasonId],
+  );
+  const byClub = new Map<string, { clubId: string; name: string; players: MarketPlayerRow[] }>();
+  for (const r of rows) {
+    if (!byClub.has(r.club_id)) byClub.set(r.club_id, { clubId: r.club_id, name: r.name, players: [] });
+    byClub.get(r.club_id)!.players.push({
+      playerId: r.player_id, fullName: r.full_name, position: r.position,
+      wage: Number(r.wage), marketValue: Number(r.market_value), injuryWeeksLeft: r.injury_weeks_left,
+    });
+  }
+  return [...byClub.values()];
 }
 
 // ── schedule generation (auction completion) ────────────────────────────────

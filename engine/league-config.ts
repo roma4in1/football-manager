@@ -52,6 +52,10 @@ export const LEAGUE_CFG = {
   auctionDefaultContractDuration: 2, // signing default; winner may adjust 1–4 while phase='auction'
   matchweekCadenceDays: 7, // schedule generation: one deadline per week
 
+  // mid-season transfer window (league-transfers.ts) — inter-club offers +
+  // fixed-price pool signings; open only while phase='transfer_window'
+  transferContractDuration: 2, // pool signings mid-season; no duration picker in the window
+
   // HTTP API (league-api.ts / league-server.ts)
   apiHost: '127.0.0.1',
   apiPort: 8080,

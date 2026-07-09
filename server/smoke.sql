@@ -84,7 +84,25 @@ BEGIN
   END;
 END $$;
 
--- 7. Familiarity ordering constraint must reject a >= b
+-- 7. Resolved transfer offers are immutable
+INSERT INTO players (id, full_name, birth_date, position, height_cm, market_value, attributes, physical) VALUES
+  ('00000000-0000-0000-0000-0000000000b1', 'Smoke Player', '2000-01-01', 'MF', 180, 1000, '{}', '{}');
+INSERT INTO transfer_offers (id, season_id, player_id, buyer_club_id, seller_club_id, fee, status) VALUES
+  ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-00000000000a',
+   '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1',
+   '00000000-0000-0000-0000-0000000000c2', 100, 'rejected');
+DO $$
+BEGIN
+  BEGIN
+    UPDATE transfer_offers SET status = 'accepted'
+      WHERE id = '00000000-0000-0000-0000-0000000000d1';
+    RAISE EXCEPTION 'GUARD FAILED: resolved offer was re-resolved';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'GUARD FAILED%' THEN RAISE; END IF;
+  END;
+END $$;
+
+-- 8. Familiarity ordering constraint must reject a >= b
 DO $$
 BEGIN
   BEGIN

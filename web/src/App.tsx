@@ -10,6 +10,7 @@ import { Login } from './screens/Login.tsx';
 import { ReplayScreen } from './screens/ReplayScreen.tsx';
 import { ResultScreen } from './screens/ResultScreen.tsx';
 import { StandingsScreen } from './screens/StandingsScreen.tsx';
+import { TransferScreen } from './screens/TransferScreen.tsx';
 
 export function App() {
   const [me, setMe] = useState<Me | 'anon' | 'loading'>('loading');
@@ -29,6 +30,7 @@ export function App() {
         <Link to="/">Home</Link>
         <Link to="/standings">Standings</Link>
         <Link to="/facilities">Facilities</Link>
+        <Link to="/transfers">Transfers</Link>
         <span className="spacer" />
         <span className="muted">{me.club.name}</span>
       </nav>
@@ -41,6 +43,7 @@ export function App() {
         <Route path="/replay/:fixtureId" element={<ReplayScreen me={me} />} />
         <Route path="/standings" element={<StandingsScreen />} />
         <Route path="/facilities" element={<FacilitiesScreen />} />
+        <Route path="/transfers" element={<TransferScreen me={me} />} />
         <Route path="*" element={<Home me={me} />} />
       </Routes>
     </BrowserRouter>
