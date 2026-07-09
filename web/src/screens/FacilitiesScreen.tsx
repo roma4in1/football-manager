@@ -30,8 +30,8 @@ export function FacilitiesScreen() {
     }
   };
 
-  if (!view && !error) return <main><p className="muted">Loading…</p></main>;
-  if (!view) return <main><p className="error">{error}</p></main>;
+  if (!view && !error) return <p className="muted">Loading…</p>;
+  if (!view) return <p className="error">{error}</p>;
 
   const card = (key: 'training' | 'medical', title: string, blurb: string) => {
     const f = view[key];
@@ -62,8 +62,7 @@ export function FacilitiesScreen() {
   };
 
   return (
-    <main>
-      <h1>Facilities</h1>
+    <div>
       <p className="muted">
         Budget remaining: <strong>{view.budgetRemaining.toLocaleString()}</strong>
         {!view.investmentOpen && ' · investment opens during regular play'}
@@ -72,6 +71,6 @@ export function FacilitiesScreen() {
       {card('medical', 'Medical centre', MEDICAL_BLURB)}
       {card('training', 'Training ground', TRAINING_BLURB)}
       <p className="muted">Youth academy: coming in a later season.</p>
-    </main>
+    </div>
   );
 }

@@ -3,6 +3,35 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-20 — design pass, chunk 1: the design-system foundation
+
+- **Palette stops proposed per DESIGN-SPEC** (clean/light, color = meaning):
+  ink #1c2030 / muted #667085 on bg #f4f5f7, surfaces white, lines #e4e7ec.
+  Selection/accent = the sketches' purple: #534AB7 (deep #423A99, soft
+  #ECEAFB). Position hues — GK amber #D97706, DF blue #2F6FED, MF green
+  #0E9F6E, FW red #E0475B, each with a soft tint for chips/rows. Status:
+  fit green #0E9F6E, injured #D92D20, suspended #D97706, unsharp muted;
+  condition bar green, sharpness bar indigo #6172F3.
+- **Always-landscape shell**: 100dvh app frame, no page scroll — content
+  panes own their scrolling (the ~375px-height rule: heroes never scroll,
+  secondary columns scroll in-box; a max-height:480px media tier compacts
+  rhythm further). Small-screen PORTRAIT gets the one prompt the app has —
+  a hold-sideways card (a web app cannot force orientation; this is the
+  minimal honest version of "always landscape").
+- **Left rail, 5 sections** (triage/manage/deploy/invest/compete = home /
+  squad / tactics / market / season), inline-SVG icons, active = purple
+  pill. Market carries a red live-dot whenever phase ∈ {auction,
+  transfer_window} (the "unmissable window" rule); the app refreshes /me
+  every 60 s so the badge tracks phase without websockets.
+- **Section frame + primitives**: Section (title + tab chips + body),
+  .screen/.pane/.pane-hero/.pane-scroll two-pane primitives, PosChip (the
+  position hue everywhere a player appears). Existing screens are HOSTED in
+  their sections now (market → auction/transfers/facilities tabs, season →
+  standings/bracket, squad → training) with legacy routes redirecting;
+  their full redesigns land in chunks 2–4.
+- Note: no frontend-design skill exists in this environment — DESIGN-BRIEF
+  and DESIGN-SPEC are the authority for the pass.
+
 ## 2026-08-14 — end-of-season playoffs: top-4 knockout crowns the champion
 
 - **Phase machine**: `playoffs` sits between regular and season_end —

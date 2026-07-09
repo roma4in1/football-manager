@@ -16,14 +16,9 @@ export function BracketScreen() {
   }, []);
 
   if (missing) {
-    return (
-      <main>
-        <h1>Playoffs</h1>
-        <p className="muted">The top-4 bracket appears once the regular season completes.</p>
-      </main>
-    );
+    return <p className="muted">The top-4 bracket appears once the regular season completes.</p>;
   }
-  if (!view) return <main><p className="muted">Loading…</p></main>;
+  if (!view) return <p className="muted">Loading…</p>;
 
   const name = (id: string | null) => (id ? view.clubNames[id] ?? '?' : '—');
 
@@ -77,12 +72,11 @@ export function BracketScreen() {
 
   const order: PlayoffTieView['round'][] = ['semi1', 'semi2', 'final'];
   return (
-    <main>
-      <h1>Playoffs</h1>
+    <div>
       {view.champion && (
         <p className="champion">🏆 <strong>{name(view.champion)}</strong> are the champions</p>
       )}
       {order.map((r) => view.ties.find((t) => t.round === r)).filter((t): t is PlayoffTieView => !!t).map(tieCard)}
-    </main>
+    </div>
   );
 }

@@ -84,15 +84,15 @@ export function AuctionScreen() {
     [poolList, search, position],
   );
 
-  if (!state) return <main><p className="muted">Loading auction…</p></main>;
+  if (!state) return <p className="muted">Loading auction…</p>;
 
   if (state.phase !== 'auction') {
     return (
-      <main>
-        <h1>Auction complete</h1>
+      <div className="card">
+        <h2>Auction complete</h2>
         <p>The schedule is generated and matchweek 1 is open.</p>
         <a className="button primary" href="/">Go to your fixture</a>
-      </main>
+      </div>
     );
   }
 
@@ -115,8 +115,7 @@ export function AuctionScreen() {
   };
 
   return (
-    <main>
-      <h1>Season auction</h1>
+    <div>
 
       {state.lot ? (
         <section className="card">
@@ -227,6 +226,6 @@ export function AuctionScreen() {
           ))}
         </ul>
       </section>
-    </main>
+    </div>
   );
 }
