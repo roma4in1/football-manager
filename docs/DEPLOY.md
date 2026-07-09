@@ -84,12 +84,60 @@ first boot — nothing to do there.
 > deliberately did not adopt a migration framework for an 8-user app — revisit
 > if migrations become frequent.
 
-### 1.4 Seed the league
-The production league needs its managers, clubs, and the imported player pool
-before the auction can start. Use the existing setup path (the pipeline's pool
-export + the setup/seeding flow; `server/scripts/seed-demo.ts` shows the
-shape). Managers are **seeded, not registered** — their emails must be real,
-that's where login links go.
+### 1.4 Create the league — `scripts/setup-production.ts`
+With the schema initialized (§1.3) and the player pool imported (pipeline),
+the league itself — managers, clubs, season, auction — is created by
+`server/scripts/setup-production.ts`. There is no in-app league creation;
+this script is the only path. It is **production-safe by construction**: it
+never drops or seeds anything, only INSERTs the league rows, and refuses to
+run unless the database is a virgin league (players present, zero seasons,
+zero clubs).
+
+> **☠️ `seed-demo.ts` is LOCAL-ONLY and DESTRUCTIVE.** It drops the `public`
+> and `pgboss` schemas — schema, pool, results, everything. Never point it at
+> production. It refuses non-localhost hosts as a backstop, but treat the
+> rule as absolute: prod setup is `setup-production.ts`, demo reset is
+> `seed-demo.ts`, no overlap.
+
+Write a clubs file (shape in `server/scripts/clubs.example.json`) — one entry
+per club, and **emails must be real**: managers are seeded, not registered,
+and login links are delivered to exactly these addresses.
+
+```jsonc
+// clubs.json — 2-club TEST season (validate the full game yourself first)
+[
+  { "name": "Alpha FC",    "managerEmail": "you+alpha@gmail.com" },
+  { "name": "Beta United", "managerEmail": "you+beta@gmail.com" }
+]
+```
+
+```jsonc
+// clubs.json — the real season later: same shape, 5–10 entries, friends' real emails
+[
+  { "name": "Real Club 1", "managerEmail": "friend1@example.com" },
+  { "name": "Real Club 2", "managerEmail": "friend2@example.com" }
+]
+```
+
+Then, from `server/` (dry-run first — it validates everything and writes
+nothing until you add `--apply`):
+
+```sh
+DATABASE_URL='<session-pooler url, §1.2>' node scripts/setup-production.ts clubs.json          # dry-run
+DATABASE_URL='<session-pooler url, §1.2>' node scripts/setup-production.ts clubs.json --apply  # create it
+```
+
+It prints the season id, the schedule shape, each club with its manager (and
+whether the manager already existed and was linked), and whose nomination
+opens the auction. After that, managers log in via magic link and the auction
+is live.
+
+**Replacing the test season with the real one:** the script refuses to run
+when any season exists — it creates the *first* season only (rollover owns
+season N+1). Pre-launch, the clean path is: wipe the league rows (or simplest,
+re-run §1.3 on a fresh database and re-import the pool), then run the script
+with the real clubs file. Post-launch with real data, there is no replacing —
+that's the §1.3 cutover.
 
 ## 2. Resend — real login emails
 

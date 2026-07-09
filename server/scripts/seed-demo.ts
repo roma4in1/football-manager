@@ -20,6 +20,14 @@ import { setupSeason } from '../league-setup.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 
+// LOCAL-ONLY: this script DROPS schemas. Production setup is
+// scripts/setup-production.ts — never point this one at a remote database.
+const host = new URL(DATABASE_URL).hostname;
+if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
+  console.error(`✗ seed-demo is destructive (drops schemas) and refuses non-local hosts — got ${host}`);
+  process.exit(1);
+}
+
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 await bootstrapSchema(pool, DATABASE_URL);
 // pool first — setupSeason's supply guards check it before any write

@@ -122,8 +122,14 @@ export async function setupSeason(
 
     const clubIds: string[] = [];
     for (const club of spec.clubs) {
+      // Managers are seeded-not-registered and may already exist (the
+      // production setup script pre-checks emails; a rebuilt league reuses
+      // them). Link by email instead of duplicating; an existing manager
+      // keeps their display_name (the no-op UPDATE only makes RETURNING work).
       const manager = await client.query(
-        `INSERT INTO managers (email, display_name) VALUES ($1, $2) RETURNING id`,
+        `INSERT INTO managers (email, display_name) VALUES ($1, $2)
+         ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+         RETURNING id`,
         [club.managerEmail, club.name],
       );
       const inserted = await client.query(
