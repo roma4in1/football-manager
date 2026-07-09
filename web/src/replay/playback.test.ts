@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchEvent, ReplayFrame } from '@fm/engine/types';
-import { clockLabel, initials, interpolate, keyEvents, scoreAt, stitchFrames } from './playback.ts';
+import { ballAt, CARRY_RADIUS_M, carrierAt, clockLabel, initials, interpolate, keyEvents, scoreAt, stitchFrames } from './playback.ts';
 
 const frame = (t: number, px: number, py = 30, ball = { x: px, y: py, flight: 'ground' as const }): ReplayFrame => ({
   t,
@@ -35,6 +35,73 @@ describe('interpolate', () => {
     const snap = interpolate([a, b], 3);
     expect(snap.players.p1.x).toBeCloseTo(15);
     expect(snap.players.sub9).toEqual({ x: 70, y: 40 });
+  });
+});
+
+describe('interpolate — spline motion', () => {
+  it('curves through direction changes instead of snapping (Catmull-Rom)', () => {
+    // p1 runs out and back: 0 → 10 → 10 → 0. Linear would sit exactly at 10
+    // across the middle segment; the spline arcs through it.
+    const frames = [frame(0, 0), frame(6, 10), frame(12, 10), frame(18, 0)];
+    const mid = interpolate(frames, 9).players.p1.x;
+    expect(mid).toBeGreaterThan(10); // continues the run's momentum
+    expect(mid).toBeLessThan(11.5); // …but stays a curve, not a fling
+  });
+
+  it('is deterministic', () => {
+    const frames = [frame(0, 0), frame(6, 10), frame(12, 4), frame(18, 20)];
+    expect(interpolate(frames, 7.7)).toEqual(interpolate(frames, 7.7));
+  });
+
+  it('flies the ball STRAIGHT when a segment endpoint is airborne', () => {
+    const a: ReplayFrame = { t: 0, ball: { x: 10, y: 10, flight: 'ground' }, players: { p1: { x: 0, y: 0 } } };
+    const b: ReplayFrame = { t: 6, ball: { x: 30, y: 30, flight: 'lofted' }, players: { p1: { x: 0, y: 0 } } };
+    const c: ReplayFrame = { t: 12, ball: { x: 50, y: 10, flight: 'ground' }, players: { p1: { x: 0, y: 0 } } };
+    const snap = interpolate([a, b, c], 3);
+    expect(snap.players.p1.x).toBe(0);
+    expect(snap.ball.x).toBeCloseTo(20); // exact midpoint of the straight line
+    expect(snap.ball.y).toBeCloseTo(20);
+  });
+
+  it('reports flight from the nearer endpoint', () => {
+    const a: ReplayFrame = { t: 0, ball: { x: 10, y: 10, flight: 'lofted' }, players: {} };
+    const b: ReplayFrame = { t: 6, ball: { x: 30, y: 30, flight: 'ground' }, players: {} };
+    expect(interpolate([a, b], 1).ball.flight).toBe('lofted');
+    expect(interpolate([a, b], 5).ball.flight).toBe('ground');
+  });
+});
+
+describe('carrierAt', () => {
+  const snapFor = (ballX: number, flight = 'ground') => ({
+    ball: { x: ballX, y: 30, flight },
+    players: { near: { x: 10, y: 30 }, far: { x: 60, y: 30 } },
+  });
+
+  it('names the nearest player within the carry radius of an on-ground ball', () => {
+    expect(carrierAt(snapFor(11))?.id).toBe('near');
+  });
+
+  it('nobody carries an airborne ball', () => {
+    expect(carrierAt(snapFor(11, 'lofted'))).toBeNull();
+  });
+
+  it('nobody carries a ball beyond the radius (loose ball)', () => {
+    expect(carrierAt(snapFor(10 + CARRY_RADIUS_M + 0.1))).toBeNull();
+  });
+
+  it('picks the nearest of two candidates', () => {
+    const snap = {
+      ball: { x: 35.4, y: 30, flight: 'ground' },
+      players: { a: { x: 34, y: 30 }, b: { x: 36, y: 30 } },
+    };
+    expect(carrierAt(snap)?.id).toBe('b');
+  });
+});
+
+describe('ballAt', () => {
+  it('matches the full interpolation', () => {
+    const frames = [frame(0, 10), frame(6, 22), frame(12, 30)];
+    expect(ballAt(frames, 4)).toEqual(interpolate(frames, 4).ball);
   });
 });
 
