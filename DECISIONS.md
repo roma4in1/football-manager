@@ -3,6 +3,34 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-26 — test-only week forcing: sim MW1 now, on the real pipeline
+
+- **POST /api/admin/force-week-close** (TEST_FORCE_WEEK_CLOSE=1 +
+  `{"confirm":"SIM NOW"}`): pulls the current matchweek's deadline to now()
+  and calls the orchestrator's own `runWeekClose` — real sims with default
+  lineups where none were submitted, bookkeeping, the between-week tick,
+  reveal, season choreography. NOT a shortcut; it validates the live
+  pipeline. Guard is structural: without the env flag the route is never
+  registered (404), so it cannot fire in a real season.
+- **MATCHWEEK_CADENCE_MINUTES_TEST**: schedule generation (auction
+  completion + playoff seeding) reads `matchweekCadenceMs()` from the new
+  `league-test-overrides.ts` instead of LEAGUE_CFG inline — real 7 days
+  unless the var is set. Affects newly generated weeks only.
+- All test overrides now live in ONE module (league-test-overrides.ts),
+  warn ⚠️ at boot, and are enumerated in DEPLOY.md's go-live checklist —
+  the lesson from the 5s timer that shipped invisibly from an edited tree.
+- **OPEN INVESTIGATION (do not forget)**: the live test auction completed
+  with Beta United at 11/13 — below squadMin. The completion gate
+  (league-auction.ts maybeComplete) reads
+  `clubs.every(count >= squadMin)` with squadMin from LEAGUE_CFG (13, no
+  production tuning), which LOOKS correct — so either the count query
+  (store.squadCounts) diverges from the UI's count, something removed
+  squad_players/contracts after completion (forfeit? release?), or the UI
+  undercounts (e.g. injured players filtered). Verify against prod:
+  `SELECT club_id, count(*) FROM squad_players WHERE season_id=… GROUP BY 1`
+  vs contracts, and check auction_lots forfeit history for Beta. Potential
+  real-league blocker; investigate before the friends' season.
+
 ## 2026-08-25 — tactics editor polish + the live team-shape pitch
 
 - **Zone labels live OUTSIDE the box** (a chip above the bbox, below when the

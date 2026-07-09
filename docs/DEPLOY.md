@@ -228,9 +228,16 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
 5. §5 DNS + cert → health check green on `topfootballgame.com`
 6. §8 set the two GitHub backup secrets, run the `backup` workflow once
    manually, and confirm you can decrypt the artifact
-7. **Unset every test override**: `fly config show` must have NO
-   `AUCTION_LOT_SECONDS_TEST` (fast test lots) — the real timers are 120s/20s
-   from LEAGUE_CFG. `fly secrets unset AUCTION_LOT_SECONDS_TEST` if set.
+7. **Unset every test override** — `fly config show` must have NONE of
+   (`fly secrets unset <NAME>` for each; all live in
+   `server/league-test-overrides.ts` and warn loudly at boot):
+   - `AUCTION_LOT_SECONDS_TEST` — fast test lots (real: 120s/20s)
+   - `MATCHWEEK_CADENCE_MINUTES_TEST` — short test matchweeks (real: 7 days).
+     Only affects NEWLY generated schedules (auction completion / playoff
+     seeding); existing matchweeks keep their deadlines.
+   - `TEST_FORCE_WEEK_CLOSE` — enables POST /api/admin/force-week-close,
+     which closes + sims the current matchweek ON DEMAND (any logged-in
+     manager with `{"confirm":"SIM NOW"}`). MUST NOT exist in a real season.
 8. Send the 8 managers their URL
 
 ## 7. Ongoing ops

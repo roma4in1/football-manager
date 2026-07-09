@@ -106,7 +106,11 @@ declare module 'fastify' {
 
 export interface ApiOptions {
   pool: pg.Pool;
-  orchestrator: Pick<Orchestrator, 'notifyTacticsSubmitted' | 'auction'>;
+  orchestrator: Pick<Orchestrator, 'notifyTacticsSubmitted' | 'auction' | 'runWeekClose'>;
+  /** TEST-ONLY: registers POST /api/admin/force-week-close (league-server
+   *  sets this from TEST_FORCE_WEEK_CLOSE=1). Unset → the route does not
+   *  exist (404) — it cannot fire in a real season by accident. */
+  testForceWeekClose?: boolean;
   sessionSecret: string;
   delivery?: LinkDelivery;
   /** Base for links in emails, e.g. https://league.example — no trailing slash. */
@@ -203,6 +207,26 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       if (!s) throw new Error('no season configured');
       return s;
     };
+
+    // ── TEST-ONLY: force the current matchweek to close + sim NOW ──────────
+    // Same code path as the deadline timer: deadline is pulled to now(), then
+    // the orchestrator's runWeekClose runs — real sims, real bookkeeping,
+    // real tick + reveal + season choreography. No shortcut.
+    if (opts.testForceWeekClose) {
+      authed.post('/admin/force-week-close', async (req, reply) => {
+        const confirm = (req.body as { confirm?: unknown } | null)?.confirm;
+        if (confirm !== 'SIM NOW') {
+          return reply.code(400).send({ error: 'confirm_required', hint: 'POST { "confirm": "SIM NOW" }' });
+        }
+        const s = await season();
+        const mw = await store.currentMatchweek(pool, s.id);
+        if (!mw || mw.revealedAt) return reply.code(409).send({ error: 'no_open_matchweek' });
+        const forced = await store.forceMatchweekDeadline(pool, mw.id);
+        if (!forced) return reply.code(409).send({ error: 'no_open_matchweek' });
+        const status = await orchestrator.runWeekClose(mw.id);
+        return { matchweek: mw.number, kind: mw.kind, status };
+      });
+    }
 
     authed.get('/me', async (req) => {
       const s = await season();

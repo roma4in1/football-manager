@@ -23,7 +23,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { LEAGUE_CFG } from '@fm/engine/config';
 import {
   resolveShootout,
   type ShootoutKeeper,
@@ -31,6 +30,7 @@ import {
   type ShootoutTaker,
 } from '@fm/engine/shootout';
 import * as store from './league-store.ts';
+import { matchweekCadenceMs } from './league-test-overrides.ts';
 
 export interface StoredShootout {
   kicks: Array<{ n: number; side: 'home' | 'away'; playerId: string; scored: boolean }>;
@@ -46,7 +46,7 @@ export async function seedBracket(c: store.Queryable, seasonId: string): Promise
   const seed = (n: number) => table[n - 1]; // 1-based
 
   const now = await store.dbNow(c);
-  const cadenceMs = LEAGUE_CFG.matchweekCadenceDays * 86_400_000;
+  const cadenceMs = matchweekCadenceMs(); // real 7d unless MATCHWEEK_CADENCE_MINUTES_TEST (league-test-overrides.ts)
   const lastNumber = (await c.query(
     `SELECT COALESCE(MAX(number), 0)::int AS n FROM matchweeks WHERE season_id = $1`, [seasonId],
   )).rows[0].n as number;

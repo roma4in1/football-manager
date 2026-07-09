@@ -30,6 +30,7 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { LEAGUE_CFG, wageFromMarketValue } from '@fm/engine/config';
 import * as store from './league-store.ts';
+import { matchweekCadenceMs } from './league-test-overrides.ts';
 
 export class AuctionError extends Error {
   readonly status: 404 | 409 | 422;
@@ -328,7 +329,7 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       const transferAfter = Math.max(1, Math.min(row.transferWeek, rounds - 1));
       await store.updateSeasonSchedule(c, season.id, rounds, transferAfter);
 
-      const cadenceMs = LEAGUE_CFG.matchweekCadenceDays * 86_400_000;
+      const cadenceMs = matchweekCadenceMs(); // real 7d unless MATCHWEEK_CADENCE_MINUTES_TEST (league-test-overrides.ts)
       const start = await store.dbNow(c);
       const matchweekIds: string[] = [];
       let number = 0;
