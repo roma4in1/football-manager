@@ -530,11 +530,13 @@ export class AgentEngine implements SimEngine {
       // ── bookkeeping
       for (const s of states) {
         if (s.sentOff) continue; // clock stopped: fatigue frozen at the red card
-        // base metabolic cost + a share that scales with distance actually run
+        // base metabolic cost + a share that scales with distance actually run;
+        // match-rusty players drain condition faster (the visible sharpness cost)
         const work = 1 - AGENT_CAL.fatigueWorkShare + AGENT_CAL.fatigueWorkShare * 2 * (workOf.get(s.id) ?? 0);
+        const rust = 1 + AGENT_CAL.sharpnessFatigueGain * (1 - s.sharpness);
         s.fatigue = Math.min(
           1,
-          s.fatigue + AGENT_CAL.fatiguePerTick * work * (1 - AGENT_CAL.staminaFatigueRelief * (s.attributes.stamina / 20)),
+          s.fatigue + AGENT_CAL.fatiguePerTick * work * rust * (1 - AGENT_CAL.staminaFatigueRelief * (s.attributes.stamina / 20)),
         );
       }
 
@@ -619,6 +621,7 @@ function setup(
         instructions: pt.instructions,
         anchors,
         fatigue: prev?.fatigue ?? sp.fatigue,
+        sharpness: sp.sharpness ?? 1, // absent = match-sharp (pre-split blobs)
         yellows: prev?.cards.yellows ?? 0,
         sentOff: prev?.cards.sentOff ?? false,
         injured: prev?.injured ?? false,
@@ -677,7 +680,7 @@ const snapshots = (states: AgentState[], side: Side): AgentSnapshot[] =>
 function snapshotOf(s: AgentState): AgentSnapshot {
   return {
     id: s.id, side: s.side, isGk: s.isGk, pos: { ...s.pos }, vel: { ...s.vel },
-    attributes: s.attributes, instructions: s.instructions, fatigue: s.fatigue,
+    attributes: s.attributes, instructions: s.instructions, fatigue: s.fatigue, sharpness: s.sharpness,
   };
 }
 

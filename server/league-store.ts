@@ -199,7 +199,7 @@ export async function submissionFlags(c: Queryable, fixtureId: string): Promise<
 
 export async function loadSquad(c: Queryable, clubId: string, seasonId: string): Promise<SquadPlayer[]> {
   const { rows } = await c.query(
-    `SELECT sp.player_id, sp.fatigue, p.attributes, p.physical, p.height_cm, p.weight_kg, p.foot
+    `SELECT sp.player_id, sp.fatigue, sp.sharpness, p.attributes, p.physical, p.height_cm, p.weight_kg, p.foot
      FROM squad_players sp JOIN players p ON p.id = sp.player_id
      WHERE sp.club_id = $1 AND sp.season_id = $2 ORDER BY sp.player_id`,
     [clubId, seasonId],
@@ -227,6 +227,7 @@ export async function loadSquad(c: Queryable, clubId: string, seasonId: string):
       injuryProneness: r.physical?.injuryProneness ?? 10,
     },
     fatigue: r.fatigue,
+    sharpness: Number(r.sharpness),
     familiarity: famMap.get(r.player_id) ?? {},
   }));
 }
@@ -813,14 +814,19 @@ export async function lockPlayer(c: Queryable, playerId: string): Promise<{ mark
  */
 export async function transferPlayer(
   c: Queryable, seasonId: string, playerId: string, buyerClubId: string, sellerClubId: string, fee: number,
+  sharpnessColdStart: number,
 ): Promise<void> {
   await c.query(
     `UPDATE contracts SET club_id = $2 WHERE player_id = $1 AND released_at IS NULL`,
     [playerId, buyerClubId],
   );
+  // sharpness clamps to the cold start — a new signing is "not integrated"
+  // on BOTH axes (familiarity wiped below, match-rhythm reset here); LEAST so
+  // an already-rustier player is never boosted by moving
   await c.query(
-    `UPDATE squad_players SET club_id = $3 WHERE season_id = $1 AND player_id = $2`,
-    [seasonId, playerId, buyerClubId],
+    `UPDATE squad_players SET club_id = $3, sharpness = LEAST(sharpness, $4)
+     WHERE season_id = $1 AND player_id = $2`,
+    [seasonId, playerId, buyerClubId, sharpnessColdStart],
   );
   await c.query(
     `DELETE FROM familiarity WHERE club_id = $1 AND season_id = $2 AND (player_a = $3 OR player_b = $3)`,
@@ -1075,6 +1081,7 @@ export interface SquadViewRow {
   position: string;
   attributes: unknown;
   fatigue: number;
+  sharpness: number;
   injuryWeeksLeft: number;
   suspendedNext: boolean;
   justReturned: boolean;
@@ -1083,7 +1090,7 @@ export interface SquadViewRow {
 
 export async function loadSquadView(c: Queryable, clubId: string, seasonId: string): Promise<SquadViewRow[]> {
   const { rows } = await c.query(
-    `SELECT sp.player_id, p.full_name, p.position, p.attributes, sp.fatigue,
+    `SELECT sp.player_id, p.full_name, p.position, p.attributes, sp.fatigue, sp.sharpness,
             sp.injury_weeks_left, sp.suspended_next, sp.just_returned, sp.season_minutes
      FROM squad_players sp JOIN players p ON p.id = sp.player_id
      WHERE sp.club_id = $1 AND sp.season_id = $2 ORDER BY p.full_name`,
@@ -1091,8 +1098,8 @@ export async function loadSquadView(c: Queryable, clubId: string, seasonId: stri
   );
   return rows.map((r) => ({
     playerId: r.player_id, fullName: r.full_name, position: r.position, attributes: r.attributes,
-    fatigue: r.fatigue, injuryWeeksLeft: r.injury_weeks_left, suspendedNext: r.suspended_next,
-    justReturned: r.just_returned, seasonMinutes: r.season_minutes,
+    fatigue: r.fatigue, sharpness: Number(r.sharpness), injuryWeeksLeft: r.injury_weeks_left,
+    suspendedNext: r.suspended_next, justReturned: r.just_returned, seasonMinutes: r.season_minutes,
   }));
 }
 
@@ -1205,6 +1212,48 @@ export async function standings(c: Queryable, seasonId: string): Promise<Standin
     clubId: r.id, name: r.name, played: r.played, wins: r.wins, draws: r.draws, losses: r.losses,
     goalsFor: r.goals_for, goalsAgainst: r.goals_against, points: r.points,
   }));
+}
+
+/**
+ * Sharpness tick — the match-fitness half of the condition/sharpness split.
+ * Two statements against this matchweek's final end states: players with
+ * minutes gain pro-rata (a full match adds gainPerMatch, a cameo less,
+ * capped at 1); everyone else decays toward the floor — injured players
+ * faster (they can't even train match-rhythm). DELIBERATELY independent of
+ * club_seasons: facilities never touch sharpness (play-rhythm, not
+ * health/development — and no extra rich-club vector).
+ */
+export async function tickSharpness(
+  c: Queryable, seasonId: string, matchweekId: string,
+  gainPerMatch: number, decayPerWeek: number, injuredDecayPerWeek: number, floor: number,
+): Promise<void> {
+  await c.query(
+    `WITH mins AS (
+       SELECT ps.key::uuid AS player_id, MAX((ps.value->>'minutesPlayed')::float) AS m
+       FROM half_results hr
+       JOIN fixtures f ON f.id = hr.fixture_id,
+       LATERAL jsonb_each(hr.end_state->'playerState') ps
+       WHERE f.matchweek_id = $2 AND hr.half = 2
+       GROUP BY ps.key
+     )
+     UPDATE squad_players sp
+     SET sharpness = LEAST(1, sp.sharpness + $3::float8 * LEAST(1, mins.m / 90))
+     FROM mins
+     WHERE sp.season_id = $1 AND sp.player_id = mins.player_id AND mins.m > 0`,
+    [seasonId, matchweekId, gainPerMatch],
+  );
+  await c.query(
+    `UPDATE squad_players sp
+     SET sharpness = GREATEST($5::float8, sp.sharpness -
+       CASE WHEN sp.injury_weeks_left > 0 THEN $4::float8 ELSE $3::float8 END)
+     WHERE sp.season_id = $1 AND NOT EXISTS (
+       SELECT 1 FROM half_results hr
+       JOIN fixtures f ON f.id = hr.fixture_id
+       WHERE f.matchweek_id = $2 AND hr.half = 2
+         AND (hr.end_state->'playerState'->(sp.player_id::text)->>'minutesPlayed')::float > 0
+     )`,
+    [seasonId, matchweekId, decayPerWeek, injuredDecayPerWeek, floor],
+  );
 }
 
 /**

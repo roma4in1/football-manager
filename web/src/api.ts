@@ -41,10 +41,18 @@ export interface SquadPlayerView {
   position: string;
   attributes: Attributes;
   fatigue: number;
+  sharpness: number;
   injuryWeeksLeft: number;
   suspendedNext: boolean;
   justReturned: boolean;
   seasonMinutes: number;
+}
+
+export interface TrainingView {
+  focus: string;
+  intensity: number;
+  trainingLevel: number;
+  focuses: string[];
 }
 
 export interface SubmissionFlags {
@@ -204,6 +212,8 @@ export const api = {
   replay: (fixtureId: string) => req<ReplayView>('GET', `/api/fixture/${fixtureId}/replay`),
   facilities: () => req<FacilitiesView>('GET', '/api/facilities'),
   investFacility: (facility: 'training' | 'medical') => req<void>('POST', '/api/facilities/invest', { facility }),
+  training: () => req<TrainingView>('GET', '/api/training'),
+  setTraining: (focus: string, intensity: number) => req<void>('PUT', '/api/training', { focus, intensity }),
   transferState: () => req<TransferStateView>('GET', '/api/transfer/state'),
   transferMarket: () => req<MarketView>('GET', '/api/transfer/market'),
   makeOffer: (playerId: string, fee: number) =>

@@ -21,6 +21,18 @@ export const LEAGUE_CFG = {
   // between-week tick
   fatigueWeeklyRecovery: 0.4, // fraction of fatigue shed per tick (before medical scaling)
 
+  // ── sharpness (match fitness — the second axis of the condition/sharpness
+  // split; condition = fatigue). Built by playing, decayed by the bench.
+  // DELIBERATELY facility-independent: play-rhythm, not health/development —
+  // and it avoids stacking another rich-club vector onto facilities.
+  // Curves: a weekly starter sits at 1.0; ~4–6 benched weeks → 0.76–0.64
+  // (noticeable, not crippling); a returnee is match-sharp in 2–3 games.
+  sharpnessColdStart: 0.3, // new signings/draftees (and the transfer clamp) — "not integrated", like familiarity
+  sharpnessGainPerMatch: 0.3, // full-match gain; cameos pro-rate by minutes/90
+  sharpnessDecayPerWeek: 0.06, // benched but fit: light decline
+  sharpnessInjuredDecayPerWeek: 0.12, // injured can't even train match-rhythm — the "returnees start LOW" rule
+  sharpnessFloor: 0.25, // decay never drops below (re-building always starts within reach)
+
   // ── facilities (levels 0–5 on club_seasons; economy PR) ────────────────────
   // Costs are for the NEXT level (index = current level): rising so maxing
   // both facilities (2 × 130k) exceeds a default 100k budget — real tradeoffs.

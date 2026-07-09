@@ -22,6 +22,7 @@ function player(i: number, position: string, extra: Partial<SquadPlayerView> = {
     position,
     attributes: ATTRS,
     fatigue: 0.2,
+    sharpness: 1,
     injuryWeeksLeft: 0,
     suspendedNext: false,
     justReturned: false,

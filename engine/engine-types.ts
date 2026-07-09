@@ -121,6 +121,8 @@ export interface SquadPlayer {
   attributes: Attributes;
   physical: PlayerPhysical;
   fatigue: number;           // 0–1 carried in from league layer (matchweek units)
+  /** match sharpness 0–1 (condition/sharpness split); absent = 1 (match-sharp) so pre-split blobs degrade gracefully */
+  sharpness?: number;
   familiarity: Record<string, number>; // playerId → 0–1 dyadic link (own squad only)
 }
 

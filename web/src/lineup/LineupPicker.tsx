@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { groupOf, type Group } from '@fm/engine/eligibility';
 import { LEAGUE_CFG } from '@fm/engine/config';
 import type { SquadPlayerView } from '../api.ts';
+import { FitnessBars } from './FitnessBars.tsx';
 import { issuesFor, type Selection } from './build.ts';
 
 const GROUP_ORDER: Group[] = ['GK', 'DF', 'MF', 'FW'];
@@ -75,7 +76,7 @@ export function LineupPicker({ squad, initial, onChange }: LineupPickerProps) {
                   <li key={p.playerId} className={`player-row role-${role}`}>
                     <span className="player-name">{p.fullName}</span>
                     <span className="player-meta">
-                      {p.position} · fatigue {Math.round(p.fatigue * 100)}%
+                      {p.position} <FitnessBars fatigue={p.fatigue} sharpness={p.sharpness} />
                       {p.injuryWeeksLeft > 0 && <span className="badge badge-inj">INJ {p.injuryWeeksLeft}w</span>}
                       {p.suspendedNext && <span className="badge badge-sus">SUSPENDED</span>}
                       {p.justReturned && <span className="badge badge-ret">RETURNING</span>}

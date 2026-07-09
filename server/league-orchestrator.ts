@@ -396,6 +396,13 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
       // weekly training accrues into the scratch field before recovery reads
       // the intensity dial — one week, one tick, both sides of the trade-off
       await accrueWeeklyTraining(c, mw!.seasonId, matchweekId);
+      // sharpness: minutes build match fitness, the bench (and the treatment
+      // room, faster) erode it — facility-independent by design
+      await store.tickSharpness(
+        c, mw!.seasonId, matchweekId,
+        LEAGUE_CFG.sharpnessGainPerMatch, LEAGUE_CFG.sharpnessDecayPerWeek,
+        LEAGUE_CFG.sharpnessInjuredDecayPerWeek, LEAGUE_CFG.sharpnessFloor,
+      );
       await store.recoverFatigue(
         c, mw!.seasonId, LEAGUE_CFG.fatigueWeeklyRecovery, LEAGUE_CFG.medicalRecoveryBonusPerLevel,
         LEAGUE_CFG.trainingIntensityRecoveryPenalty,

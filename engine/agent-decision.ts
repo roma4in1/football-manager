@@ -69,11 +69,17 @@ export interface DecisionModel {
   choose(scored: ScoredOption[], ctx: DecisionContext, rng: KeyedRng, tick: number): ActionOption;
 }
 
-/** Lower temperature = sharper choices. Composure attenuates pressure's noise. */
+/**
+ * Lower temperature = sharper choices. Composure attenuates pressure's noise.
+ * Match-rust adds noise on the SAME channel decisions relieve — full-unsharp
+ * costs ≈ 3 decisions points (medium, per the sharpness spec), never touching
+ * execution noise (that stays attribute-driven).
+ */
 export function temperatureFor(ctx: DecisionContext): number {
   const decisionsRelief = AGENT_CAL.temperaturePerDecisionsPoint * (ctx.carrier.attributes.decisions - 10);
   const pressureNoise = ctx.pressure * (1 - AGENT_CAL.composurePressureRelief * ctx.carrier.attributes.composure);
-  return Math.max(AGENT_CAL.temperatureFloor, AGENT_CAL.softmaxBaseTemperature - decisionsRelief + pressureNoise);
+  const rustNoise = AGENT_CAL.sharpnessTemperaturePenalty * (1 - ctx.carrier.sharpness);
+  return Math.max(AGENT_CAL.temperatureFloor, AGENT_CAL.softmaxBaseTemperature - decisionsRelief + pressureNoise + rustNoise);
 }
 
 // ── geometry helpers ─────────────────────────────────────────────────────────

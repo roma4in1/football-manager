@@ -32,10 +32,11 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test league-eligibility.test.ts league-growth.test.ts",
+    "test": "node --test league-eligibility.test.ts league-growth.test.ts agent-sharpness.test.ts",
     "harness": "node stat-harness.ts",
     "realism": "node realism-harness.ts",
     "realism:ci": "node realism-harness.ts --fixture",
+    "realism:ci:sharp": "node realism-harness.ts --fixture --sharpness-mixed",
     "growth": "node growth-harness.ts",
     "growth:ci": "node growth-harness.ts --fixture",
     "harness-fixture": "node make-harness-fixture.ts"

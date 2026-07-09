@@ -188,7 +188,9 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
       }
       await checkBuyer(c, season.id, offer.buyerClubId, offer.fee, contract.wage);
 
-      await store.transferPlayer(c, season.id, offer.playerId, offer.buyerClubId, sellerClubId, offer.fee);
+      await store.transferPlayer(
+        c, season.id, offer.playerId, offer.buyerClubId, sellerClubId, offer.fee, LEAGUE_CFG.sharpnessColdStart,
+      );
       await store.resolveOffer(c, offerId, 'accepted');
       await store.expirePendingOffersForPlayer(c, season.id, offer.playerId, offerId);
       return 'done' as const;
