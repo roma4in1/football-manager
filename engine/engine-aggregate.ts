@@ -263,11 +263,12 @@ export class AggregateEngine implements SimEngine {
       }
     }
 
-    // ── shot plans
+    // ── shot plans (a neutral-venue fixture — the playoff final — has no home boost)
+    const neutral = fixture.neutralVenue === true;
     const shotLambda = (team: TeamCtx, opp: TeamCtx): number =>
       CAL.baseShotsPerHalf *
       Math.pow(team.attack / opp.defense, CAL.shotStrengthExp) *
-      (team.side === 'home' ? CAL.homeShotBoost : CAL.awayShotBoost) *
+      (neutral ? 1 : team.side === 'home' ? CAL.homeShotBoost : CAL.awayShotBoost) *
       halfFactor *
       (0.9 + CAL.tempoShotGain * ((team.tempo + opp.tempo) / 2));
 

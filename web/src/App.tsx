@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { api, ApiError, type Me } from './api.ts';
 import { AuctionScreen } from './screens/AuctionScreen.tsx';
+import { BracketScreen } from './screens/BracketScreen.tsx';
 import { FacilitiesScreen } from './screens/FacilitiesScreen.tsx';
 import { HalfTimeScreen } from './screens/HalfTimeScreen.tsx';
 import { Home } from './screens/Home.tsx';
@@ -30,6 +31,7 @@ export function App() {
       <nav className="topnav">
         <Link to="/">Home</Link>
         <Link to="/standings">Standings</Link>
+        <Link to="/playoffs">Playoffs</Link>
         <Link to="/facilities">Facilities</Link>
         <Link to="/transfers">Transfers</Link>
         <Link to="/training">Training</Link>
@@ -44,6 +46,7 @@ export function App() {
         <Route path="/result/:fixtureId" element={<ResultScreen me={me} />} />
         <Route path="/replay/:fixtureId" element={<ReplayScreen me={me} />} />
         <Route path="/standings" element={<StandingsScreen />} />
+        <Route path="/playoffs" element={<BracketScreen />} />
         <Route path="/facilities" element={<FacilitiesScreen />} />
         <Route path="/transfers" element={<TransferScreen me={me} />} />
         <Route path="/training" element={<TrainingScreen />} />

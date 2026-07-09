@@ -6,15 +6,18 @@
  */
 
 export type SeasonPhase =
-  | 'setup' | 'auction' | 'regular' | 'transfer_window' | 'season_end' | 'complete';
+  | 'setup' | 'auction' | 'regular' | 'transfer_window' | 'playoffs' | 'season_end' | 'complete';
 
 export type FixtureState = 'scheduled' | 'awaiting_ht' | 'final' | 'void';
 
 const SEASON_TRANSITIONS: Record<SeasonPhase, readonly SeasonPhase[]> = {
   setup:           ['auction'],
   auction:         ['regular'],
-  regular:         ['transfer_window', 'season_end'],
+  // regular → playoffs for leagues of 4+; → season_end directly for the
+  // degenerate N<4 case (demo/test leagues cannot field a top-4 bracket)
+  regular:         ['transfer_window', 'playoffs', 'season_end'],
   transfer_window: ['regular'],
+  playoffs:        ['season_end'],
   season_end:      ['complete'],
   complete:        [],
 };

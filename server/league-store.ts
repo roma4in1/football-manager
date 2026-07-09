@@ -26,13 +26,14 @@ export interface FixtureRow {
   htDeadline: Date | null;
   bookkeptAt: Date | null;
   seed: string;
+  neutralVenue: boolean;
 }
 
 export interface MatchweekRow {
   id: string;
   seasonId: string;
   number: number;
-  kind: 'regular' | 'transfer';
+  kind: 'regular' | 'transfer' | 'playoff';
   opensAt: Date;
   deadlineAt: Date;
   revealedAt: Date | null;
@@ -60,11 +61,12 @@ const fixtureFromRow = (r: Record<string, unknown>): FixtureRow => ({
   htDeadline: r.ht_deadline as Date | null,
   bookkeptAt: r.bookkept_at as Date | null,
   seed: r.seed as string,
+  neutralVenue: r.neutral_venue as boolean,
 });
 
 export async function getFixture(c: Queryable, id: string, forUpdate = false): Promise<FixtureRow | null> {
   const { rows } = await c.query(
-    `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed
+    `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed, neutral_venue
      FROM fixtures WHERE id = $1 ${forUpdate ? 'FOR UPDATE' : ''}`,
     [id],
   );
@@ -101,7 +103,7 @@ export async function matchweekByNumber(c: Queryable, seasonId: string, number: 
 
 export async function listFixtures(c: Queryable, matchweekId: string): Promise<FixtureRow[]> {
   const { rows } = await c.query(
-    `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed
+    `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed, neutral_venue
      FROM fixtures WHERE matchweek_id = $1 ORDER BY id`,
     [matchweekId],
   );
@@ -964,7 +966,7 @@ export async function transitionSeason(c: Queryable, seasonId: string, phase: st
 }
 
 export async function insertMatchweek(
-  c: Queryable, seasonId: string, number: number, kind: 'regular' | 'transfer', opensAt: Date, deadlineAt: Date,
+  c: Queryable, seasonId: string, number: number, kind: 'regular' | 'transfer' | 'playoff', opensAt: Date, deadlineAt: Date,
 ): Promise<string> {
   const { rows } = await c.query(
     `INSERT INTO matchweeks (season_id, number, kind, opens_at, deadline_at)
@@ -975,13 +977,102 @@ export async function insertMatchweek(
 }
 
 export async function insertFixture(
-  c: Queryable, matchweekId: string, homeClubId: string, awayClubId: string, seed: string,
+  c: Queryable, matchweekId: string, homeClubId: string, awayClubId: string, seed: string, neutralVenue = false,
 ): Promise<string> {
   const { rows } = await c.query(
-    `INSERT INTO fixtures (matchweek_id, home_club_id, away_club_id, seed) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [matchweekId, homeClubId, awayClubId, seed],
+    `INSERT INTO fixtures (matchweek_id, home_club_id, away_club_id, seed, neutral_venue)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [matchweekId, homeClubId, awayClubId, seed, neutralVenue],
   );
   return rows[0].id;
+}
+
+// ── playoffs (league-playoffs.ts orchestrates) ──────────────────────────────
+
+export interface PlayoffTieRow {
+  id: string;
+  round: 'semi1' | 'semi2' | 'final';
+  highSeed: number;
+  lowSeed: number;
+  highSeedClubId: string;
+  lowSeedClubId: string;
+  leg1FixtureId: string | null;
+  leg2FixtureId: string | null;
+  winnerClubId: string | null;
+  shootout: unknown | null;
+}
+
+const tieFromRow = (r: Record<string, unknown>): PlayoffTieRow => ({
+  id: r.id as string,
+  round: r.round as PlayoffTieRow['round'],
+  highSeed: r.high_seed as number,
+  lowSeed: r.low_seed as number,
+  highSeedClubId: r.high_seed_club_id as string,
+  lowSeedClubId: r.low_seed_club_id as string,
+  leg1FixtureId: r.leg1_fixture_id as string | null,
+  leg2FixtureId: r.leg2_fixture_id as string | null,
+  winnerClubId: r.winner_club_id as string | null,
+  shootout: r.shootout ?? null,
+});
+
+export async function insertPlayoffTie(
+  c: Queryable, seasonId: string, round: PlayoffTieRow['round'],
+  highSeed: number, lowSeed: number, highSeedClubId: string, lowSeedClubId: string,
+  leg1FixtureId: string, leg2FixtureId: string | null,
+): Promise<string> {
+  const { rows } = await c.query(
+    `INSERT INTO playoff_ties (season_id, round, high_seed, low_seed, high_seed_club_id, low_seed_club_id,
+                               leg1_fixture_id, leg2_fixture_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [seasonId, round, highSeed, lowSeed, highSeedClubId, lowSeedClubId, leg1FixtureId, leg2FixtureId],
+  );
+  return rows[0].id;
+}
+
+export async function listPlayoffTies(c: Queryable, seasonId: string): Promise<PlayoffTieRow[]> {
+  const { rows } = await c.query(
+    `SELECT id, round, high_seed, low_seed, high_seed_club_id, low_seed_club_id,
+            leg1_fixture_id, leg2_fixture_id, winner_club_id, shootout
+     FROM playoff_ties WHERE season_id = $1 ORDER BY round`,
+    [seasonId],
+  );
+  return rows.map(tieFromRow);
+}
+
+export async function setTieWinner(
+  c: Queryable, tieId: string, winnerClubId: string, shootout: unknown | null,
+): Promise<void> {
+  await c.query(
+    `UPDATE playoff_ties SET winner_club_id = $2, shootout = $3 WHERE id = $1 AND winner_club_id IS NULL`,
+    [tieId, winnerClubId, shootout === null ? null : JSON.stringify(shootout)],
+  );
+}
+
+export async function setChampion(c: Queryable, seasonId: string, clubId: string): Promise<void> {
+  await c.query(`UPDATE seasons SET champion_club_id = $2 WHERE id = $1`, [seasonId, clubId]);
+}
+
+/** Scores of REVEALED final fixtures only — the bracket view's embargo. */
+export async function revealedScores(c: Queryable, fixtureIds: string[]): Promise<Map<string, [number, number]>> {
+  const { rows } = await c.query(
+    `SELECT f.id, hr.end_state->'score' AS score
+     FROM fixtures f
+     JOIN matchweeks mw ON mw.id = f.matchweek_id AND mw.revealed_at IS NOT NULL
+     JOIN half_results hr ON hr.fixture_id = f.id AND hr.half = 2
+     WHERE f.id = ANY($1) AND f.state = 'final'`,
+    [fixtureIds],
+  );
+  return new Map(rows.map((r) => [r.id, r.score as [number, number]]));
+}
+
+export async function seasonChampion(c: Queryable, seasonId: string): Promise<string | null> {
+  const { rows } = await c.query(`SELECT champion_club_id FROM seasons WHERE id = $1`, [seasonId]);
+  return rows[0]?.champion_club_id ?? null;
+}
+
+export async function clubCount(c: Queryable, seasonId: string): Promise<number> {
+  const { rows } = await c.query(`SELECT count(*)::int AS n FROM club_seasons WHERE season_id = $1`, [seasonId]);
+  return rows[0].n;
 }
 
 // ── season rollover (league-rollover.ts orchestrates) ───────────────────────
@@ -1187,7 +1278,7 @@ export async function currentMatchweek(c: Queryable, seasonId: string): Promise<
 
 export async function fixtureForClub(c: Queryable, matchweekId: string, clubId: string): Promise<FixtureRow | null> {
   const { rows } = await c.query(
-    `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed
+    `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed, neutral_venue
      FROM fixtures WHERE matchweek_id = $1 AND (home_club_id = $2 OR away_club_id = $2)`,
     [matchweekId, clubId],
   );

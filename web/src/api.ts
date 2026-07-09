@@ -208,6 +208,30 @@ export interface MarketView {
   clubs: Array<{ clubId: string; name: string; you: boolean; players: MarketPlayerView[] }>;
 }
 
+export interface PlayoffTieView {
+  round: 'semi1' | 'semi2' | 'final';
+  highSeed: number;
+  lowSeed: number;
+  highSeedClubId: string;
+  lowSeedClubId: string;
+  legs: Array<{ fixtureId: string; score: [number, number] | null }>;
+  winnerClubId: string | null;
+  shootout: {
+    kicks: Array<{ n: number; side: 'home' | 'away'; playerId: string; scored: boolean }>;
+    score: [number, number];
+    winnerClubId: string;
+    suddenDeath: boolean;
+  } | null;
+}
+
+export interface PlayoffsView {
+  phase: string;
+  champion: string | null;
+  clubNames: Record<string, string>;
+  playerNames: Record<string, string>;
+  ties: PlayoffTieView[];
+}
+
 export const api = {
   me: () => req<Me>('GET', '/api/me'),
   requestLink: (email: string) => req<void>('POST', '/api/auth/request-link', { email }),
@@ -231,6 +255,7 @@ export const api = {
   rejectOffer: (offerId: string) => req<void>('POST', `/api/transfer/offer/${offerId}/reject`),
   signPoolPlayer: (playerId: string) => req<void>('POST', '/api/transfer/sign', { playerId }),
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
+  playoffs: () => req<PlayoffsView>('GET', '/api/playoffs'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),
   setAuctionSplit: (reserve: number) => req<void>('PUT', '/api/auction/split', { reserve }),

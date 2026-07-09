@@ -3,6 +3,58 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-14 — end-of-season playoffs: top-4 knockout crowns the champion
+
+- **Phase machine**: `playoffs` sits between regular and season_end —
+  regular → playoffs → season_end (SQL trigger + TS mirror + smoke guards).
+  regular → season_end stays legal for the DEGENERATE N<4 case only
+  (demo/test leagues can't field a top-4 bracket); leagues of 4+ always
+  play the knockout. The rollover trigger MOVED: season_end (growth, expiry,
+  next auction) fires when the FINAL resolves, not at the last regular
+  reveal — everything PR #19 does is unchanged, just re-gated.
+- **Bracket**: top 4 from the FINAL table (points/GD/GF/name — the standings
+  ordering is the seeding). Semis 1v4 and 2v3, TWO legs on aggregate, the
+  HIGHER seed hosting the decisive second leg (the earned edge). The final
+  is ONE match at a NEUTRAL venue: fixtures.neutral_venue zeroes the home
+  boost in BOTH engines (aggregate homeShotBoost, agent homePressureRelief)
+  — verified by an identical-clubs A/B (home edge present normally,
+  symmetric under the flag) and by the realism fixture gate staying
+  byte-identical (absent flag = no-op, no recalibration).
+- **Ties are a structure over fixtures** (playoff_ties): playoff fixtures
+  are REAL fixtures through the existing sim/HT/embargo/bookkeeping paths;
+  the tie row carries seeds, leg references, the winner, and the shootout.
+  The final tie is created only when both semis resolve.
+- **Penalty shootout** (engine/penalty-shootout.ts, pure): triggers on a
+  level aggregate (no away-goals rule, no extra time) or a drawn final.
+  Best-of-5 alternating (deciding-fixture home side first), early
+  termination when unwinnable, sudden-death pairs. Takers = the on-pitch XI
+  (half-2 tactics minus sent-off) ordered by finishing, five best then the
+  rest cycling; keeper = the on-pitch GK (gloves pass to the best
+  gk-rated outfielder if he saw red). Kick model reuses the in-match
+  penalty base (0.76) ± taker finishing / keeper (gkReflexes+gkPositioning)
+  around 12, clamped 0.55–0.92 — constants live in the shootout module,
+  NOT the harness-gated CALs (shootouts never occur in harness play).
+  Deterministic: every kick draws Rng.fromSeed(`${fixtureSeed}|shootout|n`).
+  The shootout decides the TIE ONLY — the 90-minute scoreline and stats
+  stay as played (asserted).
+- **Cadence**: leg 1 / leg 2 / final are three consecutive playoff-kind
+  matchweeks on the normal weekly cadence — every existing mechanism
+  (deadlines, HT windows, embargo, ticks, one-match bans between legs)
+  applies untouched; compression would need new deadline plumbing for zero
+  gain at human-manager scale. The between-week tick RUNS during playoffs
+  (recovery, healing, sharpness — non-qualifiers rest and recover too);
+  growth remains strictly a season_end event. Matchweek kind 'playoff'
+  keeps playoff weeks out of the regular-season-over count.
+- **Champion recorded** on seasons.champion_club_id when the final
+  resolves, in the same reveal transaction (no embargo leak — the tie's
+  winner/shootout only become non-null as the deciding week reveals).
+  Bracket view: GET /api/playoffs (revealed leg scores only) + /playoffs
+  screen with seeds, aggregates, shootout kicks and the champion.
+- Timers: bracket seeding returns the three new matchweeks from the
+  week-close transaction; the orchestrator arms their close timers after
+  commit (the auction-completion precedent), injected into the core via
+  CoreOptions.scheduleWeekClose.
+
 ## 2026-08-08 — pre-auction budget split (6b): bring vs reserve, calibrated
 
 - **The split**: before bidding, a club divides its allotment into

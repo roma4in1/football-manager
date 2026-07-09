@@ -39,6 +39,31 @@ END $$;
 UPDATE seasons SET phase = 'auction' WHERE number = 1;
 UPDATE seasons SET phase = 'regular' WHERE number = 1;
 
+-- 2b. Playoffs: regular -> playoffs -> season_end legal; playoffs -> regular
+-- and playoffs -> complete must raise. (Walk back via savepoint.)
+SAVEPOINT pre_playoffs;
+UPDATE seasons SET phase = 'playoffs' WHERE number = 1;
+DO $$
+BEGIN
+  BEGIN
+    UPDATE seasons SET phase = 'regular' WHERE number = 1;
+    RAISE EXCEPTION 'GUARD FAILED: playoffs->regular was allowed';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'GUARD FAILED%' THEN RAISE; END IF;
+  END;
+END $$;
+DO $$
+BEGIN
+  BEGIN
+    UPDATE seasons SET phase = 'complete' WHERE number = 1;
+    RAISE EXCEPTION 'GUARD FAILED: playoffs->complete was allowed';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'GUARD FAILED%' THEN RAISE; END IF;
+  END;
+END $$;
+UPDATE seasons SET phase = 'season_end' WHERE number = 1;
+ROLLBACK TO SAVEPOINT pre_playoffs;
+
 -- 3. Fixture: scheduled -> awaiting_ht without half-1 result must raise
 DO $$
 BEGIN
