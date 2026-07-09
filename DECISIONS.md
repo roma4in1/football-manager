@@ -3,6 +3,29 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-23 — production league setup is script-only, safe by construction
+
+- `scripts/setup-production.ts` creates the league (managers/clubs/season →
+  auction) on an EXISTING database — there is no in-app league creation.
+  Safety is structural, not procedural: it never drops or seeds anything,
+  refuses unless the DB is a virgin league (players > 0, zero seasons, zero
+  clubs — half-states abort with "inspect first"), and DRY-RUN IS THE
+  DEFAULT (`--apply` to write). One clubs.json shape serves both the 2-club
+  test season and the real 5–10 club league.
+- It creates the FIRST season only: rollover owns N+1, and replacing a test
+  league pre-launch is a deliberate manual teardown (DEPLOY.md §1.4) — the
+  script will not paper over an existing season.
+- setupSeason now LINKS a pre-existing manager by email
+  (`ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING id`)
+  instead of failing on the unique constraint; an existing manager keeps
+  their display_name. Managers stay seeded-not-registered.
+- seed-demo.ts (destructive: drops schemas) now REFUSES non-localhost hosts
+  at runtime — the LOCAL-ONLY rule is enforced, not just documented.
+- Tested as an operator would run it: league-setup-production.test.ts spawns
+  the actual scripts as child processes and asserts every guard (empty pool,
+  dry-run writes nothing, apply creates + links, second apply refuses,
+  seed-demo non-local refusal).
+
 ## 2026-08-22 — production deployment: Fly + Supabase + Resend, runbook-driven
 
 - **Topology**: one always-on Fly machine (`fly.toml`, shared-cpu-1x/512MB,
