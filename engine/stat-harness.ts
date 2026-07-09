@@ -523,7 +523,7 @@ const setAll = (club: Club, f: (i: PlayerInstructions) => void): void =>
     attrs.pace = pace;
     attrs.acceleration = acceleration;
     return {
-      id, side, isGk: false, pos: { x, y }, vel: { x: 0, y: 0 }, attributes: attrs, fatigue: 0.1,
+      id, side, isGk: false, pos: { x, y }, vel: { x: 0, y: 0 }, attributes: attrs, fatigue: 0.1, sharpness: 1,
       instructions: { riskAppetite: 0.5, shootingBias: 0.5, dribbleBias: 0.5, pressingIntensity: 0.5, holdPosition: 0.5, crossBias: 0.5 },
     };
   };

@@ -134,6 +134,10 @@ CREATE TABLE squad_players (
   season_id          UUID NOT NULL REFERENCES seasons(id),
   player_id          UUID NOT NULL REFERENCES players(id),
   fatigue            REAL NOT NULL DEFAULT 0 CHECK (fatigue BETWEEN 0 AND 1),
+  -- match sharpness (condition/sharpness split): built by minutes, decayed by
+  -- the bench, tick-maintained. DEFAULT = cold start: every NEW row (auction
+  -- win, pool signing) arrives match-rusty; transfers clamp down explicitly.
+  sharpness          REAL NOT NULL DEFAULT 0.3 CHECK (sharpness BETWEEN 0 AND 1),
   injury_weeks_left  INT NOT NULL DEFAULT 0 CHECK (injury_weeks_left >= 0),
   just_returned      BOOLEAN NOT NULL DEFAULT FALSE, -- 1.9x re-injury modifier flag
   suspended_next     BOOLEAN NOT NULL DEFAULT FALSE, -- red card → one-match ban

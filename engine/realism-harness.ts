@@ -41,8 +41,32 @@ import type {
 
 const JSON_ONLY = process.argv.includes('--json');
 const FIXTURE = fixtureFlag();
+const SHARPNESS_MIXED = process.argv.includes('--sharpness-mixed');
 
 type SeedPlayer = HarnessPlayer;
+
+/**
+ * --sharpness-mixed: a deterministic mid-season sharpness distribution
+ * (name-hash FNV-1a, so runs are stable) over the SIMMED XIs — who are the
+ * most-played cohort, i.e. the players a real mid-season would keep sharp:
+ * ~70% match-sharp (0.88–1), ~25% rotation (0.6–0.85), ~5% rusty
+ * (0.35–0.55). The acceptance pair: WITHOUT the flag every player is
+ * full-sharp and the run must be byte-identical to the pre-sharpness
+ * baseline (sharpness=1 is a no-op); WITH it the ordering checks must still
+ * pass 7/7 — if a realistic distribution breaks them, the penalty is
+ * heavier than MEDIUM.
+ */
+function mixedSharpness(name: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const u = ((h >>> 0) % 10_000) / 10_000;
+  if (u < 0.7) return 0.88 + 0.12 * (u / 0.7);
+  if (u < 0.95) return 0.6 + 0.25 * ((u - 0.7) / 0.25);
+  return 0.35 + 0.2 * ((u - 0.95) / 0.05);
+}
 
 // ── XI construction on the synthetic-harness 4-3-3 geometry ─────────────────
 
@@ -105,6 +129,7 @@ function buildClub(name: string, pool: SeedPlayer[]): Club | null {
       attributes: sp.attributes,
       physical: { heightCm: sp.heightCm, weightKg: sp.heightCm - 105, preferredFoot: 'R', injuryProneness: 10 },
       fatigue: 0.1,
+      ...(SHARPNESS_MIXED ? { sharpness: mixedSharpness(sp.name) } : {}), // absent = full-sharp
       familiarity: {},
     } as SquadPlayer);
     const anchors = {} as Record<Phase, Vec2>;
@@ -177,7 +202,11 @@ for (const [nameOf, pool] of byClub) {
 }
 clubs.sort((a, b) => b.quality - a.quality);
 if (!JSON_ONLY) {
-  console.log(`${FIXTURE ? 'FIXTURE (CI tripwire)' : 'REAL (acceptance)'} pool: ${seedPool.length} players, ${byClub.size} squads, ${clubs.length} complete XIs`);
+  console.log(
+    `${FIXTURE ? 'FIXTURE (CI tripwire)' : 'REAL (acceptance)'} pool` +
+    `${SHARPNESS_MIXED ? ', MIXED sharpness distribution' : ''}: ` +
+    `${seedPool.length} players, ${byClub.size} squads, ${clubs.length} complete XIs`,
+  );
   console.log(`quality: best ${clubs[0].name} ${clubs[0].quality.toFixed(2)} … worst ${clubs[clubs.length - 1].name} ${clubs[clubs.length - 1].quality.toFixed(2)}`);
 }
 

@@ -3,6 +3,57 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-27 — sharpness: the second fitness axis (condition/sharpness split)
+
+- **Model**: condition = acute fatigue (existing `fatigue`); sharpness =
+  match fitness on squad_players (REAL 0–1, schema DEFAULT 0.3 = the cold
+  start). Built by minutes, decayed by the bench, tick-maintained. No smoke
+  guard — a value column with no transition semantics (fatigue precedent).
+- **Curves** (LEAGUE_CFG): gain 0.3/full match pro-rated by minutes/90;
+  decay 0.06/week benched, 0.12/week injured (the treatment room can't train
+  match-rhythm — this IS the "returnees come back LOW" rule, no extra clamp);
+  floor 0.25. Calibration targets hit: a weekly starter saturates at 1.0, a
+  4–6-week benching → 0.76–0.64 (noticeable, not crippling), a returnee is
+  match-sharp after 2–3 games (0.3 → 0.6 → 0.9 → 1.0).
+- **Cold arrivals — "not integrated" has two axes**: new rows (auction wins,
+  pool signings) start at the 0.3 schema default; mid-season transfers clamp
+  LEAST(current, 0.3) — like the familiarity wipe, and never a boost for an
+  already-rustier mover.
+- **just_returned GENERALIZED but the two costs stay DISTINCT**: the flag
+  keeps exactly its re-injury-modifier meaning (consumed by one match);
+  match-rust is a separate number with separate dynamics (decays while out,
+  rebuilds over 2–3 games). One event (returning) moves both; nothing shares
+  a number.
+- **Effect is MEDIUM, decision + fatigue layers only** (execution noise
+  stays attribute-driven — invariant intact): (a) fatigue accrual
+  ×(1 + 0.5·(1−s)) — the visible cost, a rusty legs-drain; (b) decision
+  temperature +0.06·(1−s), the SAME channel decisions relieve at 0.03/point
+  → full-unsharp ≈ −2 decisions points. An unsharp star still beats a sharp
+  filler; a marginal call flips. MEASURED into place: the first fit (0.09,
+  −3 pts) dragged the real-pool mixed-distribution realism run to the 0.55
+  win-share boundary with r 0.69 — too heavy per the medium rule, trimmed
+  and re-measured.
+- **Facility-INDEPENDENT by design**: sharpness SQL never touches
+  club_seasons — play-rhythm is not health (medical) or development
+  (training), and it would otherwise stack a third rich-club vector onto
+  facilities. Tested (level 5 ≡ level 0).
+- **Acceptance, both proven on the PR #17 fixture gates**: (1) full-sharp is
+  a NO-OP — the default fixture realism run is BYTE-IDENTICAL to the
+  pre-sharpness baseline (diff on --json output; keyed rng makes added reads
+  free), so nothing leaks into the quality axis at s=1; (2) a realistic
+  mixed mid-season distribution over the simmed XIs (deterministic
+  name-hash: ~70% sharp 0.88–1, ~25% rotation 0.6–0.85, ~5% rusty
+  0.35–0.55 — the XI is the most-played cohort, which a real mid-season
+  keeps sharp; a 60/30/10 blanket was harsher than any realistic first
+  team) passes 7/7 on BOTH pools: fixture win share 0.650 / r 0.818, real
+  pool 0.675 / r 0.735. The mixed fixture run is a CI step
+  (realism:ci:sharp): it trips if the penalty ever grows past medium.
+  Stat harness untouched: 82/0 on all three seeds (synthetic squads carry
+  no sharpness → 1 → no-op).
+- UI: the two-bar condition+sharpness split on the lineup picker
+  (FitnessBars), plus the training screen deferred from PR #16 (focus
+  radio and intensity slider on GET/PUT /api/training).
+
 ## 2026-07-21 — harness CI fixtures: realism + growth tripwires in the merge gate
 
 - **Problem closed**: the realism and growth harnesses were local-only (the

@@ -10,6 +10,7 @@ import { Login } from './screens/Login.tsx';
 import { ReplayScreen } from './screens/ReplayScreen.tsx';
 import { ResultScreen } from './screens/ResultScreen.tsx';
 import { StandingsScreen } from './screens/StandingsScreen.tsx';
+import { TrainingScreen } from './screens/TrainingScreen.tsx';
 import { TransferScreen } from './screens/TransferScreen.tsx';
 
 export function App() {
@@ -31,6 +32,7 @@ export function App() {
         <Link to="/standings">Standings</Link>
         <Link to="/facilities">Facilities</Link>
         <Link to="/transfers">Transfers</Link>
+        <Link to="/training">Training</Link>
         <span className="spacer" />
         <span className="muted">{me.club.name}</span>
       </nav>
@@ -44,6 +46,7 @@ export function App() {
         <Route path="/standings" element={<StandingsScreen />} />
         <Route path="/facilities" element={<FacilitiesScreen />} />
         <Route path="/transfers" element={<TransferScreen me={me} />} />
+        <Route path="/training" element={<TrainingScreen />} />
         <Route path="*" element={<Home me={me} />} />
       </Routes>
     </BrowserRouter>

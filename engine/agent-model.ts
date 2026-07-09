@@ -57,6 +57,15 @@ export const AGENT_CAL = {
   softmaxBaseTemperature: 0.55,
   temperaturePerDecisionsPoint: 0.03, // T = base − k·(decisions−10), floored
   temperatureFloor: 0.25,
+  // sharpness (condition/sharpness split; league layer feeds 0–1, 1 = sharp).
+  // MEDIUM by design: full-unsharp ≈ −2 decisions points on the choice
+  // channel (0.06 / 0.03-per-point) — a marginal call flips, a star doesn't
+  // become filler. 0.09 (−3 pts) dragged the REAL-pool mixed-distribution
+  // realism run to the 0.55 win-share boundary and r 0.69 — too heavy per
+  // the medium spec; trimmed and re-measured. Decision + fatigue layers
+  // ONLY: execution noise stays attribute-driven (frozen invariant).
+  sharpnessTemperaturePenalty: 0.06, // T += this · (1 − sharpness)
+  sharpnessFatigueGain: 0.5, // fatigue accrual ×(1 + this·(1 − sharpness)) — condition drains faster when rusty
   composurePressureRelief: 0.02, // pressure penalty attenuation per composure point
   pressureSecondWeight: 0.5, // second-nearest opponent's share of felt pressure
   passOptionCount: 5, // geometric candidates per decision (vision widens toward this)
@@ -207,6 +216,8 @@ export interface AgentState {
   /** per-phase anchors in GLOBAL frame (away anchors pre-flipped at setup) */
   anchors: Record<Phase, Vec2>;
   fatigue: number; // 0–1, grows during the half
+  /** match sharpness 0–1, fixed for the half (league-layer input; 1 = sharp) */
+  sharpness: number;
   yellows: 0 | 1;
   sentOff: boolean;
   injured: boolean;
@@ -224,6 +235,7 @@ export interface AgentSnapshot {
   readonly attributes: Attributes;
   readonly instructions: PlayerInstructions;
   readonly fatigue: number;
+  readonly sharpness: number;
 }
 
 export interface BallState {

@@ -165,3 +165,15 @@ table.stats, table.standings { width: 100%; border-collapse: collapse; margin: 0
 .facility-pips { display: flex; align-items: center; gap: 0.3rem; }
 .pip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); display: inline-block; }
 .pip.filled { background: var(--accent); border-color: var(--accent); }
+
+/* ── fitness two-bar (condition + sharpness) ─────────────────────────────── */
+.fitbars { display: inline-flex; flex-direction: column; gap: 2px; vertical-align: middle; margin: 0 6px; }
+.fitbar { display: block; width: 56px; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.fitbar-fill { display: block; height: 100%; border-radius: 3px; background: #3fb96b; }
+.fitbar-fill.sharp { background: #4d9de0; }
+.fitbar-fill.mid { background: #d9a63e; }
+.fitbar-fill.low { background: #d95c4a; }
+
+/* training screen */
+.radio-row { display: block; margin: 6px 0; }
+.radio-row input { margin-right: 8px; }

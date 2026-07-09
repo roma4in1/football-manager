@@ -75,7 +75,7 @@ jobs:
 
   harness:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -89,6 +89,9 @@ jobs:
       # are the real-pool locals (pnpm realism / pnpm growth) — the real pool
       # needs the human-populated cache CSV, which stays uncommitted.
       - run: pnpm realism:ci
+      # same fixture under a mixed mid-season sharpness distribution — trips
+      # if the sharpness penalty ever grows past MEDIUM (ordering must hold)
+      - run: pnpm realism:ci:sharp
       - run: pnpm growth:ci
 
   smoke:
