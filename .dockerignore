@@ -1,0 +1,13 @@
+# keep the build context to what the image actually needs
+**/node_modules
+**/dist
+**/dev-dist
+.git
+.github
+docs
+pipeline
+**/*.rds
+**/__pycache__
+**/.venv
+**/.DS_Store
+**/*.test.ts

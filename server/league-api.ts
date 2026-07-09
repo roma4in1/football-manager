@@ -137,6 +137,19 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     return false;
   };
 
+  // ── health (no session required) ───────────────────────────────────────────
+  // Fly's HTTP check probes this: proves the HTTP layer AND the DB connection
+  // (the pg-boss worker shares the same database, so green ≈ whole process).
+
+  root.get('/health', async (_req, reply) => {
+    try {
+      await pool.query('SELECT 1');
+      return { ok: true };
+    } catch {
+      return reply.code(503).send({ ok: false });
+    }
+  });
+
   // ── auth (no session required) ─────────────────────────────────────────────
 
   root.post('/auth/request-link', async (req, reply) => {
@@ -168,6 +181,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       sameSite: 'lax',
       path: '/',
       expires: expiresAt,
+      secure: baseUrl.startsWith('https'), // production is https-only (Fly terminates TLS)
     });
     return reply.redirect('/', 302); // land in the SPA, cookie in hand
   });

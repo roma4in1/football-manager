@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import pg from 'pg';
 import { LEAGUE_CFG } from '@fm/engine/config';
-import { consoleLinkDelivery, createApi } from './league-api.ts';
+import { consoleLinkDelivery, createApi, type LinkDelivery } from './league-api.ts';
+import { resendLinkDelivery } from './league-email.ts';
 import { createOrchestrator } from './league-orchestrator.ts';
 
 const connectionString = process.env.DATABASE_URL;
@@ -19,9 +20,25 @@ if (!connectionString) throw new Error('DATABASE_URL is required');
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) throw new Error('SESSION_SECRET is required');
 
+// deploy config (fly.toml/docs/DEPLOY.md); local dev needs none of these
+const host = process.env.HOST ?? LEAGUE_CFG.apiHost;
+const port = Number(process.env.PORT ?? LEAGUE_CFG.apiPort);
+if (!Number.isInteger(port) || port <= 0) throw new Error(`PORT must be a positive integer, got ${process.env.PORT}`);
+const baseUrl = process.env.BASE_URL ?? `http://${host}:${port}`; // magic links point here
+
+let delivery: LinkDelivery = consoleLinkDelivery;
+if (process.env.RESEND_API_KEY) {
+  const from = process.env.EMAIL_FROM;
+  if (!from) throw new Error('EMAIL_FROM is required when RESEND_API_KEY is set');
+  delivery = resendLinkDelivery({ apiKey: process.env.RESEND_API_KEY, from });
+} else if (process.env.BASE_URL) {
+  // BASE_URL set but no email provider smells like a misconfigured production env
+  console.warn('[league] RESEND_API_KEY not set — login links only go to stdout');
+}
+
 const pool = new pg.Pool({ connectionString });
 const orchestrator = await createOrchestrator({ pool, connectionString });
-const api = await createApi({ pool, orchestrator, sessionSecret, delivery: consoleLinkDelivery });
+const api = await createApi({ pool, orchestrator, sessionSecret, delivery, baseUrl });
 
 // serve the built client when present (npm --prefix web run build); the SPA owns
 // every non-/api path, so unknown GETs fall back to index.html for client routing
@@ -36,8 +53,8 @@ if (existsSync(webDist)) {
   console.warn('[league] web/dist not found — API only (run: npm --prefix web run build)');
 }
 
-await api.listen({ host: LEAGUE_CFG.apiHost, port: LEAGUE_CFG.apiPort });
-console.log(`[league] api on http://${LEAGUE_CFG.apiHost}:${LEAGUE_CFG.apiPort}, pg-boss worker running`);
+await api.listen({ host, port });
+console.log(`[league] api on http://${host}:${port} (links → ${baseUrl}), pg-boss worker running`);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

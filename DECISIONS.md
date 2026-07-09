@@ -3,6 +3,52 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-22 — production deployment: Fly + Supabase + Resend, runbook-driven
+
+- **Topology**: one always-on Fly machine (`fly.toml`, shared-cpu-1x/512MB,
+  ~$5/mo) runs the existing single process (API + pg-boss worker) and serves
+  `web/dist`. ALWAYS-ON IS LOAD-BEARING: pg-boss timers fire deadlines; Fly
+  auto-stop would delay them until a request wakes the machine — `auto_stop
+  = off`, `min_machines_running = 1` are correctness settings, not cost ones.
+- **Supabase = connection string only** (we keep our own magic-link auth; no
+  Supabase Auth/Realtime/Storage). Documented connection is the SESSION
+  pooler (port 5432) — pg-boss + our explicit BEGIN/COMMIT row-lock
+  transactions need session semantics; the transaction pooler (6543) is
+  called out as unsuitable.
+- **Email**: Resend behind the existing LinkDelivery interface
+  (`league-email.ts`) — one HTTPS POST via global fetch, NO new dependency,
+  provider swappable in one module. Selected by env (`RESEND_API_KEY` +
+  `EMAIL_FROM`); absent → console stub as before, with a warning when
+  `BASE_URL` is set (production smell). Failures THROW → request-link 500s;
+  a swallowed send would be indistinguishable from the deliberate
+  unknown-email 204. Noted as the fallback channel if iOS-push reveals flake.
+- **Runtime config via env** (league-server.ts): HOST/PORT/BASE_URL override
+  the LEAGUE_CFG dev defaults; BASE_URL drives magic-link URLs and flips the
+  session cookie to `Secure`. Secrets (DATABASE_URL, SESSION_SECRET,
+  RESEND_API_KEY) live in Fly's secret store, never committed.
+- **`/api/health`** (unauthenticated): `SELECT 1` through the shared pool —
+  proves HTTP + DB, probed by Fly's checks and CI.
+- **The deployable artifact is CI-gated**: the new `deploy-image` job builds
+  the repo Dockerfile (Node 24 runs the server TS directly — no server build
+  step to drift; Vite builds the PWA; runtime stage installs prod deps only),
+  boots it against a service Postgres, and probes /api/health + the SPA
+  fallback. Verified locally the same way before shipping.
+- **Schema cutover documented, no migration framework built**: pre-launch =
+  create-once (`schema.sql` run once via psql); post-launch = hand-written
+  ALTER migrations with schema.sql kept canonical (docs/DEPLOY.md §1.3).
+- **Backups**: Supabase FREE tier has NO automated backups → nightly
+  `pg_dump` workflow (backup.yml) uploads a GitHub artifact, 30-day
+  retention. ENCRYPTED (AES-256, `BACKUP_PASSPHRASE` secret) because the
+  repo is public and public-repo artifacts are downloadable by any logged-in
+  GitHub user — a raw dump leaks manager emails and LIVE SESSION IDS.
+  No-ops until the two secrets exist, so it merged ahead of go-live.
+- **docs/DEPLOY.md** is the go-live runbook: Supabase → Resend → Fly secrets
+  → deploy → Cloudflare DNS (DNS-only records — Fly owns TLS; cert issuance
+  is unreliable behind the proxy) → verify → backup rehearsal. Includes ops:
+  redeploy, health triage, SESSION_SECRET rotation (invalidates all
+  sessions and unredeemed links per the PR #11 design — rotate between
+  matchweeks).
+
 ## 2026-08-21 — design pass, chunks 2–4: every screen on the one language
 
 - **home** (3 states): the fixture hero never scrolls; the attention column
