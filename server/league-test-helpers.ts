@@ -140,8 +140,12 @@ export async function seedClub(
     `INSERT INTO clubs (manager_id, name) VALUES ($1, $2) RETURNING id`, [manager.rows[0].id, name],
   );
   const clubId = club.rows[0].id as string;
+  // mid-season suites: the whole allotment sits in RESERVE (facilities + the
+  // transfer window spend from it since the 6b split — these clubs never
+  // ran an auction, so treat everything as banked)
   await pool.query(
-    `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, 100000, 10000)`,
+    `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap, reserve_balance)
+     VALUES ($1, $2, 100000, 10000, 100000)`,
     [clubId, seasonId],
   );
   const playerIds: string[] = [];

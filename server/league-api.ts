@@ -374,7 +374,9 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       return {
         phase: s.phase,
         investmentOpen: s.phase === 'regular' || s.phase === 'transfer_window',
-        budgetRemaining: await store.budgetRemaining(pool, s.id, clubId),
+        // facilities spend the RESERVE (6b): what the split held back plus
+        // half of any unspent bring — never the auction pot
+        budgetRemaining: row.reserveBalance,
         training: { level: row.trainingLevel, nextCost: facilityUpgradeCost(row.trainingLevel) },
         medical: { level: row.medicalLevel, nextCost: facilityUpgradeCost(row.medicalLevel) },
       };
@@ -418,7 +420,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
           await client.query('ROLLBACK');
           return reply.code(422).send({ error: 'level_cap', level });
         }
-        const remaining = await store.budgetRemaining(client, s.id, req.ctx.clubId);
+        const remaining = row.reserveBalance;
         if (cost > remaining) {
           await client.query('ROLLBACK');
           return reply.code(422).send({ error: 'insufficient_budget', cost, remaining });
@@ -552,6 +554,18 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     authed.get('/auction/pool', async (_req, reply) => {
       try {
         return { players: await auction.poolPlayers() };
+      } catch (err) {
+        return auctionReply(reply, err);
+      }
+    });
+
+    /** Pre-auction budget split (6b) — adjustable until the club's first bid. */
+    authed.put('/auction/split', async (req, reply) => {
+      const reserve = (req.body as { reserve?: unknown } | null)?.reserve;
+      if (typeof reserve !== 'number') return reply.code(400).send({ error: 'reserve_required' });
+      try {
+        await auction.setSplit(req.ctx.clubId, reserve);
+        return reply.code(204).send();
       } catch (err) {
         return auctionReply(reply, err);
       }

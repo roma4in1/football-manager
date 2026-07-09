@@ -37,7 +37,7 @@ export async function rolloverSeason(c: store.Queryable, seasonId: string): Prom
   const { rows } = await c.query(`SELECT number FROM seasons WHERE id = $1`, [seasonId]);
   const expiredPlayerIds = await store.expireContracts(c, rows[0].number);
   await store.transitionSeason(c, seasonId, 'complete');
-  const nextSeasonId = await store.createNextSeason(c, seasonId);
+  const nextSeasonId = await store.createNextSeason(c, seasonId, LEAGUE_CFG.reserveGrowthRate);
   await store.carrySquadsForward(c, nextSeasonId);
   await store.carryFamiliarityForward(c, seasonId, nextSeasonId, LEAGUE_CFG.familiarityCarryOver);
   return { nextSeasonId, expiredPlayerIds };

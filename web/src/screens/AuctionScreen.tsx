@@ -10,6 +10,49 @@ import { Countdown } from '../components.tsx';
 
 const POLL_MS = 5_000;
 const POSITIONS = ['ALL', 'GK', 'DF', 'MF', 'FW'] as const;
+const RESERVE_GROWTH_PCT = 10; // LEAGUE_CFG.reserveGrowthRate, shown to the manager
+
+/**
+ * Pre-auction budget split (6b): bring vs reserve, adjustable until your
+ * first bid. Functional-first — the design pass restyles it.
+ */
+function SplitPanel({ you, onSet }: {
+  you: AuctionStateView['you'];
+  onSet: (reserve: number) => Promise<void>;
+}) {
+  const [reserve, setReserve] = useState(you.totalPot - you.auctionBudget);
+  if (you.splitLocked) {
+    return (
+      <section className="card">
+        <h3>Budget split</h3>
+        <p className="muted">
+          Locked at your first bid: bringing <strong>{you.auctionBudget.toLocaleString()}</strong>,
+          reserve <strong>{you.reserve.toLocaleString()}</strong>.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="card">
+      <h3>Budget split — set before your first bid</h3>
+      <label className="slider">
+        Bring {(you.totalPot - reserve).toLocaleString()} · reserve {reserve.toLocaleString()}
+        <input
+          type="range" min={0} max={you.totalPot} step={1000}
+          value={reserve}
+          onChange={(e) => setReserve(Number(e.target.value))}
+          onMouseUp={() => void onSet(reserve)}
+          onTouchEnd={() => void onSet(reserve)}
+        />
+      </label>
+      <p className="muted">
+        Reserve spends ONLY on facilities and the mid-season transfer window — never auction
+        bidding — and grows {RESERVE_GROWTH_PCT}% when it carries into next season. Unspent
+        bidding money only half-converts to reserve when the draft ends.
+      </p>
+    </section>
+  );
+}
 
 export function AuctionScreen() {
   const [state, setState] = useState<AuctionStateView | null>(null);
@@ -112,10 +155,14 @@ export function AuctionScreen() {
 
       {notice && <p className="error">{notice}</p>}
 
+      <SplitPanel you={state.you} onSet={(reserve) => act(() => api.setAuctionSplit(reserve))} />
+
       <section className="card">
         <h3>Your club</h3>
         <p>
-          Budget remaining <strong>{state.you.remaining.toLocaleString()}</strong> · squad{' '}
+          Bidding balance <strong>{state.you.remaining.toLocaleString()}</strong>
+          {' '}(brought {state.you.auctionBudget.toLocaleString()} of {state.you.totalPot.toLocaleString()})
+          {' '}· reserve <strong>{state.you.reserve.toLocaleString()}</strong> · squad{' '}
           <strong>{state.you.squadCount}</strong> (min {state.squadMin}, max {state.squadMax}) · wages{' '}
           {state.you.wageBill}/{state.you.wageCap}
         </p>

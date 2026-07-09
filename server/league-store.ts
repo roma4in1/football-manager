@@ -263,48 +263,79 @@ export interface FacilitiesRow {
   trainingLevel: number;
   medicalLevel: number;
   transferBudget: number;
+  /** what the club brings to the draft; null = no split set = everything */
+  auctionBudget: number | null;
+  /** the LIVE mid-season balance — facilities + transfer window spend THIS */
+  reserveBalance: number;
 }
 
+/** The club's money row — forUpdate is THE money lock (facilities, window, split). */
 export async function getFacilities(
   c: Queryable, seasonId: string, clubId: string, forUpdate = false,
 ): Promise<FacilitiesRow | null> {
   const { rows } = await c.query(
-    `SELECT training_level, medical_level, transfer_budget FROM club_seasons
+    `SELECT training_level, medical_level, transfer_budget, auction_budget, reserve_balance FROM club_seasons
      WHERE season_id = $1 AND club_id = $2 ${forUpdate ? 'FOR UPDATE' : ''}`,
     [seasonId, clubId],
   );
   return rows[0]
-    ? { trainingLevel: rows[0].training_level, medicalLevel: rows[0].medical_level, transferBudget: Number(rows[0].transfer_budget) }
+    ? {
+        trainingLevel: rows[0].training_level,
+        medicalLevel: rows[0].medical_level,
+        transferBudget: Number(rows[0].transfer_budget),
+        auctionBudget: rows[0].auction_budget === null ? null : Number(rows[0].auction_budget),
+        reserveBalance: Number(rows[0].reserve_balance),
+      }
     : null;
 }
 
 /**
- * Spendable budget: transfer_budget minus every debiting txn kind that draws
- * on it, PLUS transfer-fee credits — selling a player mid-season funds new
- * signings and facilities. wage_payment rides the wage-cap system, not this.
+ * The pre-auction split: the club BRINGS auctionBudget to the draft; the
+ * held-back remainder moves to reserve. Re-splitting before the lock point
+ * adjusts reserve by the difference — caller holds the row lock and has
+ * verified the club hasn't bid or won yet.
  */
-export async function budgetRemaining(c: Queryable, seasonId: string, clubId: string): Promise<number> {
-  const { rows } = await c.query(
-    `SELECT cs.transfer_budget
-       - COALESCE((SELECT SUM(t.amount) FROM transactions t
-           WHERE t.season_id = $1 AND t.club_id = $2
-             AND t.kind IN ('auction_win', 'pool_signing', 'transfer_fee', 'facility_investment')), 0)
-       + COALESCE((SELECT SUM(t.amount) FROM transactions t
-           WHERE t.season_id = $1 AND t.to_club_id = $2 AND t.kind = 'transfer_fee'), 0) AS remaining
-     FROM club_seasons cs WHERE cs.season_id = $1 AND cs.club_id = $2`,
-    [seasonId, clubId],
+export async function setBudgetSplit(
+  c: Queryable, seasonId: string, clubId: string, auctionBudget: number, reserveDelta: number,
+): Promise<void> {
+  await c.query(
+    `UPDATE club_seasons SET auction_budget = $3, reserve_balance = reserve_balance + $4
+     WHERE season_id = $1 AND club_id = $2`,
+    [seasonId, clubId, auctionBudget, reserveDelta],
   );
-  return rows[0] ? Number(rows[0].remaining) : 0;
 }
 
-/** Raise a facility one level + record the txn — caller holds the row lock. */
+/** Reserve credit/debit — caller holds the row lock and pre-validated ≥ 0. */
+export async function adjustReserve(c: Queryable, seasonId: string, clubId: string, delta: number): Promise<void> {
+  await c.query(
+    `UPDATE club_seasons SET reserve_balance = reserve_balance + $3 WHERE season_id = $1 AND club_id = $2`,
+    [seasonId, clubId, delta],
+  );
+}
+
+/** Split lock: any bid this season (any opening) or any won lot binds it. */
+export async function clubHasBidOrWon(c: Queryable, seasonId: string, clubId: string): Promise<boolean> {
+  const { rows } = await c.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM auction_bids b JOIN auction_lots l ON l.id = b.lot_id
+       WHERE l.season_id = $1 AND b.club_id = $2
+     ) OR EXISTS (
+       SELECT 1 FROM auction_lots l WHERE l.season_id = $1 AND l.won_by = $2
+     ) AS locked`,
+    [seasonId, clubId],
+  );
+  return rows[0].locked as boolean;
+}
+
+/** Raise a facility one level, debit the reserve, record the txn — caller holds the row lock. */
 export async function applyFacilityInvestment(
   c: Queryable, seasonId: string, clubId: string, facility: 'training' | 'medical', cost: number,
 ): Promise<void> {
   const column = facility === 'training' ? 'training_level' : 'medical_level';
   await c.query(
-    `UPDATE club_seasons SET ${column} = ${column} + 1 WHERE season_id = $1 AND club_id = $2`,
-    [seasonId, clubId],
+    `UPDATE club_seasons SET ${column} = ${column} + 1, reserve_balance = reserve_balance - $3
+     WHERE season_id = $1 AND club_id = $2`,
+    [seasonId, clubId, cost],
   );
   await c.query(
     `INSERT INTO transactions (season_id, kind, club_id, amount, memo)
@@ -579,19 +610,27 @@ export interface AuctionClubRow {
   clubId: string;
   name: string;
   transferBudget: number;
+  /** the FIXED bidding balance: what the split brought (null = everything) */
+  auctionBudget: number | null;
+  reserveBalance: number;
   wageCap: number;
 }
 
 /** Seed order v1 = club name ascending (no rankings yet — DECISIONS.md). */
 export async function clubsBySeed(c: Queryable, seasonId: string): Promise<AuctionClubRow[]> {
   const { rows } = await c.query(
-    `SELECT cl.id, cl.name, cs.transfer_budget, cs.wage_cap
+    `SELECT cl.id, cl.name, cs.transfer_budget, cs.auction_budget, cs.reserve_balance, cs.wage_cap
      FROM clubs cl JOIN club_seasons cs ON cs.club_id = cl.id AND cs.season_id = $1
      ORDER BY cl.name ASC`,
     [seasonId],
   );
   return rows.map((r) => ({
-    clubId: r.id, name: r.name, transferBudget: Number(r.transfer_budget), wageCap: Number(r.wage_cap),
+    clubId: r.id,
+    name: r.name,
+    transferBudget: Number(r.transfer_budget),
+    auctionBudget: r.auction_budget === null ? null : Number(r.auction_budget),
+    reserveBalance: Number(r.reserve_balance),
+    wageCap: Number(r.wage_cap),
   }));
 }
 
@@ -832,6 +871,9 @@ export async function transferPlayer(
     `DELETE FROM familiarity WHERE club_id = $1 AND season_id = $2 AND (player_a = $3 OR player_b = $3)`,
     [sellerClubId, seasonId, playerId],
   );
+  // the fee moves reserve→reserve: window money never touches auction budgets
+  await adjustReserve(c, seasonId, buyerClubId, -fee);
+  await adjustReserve(c, seasonId, sellerClubId, fee);
   await c.query(
     `INSERT INTO transactions (season_id, kind, club_id, to_club_id, player_id, amount, memo)
      VALUES ($1, 'transfer_fee', $2, $3, $4, $5, 'transfer window')`,
@@ -851,6 +893,7 @@ export async function signFromPool(
     `INSERT INTO squad_players (club_id, season_id, player_id) VALUES ($1, $2, $3)`,
     [clubId, seasonId, playerId],
   );
+  await adjustReserve(c, seasonId, clubId, -price); // pool signings spend the reserve
   await c.query(
     `INSERT INTO transactions (season_id, kind, club_id, player_id, amount, memo)
      VALUES ($1, 'pool_signing', $2, $3, $4, 'transfer window pool signing')`,
@@ -971,7 +1014,9 @@ export async function expireContracts(c: Queryable, seasonNumber: number): Promi
  * and transfer_week copy the old values to satisfy the schema CHECK; auction
  * completion recomputes them for the real club count.
  */
-export async function createNextSeason(c: Queryable, prevSeasonId: string): Promise<string> {
+export async function createNextSeason(
+  c: Queryable, prevSeasonId: string, reserveGrowthRate: number,
+): Promise<string> {
   const { rows } = await c.query(
     `INSERT INTO seasons (number, matchweek_count, transfer_week)
      SELECT number + 1, matchweek_count, transfer_week FROM seasons WHERE id = $1
@@ -980,12 +1025,17 @@ export async function createNextSeason(c: Queryable, prevSeasonId: string): Prom
   );
   const nextId = rows[0].id as string;
   await c.query(`UPDATE seasons SET phase = 'auction' WHERE id = $1`, [nextId]);
+  // reserve CARRIES and earns its one growth tick here — interest rewards
+  // holding across the season boundary; auction_budget resets to NULL
+  // (no split yet = bring the whole fresh allotment)
   await c.query(
     `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap,
-                               training_level, medical_level, training_focus, training_intensity)
-     SELECT club_id, $2, transfer_budget, wage_cap, training_level, medical_level, training_focus, training_intensity
+                               training_level, medical_level, training_focus, training_intensity,
+                               reserve_balance)
+     SELECT club_id, $2, transfer_budget, wage_cap, training_level, medical_level, training_focus, training_intensity,
+            FLOOR(reserve_balance * (1 + $3::float8))
      FROM club_seasons WHERE season_id = $1`,
-    [prevSeasonId, nextId],
+    [prevSeasonId, nextId, reserveGrowthRate],
   );
   return nextId;
 }

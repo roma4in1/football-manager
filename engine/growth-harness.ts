@@ -33,6 +33,7 @@
 
 import type { Attributes } from './engine-types.ts';
 import { fixtureFlag, loadClubPools } from './harness-pool.ts';
+import { LEAGUE_CFG } from './league-config.ts';
 import {
   accumulateProgress,
   ageDecline,
@@ -236,6 +237,76 @@ function trajectory(clubs: ClubSim[]): number[][] {
     `mul(18)=${ageTrainingMul(18)} mul(25)=${ageTrainingMul(25)} mul(34)=${ageTrainingMul(34)}; decline(29)=${ageDecline(29)} decline(31)=${ageDecline(31)} decline(35)=${ageDecline(35)}`,
     'info', null,
   );
+}
+
+// ── scenario 4: the 6b reserve loop — "draft lean, hoard, bank, snowball"? ───
+// Hoarders bank the FULL allotment every season (the max-hoard bound), earn
+// the rollover growth tick, and buy TRAINING facility levels greedily — the
+// reserve → facilities → growth loop feeding the exact path scenarios 1–3
+// test. Bringers bank nothing and therefore (6b) never build facilities.
+// Strong half hoards = the worst case. Two gates:
+//   (a) the hoard-vs-bring XI-mean gap stays inside the facility-stress
+//       envelope (growth < 0.5/5yr, increments not accelerating) — hoarding
+//       cannot buy MORE growth than the already-bounded facility ceiling;
+//   (b) interest stays a modest share of principal banked ("banking, not
+//       investing") — this is the gate that actually binds X, because the
+//       facility channel saturates at level 5 and the surplus cash pile is
+//       the proxy for un-modeled transfer-window power.
+
+{
+  const reserveRate = Number(process.env.RESERVE_RATE ?? LEAGUE_CFG.reserveGrowthRate);
+  const ALLOTMENT = 100_000;
+  const clubs = buildClubs(() => 0, () => 0.5);
+  const hoarder = new Map<string, { reserve: number; banked: number; interest: number }>();
+  clubs.forEach((c, rank) => {
+    if (rank < clubs.length / 2) hoarder.set(c.name, { reserve: 0, banked: 0, interest: 0 });
+  });
+
+  const facilitySpendFor = (levels: number): number =>
+    LEAGUE_CFG.facilityCostByLevel.slice(0, levels).reduce((a, b) => a + b, 0);
+
+  const t: number[][] = [clubs.map(xiMean)];
+  const reserves: number[] = [];
+  for (let s = 0; s < SEASONS; s++) {
+    // pre-auction: hoarders bank the whole fresh allotment, then buy greedily
+    for (const c of clubs) {
+      const h = hoarder.get(c.name);
+      if (!h) continue; // bringers: no reserve, no facilities — ever
+      h.reserve += ALLOTMENT;
+      h.banked += ALLOTMENT;
+      while (
+        c.facilityLevel < LEAGUE_CFG.facilityLevelMax &&
+        h.reserve >= facilitySpendFor(c.facilityLevel + 1) - facilitySpendFor(c.facilityLevel)
+      ) {
+        h.reserve -= LEAGUE_CFG.facilityCostByLevel[c.facilityLevel];
+        c.facilityLevel += 1;
+      }
+    }
+    for (const c of clubs) simulateSeason(c);
+    // the rollover growth tick: interest rewards holding across the boundary
+    for (const h of hoarder.values()) {
+      const gain = Math.floor(h.reserve * reserveRate);
+      h.interest += gain;
+      h.reserve += gain;
+    }
+    t.push(clubs.map(xiMean));
+  }
+  for (const h of hoarder.values()) reserves.push(h.reserve);
+
+  const top = t.map((q) => mean(q.slice(0, Math.floor(clubs.length / 2))));
+  const bottom = t.map((q) => mean(q.slice(Math.floor(clubs.length / 2))));
+  const gap = t.map((_, i) => top[i] - bottom[i]);
+  check(`growth: 6b hoard-vs-bring gap trajectory (X=${reserveRate})`, fmt(gap),
+    'gap grows < 0.5 pts over 5 seasons (hoarding not dominant)', gap[SEASONS] - gap[0] < 0.5);
+  const inc = gap.slice(1).map((g, i) => g - gap[i]);
+  check('growth: 6b gap increments do not accelerate', inc.map((x) => x.toFixed(3)).join(', '),
+    'late ≤ 1.2× early', (inc[inc.length - 2] + inc[inc.length - 1]) / 2 <= (inc[0] + inc[1]) / 2 * 1.2 + 1e-9);
+
+  const totals = [...hoarder.values()];
+  const interestShare = mean(totals.map((h) => h.interest / h.banked));
+  check(`growth: 6b interest share of principal after ${SEASONS} max-hoard seasons`,
+    `${(interestShare * 100).toFixed(1)}% (reserve ends ~${Math.round(mean(reserves) / 1000)}k of ${SEASONS * ALLOTMENT / 1000}k banked)`,
+    '< 30% — banking, not investing (the cash pile proxies un-modeled window power)', interestShare < 0.3);
 }
 
 if (JSON_ONLY) console.log(JSON.stringify(rows, null, 1));
