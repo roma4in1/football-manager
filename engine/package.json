@@ -12,7 +12,8 @@
     "./state-machine": "./season-state-machine.ts",
     "./growth": "./league-growth.ts",
     "./shootout": "./penalty-shootout.ts",
-    "./agent": "./agent-engine.ts"
+    "./agent": "./agent-engine.ts",
+    "./agent-model": "./agent-model.ts"
   },
   "files": [
     "agent-decision.ts",
