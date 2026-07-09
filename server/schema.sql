@@ -13,11 +13,12 @@ CREATE TYPE season_phase AS ENUM (
   'auction',          -- season-start draft
   'regular',          -- matchweeks running (incl. pre-transfer and post-transfer halves)
   'transfer_window',  -- fixed mid-season week; doubles as bye
+  'playoffs',         -- top-4 knockout after the regular season (leagues of 4+)
   'season_end',       -- aging/growth applied, renegotiations, releases
   'complete'
 );
 
-CREATE TYPE matchweek_kind AS ENUM ('regular', 'transfer');
+CREATE TYPE matchweek_kind AS ENUM ('regular', 'transfer', 'playoff');
 
 CREATE TYPE fixture_state AS ENUM (
   'scheduled',      -- created; lineups may or may not be in (see tactics_submissions)
@@ -56,6 +57,7 @@ CREATE TABLE seasons (
   phase           season_phase NOT NULL DEFAULT 'setup',
   matchweek_count INT NOT NULL,                      -- regular weeks, excl. transfer week
   transfer_week   INT NOT NULL,                      -- fixed: after this matchweek number
+  champion_club_id UUID,                             -- set when the playoff final resolves (FK added below clubs)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (transfer_week > 0 AND transfer_week < matchweek_count)
 );
@@ -66,6 +68,8 @@ CREATE TABLE clubs (
   name        TEXT NOT NULL UNIQUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE seasons ADD CONSTRAINT seasons_champion_fk FOREIGN KEY (champion_club_id) REFERENCES clubs(id);
 
 -- Per-season club economy + facilities. Facilities are season-scoped levels;
 -- investment mid-season raises level via txn + UPDATE in one transaction.
@@ -191,6 +195,7 @@ CREATE TABLE fixtures (
   ht_deadline   TIMESTAMPTZ,                         -- set when entering awaiting_ht
   bookkept_at   TIMESTAMPTZ,                         -- post-match bookkeeping applied-marker; set first in its txn
   seed          TEXT NOT NULL,                       -- engine seed, fixed at creation
+  neutral_venue BOOLEAN NOT NULL DEFAULT FALSE,      -- playoff final: home boost zeroed in the sim
   CHECK (home_club_id <> away_club_id)
 );
 CREATE INDEX fixtures_by_week ON fixtures(matchweek_id);
@@ -270,6 +275,29 @@ CREATE TABLE auction_bids (
   PRIMARY KEY (lot_id, club_id, placed_at)
 );
 
+-- ── End-of-season playoffs ────────────────────────────────────────────────
+-- Top 4 by the final table: two-leg semis (1v4, 2v3 — the HIGHER seed hosts
+-- the decisive second leg) then a single neutral-venue final. A tie level on
+-- aggregate (or a drawn final) goes straight to a penalty shootout — the
+-- shootout result lives HERE (it decides the tie, never the 90-minute
+-- scoreline). The final tie row is created once both semis resolve.
+
+CREATE TABLE playoff_ties (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  season_id         UUID NOT NULL REFERENCES seasons(id),
+  round             TEXT NOT NULL CHECK (round IN ('semi1', 'semi2', 'final')),
+  high_seed         INT NOT NULL,
+  low_seed          INT NOT NULL,
+  high_seed_club_id UUID NOT NULL REFERENCES clubs(id),
+  low_seed_club_id  UUID NOT NULL REFERENCES clubs(id),
+  leg1_fixture_id   UUID REFERENCES fixtures(id),    -- the final's single match lives here
+  leg2_fixture_id   UUID REFERENCES fixtures(id),    -- NULL for the final
+  winner_club_id    UUID REFERENCES clubs(id),
+  shootout          JSONB,                           -- {kicks:[{playerId,side,scored}],score:[h,a]} when one decided it
+  UNIQUE (season_id, round),
+  CHECK (high_seed_club_id <> low_seed_club_id)
+);
+
 -- ── Mid-season transfer window ────────────────────────────────────────────
 -- Inter-club offers only. On accept the fee moves buyer→seller (transfer_fee
 -- txn, club_id debited / to_club_id credited) and the CONTRACT rides along
@@ -308,7 +336,9 @@ BEGIN
     ('auction',         'regular'),
     ('regular',         'transfer_window'),
     ('transfer_window', 'regular'),
-    ('regular',         'season_end'),
+    ('regular',         'playoffs'),       -- leagues of 4+: top-4 knockout
+    ('playoffs',        'season_end'),     -- the final resolved
+    ('regular',         'season_end'),     -- degenerate N<4 leagues skip playoffs
     ('season_end',      'complete')
   );
   IF NOT legal THEN

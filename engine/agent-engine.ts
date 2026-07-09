@@ -367,8 +367,11 @@ export class AgentEngine implements SimEngine {
           side,
           instructions: carrier.instructions,
           team: (side === 'home' ? homeCtx : awayCtx).tactics.team,
-          // crowd effect: the ONE home-advantage mechanism (context, not noise)
-          pressure: side === 'home' ? rawPressure * (1 - AGENT_CAL.homePressureRelief) : rawPressure,
+          // crowd effect: the ONE home-advantage mechanism (context, not
+          // noise) — zeroed at a neutral venue (the playoff final)
+          pressure: side === 'home' && fixture.neutralVenue !== true
+            ? rawPressure * (1 - AGENT_CAL.homePressureRelief)
+            : rawPressure,
           scoreState: scoreStateFor(side, now),
         };
         const options = this.decision.generateOptions(ctx);

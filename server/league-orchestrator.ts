@@ -57,6 +57,7 @@ import { createAuctionCore, type AuctionCore, type AuctionTuning } from './leagu
 import { LEAGUE_CFG, medicalInjuryAvoidProb, medicalInjuryDurationMul } from '@fm/engine/config';
 import { bestXI, validateTactics } from '@fm/engine/eligibility';
 import { accrueWeeklyTraining, applySeasonEndGrowth } from './league-training.ts';
+import { advanceBracket, seedBracket } from './league-playoffs.ts';
 import { rolloverSeason } from './league-rollover.ts';
 import * as store from './league-store.ts';
 
@@ -122,9 +123,14 @@ export interface CoreOptions {
   pool: pg.Pool;
   engine?: SimEngine;
   onAssertion?: (err: Error) => void;
+  /** arm a week-close timer for a matchweek the core just created (playoff
+   * bracket seeding) — the orchestrator passes the pg-boss scheduler; tests
+   * driving closes manually may omit it. Called AFTER the creating txn. */
+  scheduleWeekClose?: (matchweekId: string) => Promise<void>;
 }
 
-export function createCore({ pool, engine = new AggregateEngine(), onAssertion }: CoreOptions): OrchestratorCore {
+export function createCore(opts: CoreOptions): OrchestratorCore {
+  const { pool, engine = new AggregateEngine(), onAssertion } = opts;
   const report = onAssertion ?? ((err: Error) => console.error('[league-core] ASSERTION FAILURE:', err));
   async function withTxn<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
     const client = await pool.connect();
@@ -208,7 +214,7 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
 
       const squads = await loadMatchInputs(c, fx!, mw!.seasonId);
       const result = engine.simulateHalf(
-        { fixtureId, homeClubId: fx!.homeClubId, awayClubId: fx!.awayClubId, half: 1 },
+        { fixtureId, homeClubId: fx!.homeClubId, awayClubId: fx!.awayClubId, half: 1, neutralVenue: fx!.neutralVenue },
         squads,
         { home: resolved.get(fx!.homeClubId)!, away: resolved.get(fx!.awayClubId)! },
         fx!.seed,
@@ -258,7 +264,10 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
 
       const squads = await loadMatchInputs(c, fx!, mw!.seasonId);
       const result = engine.simulateHalf(
-        { fixtureId, homeClubId: fx!.homeClubId, awayClubId: fx!.awayClubId, half: 2, resumeState: h1!.endState },
+        {
+          fixtureId, homeClubId: fx!.homeClubId, awayClubId: fx!.awayClubId, half: 2,
+          resumeState: h1!.endState, neutralVenue: fx!.neutralVenue,
+        },
         squads,
         { home: tactics[0]!, away: tactics[1]! },
         fx!.seed,
@@ -378,10 +387,11 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
       if (fx!.state === 'final') await applyBookkeeping(id);
     }
 
-    // between-week tick + reveal, atomically
-    await withTxn(async (c) => {
+    // between-week tick + reveal, atomically (bracket seeding returns the
+    // playoff matchweeks so their week-close timers arm after the commit)
+    const newWeeks = await withTxn(async (c): Promise<string[]> => {
       const locked = await store.getMatchweek(c, matchweekId, true);
-      if (locked!.revealedAt) return; // concurrent close won the race — tick already applied
+      if (locked!.revealedAt) return []; // concurrent close won the race — tick already applied
 
       // injuries heal one week; hitting 0 raises just_returned (consumed by playing)
       await store.decrementInjuries(c, mw!.seasonId);
@@ -414,20 +424,35 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
       // exactly-once marker), all through the SQL season state machine:
       //  - closing the last pre-transfer week opens the window; closing the
       //    transfer bye week is the deadline — offers expire, play resumes;
-      //  - revealing the LAST regular week ends the season: regular →
-      //    season_end, season-end growth (training + age curve) applies to
-      //    contracted players with attribute_audit rows as per-player
-      //    applied-markers, and the ROLLOVER runs — contracts expire (at
-      //    grown state), the season completes, and season N+1 opens in the
-      //    auction phase (league-rollover.ts). The game repeats.
+      //  - revealing the LAST regular week seeds the PLAYOFFS (leagues of
+      //    4+: top-4 bracket, three playoff matchweeks); degenerate N<4
+      //    leagues go straight to season_end;
+      //  - playoff weeks advance the bracket (aggregates, shootouts, the
+      //    neutral final); when the FINAL resolves the champion is recorded
+      //    and only THEN does season_end fire: growth (training + age curve,
+      //    audit-marked), then the rollover (league-rollover.ts) — expiry at
+      //    grown state, complete, season N+1's auction. The game repeats.
       if (locked!.kind === 'transfer') {
         await store.expirePendingOffers(c, mw!.seasonId);
         await store.transitionSeason(c, mw!.seasonId, 'regular');
+      } else if (locked!.kind === 'playoff') {
+        const { champion } = await advanceBracket(c, mw!.seasonId);
+        if (champion) {
+          await store.setChampion(c, mw!.seasonId, champion);
+          await store.transitionSeason(c, mw!.seasonId, 'season_end');
+          await applySeasonEndGrowth(c, mw!.seasonId); // growth FIRST — leavers depart grown
+          await rolloverSeason(c, mw!.seasonId);
+        }
       } else {
         const season = await store.getSeasonRow(c, mw!.seasonId);
         if ((await store.regularRevealedCount(c, mw!.seasonId)) >= season!.matchweekCount) {
+          if ((await store.clubCount(c, mw!.seasonId)) >= 4) {
+            await store.transitionSeason(c, mw!.seasonId, 'playoffs');
+            return seedBracket(c, mw!.seasonId); // timers armed after commit
+          }
+          // degenerate N<4: no bracket to field — straight to season_end
           await store.transitionSeason(c, mw!.seasonId, 'season_end');
-          await applySeasonEndGrowth(c, mw!.seasonId); // growth FIRST — leavers depart grown
+          await applySeasonEndGrowth(c, mw!.seasonId);
           await rolloverSeason(c, mw!.seasonId);
         } else {
           const next = await store.matchweekByNumber(c, mw!.seasonId, locked!.number + 1);
@@ -436,7 +461,9 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
           }
         }
       }
+      return [];
     });
+    for (const id of newWeeks) await opts.scheduleWeekClose?.(id);
     return 'closed';
   }
 
@@ -481,7 +508,6 @@ interface LotJob {
 export async function createOrchestrator(opts: OrchestratorOptions): Promise<Orchestrator> {
   const { pool, connectionString, pollingIntervalSeconds = 2 } = opts;
   const onAssertion = opts.onAssertion ?? ((err) => console.error('[orchestrator] ASSERTION FAILURE:', err));
-  const core = createCore(opts);
 
   const boss = new PgBoss({ connectionString });
   boss.on('error', (err: Error) => console.error('[pg-boss]', err));
@@ -492,6 +518,25 @@ export async function createOrchestrator(opts: OrchestratorOptions): Promise<Orc
       await boss.createQueue(name, { policy: 'short', retryLimit: 3, retryDelay: 30, retryBackoff: true });
     }
   }
+
+  const scheduleWeekCloseFor = async (matchweekId: string): Promise<void> => {
+    const client = await pool.connect();
+    try {
+      const mw = await store.getMatchweek(client, matchweekId);
+      if (!mw) throw new AssertionFailure(`matchweek ${matchweekId} not found`);
+      await boss.sendAfter(
+        QUEUES.weekClose, { matchweekId } satisfies WeekJob,
+        { singletonKey: `wc:${matchweekId}`, retryLimit: 10, retryDelay: 60, retryBackoff: true },
+        mw.deadlineAt,
+      );
+    } finally {
+      client.release();
+    }
+  };
+
+  // the core seeds playoff matchweeks at the last regular reveal — it arms
+  // their close timers through the same scheduler everything else uses
+  const core = createCore({ ...opts, scheduleWeekClose: scheduleWeekCloseFor });
 
   /** Assertion failures are bugs: report, complete the job, never retry. */
   const guarded = <T extends object>(fn: (data: T) => Promise<unknown>) =>
@@ -531,21 +576,6 @@ export async function createOrchestrator(opts: OrchestratorOptions): Promise<Orc
   await boss.work<WeekJob>(QUEUES.weekClose, workOpts, guarded<WeekJob>(async ({ matchweekId }) => {
     await core.runWeekClose(matchweekId);
   }));
-
-  const scheduleWeekCloseFor = async (matchweekId: string): Promise<void> => {
-    const client = await pool.connect();
-    try {
-      const mw = await store.getMatchweek(client, matchweekId);
-      if (!mw) throw new AssertionFailure(`matchweek ${matchweekId} not found`);
-      await boss.sendAfter(
-        QUEUES.weekClose, { matchweekId } satisfies WeekJob,
-        { singletonKey: `wc:${matchweekId}`, retryLimit: 10, retryDelay: 60, retryBackoff: true },
-        mw.deadlineAt,
-      );
-    } finally {
-      client.release();
-    }
-  };
 
   const auction = createAuctionCore({
     pool,

@@ -132,6 +132,8 @@ export interface Fixture {
   awayClubId: string;
   half: 1 | 2;               // engine always sims one half per invocation
   resumeState?: HalfTimeState; // required iff half === 2
+  /** playoff final: zero the home boost (absent = normal venue) */
+  neutralVenue?: boolean;
 }
 
 export interface HalfTimeState {

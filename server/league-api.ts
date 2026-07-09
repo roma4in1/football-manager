@@ -536,6 +536,36 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       return { season: { id: s.id, number: s.number }, table: await store.standings(pool, s.id) };
     });
 
+    /** The playoff bracket: seeds, legs (revealed scores only), shootouts, champion. */
+    authed.get('/playoffs', async (_req, reply) => {
+      const s = await season();
+      const ties = await store.listPlayoffTies(pool, s.id);
+      if (ties.length === 0) return reply.code(404).send({ error: 'no_playoffs' });
+      const clubIds = [...new Set(ties.flatMap((t) => [t.highSeedClubId, t.lowSeedClubId]))];
+      const names = await store.clubNames(pool, clubIds);
+      const fixtureIds = ties.flatMap((t) => [t.leg1FixtureId, t.leg2FixtureId]).filter((x): x is string => !!x);
+      const scores = await store.revealedScores(pool, fixtureIds);
+      const players = await store.playerNames(pool, s.id, clubIds);
+      return {
+        phase: s.phase,
+        champion: await store.seasonChampion(pool, s.id),
+        clubNames: Object.fromEntries(names),
+        playerNames: Object.fromEntries(players),
+        ties: ties.map((t) => ({
+          round: t.round,
+          highSeed: t.highSeed,
+          lowSeed: t.lowSeed,
+          highSeedClubId: t.highSeedClubId,
+          lowSeedClubId: t.lowSeedClubId,
+          legs: [t.leg1FixtureId, t.leg2FixtureId]
+            .filter((x): x is string => !!x)
+            .map((id) => ({ fixtureId: id, score: scores.get(id) ?? null })),
+          winnerClubId: t.winnerClubId,
+          shootout: t.shootout,
+        })),
+      };
+    });
+
     // ── season-start auction ───────────────────────────────────────────────
     const auction = orchestrator.auction;
     const auctionReply = (reply: FastifyReply, err: unknown) => {

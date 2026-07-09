@@ -11,6 +11,7 @@
     "./config": "./league-config.ts",
     "./state-machine": "./season-state-machine.ts",
     "./growth": "./league-growth.ts",
+    "./shootout": "./penalty-shootout.ts",
     "./agent": "./agent-engine.ts"
   },
   "files": [
@@ -27,12 +28,13 @@
     "league-config.ts",
     "league-eligibility.ts",
     "league-growth.ts",
+    "penalty-shootout.ts",
     "season-state-machine.ts",
     "stat-harness.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test league-eligibility.test.ts league-growth.test.ts agent-sharpness.test.ts",
+    "test": "node --test league-eligibility.test.ts league-growth.test.ts agent-sharpness.test.ts penalty-shootout.test.ts",
     "harness": "node stat-harness.ts",
     "realism": "node realism-harness.ts",
     "realism:ci": "node realism-harness.ts --fixture",
