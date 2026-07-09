@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-27 — replay viewer: spline motion + inferred possession
+
+- **Viewer-only pass, deliberately**: the improved presentation is the
+  DIAGNOSTIC for whether the underlying movement is good — engine frames
+  (6 sim-seconds apart) are untouched.
+- **Catmull-Rom through four keyframes** replaces linear lerp: players move
+  in continuous curves instead of segments that snap direction at every
+  keyframe (the "wave-like/rigid" look). Neighbor frames only join the
+  spline across playable gaps (halftime still snaps); two-frame segments
+  degenerate to a symmetric Hermite whose MIDPOINT EQUALS the old lerp, so
+  existing behavior contracts held. The BALL flies straight whenever a
+  segment endpoint is airborne — kicked balls don't curve — and splines
+  only across carried ground segments. Rendering already ran per-rAF
+  (60fps); continuity, not sampling, was the gap.
+- **Possession is INFERRED, and that's a noted gap**: frames carry no
+  carrierId — `carrierAt` names the nearest player within 2.2m of an
+  on-ground ball, and the viewer adds hysteresis (+0.8m slack for the
+  incumbent) against flicker. Ring on the carrier; a pass reads as ring
+  off → ball travels (short fading trail) → ring on the receiver; a loose
+  on-ground ball gets a dashed halo + trail so no-possession is a state,
+  not a bug. IF inference flickers in practice, the honest fix is the
+  engine emitting `ball.carrierId` per frame (one field in agent-engine's
+  `frame()`) — sim-side, next calibration-free engine PR.
+
 ## 2026-08-26 — test-only week forcing: sim MW1 now, on the real pipeline
 
 - **POST /api/admin/force-week-close** (TEST_FORCE_WEEK_CLOSE=1 +

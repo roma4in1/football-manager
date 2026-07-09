@@ -9,6 +9,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HalfStats, MatchEvent } from '@fm/engine/types';
 import { eventLabel } from '../format.ts';
 import {
+  ballAt,
+  CARRY_RADIUS_M,
+  carrierAt,
   clockLabel,
   initials,
   interpolate,
@@ -43,6 +46,7 @@ export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds
   const tMax = frames[frames.length - 1]?.t ?? 5400;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const carrierRef = useRef<string | null>(null); // possession hysteresis across draw frames
   const simT = useRef(tMin);
   const playingRef = useRef(false);
   const speedRef = useRef(1);
@@ -82,7 +86,25 @@ export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds
         if (simT.current >= tMax) setPlay(false);
       }
       const canvas = canvasRef.current;
-      if (canvas) draw(canvas, interpolate(frames, simT.current), homeSet, names);
+      if (canvas) {
+        const snap = interpolate(frames, simT.current);
+        // hysteresis: the last carrier keeps the ball while still plausibly
+        // on it (radius + slack), so possession doesn't flicker between two
+        // players closing on the same ball
+        const prev = carrierRef.current;
+        const prevPos = prev ? snap.players[prev] : undefined;
+        const prevHolds =
+          prevPos && snap.ball.flight === 'ground' &&
+          Math.hypot(prevPos.x - snap.ball.x, prevPos.y - snap.ball.y) <= CARRY_RADIUS_M + 0.8;
+        carrierRef.current = prevHolds ? prev : carrierAt(snap)?.id ?? null;
+        // short trail behind a moving ball — passes/shots/loose balls read
+        // as the BALL travelling, not a glitch
+        const trail = [
+          ballAt(frames, simT.current - 0.35),
+          ballAt(frames, simT.current - 0.7),
+        ];
+        draw(canvas, snap, homeSet, names, carrierRef.current, trail);
+      }
       uiAccum += dt;
       if (uiAccum > 0.1) {
         uiAccum = 0;
@@ -193,6 +215,8 @@ function draw(
   snap: ReturnType<typeof interpolate>,
   homeSet: Set<string>,
   names: Record<string, string>,
+  carrierId: string | null,
+  trail: Array<{ x: number; y: number }>,
 ): void {
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth;
@@ -248,8 +272,35 @@ function draw(
     ctx.fillText(initials(names[id]), X(p.x), Y(p.y) + 0.5);
   }
 
-  // ball — lofted/high gets a ring so flight reads at a glance
+  // possession: a bright ring on the (inferred) carrier — dribbling reads as
+  // ball + ring moving together; a pass is the ring vanishing while the ball
+  // travels, then lighting up on the receiver
+  const carrier = carrierId ? snap.players[carrierId] : undefined;
+  if (carrier) {
+    ctx.beginPath();
+    ctx.arc(X(carrier.x), Y(carrier.y), r + 2.5, 0, Math.PI * 2);
+    ctx.strokeStyle = COLORS.ball;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
+  // trail while the ball travels (in flight OR fast on the ground) — a free
+  // ball visibly MOVES, it doesn't look like a rendering bug
   const lofted = snap.ball.flight === 'lofted' || snap.ball.flight === 'high';
+  const speed = trail.length > 0 ? Math.hypot(snap.ball.x - trail[0].x, snap.ball.y - trail[0].y) / 0.35 : 0;
+  if (!carrier && (lofted || snap.ball.flight === 'driven' || speed > 4)) {
+    trail.forEach((pos, i) => {
+      ctx.beginPath();
+      ctx.arc(X(pos.x), Y(pos.y), r * (0.32 - i * 0.1), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(242, 242, 242, ${0.35 - i * 0.15})`;
+      ctx.fill();
+    });
+  }
+
+  // the ball — lofted/high keeps its flight ring; a loose on-ground ball
+  // (nobody within carry radius) gets a soft dashed halo so "no possession"
+  // is a deliberate state, not a glitch
   ctx.beginPath();
   ctx.arc(X(snap.ball.x), Y(snap.ball.y), lofted ? r * 0.55 : r * 0.42, 0, Math.PI * 2);
   ctx.fillStyle = COLORS.ball;
@@ -259,5 +310,12 @@ function draw(
     ctx.arc(X(snap.ball.x), Y(snap.ball.y), r * 0.95, 0, Math.PI * 2);
     ctx.strokeStyle = COLORS.ball;
     ctx.stroke();
+  } else if (!carrier) {
+    ctx.beginPath();
+    ctx.arc(X(snap.ball.x), Y(snap.ball.y), r * 0.8, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(242, 242, 242, 0.45)';
+    ctx.setLineDash([3, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 }
