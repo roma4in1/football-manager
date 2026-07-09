@@ -32,10 +32,24 @@ export const LEAGUE_CFG = {
   medicalRecoveryBonusPerLevel: 0.05, // fatigue recovery ×(1 + bonus·level)
   medicalInjuryReductionPerLevel: 0.06, // injury duration ×(1 − reduction·level), floor 0.5
   medicalInjuryAvoidPerLevel: 0.06, // P(engine injury event not applied) = level × this
-  // Training — HOOK ONLY here: the training-focus + season-end-growth PR
-  // consumes trainingGrowthMul(training_level) as the per-player growth
-  // multiplier. No growth is applied anywhere yet.
-  trainingGrowthPerLevel: 0.15, // growth ×(1 + this·level) at season end (next PR)
+  // Training facility: growth ×(1 + this·level) — consumed by league-growth.ts.
+  // 0.15 (the PR #14 placeholder) let facility+intensity stack to ×3.5 and
+  // rich clubs ran away in the 5-season harness; ×1.5 at level 5 is the
+  // tuned ceiling (DECISIONS.md).
+  trainingGrowthPerLevel: 0.10,
+
+  // ── training focus + season-end growth (league-growth.ts) ─────────────────
+  // Magnitudes are tuned against the 5-season compounding harness
+  // (growth-harness.ts): the league must stay competitive — see DECISIONS.md.
+  trainingWeeklyBudget: 0.12, // total attribute points per week, split across the focus group
+  trainingMinutesFloor: 0.3, // benchwarmers develop at this share of a 90-minute week
+  trainingIntensityRecoveryPenalty: 0.5, // recovery ×(1 + this·(0.5 − intensity)): rest heals, grinding costs
+  trainingIntensityMaxGain: 1.3, // accrual multiplier at intensity 1.0 — diminishing returns past the default
+  ageYouthMul: 1.6, // development speed at 17–20
+  ageVeteranMul: 0.25, // development floor from 33
+  ageDeclineStartAge: 30, // first season that declines
+  ageDeclinePerYear: 0.2, // raw points per season per year past the start, before per-attribute weights
+  ageDeclineMaxPerSeason: 1.0, // decline cap per season (raw, pre-weight)
 
   // squad rules
   startersRequired: 11,

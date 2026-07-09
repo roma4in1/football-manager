@@ -3,6 +3,68 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-15 — training focus + season-end growth (ONE system), balance-gated
+
+- **Architecture**: all math is pure in @fm/engine/growth (league-growth.ts);
+  the server (league-training.ts) only moves rows. Weekly training accrues
+  into squad_players.training_progress inside the week-close tick (revealed_at
+  = exactly-once marker); the live attribute NEVER mutates mid-season.
+  Season end applies accumulated training + the age curve in one pass for
+  CONTRACTED players only (frozen-pool players never age or grow), writing
+  attribute_audit ('season_growth') BEFORE each attribute update — the audit
+  PK is the per-player applied-marker, so a retried pass skips cleanly.
+  Attributes are fractional (2 dp) from the first growth on; 1–20 stays the
+  scale.
+- **Season-end trigger**: revealing the LAST regular matchweek (count of
+  revealed kind='regular' weeks == seasons.matchweek_count — byes don't
+  count) transitions regular → season_end through the SQL state machine,
+  atomic with the reveal, and applies growth in the same transaction.
+- **Weekly accrual** = (0.12 budget ÷ focus-group size) × intensity ×
+  facility × age × minutes. Focus presets: balanced / possession / attacking
+  / defending / physical — the budget SPLITS across the group, so narrow
+  focus trains fewer attributes faster and no preset out-earns another in
+  total. Keepers always train gk* whatever the club focus (a 'goalkeeping'
+  preset would be dead weight for ten outfielders). Minutes: 90' = full
+  rate, benchwarmers floor at 0.3 — development ties to the rotation
+  economy. Age: ×1.6 at ≤20 → ×1 at 24–27 → ×0.25 at 33+.
+- **Intensity is a real trade-off, one dial, both sides in the same tick**:
+  accrual ×0 (full rest) → ×1 (0.5 default) → ×1.3 flat out (DIMINISHING
+  returns past the default), while fatigue recovery scales ×1.25 (rest) →
+  ×1 → ×0.75 (grind). Neutral at the default so pre-existing recovery
+  behavior is unchanged.
+- **Age curve at season end**: decline starts at 30, 0.2 raw pts/season per
+  year past it, capped at 1.0, weighted per attribute — physical ×1,
+  technical ×0.4, gk ×0.3, mental ×0.1 (legs go first, the brain stays).
+  Young net-grow, peak plateau, veterans net-decline (harness: +0.176 /
+  +0.112 / −0.273 composite per season for U21 / 24–27 / 31+ starters).
+- **THE COMPOUNDING GATE (growth-harness.ts, tag growth — local/reported,
+  like the realism harness: the fbref→squad join needs the human-populated
+  cache CSV, which is deliberately uncommitted, so CI can't run it)**:
+  5 simulated seasons on the real 2,128-player pool in its real 96 squads,
+  same math as production. First fit (budget 0.12, facility ×1.75, intensity
+  ×2 linear) RAN AWAY: rich-vs-poor XI-mean gap 1.02 → 2.23. Three
+  structural brakes fixed it: intensity capped at ×1.3 (overtraining),
+  facility slope 0.15 → 0.10 (×1.5 at level 5 — retunes the PR #14
+  placeholder, same contract), and **headroom scaling** on gains
+  (((20−v)/9)^1.2, clamp [0.1, 1.2]) so elite attributes crawl — the brake
+  that binds ever harder as a club pulls ahead.
+- **Measured verdict — the league stays competitive**: baseline (level
+  field) σ 0.28 → 0.37 over 5 seasons, mean stable at ~11.2 (no inflation).
+  Maximal bimodal stress (strong half: facility 5 + intensity 1.0 for five
+  straight seasons, free of the fatigue bill; weak half: nothing) buys the
+  rich cohort +0.45 XI-mean over 5 seasons with LINEAR-DECELERATING
+  increments (0.09 → 0.05 by season 10, gap asymptoting ~+0.8) — headroom
+  drag catches the leaders. That is ~1–2 table places for a maxed 130k
+  facility + permanent grind: meaningful, not trivializing, not compounding.
+  Gate design note: under a bimodal split, league σ mechanically restates
+  the gap, so the pass/fail is the gap bound (+0.5/5yr) plus increment
+  NON-ACCELERATION (the actual runaway signature), with σ < 2× as backstop.
+  Caveat: fixed rosters — no churn — so late seasons decline league-wide;
+  the divergence read is an upper bound on the rich edge.
+- API: GET/PUT /api/training (focus + intensity), same phase rule as
+  facilities (open regular + transfer_window). Client screen deferred — the
+  dial is API-set this PR.
+
 ## 2026-07-09 — mid-season transfer window (the second market + the bye)
 
 - **Two markets only**: the season-start auction and this one fixed week.

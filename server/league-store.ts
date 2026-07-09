@@ -891,12 +891,14 @@ export async function contractedSquads(
 
 export async function getSeasonRow(
   c: Queryable, seasonId: string, forUpdate = false,
-): Promise<{ id: string; phase: string; transferWeek: number } | null> {
+): Promise<{ id: string; phase: string; transferWeek: number; matchweekCount: number } | null> {
   const { rows } = await c.query(
-    `SELECT id, phase, transfer_week FROM seasons WHERE id = $1 ${forUpdate ? 'FOR UPDATE' : ''}`,
+    `SELECT id, phase, transfer_week, matchweek_count FROM seasons WHERE id = $1 ${forUpdate ? 'FOR UPDATE' : ''}`,
     [seasonId],
   );
-  return rows[0] ? { id: rows[0].id, phase: rows[0].phase, transferWeek: rows[0].transfer_week } : null;
+  return rows[0]
+    ? { id: rows[0].id, phase: rows[0].phase, transferWeek: rows[0].transfer_week, matchweekCount: rows[0].matchweek_count }
+    : null;
 }
 
 export async function updateSeasonSchedule(
@@ -1205,15 +1207,154 @@ export async function standings(c: Queryable, seasonId: string): Promise<Standin
   }));
 }
 
-/** Weekly fatigue recovery, scaled by the club's medical facility level. */
+/**
+ * Weekly fatigue recovery, scaled by the club's medical facility level AND
+ * its training intensity — the intensity dial's cost side (league-growth.ts
+ * intensityRecoveryMul): neutral at the 0.5 default, resting recovers more,
+ * grinding recovers less.
+ */
 export async function recoverFatigue(
-  c: Queryable, seasonId: string, baseRecovery: number, bonusPerLevel: number,
+  c: Queryable, seasonId: string, baseRecovery: number, bonusPerLevel: number, intensityPenalty: number,
 ): Promise<void> {
   await c.query(
     `UPDATE squad_players sp
-     SET fatigue = GREATEST(0, sp.fatigue * (1 - LEAST(1, $2::float8 * (1 + $3::float8 * cs.medical_level))))
+     SET fatigue = GREATEST(0, sp.fatigue * (1 - LEAST(1,
+       $2::float8 * (1 + $3::float8 * cs.medical_level) * (1 + $4::float8 * (0.5 - cs.training_intensity)))))
      FROM club_seasons cs
      WHERE cs.club_id = sp.club_id AND cs.season_id = sp.season_id AND sp.season_id = $1`,
-    [seasonId, baseRecovery, bonusPerLevel],
+    [seasonId, baseRecovery, bonusPerLevel, intensityPenalty],
   );
+}
+
+// ── training + season-end growth ─────────────────────────────────────────────
+
+export interface TrainingRow {
+  focus: string;
+  intensity: number;
+  trainingLevel: number;
+}
+
+export async function getTraining(c: Queryable, seasonId: string, clubId: string): Promise<TrainingRow | null> {
+  const { rows } = await c.query(
+    `SELECT training_focus, training_intensity, training_level FROM club_seasons
+     WHERE season_id = $1 AND club_id = $2`,
+    [seasonId, clubId],
+  );
+  return rows[0]
+    ? { focus: rows[0].training_focus, intensity: Number(rows[0].training_intensity), trainingLevel: rows[0].training_level }
+    : null;
+}
+
+export async function setTraining(
+  c: Queryable, seasonId: string, clubId: string, focus: string, intensity: number,
+): Promise<boolean> {
+  const res = await c.query(
+    `UPDATE club_seasons SET training_focus = $3, training_intensity = $4
+     WHERE season_id = $1 AND club_id = $2`,
+    [seasonId, clubId, focus, intensity],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+export interface TrainingRosterRow {
+  playerId: string;
+  clubId: string;
+  position: string;
+  age: number;
+  progress: Record<string, number>;
+  focus: string;
+  intensity: number;
+  trainingLevel: number;
+}
+
+/** Every squad player with their club's training dial — one tick's input. */
+export async function trainingRoster(c: Queryable, seasonId: string): Promise<TrainingRosterRow[]> {
+  const { rows } = await c.query(
+    `SELECT sp.player_id, sp.club_id, sp.training_progress, p.position,
+            date_part('year', age(now(), p.birth_date))::int AS age,
+            cs.training_focus, cs.training_intensity, cs.training_level
+     FROM squad_players sp
+     JOIN players p ON p.id = sp.player_id
+     JOIN club_seasons cs ON cs.club_id = sp.club_id AND cs.season_id = sp.season_id
+     WHERE sp.season_id = $1`,
+    [seasonId],
+  );
+  return rows.map((r) => ({
+    playerId: r.player_id, clubId: r.club_id, position: r.position, age: r.age,
+    progress: r.training_progress, focus: r.training_focus,
+    intensity: Number(r.training_intensity), trainingLevel: r.training_level,
+  }));
+}
+
+/** playerId → minutes actually played this matchweek (final half-2 end states). */
+export async function weekPlayerMinutes(c: Queryable, matchweekId: string): Promise<Map<string, number>> {
+  const { rows } = await c.query(
+    `SELECT ps.key AS player_id, (ps.value->>'minutesPlayed')::float AS minutes
+     FROM half_results hr
+     JOIN fixtures f ON f.id = hr.fixture_id,
+     LATERAL jsonb_each(hr.end_state->'playerState') ps
+     WHERE f.matchweek_id = $1 AND hr.half = 2`,
+    [matchweekId],
+  );
+  return new Map(rows.map((r) => [r.player_id, Number(r.minutes)]));
+}
+
+export async function setTrainingProgress(
+  c: Queryable, seasonId: string, playerId: string, progress: Record<string, number>,
+): Promise<void> {
+  await c.query(
+    `UPDATE squad_players SET training_progress = $3 WHERE season_id = $1 AND player_id = $2`,
+    [seasonId, playerId, JSON.stringify(progress)],
+  );
+}
+
+export interface GrowthRosterRow {
+  playerId: string;
+  age: number;
+  attributes: Record<string, number>;
+  progress: Record<string, number>;
+}
+
+/** CONTRACTED players only — frozen-pool players never age or grow. */
+export async function growthRoster(c: Queryable, seasonId: string): Promise<GrowthRosterRow[]> {
+  const { rows } = await c.query(
+    `SELECT p.id, p.attributes, sp.training_progress,
+            date_part('year', age(now(), p.birth_date))::int AS age
+     FROM contracts ct
+     JOIN players p ON p.id = ct.player_id
+     JOIN squad_players sp ON sp.player_id = p.id AND sp.season_id = $1
+     WHERE ct.released_at IS NULL`,
+    [seasonId],
+  );
+  return rows.map((r) => ({ playerId: r.id, age: r.age, attributes: r.attributes, progress: r.training_progress }));
+}
+
+/**
+ * The audit row doubles as the growth applied-marker: a second season-end
+ * pass conflicts on the (player, season, reason) PK and skips the player.
+ * Returns whether THIS call inserted (and may therefore apply the change).
+ */
+export async function insertGrowthAudit(
+  c: Queryable, playerId: string, seasonId: string, before: unknown, after: unknown,
+): Promise<boolean> {
+  const res = await c.query(
+    `INSERT INTO attribute_audit (player_id, season_id, before, after, reason)
+     VALUES ($1, $2, $3, $4, 'season_growth') ON CONFLICT DO NOTHING`,
+    [playerId, seasonId, JSON.stringify(before), JSON.stringify(after)],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+export async function updatePlayerAttributes(c: Queryable, playerId: string, attributes: unknown): Promise<void> {
+  await c.query(`UPDATE players SET attributes = $2 WHERE id = $1`, [playerId, JSON.stringify(attributes)]);
+}
+
+/** Season-over signal: every regular matchweek revealed (byes don't count). */
+export async function regularRevealedCount(c: Queryable, seasonId: string): Promise<number> {
+  const { rows } = await c.query(
+    `SELECT count(*)::int AS n FROM matchweeks
+     WHERE season_id = $1 AND kind = 'regular' AND revealed_at IS NOT NULL`,
+    [seasonId],
+  );
+  return rows[0].n;
 }

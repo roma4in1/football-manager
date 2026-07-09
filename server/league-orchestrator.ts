@@ -56,6 +56,7 @@ import type { SimEngine, Tactics } from '@fm/engine/types';
 import { createAuctionCore, type AuctionCore, type AuctionTuning } from './league-auction.ts';
 import { LEAGUE_CFG, medicalInjuryAvoidProb, medicalInjuryDurationMul } from '@fm/engine/config';
 import { bestXI, validateTactics } from '@fm/engine/eligibility';
+import { accrueWeeklyTraining, applySeasonEndGrowth } from './league-training.ts';
 import * as store from './league-store.ts';
 
 export const QUEUES = {
@@ -392,23 +393,36 @@ export function createCore({ pool, engine = new AggregateEngine(), onAssertion }
         await store.clearServedSuspensions(c, mw!.seasonId, issuedThisWeek);
       }
 
+      // weekly training accrues into the scratch field before recovery reads
+      // the intensity dial — one week, one tick, both sides of the trade-off
+      await accrueWeeklyTraining(c, mw!.seasonId, matchweekId);
       await store.recoverFatigue(
         c, mw!.seasonId, LEAGUE_CFG.fatigueWeeklyRecovery, LEAGUE_CFG.medicalRecoveryBonusPerLevel,
+        LEAGUE_CFG.trainingIntensityRecoveryPenalty,
       );
       await store.revealMatchweek(c, matchweekId);
 
-      // transfer-window choreography, atomic with the reveal (revealed_at is
-      // the exactly-once marker): closing the last pre-transfer week opens
-      // the window; closing the transfer bye week itself is the deadline —
-      // pending offers expire and the second half of the season resumes.
-      // Both transitions go through the SQL season state machine.
+      // season choreography, atomic with the reveal (revealed_at is the
+      // exactly-once marker), all through the SQL season state machine:
+      //  - closing the last pre-transfer week opens the window; closing the
+      //    transfer bye week is the deadline — offers expire, play resumes;
+      //  - revealing the LAST regular week ends the season: regular →
+      //    season_end, and season-end growth (training + age curve) applies
+      //    to contracted players with attribute_audit rows as per-player
+      //    applied-markers.
       if (locked!.kind === 'transfer') {
         await store.expirePendingOffers(c, mw!.seasonId);
         await store.transitionSeason(c, mw!.seasonId, 'regular');
       } else {
-        const next = await store.matchweekByNumber(c, mw!.seasonId, locked!.number + 1);
-        if (next?.kind === 'transfer' && !next.revealedAt) {
-          await store.transitionSeason(c, mw!.seasonId, 'transfer_window');
+        const season = await store.getSeasonRow(c, mw!.seasonId);
+        if ((await store.regularRevealedCount(c, mw!.seasonId)) >= season!.matchweekCount) {
+          await store.transitionSeason(c, mw!.seasonId, 'season_end');
+          await applySeasonEndGrowth(c, mw!.seasonId);
+        } else {
+          const next = await store.matchweekByNumber(c, mw!.seasonId, locked!.number + 1);
+          if (next?.kind === 'transfer' && !next.revealedAt) {
+            await store.transitionSeason(c, mw!.seasonId, 'transfer_window');
+          }
         }
       }
     });

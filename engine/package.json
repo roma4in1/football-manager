@@ -10,6 +10,7 @@
     "./eligibility": "./league-eligibility.ts",
     "./config": "./league-config.ts",
     "./state-machine": "./season-state-machine.ts",
+    "./growth": "./league-growth.ts",
     "./agent": "./agent-engine.ts"
   },
   "files": [
@@ -25,13 +26,15 @@
     "engine-types.ts",
     "league-config.ts",
     "league-eligibility.ts",
+    "league-growth.ts",
     "season-state-machine.ts",
     "stat-harness.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test league-eligibility.test.ts",
-    "harness": "node stat-harness.ts"
+    "test": "node --test league-eligibility.test.ts league-growth.test.ts",
+    "harness": "node stat-harness.ts",
+    "growth": "node growth-harness.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
