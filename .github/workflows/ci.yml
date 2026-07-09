@@ -75,7 +75,7 @@ jobs:
 
   harness:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -84,9 +84,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # 3 fixed master seeds, n=600 each; exits non-zero on any band miss
       - run: pnpm harness
-      # NOT here: the growth harness (pnpm growth) needs the human-populated
-      # cache CSV for the squad join — same reason the realism harness is a
-      # local/reported gate rather than a CI job
+      # realism + growth REGRESSION TRIPWIRES against the committed fixture
+      # pool (engine/harness-fixture.json). The authoritative acceptance runs
+      # are the real-pool locals (pnpm realism / pnpm growth) — the real pool
+      # needs the human-populated cache CSV, which stays uncommitted.
+      - run: pnpm realism:ci
+      - run: pnpm growth:ci
 
   smoke:
     runs-on: ubuntu-latest

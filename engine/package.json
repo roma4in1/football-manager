@@ -34,7 +34,11 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test league-eligibility.test.ts league-growth.test.ts",
     "harness": "node stat-harness.ts",
-    "growth": "node growth-harness.ts"
+    "realism": "node realism-harness.ts",
+    "realism:ci": "node realism-harness.ts --fixture",
+    "growth": "node growth-harness.ts",
+    "growth:ci": "node growth-harness.ts --fixture",
+    "harness-fixture": "node make-harness-fixture.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
