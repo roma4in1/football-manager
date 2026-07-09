@@ -354,3 +354,36 @@ table.stats, table.standings { width: 100%; border-collapse: collapse; margin: 0
 .timeline-min { min-width: 2.2rem; text-align: right; color: var(--muted); font-weight: 700; }
 .timeline-icon { width: 1.3rem; text-align: center; }
 button.watch { padding: 0.14rem 0.55rem; font-size: 0.78rem; color: var(--accent-deep); border-color: var(--accent); }
+
+/* ── squad player hub ───────────────────────────────────────────────────── */
+.hub-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.hub-stats { display: flex; gap: 1.1rem; margin: 0.2rem 0 0.6rem; font-size: 0.88rem; color: var(--muted); }
+.attr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 2px 12px; margin-bottom: 0.55rem; }
+.attr { display: flex; justify-content: space-between; font-size: 0.8rem; padding: 0.08rem 0; border-bottom: 1px dotted var(--line); }
+.attr-name { color: var(--muted); text-transform: capitalize; }
+.attr-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.attr-high { color: var(--ok); }
+.attr-mid { color: var(--text); }
+.attr-low { color: var(--faint); }
+
+/* ── tactics editor ─────────────────────────────────────────────────────── */
+.editor-left { flex: 1.5 1 0; min-width: 0; }
+.editor-right { flex: 1 1 0; max-width: 300px; }
+.phase-tabs { flex-wrap: wrap; margin-bottom: 0.4rem; }
+.phase-tabs button { padding: 0.16rem 0.6rem; font-size: 0.74rem; }
+.pitch-wrap { flex: 1; min-height: 0; display: flex; align-items: flex-start; }
+.pitch {
+  width: 100%; height: 100%; max-height: 100%;
+  border: 1px solid var(--line); border-radius: var(--radius); touch-action: none;
+  background: #f0f6f1;
+}
+.editor-hint { font-size: 0.74rem; margin: 0.3rem 0 0; flex-shrink: 0; }
+.zone-row { display: flex; align-items: center; gap: 0.45rem; margin: 0.25rem 0; font-size: 0.84rem; }
+.zone-row input[type='range'] { flex: 1; accent-color: var(--accent); }
+.zone-row button { padding: 0.1rem 0.45rem; font-size: 0.78rem; }
+.zone-add { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.zone-add button { padding: 0.14rem 0.5rem; font-size: 0.76rem; }
+@media (max-height: 480px) {
+  .editor-right { max-width: 258px; }
+  .editor-hint { display: none; }
+}

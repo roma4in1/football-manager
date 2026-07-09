@@ -349,6 +349,23 @@ test('embargo: participant sees own final result pre-reveal; others do not', asy
   );
 });
 
+test('player hub detail: own player 200 with contract/stats/growth, foreign player 404', async () => {
+  const own = await call({ method: 'GET', url: `/api/squad/player/${playersA[0]}`, cookie: cookieA });
+  assert.equal(own.statusCode, 200);
+  const body = own.json();
+  assert.equal(body.contract.wage, 100);
+  assert.ok(body.seasonStats.apps >= 0);
+  assert.ok(Array.isArray(body.growth));
+  const foreign = await call({ method: 'GET', url: `/api/squad/player/${playersB[0]}`, cookie: cookieA });
+  assert.equal(foreign.statusCode, 404, 'other clubs’ players are not in your hub');
+});
+
+test('default tactics: GET reads back what the club saved', async () => {
+  const res = await call({ method: 'GET', url: '/api/default-tactics', cookie: cookieA });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().payload.players.length, 11);
+});
+
 test('embargo: standings ignore unrevealed fixtures — even for participants', async () => {
   const res = await call({ method: 'GET', url: '/api/standings', cookie: cookieA });
   assert.equal(res.statusCode, 200);
