@@ -188,7 +188,10 @@ test('medical level measurably reduces applied injuries and their duration', asy
 test('weekly fatigue recovery scales with medical level in the tick SQL', async () => {
   await q(`UPDATE squad_players SET fatigue = 0.5 WHERE season_id = $1`, [seasonId]);
   await q(`UPDATE club_seasons SET medical_level = 5 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
-  await store.recoverFatigue(pool, seasonId, LEAGUE_CFG.fatigueWeeklyRecovery, LEAGUE_CFG.medicalRecoveryBonusPerLevel);
+  await store.recoverFatigue(
+    pool, seasonId, LEAGUE_CFG.fatigueWeeklyRecovery, LEAGUE_CFG.medicalRecoveryBonusPerLevel,
+    LEAGUE_CFG.trainingIntensityRecoveryPenalty,
+  );
   const a = await q(`SELECT fatigue FROM squad_players WHERE season_id = $1 AND club_id = $2 LIMIT 1`, [seasonId, clubA]);
   const b = await q(`SELECT fatigue FROM squad_players WHERE season_id = $1 AND club_id = $2 LIMIT 1`, [seasonId, clubB]);
   assert.ok(Number(a.rows[0].fatigue) < Number(b.rows[0].fatigue), 'level-5 club recovers more than level-0');
@@ -205,9 +208,10 @@ test('curves: neutral at 0, monotone, meaningful-not-trivializing at 5', () => {
   }
   assert.equal(facilityUpgradeCost(5), null);
   assert.ok(LEAGUE_CFG.facilityCostByLevel.every((c, i, a) => i === 0 || c > a[i - 1]), 'each level dearer');
-  // training hook: neutral at 0, defined slope — consumed by the growth PR
+  // training hook: neutral at 0, meaningful at 5 (0.10/level — retuned from
+  // the 0.15 placeholder by the growth-harness compounding gate)
   assert.equal(trainingGrowthMul(0), 1);
-  assert.ok(trainingGrowthMul(5) > 1.5);
+  assert.equal(trainingGrowthMul(5), 1.5);
 });
 
 // runs LAST (uses legal forward transitions): open in transfer_window,

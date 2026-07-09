@@ -76,6 +76,11 @@ CREATE TABLE club_seasons (
   wage_cap         BIGINT NOT NULL,                  -- per-matchweek total wage ceiling
   training_level   INT NOT NULL DEFAULT 0 CHECK (training_level BETWEEN 0 AND 5),
   medical_level    INT NOT NULL DEFAULT 0 CHECK (medical_level BETWEEN 0 AND 5),
+  -- weekly training dial (league-growth.ts): what the squad works on and how
+  -- hard; intensity trades development against fatigue recovery in the tick
+  training_focus   TEXT NOT NULL DEFAULT 'balanced'
+    CHECK (training_focus IN ('balanced', 'possession', 'attacking', 'defending', 'physical')),
+  training_intensity REAL NOT NULL DEFAULT 0.5 CHECK (training_intensity BETWEEN 0 AND 1),
   PRIMARY KEY (club_id, season_id)
 );
 
@@ -133,6 +138,9 @@ CREATE TABLE squad_players (
   just_returned      BOOLEAN NOT NULL DEFAULT FALSE, -- 1.9x re-injury modifier flag
   suspended_next     BOOLEAN NOT NULL DEFAULT FALSE, -- red card → one-match ban
   season_minutes     INT NOT NULL DEFAULT 0,
+  -- fractional training accrual (attr → points), applied at season_end; the
+  -- live players.attributes NEVER mutates mid-season (league-growth.ts)
+  training_progress  JSONB NOT NULL DEFAULT '{}',
   PRIMARY KEY (season_id, player_id)
 );
 

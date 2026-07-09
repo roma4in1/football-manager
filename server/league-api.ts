@@ -32,6 +32,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type pg from 'pg';
 import type { Tactics } from '@fm/engine/types';
 import { AuctionError } from './league-auction.ts';
+import { isTrainingFocus, TRAINING_FOCUSES } from '@fm/engine/growth';
 import { LEAGUE_CFG, facilityUpgradeCost } from '@fm/engine/config';
 import { validateHtResubmission, validateTactics } from '@fm/engine/eligibility';
 import type { Orchestrator } from './league-orchestrator.ts';
@@ -431,6 +432,36 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       } finally {
         client.release();
       }
+    });
+
+    // ── weekly training dial (league-growth.ts does the math) ──────────────
+    authed.get('/training', async (req, reply) => {
+      const s = await season();
+      const row = await store.getTraining(pool, s.id, req.ctx.clubId);
+      if (!row) return reply.code(404).send({ error: 'not_found' });
+      return { ...row, focuses: TRAINING_FOCUSES };
+    });
+
+    /**
+     * Set focus + intensity; applies from the next weekly tick. Same phase
+     * rule as facilities: a season-long management lever — open during
+     * regular play and the transfer window, closed in the auction and once
+     * the season ends.
+     */
+    authed.put('/training', async (req, reply) => {
+      const body = (req.body ?? {}) as { focus?: unknown; intensity?: unknown };
+      if (!isTrainingFocus(body.focus)) return reply.code(400).send({ error: 'bad_focus', focuses: TRAINING_FOCUSES });
+      const intensity = body.intensity;
+      if (typeof intensity !== 'number' || !Number.isFinite(intensity) || intensity < 0 || intensity > 1) {
+        return reply.code(400).send({ error: 'bad_intensity' });
+      }
+      const s = await season();
+      if (s.phase !== 'regular' && s.phase !== 'transfer_window') {
+        return reply.code(409).send({ error: 'training_closed', phase: s.phase });
+      }
+      const ok = await store.setTraining(pool, s.id, req.ctx.clubId, body.focus, intensity);
+      if (!ok) return reply.code(404).send({ error: 'not_found' });
+      return reply.code(204).send();
     });
 
     // ── mid-season transfer window (league-transfers.ts) ───────────────────
