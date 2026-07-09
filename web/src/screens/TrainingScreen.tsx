@@ -46,12 +46,11 @@ export function TrainingScreen() {
     }
   };
 
-  if (!view && !error) return <main><p className="muted">Loading…</p></main>;
-  if (!view) return <main><p className="error">{error}</p></main>;
+  if (!view && !error) return <p className="muted">Loading…</p>;
+  if (!view) return <p className="error">{error}</p>;
 
   return (
-    <main>
-      <h1>Training</h1>
+    <div>
       <p className="muted">
         Applies at each weekly tick. Ground level {view.trainingLevel}/5 scales development;{' '}
         keepers always train their craft. Growth lands at season end.
@@ -94,6 +93,6 @@ export function TrainingScreen() {
           />
         </label>
       </div>
-    </main>
+    </div>
   );
 }

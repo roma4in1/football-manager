@@ -51,7 +51,7 @@ export function TransferScreen({ me }: { me: Me }) {
   };
 
   if (!state || !market) {
-    return <main>{error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}</main>;
+    return error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>;
   }
 
   const { you } = state;
@@ -60,8 +60,7 @@ export function TransferScreen({ me }: { me: Me }) {
   const canBuy = state.windowOpen && you.squadCount < you.squadMax;
 
   return (
-    <main>
-      <h1>Transfer window</h1>
+    <div>
       <p className="muted">
         {state.windowOpen ? (
           <>Open until {state.deadlineAt ? new Date(state.deadlineAt).toLocaleString() : 'the week closes'}.</>
@@ -165,6 +164,6 @@ export function TransferScreen({ me }: { me: Me }) {
             ))}
           </div>
         ))}
-    </main>
+    </div>
   );
 }

@@ -8,11 +8,10 @@ export function StandingsScreen() {
     void api.standings().then((r) => setTable(r.table));
   }, []);
 
-  if (!table) return <main><p className="muted">Loading…</p></main>;
+  if (!table) return <p className="muted">Loading…</p>;
 
   return (
-    <main>
-      <h1>Standings</h1>
+    <div>
       <p className="muted">Revealed matchweeks only.</p>
       <table className="standings">
         <thead>
@@ -36,6 +35,6 @@ export function StandingsScreen() {
           ))}
         </tbody>
       </table>
-    </main>
+    </div>
   );
 }
