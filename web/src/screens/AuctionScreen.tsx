@@ -21,6 +21,7 @@ import { fmtMoney } from '../format.ts';
 import { PosChip } from '../shell/Section.tsx';
 
 const POLL_MS = 5_000;
+const POOL_PAGE = 100; // rows rendered per scroll chunk — the WHOLE pool stays reachable
 const POSITIONS = ['ALL', 'GK', 'DF', 'MF', 'FW'] as const;
 const RESERVE_GROWTH_PCT = 10; // LEAGUE_CFG.reserveGrowthRate, shown to the manager
 
@@ -77,6 +78,8 @@ export function AuctionScreen() {
   const [search, setSearch] = useState('');
   const [position, setPosition] = useState<(typeof POSITIONS)[number]>('ALL');
   const [fullProfile, setFullProfile] = useState(false);
+  const [visible, setVisible] = useState(POOL_PAGE);
+  const poolListRef = useRef<HTMLUListElement>(null);
   const [extended, setExtended] = useState(false);
   const prevCloseRef = useRef<string | null>(null);
   const [squadPositions, setSquadPositions] = useState<string[]>([]);
@@ -85,7 +88,9 @@ export function AuctionScreen() {
     const s = await api.auctionState();
     setState(s);
     if (s.phase === 'auction') {
-      setPoolList((await api.auctionPool()).players);
+      // the nomination picker is the only consumer of the pool (2k+ rows with
+      // attribute blobs) — fetch it only when the picker can render
+      if (!s.lot && s.turn?.you) setPoolList((await api.auctionPool()).players);
       api.squad().then((r) => setSquadPositions(r.players.map((p) => p.position)), () => {});
     }
   }, []);
@@ -107,6 +112,8 @@ export function AuctionScreen() {
     }
     prevCloseRef.current = closes;
   }, [state?.lot?.closesAt]);
+
+  useEffect(() => setVisible(POOL_PAGE), [search, position]);
 
   const filtered = useMemo(
     () =>
@@ -274,8 +281,17 @@ export function AuctionScreen() {
                     ))}
                   </div>
                 </div>
-                <ul className="player-list pool-list">
-                  {filtered.slice(0, 60).map((p) => (
+                <ul
+                  className="player-list pool-list"
+                  ref={poolListRef}
+                  onScroll={() => {
+                    const el = poolListRef.current;
+                    if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+                      setVisible((v) => (v < filtered.length ? v + POOL_PAGE : v));
+                    }
+                  }}
+                >
+                  {filtered.slice(0, visible).map((p) => (
                     <li key={p.playerId} className="player-row">
                       <span className="player-name">{p.fullName}</span>
                       <span className="player-meta">
@@ -286,6 +302,10 @@ export function AuctionScreen() {
                       </span>
                     </li>
                   ))}
+                  <li className="muted pool-count">
+                    {Math.min(visible, filtered.length)} of {filtered.length} available shown
+                    {visible < filtered.length && ' — scroll for more'}
+                  </li>
                 </ul>
               </>
             ) : (

@@ -48,6 +48,13 @@ feedback says which of these the game actually wants.
   (localStorage) presets; named cross-device presets need a presets table.
   default_tactics remains the one server-saved plan.
 
+- **Attribute-based pool search/filter/sort (auction + transfer market)** —
+  filter the nominatable/signable pool by attribute (e.g. finishing > 15) or
+  sort by one, not just name/value. Surfaced by the live-auction pool fix:
+  scrolling 2k players works, but squad-building really wants attribute
+  queries. Needs attribute-indexed querying over the pool (JSONB expression
+  indexes or extracted columns) — a query-layer feature, not a view.
+
 ## Rule for adding to this list
 During the design pass (or any future work), if an idea needs a new table,
 new engine behavior, or a calibration gate → it's a feature → it lands HERE,
