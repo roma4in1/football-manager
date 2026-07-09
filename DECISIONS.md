@@ -3,6 +3,36 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-25 — tactics editor polish + the live team-shape pitch
+
+- **Zone labels live OUTSIDE the box** (a chip above the bbox, below when the
+  zone hugs the top edge) — text can no longer spill out of a small zone at
+  any size. **Zones resize** by dragging bbox-corner handles: every vertex
+  scales about the OPPOSITE corner (rects resize classically; hand-shaped
+  polygons keep their proportions; never flips, min 4×3m, clamped to pitch).
+  Engine contract untouched (convex ≤8 verts — scaling preserves both).
+- **Save preset from the editor**: the phase-preset shape gained `zones`
+  (anchor + sliders + zones is the whole phase); saved from the editor's
+  right pane without leaving the screen. Pre-zones presets (no `zones` key)
+  apply without touching zones — device-local storage stays back-compatible.
+- **The team tab is a live pitch, not bare sliders**: the eleven render
+  through the ENGINE's own anchor deformation (AGENT_CAL via the new
+  `@fm/engine/agent-model` export — read-only constants, no new dep edges):
+  lineHeight shifts the block, width scales spread, compactness squeezes
+  toward the centroid; ghost dots mark raw anchors so displacement is
+  legible. Out-of-possession block shown (where all three bite);
+  press/tempo don't hold shape, so they render as derived facts (N chasers,
+  chase range in meters). The viz cannot drift from the sim because it IS
+  the sim's formula.
+- **Lineup-as-pitch (drag players on/off, bench alongside) SPLIT to its own
+  PR** — real drag-and-drop with inherit-on-swap interplay; per the brief's
+  own rule, too big to ride along.
+- **Auction timer test override is now an ENV VAR, never a tree edit**:
+  `AUCTION_LOT_SECONDS_TEST` (loud ⚠️ warning at boot, soft close derived,
+  visible in `fly config show`, launch checklist demands it unset). The
+  repo's LEAGUE_CFG stays 120s/20s — a 5s value must never be committed or
+  invisibly deployed from an edited working tree again.
+
 ## 2026-08-24 — the economy reconciled onto the realistic-millions scale
 
 - **The bug** (live test season): market values are real euros (elite ~200M)

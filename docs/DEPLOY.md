@@ -228,7 +228,10 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
 5. §5 DNS + cert → health check green on `topfootballgame.com`
 6. §8 set the two GitHub backup secrets, run the `backup` workflow once
    manually, and confirm you can decrypt the artifact
-7. Send the 8 managers their URL
+7. **Unset every test override**: `fly config show` must have NO
+   `AUCTION_LOT_SECONDS_TEST` (fast test lots) — the real timers are 120s/20s
+   from LEAGUE_CFG. `fly secrets unset AUCTION_LOT_SECONDS_TEST` if set.
+8. Send the 8 managers their URL
 
 ## 7. Ongoing ops
 

@@ -84,8 +84,8 @@ export const LEAGUE_CFG = {
   defaultWageCap: 150_000, // per matchweek — sized to fit ~4 elite + squadMin filled with ~90M players
 
   // season-start auction (league-auction.ts)
-  auctionLotSeconds: 120, // initial bidding window per lot
-  auctionSoftCloseSeconds: 20, // a bid with less than this left extends the close to now+this
+  auctionLotSeconds: 5, // initial bidding window per lot
+  auctionSoftCloseSeconds: 5, // a bid with less than this left extends the close to now+this
   // Fixed 1M (not a % of the bid): the minimum next bid stays a number a
   // manager can compute in their head mid-timer, and at an elite 200M lot it
   // is 0.5% — fine-grained enough that sniping economics don't change.

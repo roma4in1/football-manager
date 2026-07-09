@@ -20,7 +20,8 @@ import type { InstructionZone, Phase, PlayerInstructions, Tactics, Vec2 } from '
 import { api, ApiError, type SquadPlayerView } from '../api.ts';
 import { buildTactics, defaultTeamInstructions, type Selection } from '../lineup/build.ts';
 import { LineupPicker } from '../lineup/LineupPicker.tsx';
-import { PitchEditor, type PitchPlayer } from './PitchEditor.tsx';
+import { PitchEditor, type PitchPlayer, type ZoneCorner } from './PitchEditor.tsx';
+import { TeamShapePitch } from './TeamShapePitch.tsx';
 
 const PHASES: Phase[] = ['buildUp', 'progression', 'finalThird', 'defensiveBlock', 'counterPress', 'counterAttack'];
 const PHASE_LABEL: Record<Phase, string> = {
@@ -47,6 +48,14 @@ const TEAM_SLIDERS: Array<{ key: keyof Tactics['team']; label: string; min?: num
 type Tab = 'editor' | 'lineup' | 'team' | 'presets';
 const FULL_KEY = 'fm.presets.tactic';
 const PHASE_KEY = 'fm.presets.phase';
+
+/** One phase's plan: anchor + sliders + zones. Entries saved before the
+ * editor-save button existed lack `zones` — apply leaves zones alone then. */
+interface PhasePreset {
+  anchor: Vec2;
+  instructions: PlayerInstructions;
+  zones?: InstructionZone[];
+}
 
 const readStore = <T,>(key: string): Record<string, T> => {
   try { return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, T>; } catch { return {}; }
@@ -107,6 +116,49 @@ export function TacticsSection() {
       zones[zoneIndex] = { ...z, polygon: z.polygon.map((v) => ({ x: v.x + at.x - cx, y: v.y + at.y - cy })) };
       return { ...t, zones: { ...t.zones, [phase]: zones } };
     });
+
+  /** Rectangular v1 resize: scale every vertex about the OPPOSITE bbox
+   *  corner, so rects resize classically and hand-edited polygons keep their
+   *  shape. Never flips, never collapses below 4×3m, stays on the pitch. */
+  const resizeZone = (playerId: string, zoneIndex: number, corner: ZoneCorner, at: Vec2) =>
+    patchPlayer(playerId, (t) => {
+      const zones = [...(t.zones[phase] ?? [])];
+      const z = zones[zoneIndex];
+      const xs = z.polygon.map((v) => v.x);
+      const ys = z.polygon.map((v) => v.y);
+      const box = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+      const fx = corner.cx === 'min' ? box.maxX : box.minX;
+      const fy = corner.cy === 'min' ? box.maxY : box.minY;
+      const oldX = corner.cx === 'min' ? box.minX : box.maxX;
+      const oldY = corner.cy === 'min' ? box.minY : box.maxY;
+      const minSpan = { x: 4, y: 3 };
+      const newX = corner.cx === 'min' ? Math.min(at.x, fx - minSpan.x) : Math.max(at.x, fx + minSpan.x);
+      const newY = corner.cy === 'min' ? Math.min(at.y, fy - minSpan.y) : Math.max(at.y, fy + minSpan.y);
+      const sx = (newX - fx) / (oldX - fx);
+      const sy = (newY - fy) / (oldY - fy);
+      zones[zoneIndex] = {
+        ...z,
+        polygon: z.polygon.map((v) => ({
+          x: Math.max(0, Math.min(105, Math.round((fx + (v.x - fx) * sx) * 10) / 10)),
+          y: Math.max(0, Math.min(68, Math.round((fy + (v.y - fy) * sy) * 10) / 10)),
+        })),
+      };
+      return { ...t, zones: { ...t.zones, [phase]: zones } };
+    });
+
+  const savePhasePreset = (name: string) => {
+    if (!selected) return;
+    writeStore(PHASE_KEY, {
+      ...readStore<PhasePreset>(PHASE_KEY),
+      [name]: {
+        anchor: selected.anchors[phase],
+        instructions: selected.instructions,
+        zones: selected.zones[phase] ?? [],
+      },
+    });
+    setDraft((d) => d && { ...d }); // re-render preset lists
+    setNotice(`Phase preset “${name}” saved (this device).`);
+  };
 
   const addZone = (zoneType: InstructionZone['zoneType']) => {
     if (!selected) return;
@@ -180,6 +232,7 @@ export function TacticsSection() {
                   onSelect={setSelectedId}
                   onMoveAnchor={moveAnchor}
                   onMoveZone={moveZone}
+                  onResizeZone={resizeZone}
                 />
               </div>
               <p className="muted editor-hint">
@@ -228,6 +281,25 @@ export function TacticsSection() {
                       <button key={zt} onClick={() => addZone(zt)}>+ {zt === 'runTarget' ? 'run target' : zt}</button>
                     ))}
                   </p>
+                  <p className="preset-save-row">
+                    <input
+                      type="text"
+                      placeholder={`${PHASE_LABEL[phase]} preset name`}
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                    />
+                    <button onClick={() => {
+                      const name = presetName.trim() ||
+                        `${PHASE_LABEL[phase]} · ${nameOf.get(selected.playerId) ?? ''}`.trim();
+                      savePhasePreset(name);
+                      setPresetName('');
+                    }}>
+                      Save preset
+                    </button>
+                  </p>
+                  <p className="faint" style={{ fontSize: '0.7rem', margin: 0 }}>
+                    Saves this phase's anchor + sliders + zones — apply from the presets tab.
+                  </p>
                 </div>
               )}
             </div>
@@ -249,18 +321,27 @@ export function TacticsSection() {
         )}
 
         {tab === 'team' && (
-          <div className="card" style={{ maxWidth: 460 }}>
-            <p className="muted" style={{ marginTop: 0 }}>Team-wide shape — separate from the per-player editor.</p>
-            {TEAM_SLIDERS.map(({ key, label, min = 0, max = 1, step = 0.05 }) => (
-              <label key={key} className="slider">
-                {label}: {key === 'counterPressDuration' ? `${draft.team[key]}s` : (draft.team[key] as number).toFixed(2)}
-                <input
-                  type="range" min={min} max={max} step={step}
-                  value={draft.team[key] as number}
-                  onChange={(e) => setDraft({ ...draft, team: { ...draft.team, [key]: Number(e.target.value) } })}
-                />
-              </label>
-            ))}
+          <div className="screen">
+            <div className="pane pane-hero editor-left">
+              <div className="pitch-wrap">
+                <TeamShapePitch players={pitchPlayers} team={draft.team} />
+              </div>
+            </div>
+            <div className="pane pane-scroll editor-right">
+              <div className="card tight">
+                <p className="muted" style={{ marginTop: 0 }}>Team-wide shape — drag and watch the block morph.</p>
+                {TEAM_SLIDERS.map(({ key, label, min = 0, max = 1, step = 0.05 }) => (
+                  <label key={key} className="slider">
+                    {label}: {key === 'counterPressDuration' ? `${draft.team[key]}s` : (draft.team[key] as number).toFixed(2)}
+                    <input
+                      type="range" min={min} max={max} step={step}
+                      value={draft.team[key] as number}
+                      onChange={(e) => setDraft({ ...draft, team: { ...draft.team, [key]: Number(e.target.value) } })}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -291,26 +372,25 @@ export function TacticsSection() {
             </div>
             <div className="card tight">
               <h3>Phase presets — {selected ? nameOf.get(selected.playerId) : '—'} · {PHASE_LABEL[phase]}</h3>
-              <p className="muted">Save one phase's anchor + sliders; apply it to any player's same phase.</p>
+              <p className="muted">Save one phase's anchor + sliders + zones; apply it to any player's same phase.</p>
               <p>
                 <button disabled={!selected} onClick={() => {
                   if (!selected) return;
-                  const name = `${PHASE_LABEL[phase]} · ${new Date().toLocaleDateString()}`;
-                  writeStore(PHASE_KEY, {
-                    ...readStore<{ anchor: Vec2; instructions: PlayerInstructions }>(PHASE_KEY),
-                    [name]: { anchor: selected.anchors[phase], instructions: selected.instructions },
-                  });
-                  setDraft((d) => d && { ...d });
+                  savePhasePreset(`${PHASE_LABEL[phase]} · ${new Date().toLocaleDateString()}`);
                 }}>Save this phase</button>
               </p>
-              {Object.entries(readStore<{ anchor: Vec2; instructions: PlayerInstructions }>(PHASE_KEY)).map(([name, p]) => (
+              {Object.entries(readStore<PhasePreset>(PHASE_KEY)).map(([name, p]) => (
                 <p key={name} className="zone-row">
-                  <span className="grow">{name}</span>
+                  <span className="grow">{name}{p.zones ? ` · ${p.zones.length} zone${p.zones.length === 1 ? '' : 's'}` : ''}</span>
                   <button disabled={!selected} onClick={() => selected && patchPlayer(selected.playerId, (t) => ({
-                    ...t, anchors: { ...t.anchors, [phase]: p.anchor }, instructions: p.instructions,
+                    ...t,
+                    anchors: { ...t.anchors, [phase]: p.anchor },
+                    instructions: p.instructions,
+                    // pre-zones presets (no `zones` field) leave zones untouched
+                    ...(p.zones ? { zones: { ...t.zones, [phase]: p.zones } } : {}),
                   }))}>Apply</button>
                   <button onClick={() => {
-                    const all = readStore<{ anchor: Vec2; instructions: PlayerInstructions }>(PHASE_KEY);
+                    const all = readStore<PhasePreset>(PHASE_KEY);
                     delete all[name];
                     writeStore(PHASE_KEY, all);
                     setDraft((d) => d && { ...d });

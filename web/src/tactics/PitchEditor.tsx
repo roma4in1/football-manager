@@ -34,16 +34,19 @@ const ZONE_LABEL: Record<InstructionZone['zoneType'], string> = {
   runTarget: 'run target', operating: 'operating', pressing: 'pressing',
 };
 
-export function PitchEditor({ players, phase, selectedId, onSelect, onMoveAnchor, onMoveZone }: {
+export type ZoneCorner = { cx: 'min' | 'max'; cy: 'min' | 'max' };
+
+export function PitchEditor({ players, phase, selectedId, onSelect, onMoveAnchor, onMoveZone, onResizeZone }: {
   players: PitchPlayer[];
   phase: Phase;
   selectedId: string | null;
   onSelect: (playerId: string) => void;
   onMoveAnchor: (playerId: string, at: Vec2) => void;
   onMoveZone: (playerId: string, zoneIndex: number, at: Vec2) => void;
+  onResizeZone: (playerId: string, zoneIndex: number, corner: ZoneCorner, at: Vec2) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const drag = useRef<{ kind: 'anchor' | 'zone'; zoneIndex?: number } | null>(null);
+  const drag = useRef<{ kind: 'anchor' | 'zone' | 'zoneCorner'; zoneIndex?: number; corner?: ZoneCorner } | null>(null);
 
   const toPitch = (e: { clientX: number; clientY: number }): Vec2 => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -56,11 +59,6 @@ export function PitchEditor({ players, phase, selectedId, onSelect, onMoveAnchor
   const selected = players.find((p) => p.tactic.playerId === selectedId) ?? null;
   const zones = selected?.tactic.zones[phase] ?? [];
 
-  const centroid = (poly: Vec2[]): Vec2 => ({
-    x: poly.reduce((s, v) => s + v.x, 0) / poly.length,
-    y: poly.reduce((s, v) => s + v.y, 0) / poly.length,
-  });
-
   return (
     <svg
       ref={svgRef}
@@ -70,6 +68,7 @@ export function PitchEditor({ players, phase, selectedId, onSelect, onMoveAnchor
         if (!drag.current || !selected) return;
         const at = toPitch(e);
         if (drag.current.kind === 'anchor') onMoveAnchor(selected.tactic.playerId, at);
+        else if (drag.current.kind === 'zoneCorner') onResizeZone(selected.tactic.playerId, drag.current.zoneIndex!, drag.current.corner!, at);
         else onMoveZone(selected.tactic.playerId, drag.current.zoneIndex!, at);
       }}
       onPointerUp={() => { drag.current = null; }}
@@ -98,7 +97,22 @@ export function PitchEditor({ players, phase, selectedId, onSelect, onMoveAnchor
 
       {/* selected player's zones — visible weight, draggable by centroid */}
       {selected && zones.map((z, i) => {
-        const c = centroid(z.polygon);
+        const xs = z.polygon.map((v) => v.x);
+        const ys = z.polygon.map((v) => v.y);
+        const box = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+        // the label lives OUTSIDE the box (above, or below near the top edge)
+        // so it can never spill out of a small zone
+        const label = `${ZONE_LABEL[z.zoneType]} · ${z.weight.toFixed(1)}`;
+        const labelW = label.length * 1.15 + 1.6;
+        const labelX = Math.max(1, Math.min(W - labelW - 1, box.minX));
+        const above = box.minY >= 4.2;
+        const labelY = above ? box.minY - 1.4 : box.maxY + 2.6;
+        const corners: Array<{ corner: ZoneCorner; x: number; y: number }> = [
+          { corner: { cx: 'min', cy: 'min' }, x: box.minX, y: box.minY },
+          { corner: { cx: 'max', cy: 'min' }, x: box.maxX, y: box.minY },
+          { corner: { cx: 'max', cy: 'max' }, x: box.maxX, y: box.maxY },
+          { corner: { cx: 'min', cy: 'max' }, x: box.minX, y: box.maxY },
+        ];
         return (
           <g key={i}>
             <polygon
@@ -108,9 +122,20 @@ export function PitchEditor({ players, phase, selectedId, onSelect, onMoveAnchor
               style={{ cursor: 'grab' }}
               onPointerDown={(e) => { e.stopPropagation(); drag.current = { kind: 'zone', zoneIndex: i }; }}
             />
-            <text x={c.x} y={c.y} fontSize="2.4" fill="var(--accent-deep)" textAnchor="middle">
-              {ZONE_LABEL[z.zoneType]} · {z.weight.toFixed(1)}
-            </text>
+            <g pointerEvents="none">
+              <rect x={labelX - 0.6} y={labelY - 2.1} width={labelW} height={2.9} rx="0.7"
+                    fill="#fff" fillOpacity="0.78" />
+              <text x={labelX} y={labelY} fontSize="2.2" fill="var(--accent-deep)">{label}</text>
+            </g>
+            {corners.map(({ corner, x, y }) => (
+              <rect
+                key={`${corner.cx}${corner.cy}`}
+                x={x - 1.1} y={y - 1.1} width="2.2" height="2.2" rx="0.4"
+                fill="#fff" stroke="var(--accent)" strokeWidth="0.3"
+                style={{ cursor: corner.cx === corner.cy ? 'nwse-resize' : 'nesw-resize' }}
+                onPointerDown={(e) => { e.stopPropagation(); drag.current = { kind: 'zoneCorner', zoneIndex: i, corner }; }}
+              />
+            ))}
           </g>
         );
       })}

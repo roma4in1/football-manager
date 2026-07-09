@@ -36,8 +36,26 @@ if (process.env.RESEND_API_KEY) {
   console.warn('[league] RESEND_API_KEY not set — login links only go to stdout');
 }
 
+// ⚠️ TEST-ONLY auction timer override. The REAL timers are LEAGUE_CFG's
+// 120s lot / 20s soft close — this env var exists so a test league can run
+// fast lots WITHOUT editing config (an edited working tree deployed via
+// `fly deploy --local-only` is invisible; an env var shows up in
+// `fly config show`). MUST be unset for launch: `fly secrets unset
+// AUCTION_LOT_SECONDS_TEST` (or remove from [env]) and redeploy.
+let auctionTuning: { lotSeconds: number; softCloseSeconds: number } | undefined;
+if (process.env.AUCTION_LOT_SECONDS_TEST) {
+  const lotSeconds = Number(process.env.AUCTION_LOT_SECONDS_TEST);
+  if (!Number.isFinite(lotSeconds) || lotSeconds <= 0) throw new Error('AUCTION_LOT_SECONDS_TEST must be a positive number');
+  auctionTuning = { lotSeconds, softCloseSeconds: Math.max(1, Math.min(lotSeconds / 3, 20)) };
+  console.warn(
+    `[league] ⚠️⚠️ TEST OVERRIDE ACTIVE: auction lots close in ${lotSeconds}s ` +
+    `(soft close ${auctionTuning.softCloseSeconds}s) — NOT the real ` +
+    `${LEAGUE_CFG.auctionLotSeconds}s/${LEAGUE_CFG.auctionSoftCloseSeconds}s. Unset AUCTION_LOT_SECONDS_TEST before launch.`,
+  );
+}
+
 const pool = new pg.Pool({ connectionString });
-const orchestrator = await createOrchestrator({ pool, connectionString });
+const orchestrator = await createOrchestrator({ pool, connectionString, auctionTuning });
 const api = await createApi({ pool, orchestrator, sessionSecret, delivery, baseUrl });
 
 // serve the built client when present (npm --prefix web run build); the SPA owns
