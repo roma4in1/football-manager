@@ -387,3 +387,33 @@ button.watch { padding: 0.14rem 0.55rem; font-size: 0.78rem; color: var(--accent
   .editor-right { max-width: 258px; }
   .editor-hint { display: none; }
 }
+
+/* ── auction: the three-pane room (the tightest 375px fit) ──────────────── */
+.auction { gap: 0.6rem; }
+.auction-left { flex: 0 0 168px; }
+.auction-center { flex: 1 1 0; min-width: 0; }
+.auction-right { flex: 0 0 188px; }
+.auction .card.lot { margin-bottom: 0.4rem; display: flex; flex-direction: column; min-height: 0; max-height: 100%; overflow: hidden; }
+.lot-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.lot-timer { margin-left: auto; font-weight: 800; color: var(--accent-deep); font-variant-numeric: tabular-nums; }
+.lot-timer.pulse { color: var(--danger); }
+.card.lot.extended { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.lot-stats { cursor: pointer; overflow-y: auto; min-height: 0; }
+.lot-bid { margin: 0.15rem 0 0.3rem; }
+.bid-row { display: flex; gap: 0.4rem; align-items: center; }
+.bid-row input[type='number'] { flex: 1; min-width: 70px; margin: 0; }
+.pool-filter input[type='text'] { margin: 0 0 0.35rem; }
+.pool-list { overflow-y: auto; min-height: 0; flex: 1; }
+.squad-progress { display: flex; align-items: center; gap: 0.5rem; margin: 0.2rem 0 0.4rem; }
+.progress { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; display: inline-block; }
+.progress > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.pos-count { display: flex; align-items: center; gap: 0.4rem; margin: 0.22rem 0; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+.money-line { margin: 0.14rem 0; font-size: 0.84rem; }
+
+@media (max-height: 480px) {
+  .auction-left { flex-basis: 148px; }
+  .auction-right { flex-basis: 172px; }
+}
+
+/* ── transfer window: two-pane ──────────────────────────────────────────── */
+.transfer-panes { height: 100%; }

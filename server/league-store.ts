@@ -587,12 +587,14 @@ export interface PoolPlayer {
   position: string;
   marketValue: number;
   birthDate: string;
+  /** full attribute blob — bid-time stats (position-aware summary + tap-for-profile) */
+  attributes: Record<string, number>;
 }
 
 /** Uncontracted players not currently on a live lot. */
 export async function poolPlayers(c: Queryable, seasonId: string): Promise<PoolPlayer[]> {
   const { rows } = await c.query(
-    `SELECT p.id, p.full_name, p.position, p.market_value, p.birth_date
+    `SELECT p.id, p.full_name, p.position, p.market_value, p.birth_date, p.attributes
      FROM players p
      WHERE NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)
        AND NOT EXISTS (
@@ -604,7 +606,7 @@ export async function poolPlayers(c: Queryable, seasonId: string): Promise<PoolP
   );
   return rows.map((r) => ({
     playerId: r.id, fullName: r.full_name, position: r.position,
-    marketValue: Number(r.market_value), birthDate: r.birth_date,
+    marketValue: Number(r.market_value), birthDate: r.birth_date, attributes: r.attributes,
   }));
 }
 

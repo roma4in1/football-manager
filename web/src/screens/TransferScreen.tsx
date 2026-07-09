@@ -1,9 +1,18 @@
+/**
+ * market → transfers (DESIGN-SPEC): two-pane. Left = browse the market
+ * (free pool with first-come signings, other clubs' squads with inline
+ * offers); right = your window (status, budget/wage/squad, offers received
+ * with accept/reject, offers made). Both panes scroll in-box.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type MarketView, type Me, type TransferStateView } from '../api.ts';
+import { Countdown } from '../components.tsx';
+import { PosChip } from '../shell/Section.tsx';
 
 const ERROR_TEXT: Record<string, string> = {
   window_closed: 'The transfer window is closed.',
-  over_budget: 'Not enough budget.',
+  over_budget: 'Not enough reserve.',
   wage_cap: 'That wage would break your cap.',
   squad_full: 'Your squad is full.',
   seller_at_floor: 'That club cannot sell below the squad minimum.',
@@ -22,7 +31,7 @@ export function TransferScreen({ me }: { me: Me }) {
   const [market, setMarket] = useState<MarketView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [offerFor, setOfferFor] = useState<{ playerId: string; name: string } | null>(null);
+  const [offerFor, setOfferFor] = useState<string | null>(null);
   const [fee, setFee] = useState('');
 
   const refresh = useCallback(() => {
@@ -60,110 +69,115 @@ export function TransferScreen({ me }: { me: Me }) {
   const canBuy = state.windowOpen && you.squadCount < you.squadMax;
 
   return (
-    <div>
-      <p className="muted">
-        {state.windowOpen ? (
-          <>Open until {state.deadlineAt ? new Date(state.deadlineAt).toLocaleString() : 'the week closes'}.</>
-        ) : (
-          <>Closed — the market opens for one week at mid-season.</>
-        )}
-        {' '}Budget <strong>{you.budgetRemaining.toLocaleString()}</strong> · wages{' '}
-        <strong>{you.wageBill.toLocaleString()}</strong>/{you.wageCap.toLocaleString()} · squad{' '}
-        <strong>{you.squadCount}</strong> ({you.squadMin}–{you.squadMax})
-      </p>
-      {error && <p className="error">{error}</p>}
-
-      {received.length > 0 && (
-        <div className="card">
-          <h2>Offers for your players</h2>
-          {received.map((o) => (
-            <p key={o.id}>
-              {o.buyerName} offers <strong>{o.fee.toLocaleString()}</strong> for {o.playerName}{' '}
-              <button className="primary" disabled={busy} onClick={() => act(() => api.acceptOffer(o.id))}>
-                Accept
-              </button>{' '}
-              <button disabled={busy} onClick={() => act(() => api.rejectOffer(o.id))}>
-                Reject
-              </button>
-            </p>
-          ))}
+    <div className="screen transfer-panes">
+      {/* MARKET — the pool + other squads, scrolls in-box */}
+      <div className="pane pane-scroll" style={{ flex: '1.35 1 0' }}>
+        <div className="card tight">
+          <h3>Free pool — fixed price, first come</h3>
+          {market.pool.length === 0 && <p className="muted">Nobody left in the pool.</p>}
+          <ul className="player-list">
+            {market.pool.map((p) => (
+              <li key={p.playerId} className="player-row">
+                <span className="player-name">{p.fullName}</span>
+                <span className="player-meta">
+                  <PosChip position={p.position} /> {p.marketValue.toLocaleString()} · wage {p.wage.toLocaleString()}
+                </span>
+                <span className="player-actions">
+                  <button
+                    className="primary"
+                    disabled={busy || !canBuy || p.marketValue > you.budgetRemaining}
+                    onClick={() => act(() => api.signPoolPlayer(p.playerId))}
+                  >
+                    Sign
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
 
-      {made.length > 0 && (
-        <div className="card">
-          <h2>Your offers</h2>
-          {made.map((o) => (
-            <p key={o.id} className={o.status === 'pending' ? '' : 'muted'}>
-              {o.playerName} ({o.sellerName}) — {o.fee.toLocaleString()} · {o.status}
-            </p>
-          ))}
-        </div>
-      )}
-
-      <div className="card">
-        <h2>Free pool</h2>
-        <p className="muted">Fixed price = market value; first come, first signed.</p>
-        {market.pool.length === 0 && <p className="muted">Nobody left in the pool.</p>}
-        {market.pool.map((p) => (
-          <p key={p.playerId}>
-            {p.fullName} · {p.position} · {p.marketValue.toLocaleString()} (wage {p.wage.toLocaleString()}){' '}
-            <button
-              className="primary"
-              disabled={busy || !canBuy || p.marketValue > you.budgetRemaining}
-              onClick={() => act(() => api.signPoolPlayer(p.playerId))}
-            >
-              Sign
-            </button>
-          </p>
+        {market.clubs.filter((cl) => !cl.you).map((cl) => (
+          <div className="card tight" key={cl.clubId}>
+            <h3>{cl.name}</h3>
+            <ul className="player-list">
+              {cl.players.map((p) => (
+                <li key={p.playerId} className="player-row">
+                  <span className="player-name">{p.fullName}</span>
+                  <span className="player-meta">
+                    <PosChip position={p.position} /> wage {p.wage.toLocaleString()}
+                    {p.injuryWeeksLeft > 0 && <span className="badge badge-inj">INJ {p.injuryWeeksLeft}w</span>}
+                  </span>
+                  <span className="player-actions">
+                    {offerFor === p.playerId ? (
+                      <>
+                        <input
+                          type="number" inputMode="numeric" min={1} placeholder="fee" value={fee}
+                          style={{ width: '5.5rem', margin: 0 }}
+                          onChange={(e) => setFee(e.target.value)}
+                        />
+                        <button
+                          className="primary"
+                          disabled={busy || !/^\d+$/.test(fee) || Number(fee) < 1}
+                          onClick={() => act(() => api.makeOffer(p.playerId, Number(fee)))}
+                        >
+                          Send
+                        </button>
+                        <button disabled={busy} onClick={() => setOfferFor(null)}>✕</button>
+                      </>
+                    ) : (
+                      <button disabled={busy || !canBuy} onClick={() => { setOfferFor(p.playerId); setFee(''); }}>
+                        Offer…
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
       </div>
 
-      {market.clubs
-        .filter((cl) => !cl.you)
-        .map((cl) => (
-          <div className="card" key={cl.clubId}>
-            <h2>{cl.name}</h2>
-            {cl.players.map((p) => (
-              <p key={p.playerId}>
-                {p.fullName} · {p.position} · wage {p.wage.toLocaleString()}
-                {p.injuryWeeksLeft > 0 && <span className="muted"> · injured {p.injuryWeeksLeft}w</span>}{' '}
-                {offerFor?.playerId === p.playerId ? (
-                  <>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      placeholder="fee"
-                      value={fee}
-                      onChange={(e) => setFee(e.target.value)}
-                    />{' '}
-                    <button
-                      className="primary"
-                      disabled={busy || !/^\d+$/.test(fee) || Number(fee) < 1}
-                      onClick={() => act(() => api.makeOffer(p.playerId, Number(fee)))}
-                    >
-                      Send offer
-                    </button>{' '}
-                    <button disabled={busy} onClick={() => setOfferFor(null)}>
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    disabled={busy || !canBuy}
-                    onClick={() => {
-                      setOfferFor({ playerId: p.playerId, name: p.fullName });
-                      setFee('');
-                    }}
-                  >
-                    Offer…
-                  </button>
-                )}
+      {/* YOUR WINDOW — status + offers, scrolls in-box */}
+      <div className="pane pane-scroll" style={{ flex: '1 1 0' }}>
+        <div className={`card tight${state.windowOpen ? ' accent' : ''}`}>
+          <h3>{state.windowOpen ? 'Window open' : 'Window closed'}</h3>
+          <p className="muted" style={{ margin: '0.15rem 0' }}>
+            {state.windowOpen && state.deadlineAt
+              ? <>Closes <Countdown until={state.deadlineAt} /></>
+              : 'Opens for one week at mid-season.'}
+          </p>
+          <p className="money-line">reserve <strong>{you.budgetRemaining.toLocaleString()}</strong></p>
+          <p className="money-line muted">wages {you.wageBill.toLocaleString()} / {you.wageCap.toLocaleString()}</p>
+          <p className="money-line muted">squad {you.squadCount} ({you.squadMin}–{you.squadMax})</p>
+        </div>
+
+        {error && <p className="error">{error}</p>}
+
+        <div className="card tight">
+          <h3>Offers for your players</h3>
+          {received.length === 0 && <p className="muted">None pending.</p>}
+          {received.map((o) => (
+            <p key={o.id} style={{ margin: '0.3rem 0' }}>
+              {o.buyerName} offers <strong>{o.fee.toLocaleString()}</strong> for {o.playerName}
+              <span style={{ display: 'inline-flex', gap: '0.3rem', marginLeft: '0.4rem' }}>
+                <button className="primary" disabled={busy} onClick={() => act(() => api.acceptOffer(o.id))}>Accept</button>
+                <button disabled={busy} onClick={() => act(() => api.rejectOffer(o.id))}>Reject</button>
+              </span>
+            </p>
+          ))}
+        </div>
+
+        {made.length > 0 && (
+          <div className="card tight">
+            <h3>Your offers</h3>
+            {made.map((o) => (
+              <p key={o.id} className={o.status === 'pending' ? '' : 'muted'} style={{ margin: '0.2rem 0' }}>
+                {o.playerName} ({o.sellerName}) — {o.fee.toLocaleString()} · {o.status}
               </p>
             ))}
           </div>
-        ))}
+        )}
+      </div>
     </div>
   );
 }

@@ -138,6 +138,8 @@ export interface PoolPlayerView {
   fullName: string;
   position: string;
   marketValue: number;
+  /** full attribute blob — bid-time role summary + tap-for-profile */
+  attributes: Attributes;
 }
 
 export interface AuctionStateView {

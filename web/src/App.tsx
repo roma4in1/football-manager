@@ -83,10 +83,10 @@ export function App() {
 
             <Route path="/market" element={<Navigate to={marketHome} replace />} />
             <Route path="/market/auction" element={
-              <Section title="market" tabs={MARKET_TABS}><AuctionScreen /></Section>
+              <Section title="market" fixed tabs={MARKET_TABS}><AuctionScreen /></Section>
             } />
             <Route path="/market/transfers" element={
-              <Section title="market" tabs={MARKET_TABS}><TransferScreen me={me} /></Section>
+              <Section title="market" fixed tabs={MARKET_TABS}><TransferScreen me={me} /></Section>
             } />
             <Route path="/market/facilities" element={
               <Section title="market" tabs={MARKET_TABS}><FacilitiesScreen /></Section>

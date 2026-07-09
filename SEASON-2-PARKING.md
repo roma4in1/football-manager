@@ -40,6 +40,14 @@ feedback says which of these the game actually wants.
   N=5–10 is handled; mid-season attrition (forfeit / auto-manage / replace) is
   a separate policy, undecided, deferred.
 
+- **Assist tracking** — surfaced by the design pass: the player hub's season
+  stats can't show assists because goal events don't carry an assister — an
+  ENGINE event change (+ harness ripple), not a view. Hub ships apps/goals/
+  rating/minutes.
+- **Server-side named tactic presets** — the design pass ships device-local
+  (localStorage) presets; named cross-device presets need a presets table.
+  default_tactics remains the one server-saved plan.
+
 ## Rule for adding to this list
 During the design pass (or any future work), if an idea needs a new table,
 new engine behavior, or a calibration gate → it's a feature → it lands HERE,

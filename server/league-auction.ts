@@ -426,10 +426,13 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
 
   async function loadLotPlayer(playerId: string): Promise<store.PoolPlayer> {
     const { rows } = await pool.query(
-      `SELECT id, full_name, position, market_value, birth_date FROM players WHERE id = $1`, [playerId],
+      `SELECT id, full_name, position, market_value, birth_date, attributes FROM players WHERE id = $1`, [playerId],
     );
     const r = rows[0];
-    return { playerId: r.id, fullName: r.full_name, position: r.position, marketValue: Number(r.market_value), birthDate: r.birth_date };
+    return {
+      playerId: r.id, fullName: r.full_name, position: r.position,
+      marketValue: Number(r.market_value), birthDate: r.birth_date, attributes: r.attributes,
+    };
   }
 
   async function setDuration(clubId: string, playerId: string, duration: number): Promise<void> {
