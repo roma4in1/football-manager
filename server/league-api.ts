@@ -204,6 +204,26 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       return { players: await store.loadSquadView(pool, req.ctx.clubId, s.id) };
     });
 
+    /** Player-hub detail: contract, own-season stats, growth trajectory. */
+    authed.get('/squad/player/:id', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const s = await season();
+      const squad = await store.loadSquadView(pool, req.ctx.clubId, s.id);
+      if (!squad.some((p) => p.playerId === id)) return reply.code(404).send({ error: 'not_found' });
+      return {
+        contract: await store.playerContract(pool, id, s.number),
+        seasonStats: await store.playerSeasonStats(pool, s.id, req.ctx.clubId, id),
+        growth: await store.playerGrowth(pool, id),
+      };
+    });
+
+    /** Read-back for the tactics editor (PUT half existed since client v0). */
+    authed.get('/default-tactics', async (req, reply) => {
+      const payload = await store.getDefaultTactics(pool, req.ctx.clubId);
+      if (!payload) return reply.code(404).send({ error: 'not_found' });
+      return { payload };
+    });
+
     authed.get('/matchweek/current', async (req, reply) => {
       const s = await season();
       const mw = await store.currentMatchweek(pool, s.id);

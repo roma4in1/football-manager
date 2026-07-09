@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { api, ApiError, type Me } from './api.ts';
 import { Rail } from './shell/Rail.tsx';
 import { Section } from './shell/Section.tsx';
+import { TacticsSection } from './tactics/TacticsSection.tsx';
 import { AuctionScreen } from './screens/AuctionScreen.tsx';
 import { BracketScreen } from './screens/BracketScreen.tsx';
 import { FacilitiesScreen } from './screens/FacilitiesScreen.tsx';
@@ -12,6 +13,7 @@ import { LineupScreen } from './screens/LineupScreen.tsx';
 import { Login } from './screens/Login.tsx';
 import { MatchDetailScreen } from './screens/MatchDetailScreen.tsx';
 import { ResultsListScreen } from './screens/ResultsListScreen.tsx';
+import { SquadScreen } from './screens/SquadScreen.tsx';
 import { StandingsScreen } from './screens/StandingsScreen.tsx';
 import { TrainingScreen } from './screens/TrainingScreen.tsx';
 import { TransferScreen } from './screens/TransferScreen.tsx';
@@ -23,6 +25,10 @@ const MARKET_TABS = [
   { to: '/market/auction', label: 'auction' },
   { to: '/market/transfers', label: 'transfers' },
   { to: '/market/facilities', label: 'facilities' },
+];
+const SQUAD_TABS = [
+  { to: '/squad', label: 'players', end: true },
+  { to: '/squad/training', label: 'training' },
 ];
 const SEASON_TABS = [
   { to: '/season/results', label: 'results' },
@@ -67,22 +73,13 @@ export function App() {
             <Route path="/" element={<Home me={me} />} />
 
             <Route path="/squad" element={
-              <Section title="squad" tabs={[{ to: '/squad', label: 'training', end: true }]}>
-                <TrainingScreen />
-              </Section>
+              <Section title="squad" fixed tabs={SQUAD_TABS}><SquadScreen /></Section>
+            } />
+            <Route path="/squad/training" element={
+              <Section title="squad" tabs={SQUAD_TABS}><TrainingScreen /></Section>
             } />
 
-            <Route path="/tactics" element={
-              <Section title="tactics">
-                <div className="card">
-                  <h2>Match tactics</h2>
-                  <p className="muted">
-                    Set this week's lineup and instructions from <strong>home</strong> — the pitch
-                    editor, presets and team instructions land here in this design pass.
-                  </p>
-                </div>
-              </Section>
-            } />
+            <Route path="/tactics" element={<TacticsSection />} />
 
             <Route path="/market" element={<Navigate to={marketHome} replace />} />
             <Route path="/market/auction" element={
@@ -117,7 +114,7 @@ export function App() {
             <Route path="/auction" element={<Navigate to="/market/auction" replace />} />
             <Route path="/transfers" element={<Navigate to="/market/transfers" replace />} />
             <Route path="/facilities" element={<Navigate to="/market/facilities" replace />} />
-            <Route path="/training" element={<Navigate to="/squad" replace />} />
+            <Route path="/training" element={<Navigate to="/squad/training" replace />} />
             <Route path="/standings" element={<Navigate to="/season/standings" replace />} />
             <Route path="/playoffs" element={<Navigate to="/season/bracket" replace />} />
             <Route path="*" element={<Home me={me} />} />

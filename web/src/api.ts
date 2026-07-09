@@ -208,6 +208,12 @@ export interface MarketView {
   clubs: Array<{ clubId: string; name: string; you: boolean; players: MarketPlayerView[] }>;
 }
 
+export interface PlayerDetailView {
+  contract: { wage: number; duration: number; seasonsRemaining: number } | null;
+  seasonStats: { apps: number; goals: number; avgRating: number | null; minutes: number };
+  growth: Array<{ seasonNumber: number; before: Record<string, number>; after: Record<string, number> }>;
+}
+
 export interface ResultsView {
   matchweeks: Array<{
     number: number;
@@ -245,6 +251,8 @@ export const api = {
   me: () => req<Me>('GET', '/api/me'),
   requestLink: (email: string) => req<void>('POST', '/api/auth/request-link', { email }),
   squad: () => req<{ players: SquadPlayerView[] }>('GET', '/api/squad'),
+  playerDetail: (playerId: string) => req<PlayerDetailView>('GET', `/api/squad/player/${playerId}`),
+  defaultTactics: () => req<{ payload: Tactics }>('GET', '/api/default-tactics'),
   matchweekCurrent: () => req<MatchweekView>('GET', '/api/matchweek/current'),
   submitTactics: (fixtureId: string, half: 1 | 2, tactics: Tactics) =>
     req<void>('PUT', `/api/fixture/${fixtureId}/tactics/${half}`, tactics),
