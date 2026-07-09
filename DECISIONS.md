@@ -37,7 +37,9 @@ Newest first. Keep entries short: what, why, where enforced.
   technical ×0.4, gk ×0.3, mental ×0.1 (legs go first, the brain stays).
   Young net-grow, peak plateau, veterans net-decline (harness: +0.176 /
   +0.112 / −0.273 composite per season for U21 / 24–27 / 31+ starters).
-- **THE COMPOUNDING GATE (growth-harness.ts, tag growth, runs in CI)**:
+- **THE COMPOUNDING GATE (growth-harness.ts, tag growth — local/reported,
+  like the realism harness: the fbref→squad join needs the human-populated
+  cache CSV, which is deliberately uncommitted, so CI can't run it)**:
   5 simulated seasons on the real 2,128-player pool in its real 96 squads,
   same math as production. First fit (budget 0.12, facility ×1.75, intensity
   ×2 linear) RAN AWAY: rich-vs-poor XI-mean gap 1.02 → 2.23. Three

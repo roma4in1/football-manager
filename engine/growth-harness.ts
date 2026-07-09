@@ -102,7 +102,17 @@ function* csvRows(text: string): Generator<string[]> {
 }
 
 function loadSquadByFbrefId(): Map<string, string> {
-  const rows = csvRows(readFileSync(STANDARD_CSV, 'utf8'));
+  let text: string;
+  try {
+    text = readFileSync(STANDARD_CSV, 'utf8');
+  } catch {
+    console.error(
+      `growth-harness needs ${STANDARD_CSV} for the fbref→squad join — the cache is a HUMAN-populated ` +
+      'artifact (pipeline/MAPPING.md), deliberately uncommitted, so this harness runs locally like the realism harness.',
+    );
+    process.exit(2);
+  }
+  const rows = csvRows(text);
   const header = rows.next().value as string[];
   const idx = (name: string): number => header.findIndex((h) => h === name);
   const [iSquad, iUrl, iSeason, iMin] = [idx('Squad'), idx('Url'), idx('Season_End_Year'), idx('Min_Playing')];

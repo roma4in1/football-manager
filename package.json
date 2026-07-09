@@ -15,7 +15,7 @@
     "db:test:up": "pnpm --filter @fm/server db:test:up",
     "db:test:down": "pnpm --filter @fm/server db:test:down",
     "serve": "pnpm --filter @fm/server serve",
-    "test": "pnpm typecheck && pnpm boundaries && pnpm test:unit && pnpm test:server && pnpm test:web && pnpm harness && pnpm growth && pnpm smoke"
+    "test": "pnpm typecheck && pnpm boundaries && pnpm test:unit && pnpm test:server && pnpm test:web && pnpm harness && pnpm smoke"
   },
   "devDependencies": {
     "dependency-cruiser": "^17.0.1"

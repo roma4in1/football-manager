@@ -84,8 +84,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # 3 fixed master seeds, n=600 each; exits non-zero on any band miss
       - run: pnpm harness
-      # 5-season growth compounding on the real seeded pool (league-growth.ts)
-      - run: pnpm growth
+      # NOT here: the growth harness (pnpm growth) needs the human-populated
+      # cache CSV for the squad join — same reason the realism harness is a
+      # local/reported gate rather than a CI job
 
   smoke:
     runs-on: ubuntu-latest
