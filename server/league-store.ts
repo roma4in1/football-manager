@@ -587,12 +587,14 @@ export interface PoolPlayer {
   position: string;
   marketValue: number;
   birthDate: string;
+  /** full attribute blob — bid-time stats (position-aware summary + tap-for-profile) */
+  attributes: Record<string, number>;
 }
 
 /** Uncontracted players not currently on a live lot. */
 export async function poolPlayers(c: Queryable, seasonId: string): Promise<PoolPlayer[]> {
   const { rows } = await c.query(
-    `SELECT p.id, p.full_name, p.position, p.market_value, p.birth_date
+    `SELECT p.id, p.full_name, p.position, p.market_value, p.birth_date, p.attributes
      FROM players p
      WHERE NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)
        AND NOT EXISTS (
@@ -604,7 +606,7 @@ export async function poolPlayers(c: Queryable, seasonId: string): Promise<PoolP
   );
   return rows.map((r) => ({
     playerId: r.id, fullName: r.full_name, position: r.position,
-    marketValue: Number(r.market_value), birthDate: r.birth_date,
+    marketValue: Number(r.market_value), birthDate: r.birth_date, attributes: r.attributes,
   }));
 }
 
@@ -1050,6 +1052,125 @@ export async function setTieWinner(
 
 export async function setChampion(c: Queryable, seasonId: string, clubId: string): Promise<void> {
   await c.query(`UPDATE seasons SET champion_club_id = $2 WHERE id = $1`, [seasonId, clubId]);
+}
+
+export async function getDefaultTactics(c: Queryable, clubId: string): Promise<Tactics | null> {
+  const { rows } = await c.query(`SELECT payload FROM default_tactics WHERE club_id = $1`, [clubId]);
+  return rows[0]?.payload ?? null;
+}
+
+export interface PlayerContractRow {
+  wage: number;
+  duration: number;
+  seasonsRemaining: number;
+}
+
+/** The active contract with seasons remaining (incl. the current one). */
+export async function playerContract(
+  c: Queryable, playerId: string, currentSeasonNumber: number,
+): Promise<PlayerContractRow | null> {
+  const { rows } = await c.query(
+    `SELECT ct.wage, ct.duration, s.number AS signed_number
+     FROM contracts ct JOIN seasons s ON s.id = ct.season_signed
+     WHERE ct.player_id = $1 AND ct.released_at IS NULL`,
+    [playerId],
+  );
+  if (!rows[0]) return null;
+  return {
+    wage: Number(rows[0].wage),
+    duration: rows[0].duration,
+    seasonsRemaining: rows[0].signed_number + rows[0].duration - currentSeasonNumber,
+  };
+}
+
+export interface PlayerSeasonStats {
+  apps: number;
+  goals: number;
+  avgRating: number | null;
+  minutes: number;
+}
+
+/** Own-club season stats for one player (finals only — the manager's own data). */
+export async function playerSeasonStats(
+  c: Queryable, seasonId: string, clubId: string, playerId: string,
+): Promise<PlayerSeasonStats> {
+  const { rows } = await c.query(
+    `SELECT hr.half,
+            (hr.end_state->'playerState'->$3->>'minutesPlayed')::float AS minutes,
+            (hr.stats->'playerRatings'->>$3)::float AS rating,
+            (SELECT count(*) FROM jsonb_array_elements(hr.events) e
+             WHERE e->>'type' = 'goal' AND e->>'playerId' = $3)::int AS goals
+     FROM half_results hr
+     JOIN fixtures f ON f.id = hr.fixture_id
+     JOIN matchweeks mw ON mw.id = f.matchweek_id
+     WHERE mw.season_id = $1 AND f.state = 'final'
+       AND (f.home_club_id = $2 OR f.away_club_id = $2)`,
+    [seasonId, clubId, playerId],
+  );
+  let apps = 0;
+  let goals = 0;
+  let minutes = 0;
+  const ratings: number[] = [];
+  for (const r of rows) {
+    goals += r.goals;
+    if (r.rating !== null) ratings.push(Number(r.rating));
+    if (r.half === 2 && Number(r.minutes ?? 0) > 0) {
+      apps += 1;
+      minutes += Number(r.minutes);
+    }
+  }
+  return {
+    apps, goals, minutes,
+    avgRating: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100 : null,
+  };
+}
+
+export interface GrowthAuditRow {
+  seasonNumber: number;
+  before: Record<string, number>;
+  after: Record<string, number>;
+}
+
+/** Growth trajectory: season_growth audit rows, oldest first (the multi-season delight). */
+export async function playerGrowth(c: Queryable, playerId: string): Promise<GrowthAuditRow[]> {
+  const { rows } = await c.query(
+    `SELECT s.number, a.before, a.after
+     FROM attribute_audit a JOIN seasons s ON s.id = a.season_id
+     WHERE a.player_id = $1 AND a.reason = 'season_growth'
+     ORDER BY s.number`,
+    [playerId],
+  );
+  return rows.map((r) => ({ seasonNumber: r.number, before: r.before, after: r.after }));
+}
+
+export interface RevealedWeekRow {
+  number: number;
+  kind: 'regular' | 'transfer' | 'playoff';
+  fixtures: Array<{ fixtureId: string; home: string; away: string; score: [number, number] }>;
+}
+
+/** The season's results list — REVEALED matchweeks only (the embargo lives in the join). */
+export async function revealedResults(c: Queryable, seasonId: string): Promise<RevealedWeekRow[]> {
+  const { rows } = await c.query(
+    `SELECT mw.number, mw.kind, f.id AS fixture_id, f.home_club_id, f.away_club_id,
+            hr.end_state->'score' AS score
+     FROM matchweeks mw
+     LEFT JOIN fixtures f ON f.matchweek_id = mw.id AND f.state = 'final'
+     LEFT JOIN half_results hr ON hr.fixture_id = f.id AND hr.half = 2
+     WHERE mw.season_id = $1 AND mw.revealed_at IS NOT NULL
+     ORDER BY mw.number DESC, f.id`,
+    [seasonId],
+  );
+  const weeks = new Map<number, RevealedWeekRow>();
+  for (const r of rows) {
+    if (!weeks.has(r.number)) weeks.set(r.number, { number: r.number, kind: r.kind, fixtures: [] });
+    if (r.fixture_id && r.score) {
+      weeks.get(r.number)!.fixtures.push({
+        fixtureId: r.fixture_id, home: r.home_club_id, away: r.away_club_id, score: r.score as [number, number],
+      });
+    }
+  }
+  return [...weeks.values()];
 }
 
 /** Scores of REVEALED final fixtures only — the bracket view's embargo. */

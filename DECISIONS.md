@@ -3,6 +3,43 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-21 — design pass, chunks 2–4: every screen on the one language
+
+- **home** (3 states): the fixture hero never scrolls; the attention column
+  surfaces EXISTING state only (suspensions/injuries/affordable facility/
+  training confirmation — never advice); scout = table position + last
+  revealed results (full tactic-scouting stays season-2).
+- **season**: results list via GET /api/results (the standings embargo join,
+  tested pre/post-reveal); MATCH DETAIL replaces the separate result/replay
+  screens — fixed score header, timeline/replay/stats tabs, goal rows carry
+  ▶watch buttons that cue the replay 6 s before (ReplayViewer cueT prop).
+- **squad player hub**: two-pane; 26 attributes grouped (gk group only for
+  keepers), contract w/ seasons remaining, own season stats (apps/goals/avg
+  rating/minutes — ASSISTS don't exist in engine events → parked), growth
+  trajectory from attribute_audit. Training dial lives at /squad/training.
+- **tactics**: the gravity-halo pitch editor (SVG; halo + dashed ring says
+  "tends here, drifts, returns" — the screen's one job), 6 phase tabs
+  morphing the team shape, faded-dot context players (tap to promote,
+  exactly one detailed), zones with visible weight (add at anchor / drag /
+  weight / remove), per-phase player sliders alongside; lineup tab with
+  INHERIT-ON-SWAP (the config belongs to the slot); team instructions on a
+  separate surface; presets are DEVICE-LOCAL (localStorage — server-side
+  named presets need a table → parked; default_tactics stays the one
+  server-saved plan, and the editor edits exactly that via the new GET).
+- **market**: the auction rebuilt to the three-pane sketch — center live lot
+  with position-aware bid stats (6–8 role attributes, full 26 on tap; pool
+  payloads now carry attributes) + soft-close timer with a visible
+  "+extended" pulse; left squad progress + per-position THIN warnings
+  (4-4-2 floors); right money (fixed bidding balance + reserve + the split
+  slider until first bid — display, never invest buttons). Transfers
+  two-pane (market browse | your window). 375px check: the lot card never
+  scrolls (stats grid scrolls within it), side panes 168/188px (148/172
+  ≤480px height) scroll in-box.
+- New server surface in the pass, all VIEWS over existing data: /results,
+  /squad/player/:id, GET /default-tactics, pool attributes. Nothing from
+  SEASON-2-PARKING was built; two items were added to it (assist tracking,
+  server-side presets).
+
 ## 2026-08-20 — design pass, chunk 1: the design-system foundation
 
 - **Palette stops proposed per DESIGN-SPEC** (clean/light, color = meaning):

@@ -138,6 +138,8 @@ export interface PoolPlayerView {
   fullName: string;
   position: string;
   marketValue: number;
+  /** full attribute blob — bid-time role summary + tap-for-profile */
+  attributes: Attributes;
 }
 
 export interface AuctionStateView {
@@ -208,6 +210,21 @@ export interface MarketView {
   clubs: Array<{ clubId: string; name: string; you: boolean; players: MarketPlayerView[] }>;
 }
 
+export interface PlayerDetailView {
+  contract: { wage: number; duration: number; seasonsRemaining: number } | null;
+  seasonStats: { apps: number; goals: number; avgRating: number | null; minutes: number };
+  growth: Array<{ seasonNumber: number; before: Record<string, number>; after: Record<string, number> }>;
+}
+
+export interface ResultsView {
+  matchweeks: Array<{
+    number: number;
+    kind: 'regular' | 'transfer' | 'playoff';
+    fixtures: Array<{ fixtureId: string; home: string; away: string; score: [number, number] }>;
+  }>;
+  clubNames: Record<string, string>;
+}
+
 export interface PlayoffTieView {
   round: 'semi1' | 'semi2' | 'final';
   highSeed: number;
@@ -236,6 +253,8 @@ export const api = {
   me: () => req<Me>('GET', '/api/me'),
   requestLink: (email: string) => req<void>('POST', '/api/auth/request-link', { email }),
   squad: () => req<{ players: SquadPlayerView[] }>('GET', '/api/squad'),
+  playerDetail: (playerId: string) => req<PlayerDetailView>('GET', `/api/squad/player/${playerId}`),
+  defaultTactics: () => req<{ payload: Tactics }>('GET', '/api/default-tactics'),
   matchweekCurrent: () => req<MatchweekView>('GET', '/api/matchweek/current'),
   submitTactics: (fixtureId: string, half: 1 | 2, tactics: Tactics) =>
     req<void>('PUT', `/api/fixture/${fixtureId}/tactics/${half}`, tactics),
@@ -255,6 +274,7 @@ export const api = {
   rejectOffer: (offerId: string) => req<void>('POST', `/api/transfer/offer/${offerId}/reject`),
   signPoolPlayer: (playerId: string) => req<void>('POST', '/api/transfer/sign', { playerId }),
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
+  results: () => req<ResultsView>('GET', '/api/results'),
   playoffs: () => req<PlayoffsView>('GET', '/api/playoffs'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),

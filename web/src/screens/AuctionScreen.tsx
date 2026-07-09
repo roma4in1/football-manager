@@ -1,21 +1,39 @@
 /**
- * Season-start auction room: current lot with countdown + bidding, own
- * budget/roster panel, nomination picker on your turn, pool browser with
- * search/position filter. Polls state every 5s (live lots move fast).
+ * The auction room (DESIGN-BRIEF sketch): three-pane landscape.
+ *  center — the LIVE LOT, focal point: position-aware stat summary (full
+ *           profile on tap), high bid, bid/raise, the soft-close timer with
+ *           a visible extension pulse; the nomination picker when no lot.
+ *  left   — squad progress toward squadMin + per-position thin-warnings so a
+ *           manager doesn't overspend while short a position.
+ *  right  — money: the FIXED bidding balance (pre-committed split — no
+ *           facility buttons here), wage room, the split slider until the
+ *           first bid, signings so far.
+ * The tightest 375px fit in the app: the lot never scrolls; both side panes
+ * scroll in-box. Polls every 5s (live lots move fast).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Attributes } from '@fm/engine/types';
 import { api, ApiError, type AuctionStateView, type PoolPlayerView } from '../api.ts';
 import { Countdown } from '../components.tsx';
+import { PosChip } from '../shell/Section.tsx';
 
 const POLL_MS = 5_000;
 const POSITIONS = ['ALL', 'GK', 'DF', 'MF', 'FW'] as const;
 const RESERVE_GROWTH_PCT = 10; // LEAGUE_CFG.reserveGrowthRate, shown to the manager
 
-/**
- * Pre-auction budget split (6b): bring vs reserve, adjustable until your
- * first bid. Functional-first — the design pass restyles it.
- */
+/** 6–8 attributes that matter for the role — 26 don't fit a bid timer. */
+const BID_STATS: Record<string, Array<keyof Attributes>> = {
+  GK: ['gkReflexes', 'gkPositioning', 'gkDistribution', 'composure', 'decisions', 'jumping'],
+  DF: ['tackling', 'marking', 'positioning', 'heading', 'strength', 'pace', 'anticipation'],
+  MF: ['passing', 'vision', 'firstTouch', 'longPassing', 'stamina', 'decisions', 'workRate'],
+  FW: ['finishing', 'offTheBall', 'pace', 'dribbling', 'composure', 'heading'],
+};
+const XI_MIN: Record<string, number> = { GK: 1, DF: 4, MF: 4, FW: 2 };
+const groupOf = (position: string) =>
+  position.startsWith('GK') ? 'GK' : position.startsWith('D') ? 'DF' : position.startsWith('M') ? 'MF' : 'FW';
+const attrLabel = (k: string) => k.replace(/^gk/, 'gk ').replace(/([A-Z])/g, ' $1').toLowerCase();
+
 function SplitPanel({ you, onSet }: {
   you: AuctionStateView['you'];
   onSet: (reserve: number) => Promise<void>;
@@ -23,20 +41,16 @@ function SplitPanel({ you, onSet }: {
   const [reserve, setReserve] = useState(you.totalPot - you.auctionBudget);
   if (you.splitLocked) {
     return (
-      <section className="card">
-        <h3>Budget split</h3>
-        <p className="muted">
-          Locked at your first bid: bringing <strong>{you.auctionBudget.toLocaleString()}</strong>,
-          reserve <strong>{you.reserve.toLocaleString()}</strong>.
-        </p>
-      </section>
+      <p className="muted" style={{ margin: '0.2rem 0' }}>
+        Split locked: brought <strong>{you.auctionBudget.toLocaleString()}</strong>, reserve{' '}
+        <strong>{you.reserve.toLocaleString()}</strong>.
+      </p>
     );
   }
   return (
-    <section className="card">
-      <h3>Budget split — set before your first bid</h3>
-      <label className="slider">
-        Bring {(you.totalPot - reserve).toLocaleString()} · reserve {reserve.toLocaleString()}
+    <div>
+      <label className="slider" style={{ margin: '0.2rem 0' }}>
+        bring {(you.totalPot - reserve).toLocaleString()} · reserve {reserve.toLocaleString()}
         <input
           type="range" min={0} max={you.totalPot} step={1000}
           value={reserve}
@@ -45,12 +59,11 @@ function SplitPanel({ you, onSet }: {
           onTouchEnd={() => void onSet(reserve)}
         />
       </label>
-      <p className="muted">
-        Reserve spends ONLY on facilities and the mid-season transfer window — never auction
-        bidding — and grows {RESERVE_GROWTH_PCT}% when it carries into next season. Unspent
-        bidding money only half-converts to reserve when the draft ends.
+      <p className="faint" style={{ fontSize: '0.72rem', margin: 0 }}>
+        Reserve spends on facilities + the mid-season window only, grows {RESERVE_GROWTH_PCT}%/season.
+        Locks at your first bid; unspent bring half-converts.
       </p>
-    </section>
+    </div>
   );
 }
 
@@ -61,11 +74,18 @@ export function AuctionScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [position, setPosition] = useState<(typeof POSITIONS)[number]>('ALL');
+  const [fullProfile, setFullProfile] = useState(false);
+  const [extended, setExtended] = useState(false);
+  const prevCloseRef = useRef<string | null>(null);
+  const [squadPositions, setSquadPositions] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     const s = await api.auctionState();
     setState(s);
-    if (s.phase === 'auction') setPoolList((await api.auctionPool()).players);
+    if (s.phase === 'auction') {
+      setPoolList((await api.auctionPool()).players);
+      api.squad().then((r) => setSquadPositions(r.players.map((p) => p.position)), () => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -73,6 +93,18 @@ export function AuctionScreen() {
     const iv = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(iv);
   }, [load]);
+
+  // the soft close, made VISIBLE: pulse when a bid pushes closesAt out
+  useEffect(() => {
+    const closes = state?.lot?.closesAt ?? null;
+    if (closes && prevCloseRef.current && prevCloseRef.current !== closes) {
+      setExtended(true);
+      const t = setTimeout(() => setExtended(false), 1500);
+      prevCloseRef.current = closes;
+      return () => clearTimeout(t);
+    }
+    prevCloseRef.current = closes;
+  }, [state?.lot?.closesAt]);
 
   const filtered = useMemo(
     () =>
@@ -83,6 +115,12 @@ export function AuctionScreen() {
       ),
     [poolList, search, position],
   );
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
+    for (const p of squadPositions) c[groupOf(p)] += 1;
+    return c;
+  }, [squadPositions]);
 
   if (!state) return <p className="muted">Loading auction…</p>;
 
@@ -105,127 +143,174 @@ export function AuctionScreen() {
       await load();
     } catch (err) {
       if (err instanceof ApiError) {
-        const extra = err.body.error === 'outbid' ? ` — high bid is ${(err.body as { highBid?: number }).highBid}` : '';
-        setNotice(`${err.body.error ?? 'failed'}${extra}`);
-        await load();
+        const e = err.body.error;
+        setNotice(
+          e === 'outbid' ? 'Outbid — someone got there first.' :
+          e === 'over_budget' ? 'Over your bidding balance.' :
+          e === 'wage_cap' ? 'His wage would break your cap.' :
+          e === 'squad_full' ? 'Your squad is full.' :
+          e === 'not_your_turn' ? 'Not your turn to nominate.' :
+          e === 'lot_live' ? 'A lot is already live.' :
+          e === 'split_locked' ? 'The split locked at your first bid.' :
+          'Request failed.');
       } else {
         setNotice('request failed');
       }
     }
   };
 
+  const lotPlayer = state.lot?.player ?? null;
+  const bidKeys = lotPlayer ? BID_STATS[groupOf(lotPlayer.position)] : [];
+
   return (
-    <div>
-
-      {state.lot ? (
-        <section className="card">
-          <h2>
-            {state.lot.player.fullName} <span className="muted">({state.lot.player.position})</span>
-          </h2>
-          <p className="muted">Market value {state.lot.player.marketValue.toLocaleString()}</p>
-          <p>
-            Closes <Countdown until={state.lot.closesAt} /> · High bid:{' '}
-            {state.lot.highBid ? `${state.lot.highBid.amount} (${state.lot.highBid.clubName})` : 'none yet'}
+    <div className="screen auction">
+      {/* LEFT — squad progress + thin warnings */}
+      <div className="pane pane-scroll auction-left">
+        <div className="card tight">
+          <h3>Squad</h3>
+          <p className="squad-progress">
+            <strong>{state.you.squadCount}</strong>/{state.squadMin} needed
+            <span className="progress"><span style={{ width: `${Math.min(100, (state.you.squadCount / state.squadMin) * 100)}%` }} /></span>
           </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const lotId = state.lot!.lotId;
-              void act(() => api.bid(lotId, amount || minBid));
-            }}
-          >
-            <input
-              type="number" min={minBid} step={1} value={amount || minBid}
-              onChange={(e) => setAmount(Number(e.target.value))}
-              aria-label="bid amount"
-            />
-            <button type="submit" className="primary">Bid</button>
-          </form>
-        </section>
-      ) : (
-        <section className="card">
-          {state.turn?.you ? (
-            <p><strong>Your turn to nominate</strong> — pick a player from the pool below.</p>
-          ) : (
-            <p className="muted">No live lot. Waiting for {state.turn?.name ?? '…'} to nominate.</p>
-          )}
-        </section>
-      )}
-
-      {notice && <p className="error">{notice}</p>}
-
-      <SplitPanel you={state.you} onSet={(reserve) => act(() => api.setAuctionSplit(reserve))} />
-
-      <section className="card">
-        <h3>Your club</h3>
-        <p>
-          Bidding balance <strong>{state.you.remaining.toLocaleString()}</strong>
-          {' '}(brought {state.you.auctionBudget.toLocaleString()} of {state.you.totalPot.toLocaleString()})
-          {' '}· reserve <strong>{state.you.reserve.toLocaleString()}</strong> · squad{' '}
-          <strong>{state.you.squadCount}</strong> (min {state.squadMin}, max {state.squadMax}) · wages{' '}
-          {state.you.wageBill}/{state.you.wageCap}
-        </p>
-        {state.signings.length > 0 && (
-          <ul className="status-list">
-            {state.signings.map((s) => (
-              <li key={s.playerId}>
-                {s.fullName} ({s.position}) — paid {s.price}, wage {s.wage} ·{' '}
-                <label>
-                  contract{' '}
-                  <select
-                    value={s.duration}
-                    onChange={(e) => void act(() => api.setContractDuration(s.playerId, Number(e.target.value)))}
-                  >
-                    {[1, 2, 3, 4].map((d) => <option key={d} value={d}>{d} season{d > 1 ? 's' : ''}</option>)}
-                  </select>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="card">
-        <h3>Clubs</h3>
-        <ul className="status-list">
-          {state.clubs.map((club) => (
-            <li key={club.clubId}>
-              {club.name}{club.you ? ' (you)' : ''} — budget {club.remaining.toLocaleString()}, squad {club.squadCount}
-            </li>
+          {(['GK', 'DF', 'MF', 'FW'] as const).map((g) => (
+            <p key={g} className="pos-count">
+              <PosChip position={g} /> {counts[g]}
+              {counts[g] < XI_MIN[g] && <span className="badge badge-sus">THIN · need {XI_MIN[g]}</span>}
+            </p>
           ))}
-        </ul>
-      </section>
+        </div>
+        <div className="card tight">
+          <h3>Clubs</h3>
+          {state.clubs.map((c) => (
+            <p key={c.clubId} className={c.you ? '' : 'muted'} style={{ margin: '0.15rem 0', fontSize: '0.82rem' }}>
+              {c.name}{c.you ? ' (you)' : ''} · {c.squadCount} · {c.remaining.toLocaleString()}
+            </p>
+          ))}
+        </div>
+      </div>
 
-      <section>
-        <h3>Player pool ({filtered.length})</h3>
-        <p>
-          <input
-            type="search" placeholder="Search players" value={search}
-            onChange={(e) => setSearch(e.target.value)} aria-label="search pool"
-          />
-          {POSITIONS.map((pos) => (
-            <button
-              key={pos} type="button" aria-pressed={position === pos}
-              onClick={() => setPosition(pos)}
+      {/* CENTER — the live lot (never scrolls) or the nomination picker */}
+      <div className="pane auction-center">
+        {state.lot && lotPlayer ? (
+          <div className={`card lot${extended ? ' extended' : ''}`}>
+            <div className="lot-head">
+              <PosChip position={lotPlayer.position} />
+              <h2 style={{ margin: 0 }}>{lotPlayer.fullName}</h2>
+              <span className={`lot-timer${extended ? ' pulse' : ''}`}>
+                <Countdown until={state.lot.closesAt} />{extended && ' +extended'}
+              </span>
+            </div>
+            <p className="muted" style={{ margin: '0.1rem 0 0.35rem' }}>
+              market value {lotPlayer.marketValue.toLocaleString()}
+            </p>
+
+            <div
+              className="attr-grid lot-stats"
+              onClick={() => setFullProfile((f) => !f)}
+              title={fullProfile ? 'tap to collapse' : 'tap for the full profile'}
             >
-              {pos}
-            </button>
-          ))}
-        </p>
-        <ul className="player-list">
-          {filtered.map((p) => (
-            <li key={p.playerId} className="player-row">
-              <span className="player-name">{p.fullName}</span>
-              <span className="player-meta">{p.position} · MV {p.marketValue.toLocaleString()}</span>
-              {state.turn?.you && !state.lot && (
-                <button type="button" onClick={() => void act(() => api.nominate(p.playerId))}>
-                  Nominate
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+              {(fullProfile ? (Object.keys(lotPlayer.attributes) as Array<keyof Attributes>) : bidKeys).map((k) => {
+                const v = lotPlayer.attributes[k];
+                return (
+                  <span key={k} className="attr">
+                    <span className="attr-name">{attrLabel(k)}</span>
+                    <span className={`attr-val ${v >= 15 ? 'attr-high' : v >= 11 ? 'attr-mid' : 'attr-low'}`}>
+                      {Math.round(v * 10) / 10}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+            <p className="faint" style={{ fontSize: '0.7rem', margin: '0.1rem 0 0.4rem' }}>
+              {fullProfile ? 'tap to collapse' : `role summary — tap for all 26`}
+            </p>
+
+            <p className="lot-bid">
+              {state.lot.highBid
+                ? <>High bid <strong>{state.lot.highBid.amount.toLocaleString()}</strong> — {state.lot.highBid.clubName}</>
+                : <>No bids yet — opens at <strong>{minBid.toLocaleString()}</strong></>}
+            </p>
+            <form
+              className="bid-row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(() => api.bid(state.lot!.lotId, amount || minBid));
+              }}
+            >
+              <button type="button" onClick={() => setAmount(minBid)}>min {minBid.toLocaleString()}</button>
+              <input
+                type="number" min={minBid} step={1} value={amount || ''}
+                placeholder={String(minBid)}
+                onChange={(e) => setAmount(Number(e.target.value))}
+              />
+              <button type="submit" className="primary">Bid</button>
+            </form>
+          </div>
+        ) : (
+          <div className="card lot">
+            {state.turn?.you ? (
+              <>
+                <h2 style={{ marginTop: 0 }}>Your turn — nominate</h2>
+                <div className="pool-filter">
+                  <input type="text" placeholder="search the pool" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  <div className="tabs">
+                    {POSITIONS.map((p) => (
+                      <button key={p} className={position === p ? 'active' : ''} onClick={() => setPosition(p)}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+                <ul className="player-list pool-list">
+                  {filtered.slice(0, 60).map((p) => (
+                    <li key={p.playerId} className="player-row">
+                      <span className="player-name">{p.fullName}</span>
+                      <span className="player-meta">
+                        <PosChip position={p.position} /> {p.marketValue.toLocaleString()}
+                      </span>
+                      <span className="player-actions">
+                        <button onClick={() => void act(() => api.nominate(p.playerId))}>Nominate</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <>
+                <h2 style={{ marginTop: 0 }}>No live lot</h2>
+                <p className="muted">Waiting for {state.turn?.name ?? '…'} to nominate.</p>
+              </>
+            )}
+          </div>
+        )}
+        {notice && <p className="error" style={{ margin: '0.3rem 0 0' }}>{notice}</p>}
+      </div>
+
+      {/* RIGHT — money (display + the split; never invest buttons) */}
+      <div className="pane pane-scroll auction-right">
+        <div className="card tight">
+          <h3>Money</h3>
+          <p className="money-line">bidding balance <strong>{state.you.remaining.toLocaleString()}</strong></p>
+          <p className="money-line muted">brought {state.you.auctionBudget.toLocaleString()} of {state.you.totalPot.toLocaleString()}</p>
+          <p className="money-line">reserve <strong>{state.you.reserve.toLocaleString()}</strong></p>
+          <p className="money-line muted">wages {state.you.wageBill.toLocaleString()} / {state.you.wageCap.toLocaleString()}</p>
+          <SplitPanel you={state.you} onSet={(reserve) => act(() => api.setAuctionSplit(reserve))} />
+        </div>
+        {state.signings.length > 0 && (
+          <div className="card tight">
+            <h3>Your signings</h3>
+            {state.signings.map((s) => (
+              <p key={s.playerId} style={{ margin: '0.2rem 0', fontSize: '0.82rem' }}>
+                <PosChip position={s.position} /> {s.fullName} — {s.price.toLocaleString()}{' '}
+                <select
+                  value={s.duration}
+                  onChange={(e) => void act(() => api.setContractDuration(s.playerId, Number(e.target.value)))}
+                >
+                  {[1, 2, 3, 4].map((d) => <option key={d} value={d}>{d}y</option>)}
+                </select>
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

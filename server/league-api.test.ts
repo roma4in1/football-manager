@@ -349,6 +349,23 @@ test('embargo: participant sees own final result pre-reveal; others do not', asy
   );
 });
 
+test('player hub detail: own player 200 with contract/stats/growth, foreign player 404', async () => {
+  const own = await call({ method: 'GET', url: `/api/squad/player/${playersA[0]}`, cookie: cookieA });
+  assert.equal(own.statusCode, 200);
+  const body = own.json();
+  assert.equal(body.contract.wage, 100);
+  assert.ok(body.seasonStats.apps >= 0);
+  assert.ok(Array.isArray(body.growth));
+  const foreign = await call({ method: 'GET', url: `/api/squad/player/${playersB[0]}`, cookie: cookieA });
+  assert.equal(foreign.statusCode, 404, 'other clubs’ players are not in your hub');
+});
+
+test('default tactics: GET reads back what the club saved', async () => {
+  const res = await call({ method: 'GET', url: '/api/default-tactics', cookie: cookieA });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().payload.players.length, 11);
+});
+
 test('embargo: standings ignore unrevealed fixtures — even for participants', async () => {
   const res = await call({ method: 'GET', url: '/api/standings', cookie: cookieA });
   assert.equal(res.statusCode, 200);
@@ -358,6 +375,10 @@ test('embargo: standings ignore unrevealed fixtures — even for participants', 
     assert.equal(row.played, 0, `${row.name}: unrevealed result must not appear in the table`);
     assert.equal(row.points, 0);
   }
+  // the results list obeys the same embargo (design-pass season → results)
+  const results = await call({ method: 'GET', url: '/api/results', cookie: cookieA });
+  assert.equal(results.statusCode, 200);
+  assert.equal(results.json().matchweeks.length, 0, 'nothing listed until a week reveals');
 });
 
 test('embargo: after reveal, result and standings open up consistently', async () => {
@@ -384,6 +405,16 @@ test('embargo: after reveal, result and standings open up consistently', async (
   assert.equal(rowB.goalsFor, awayGoals);
   const expected: [number, number] = homeGoals > awayGoals ? [3, 0] : homeGoals < awayGoals ? [0, 3] : [1, 1];
   assert.deepEqual([rowA.points, rowB.points], expected, 'points match the revealed score');
+
+  // the results list now carries the revealed fixture with its score + names
+  const results = (await call({ method: 'GET', url: '/api/results', cookie: cookieC })).json() as {
+    matchweeks: Array<{ fixtures: Array<{ fixtureId: string; score: [number, number] }> }>;
+    clubNames: Record<string, string>;
+  };
+  assert.equal(results.matchweeks.length, 1);
+  const listed = results.matchweeks[0].fixtures.find((f) => f.fixtureId === fixtureId);
+  assert.deepEqual(listed?.score, [homeGoals, awayGoals]);
+  assert.ok(results.clubNames[clubA], 'club names resolved for rendering');
 });
 
 // ── default tactics ──────────────────────────────────────────────────────────
