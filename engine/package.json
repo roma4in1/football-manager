@@ -34,7 +34,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test league-eligibility.test.ts league-growth.test.ts agent-sharpness.test.ts penalty-shootout.test.ts",
+    "test": "node --test league-eligibility.test.ts league-growth.test.ts league-economy.test.ts agent-sharpness.test.ts penalty-shootout.test.ts",
     "harness": "node stat-harness.ts",
     "realism": "node realism-harness.ts",
     "realism:ci": "node realism-harness.ts --fixture",

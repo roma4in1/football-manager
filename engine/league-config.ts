@@ -37,9 +37,11 @@ export const LEAGUE_CFG = {
   sharpnessFloor: 0.25, // decay never drops below (re-building always starts within reach)
 
   // ── facilities (levels 0–5 on club_seasons; economy PR) ────────────────────
-  // Costs are for the NEXT level (index = current level): rising so maxing
-  // both facilities (2 × 130k) exceeds a default 100k budget — real tradeoffs.
-  facilityCostByLevel: [5_000, 10_000, 20_000, 35_000, 60_000],
+  // Costs are for the NEXT level (index = current level). Rescaled with the
+  // realistic-millions economy: one facility maxes at 1.3B (65% of a 2B
+  // budget), BOTH at 2.6B > the budget — the PR #14 "can't max everything"
+  // tradeoff survives, and every level is a real bite out of squad spend.
+  facilityCostByLevel: [50_000_000, 100_000_000, 200_000_000, 350_000_000, 600_000_000],
   facilityLevelMax: 5,
   // Medical curve — real values (was placeholder). Neutral at 0; at level 5:
   // 30% of match injuries shrugged off, duration ×0.70, fatigue recovery ×1.25.
@@ -73,11 +75,26 @@ export const LEAGUE_CFG = {
   squadMin: 13, // auction cannot complete until every club has at least this many
   squadMax: 18, // hard bidding ceiling — a full club cannot win another lot
 
+  // ── economy scale (reconciled — DECISIONS.md) ───────────────────────────────
+  // Player market values are REAL EUROS (the TM dump: an elite ~200M, a solid
+  // starter ~90M); everything else binds against that scale. The WAGE CAP is
+  // the designed primary constraint: the budget leaves headroom so what stops
+  // squad-stacking is the cap, not the money.
+  defaultTransferBudget: 2_000_000_000, // per-season allotment (setupSeason + rollover default)
+  defaultWageCap: 150_000, // per matchweek — sized to fit ~4 elite + squadMin filled with ~90M players
+
   // season-start auction (league-auction.ts)
   auctionLotSeconds: 120, // initial bidding window per lot
   auctionSoftCloseSeconds: 20, // a bid with less than this left extends the close to now+this
-  bidIncrementMin: 1,
-  wagePerMarketValue: 0.0001, // g(mv): wage per matchweek = round(mv × this), linear v1
+  // Fixed 1M (not a % of the bid): the minimum next bid stays a number a
+  // manager can compute in their head mid-timer, and at an elite 200M lot it
+  // is 0.5% — fine-grained enough that sniping economics don't change.
+  bidIncrementMin: 1_000_000,
+  // g(mv): wage per matchweek = round(mv × this), linear v1. Derived from the
+  // cap-basket: 4×200M elite + 9×90M starters = 1.61B of value must land JUST
+  // under the 150k cap → 150k/1.61B ≈ 9.3e-5 (a 5th elite then breaks it).
+  // The old 1e-4 left that basket at 161k — over the cap by design accident.
+  wagePerMarketValue: 0.000093,
   auctionDefaultContractDuration: 2, // signing default; winner may adjust 1–4 while phase='auction'
   matchweekCadenceDays: 7, // schedule generation: one deadline per week
 

@@ -409,6 +409,7 @@ button.watch { padding: 0.14rem 0.55rem; font-size: 0.78rem; color: var(--accent
 .progress > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .pos-count { display: flex; align-items: center; gap: 0.4rem; margin: 0.22rem 0; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
 .money-line { margin: 0.14rem 0; font-size: 0.84rem; }
+.error-inline { color: var(--danger, #c0392b); font-weight: 600; }
 
 @media (max-height: 480px) {
   .auction-left { flex-basis: 148px; }

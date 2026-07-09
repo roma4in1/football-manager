@@ -138,7 +138,11 @@ export async function setupSeason(
       );
       await client.query(
         `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, $3, $4)`,
-        [inserted.rows[0].id, seasonId, club.budget ?? spec.defaultBudget ?? 100_000, club.wageCap ?? spec.defaultWageCap ?? 10_000],
+        [
+          inserted.rows[0].id, seasonId,
+          club.budget ?? spec.defaultBudget ?? LEAGUE_CFG.defaultTransferBudget,
+          club.wageCap ?? spec.defaultWageCap ?? LEAGUE_CFG.defaultWageCap,
+        ],
       );
       clubIds.push(inserted.rows[0].id as string);
     }

@@ -14,8 +14,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Attributes } from '@fm/engine/types';
+import { LEAGUE_CFG, wageFromMarketValue } from '@fm/engine/config';
 import { api, ApiError, type AuctionStateView, type PoolPlayerView } from '../api.ts';
 import { Countdown } from '../components.tsx';
+import { fmtMoney } from '../format.ts';
 import { PosChip } from '../shell/Section.tsx';
 
 const POLL_MS = 5_000;
@@ -42,17 +44,17 @@ function SplitPanel({ you, onSet }: {
   if (you.splitLocked) {
     return (
       <p className="muted" style={{ margin: '0.2rem 0' }}>
-        Split locked: brought <strong>{you.auctionBudget.toLocaleString()}</strong>, reserve{' '}
-        <strong>{you.reserve.toLocaleString()}</strong>.
+        Split locked: brought <strong>{fmtMoney(you.auctionBudget)}</strong>, reserve{' '}
+        <strong>{fmtMoney(you.reserve)}</strong>.
       </p>
     );
   }
   return (
     <div>
       <label className="slider" style={{ margin: '0.2rem 0' }}>
-        bring {(you.totalPot - reserve).toLocaleString()} · reserve {reserve.toLocaleString()}
+        bring {fmtMoney(you.totalPot - reserve)} · reserve {fmtMoney(reserve)}
         <input
-          type="range" min={0} max={you.totalPot} step={1000}
+          type="range" min={0} max={you.totalPot} step={Math.max(1_000, Math.round(you.totalPot / 200))}
           value={reserve}
           onChange={(e) => setReserve(Number(e.target.value))}
           onMouseUp={() => void onSet(reserve)}
@@ -134,7 +136,7 @@ export function AuctionScreen() {
     );
   }
 
-  const minBid = (state.lot?.highBid?.amount ?? 0) + 1;
+  const minBid = (state.lot?.highBid?.amount ?? 0) + LEAGUE_CFG.bidIncrementMin;
 
   const act = async (fn: () => Promise<unknown>): Promise<void> => {
     setNotice(null);
@@ -183,7 +185,7 @@ export function AuctionScreen() {
           <h3>Clubs</h3>
           {state.clubs.map((c) => (
             <p key={c.clubId} className={c.you ? '' : 'muted'} style={{ margin: '0.15rem 0', fontSize: '0.82rem' }}>
-              {c.name}{c.you ? ' (you)' : ''} · {c.squadCount} · {c.remaining.toLocaleString()}
+              {c.name}{c.you ? ' (you)' : ''} · {c.squadCount} · {fmtMoney(c.remaining)}
             </p>
           ))}
         </div>
@@ -201,7 +203,17 @@ export function AuctionScreen() {
               </span>
             </div>
             <p className="muted" style={{ margin: '0.1rem 0 0.35rem' }}>
-              market value {lotPlayer.marketValue.toLocaleString()}
+              market value {fmtMoney(lotPlayer.marketValue)} · wage{' '}
+              <strong>{fmtMoney(wageFromMarketValue(lotPlayer.marketValue))}/wk</strong>
+              {(() => {
+                const after = state.you.wageBill + wageFromMarketValue(lotPlayer.marketValue);
+                const breaks = after > state.you.wageCap;
+                return (
+                  <span className={breaks ? 'error-inline' : ''}>
+                    {' '}— wages if won {fmtMoney(after)}/{fmtMoney(state.you.wageCap)}{breaks && ' · OVER CAP'}
+                  </span>
+                );
+              })()}
             </p>
 
             <div
@@ -227,8 +239,8 @@ export function AuctionScreen() {
 
             <p className="lot-bid">
               {state.lot.highBid
-                ? <>High bid <strong>{state.lot.highBid.amount.toLocaleString()}</strong> — {state.lot.highBid.clubName}</>
-                : <>No bids yet — opens at <strong>{minBid.toLocaleString()}</strong></>}
+                ? <>High bid <strong>{fmtMoney(state.lot.highBid.amount)}</strong> — {state.lot.highBid.clubName}</>
+                : <>No bids yet — opens at <strong>{fmtMoney(minBid)}</strong></>}
             </p>
             <form
               className="bid-row"
@@ -237,9 +249,12 @@ export function AuctionScreen() {
                 void act(() => api.bid(state.lot!.lotId, amount || minBid));
               }}
             >
-              <button type="button" onClick={() => setAmount(minBid)}>min {minBid.toLocaleString()}</button>
+              <button type="button" onClick={() => setAmount(minBid)}>min {fmtMoney(minBid)}</button>
+              <button type="button" onClick={() => setAmount((amount || minBid) + 10 * LEAGUE_CFG.bidIncrementMin)}>
+                +{fmtMoney(10 * LEAGUE_CFG.bidIncrementMin)}
+              </button>
               <input
-                type="number" min={minBid} step={1} value={amount || ''}
+                type="number" min={minBid} step={LEAGUE_CFG.bidIncrementMin} value={amount || ''}
                 placeholder={String(minBid)}
                 onChange={(e) => setAmount(Number(e.target.value))}
               />
@@ -264,7 +279,7 @@ export function AuctionScreen() {
                     <li key={p.playerId} className="player-row">
                       <span className="player-name">{p.fullName}</span>
                       <span className="player-meta">
-                        <PosChip position={p.position} /> {p.marketValue.toLocaleString()}
+                        <PosChip position={p.position} /> {fmtMoney(p.marketValue)} · {fmtMoney(wageFromMarketValue(p.marketValue))}/wk
                       </span>
                       <span className="player-actions">
                         <button onClick={() => void act(() => api.nominate(p.playerId))}>Nominate</button>
@@ -288,10 +303,13 @@ export function AuctionScreen() {
       <div className="pane pane-scroll auction-right">
         <div className="card tight">
           <h3>Money</h3>
-          <p className="money-line">bidding balance <strong>{state.you.remaining.toLocaleString()}</strong></p>
-          <p className="money-line muted">brought {state.you.auctionBudget.toLocaleString()} of {state.you.totalPot.toLocaleString()}</p>
-          <p className="money-line">reserve <strong>{state.you.reserve.toLocaleString()}</strong></p>
-          <p className="money-line muted">wages {state.you.wageBill.toLocaleString()} / {state.you.wageCap.toLocaleString()}</p>
+          <p className="money-line">bidding balance <strong>{fmtMoney(state.you.remaining)}</strong></p>
+          <p className="money-line muted">brought {fmtMoney(state.you.auctionBudget)} of {fmtMoney(state.you.totalPot)}</p>
+          <p className="money-line">reserve <strong>{fmtMoney(state.you.reserve)}</strong></p>
+          <p className="money-line">
+            wages <strong>{fmtMoney(state.you.wageBill)} / {fmtMoney(state.you.wageCap)}</strong>
+            <span className="muted"> · room {fmtMoney(Math.max(0, state.you.wageCap - state.you.wageBill))}</span>
+          </p>
           <SplitPanel you={state.you} onSet={(reserve) => act(() => api.setAuctionSplit(reserve))} />
         </div>
         {state.signings.length > 0 && (
@@ -299,7 +317,7 @@ export function AuctionScreen() {
             <h3>Your signings</h3>
             {state.signings.map((s) => (
               <p key={s.playerId} style={{ margin: '0.2rem 0', fontSize: '0.82rem' }}>
-                <PosChip position={s.position} /> {s.fullName} — {s.price.toLocaleString()}{' '}
+                <PosChip position={s.position} /> {s.fullName} — {fmtMoney(s.price)} · {fmtMoney(s.wage)}/wk{' '}
                 <select
                   value={s.duration}
                   onChange={(e) => void act(() => api.setContractDuration(s.playerId, Number(e.target.value)))}

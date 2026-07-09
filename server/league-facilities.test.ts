@@ -37,6 +37,10 @@ const delivery: LinkDelivery = {
 };
 const q = (text: string, params?: unknown[]) => pool.query(text, params);
 
+// enough for the two invests this file makes (medical L0 here, training L0 in
+// the window test) with the next level's cost still visible in the view
+const RESERVE_START = LEAGUE_CFG.facilityCostByLevel[0] + LEAGUE_CFG.facilityCostByLevel[1];
+
 async function login(email: string): Promise<string> {
   delivered.length = 0;
   await api.inject({ method: 'POST', url: '/api/auth/request-link', payload: { email } });
@@ -60,6 +64,9 @@ before(async () => {
   seasonId = await seedSeason(pool); // phase 'regular'
   ({ clubId: clubA, playerIds: playersA } = await seedClub(pool, seasonId, 'Alpha', 'alpha@fac.io'));
   ({ clubId: clubB, playerIds: playersB } = await seedClub(pool, seasonId, 'Beta', 'beta@fac.io'));
+  // seedClub banks a toy 100k reserve; facilities now cost real millions
+  // (economy rescale) — top clubA up to a scale-aware balance
+  await q(`UPDATE club_seasons SET reserve_balance = $1 WHERE club_id = $2 AND season_id = $3`, [RESERVE_START, clubA, seasonId]);
   orch = await createOrchestrator({ pool, connectionString: DATABASE_URL, pollingIntervalSeconds: 0.5 });
   api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery });
   cookieA = await login('alpha@fac.io');
@@ -80,7 +87,7 @@ test('facilities view: levels 0, next costs from config, budget remaining', asyn
   assert.equal(body.training.level, 0);
   assert.equal(body.medical.level, 0);
   assert.equal(body.training.nextCost, LEAGUE_CFG.facilityCostByLevel[0]);
-  assert.equal(body.budgetRemaining, 100_000);
+  assert.equal(body.budgetRemaining, RESERVE_START);
   assert.equal(body.investmentOpen, true);
 });
 
@@ -91,7 +98,7 @@ test('invest: level +1 and budget debit are one transaction, txn row recorded', 
   const view = (await call({ method: 'GET', url: '/api/facilities' })).json();
   assert.equal(view.medical.level, 1);
   assert.equal(view.medical.nextCost, LEAGUE_CFG.facilityCostByLevel[1]);
-  assert.equal(view.budgetRemaining, 100_000 - LEAGUE_CFG.facilityCostByLevel[0]);
+  assert.equal(view.budgetRemaining, RESERVE_START - LEAGUE_CFG.facilityCostByLevel[0]);
 
   const txns = await q(
     `SELECT kind, amount FROM transactions WHERE club_id = $1 AND kind = 'facility_investment'`,
@@ -111,16 +118,18 @@ test('invest: unknown facility 400; level cap 422; over-budget 422 leaves nothin
   await q(`UPDATE club_seasons SET medical_level = 1 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
 
   // facilities spend the RESERVE (6b): drain it below the next level's cost
-  await q(`UPDATE club_seasons SET reserve_balance = 2000 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
-  const poor = await call({ method: 'POST', url: '/api/facilities/invest', payload: { facility: 'training' } });
-  assert.equal(poor.statusCode, 422);
-  assert.equal(poor.json().error, 'insufficient_budget');
+  const poor = LEAGUE_CFG.facilityCostByLevel[0] - 1; // one short of the next level
+  await q(`UPDATE club_seasons SET reserve_balance = $3 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId, poor]);
+  const rejected = await call({ method: 'POST', url: '/api/facilities/invest', payload: { facility: 'training' } });
+  assert.equal(rejected.statusCode, 422);
+  assert.equal(rejected.json().error, 'insufficient_budget');
   const level = await q(`SELECT training_level, reserve_balance FROM club_seasons WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
   assert.equal(level.rows[0].training_level, 0, 'rejected investment writes nothing');
-  assert.equal(Number(level.rows[0].reserve_balance), 2000, 'and debits nothing');
+  assert.equal(Number(level.rows[0].reserve_balance), poor, 'and debits nothing');
   const txns = await q(`SELECT count(*) FROM transactions WHERE club_id = $1 AND kind = 'facility_investment'`, [clubA]);
   assert.equal(Number(txns.rows[0].count), 1, 'no txn recorded for the rejection');
-  await q(`UPDATE club_seasons SET reserve_balance = 95000 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
+  // exactly one more training level for the window test at the end
+  await q(`UPDATE club_seasons SET reserve_balance = $3 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId, LEAGUE_CFG.facilityCostByLevel[0]]);
 });
 
 // ── medical effects on the real bookkeeping path ─────────────────────────────

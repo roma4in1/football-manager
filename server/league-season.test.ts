@@ -160,7 +160,7 @@ for (const n of [5, 6, 7, 8, 9, 10]) {
       scheduleWeekClose: async (id) => {
         armed.push(id);
       },
-      tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2, squadMin: 2, squadMax: 3 },
+      tuning: { lotSeconds: 0.5, softCloseSeconds: 0.2, bidIncrementMin: 1, squadMin: 2, squadMax: 3 },
     });
 
     // the final lot: whoever's turn nominates, the short club wins it

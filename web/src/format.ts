@@ -58,3 +58,18 @@ export function fmtRemaining(until: Date, now = new Date()): string {
 }
 
 export const pct = (x: number): string => `${Math.round(x)}%`;
+
+/**
+ * Compact money on the realistic-millions scale: 2,000,000,000 → "2.0B",
+ * 350_000_000 → "350M", 18_600 → "18.6k". Ten-digit numbers don't fit a
+ * 375px auction pane, and managers think in M/B anyway.
+ */
+export function fmtMoney(v: number): string {
+  const sign = v < 0 ? '-' : '';
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${sign}${trim1(a / 1e9)}B`;
+  if (a >= 1e6) return `${sign}${trim1(a / 1e6)}M`;
+  if (a >= 1e3) return `${sign}${trim1(a / 1e3)}k`;
+  return `${sign}${a}`;
+}
+const trim1 = (x: number): string => (Math.round(x * 10) / 10).toString();
