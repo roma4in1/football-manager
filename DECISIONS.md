@@ -3,6 +3,51 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-08 — pre-auction budget split (6b): bring vs reserve, calibrated
+
+- **The split**: before bidding, a club divides its allotment into
+  auction_budget (BROUGHT — the fixed bidding balance for the whole draft;
+  NULL = no split set = bring everything, so every pre-6b flow is unchanged)
+  and reserve_balance (held back). Set/re-set freely via
+  PUT /api/auction/split until the club's FIRST bid (or won lot) — from
+  then it binds (409 split_locked). Facilities stay un-buyable during the
+  draft and bidding checks stay race-free because the bidding balance is a
+  fixed number, not a live account.
+- **Reserve is a LIVE balance** on club_seasons, mutated only under the
+  club_seasons row lock (the same money lock facilities/transfers already
+  take); transactions remain the audit trail. It is spendable ONLY on
+  facilities + the mid-season window (buy fees and pool signings debit it,
+  sale fees credit it) and NEVER re-enters auction bidding — banked money
+  returning to the draft would be free-interest delayed spending. A
+  bring-everything club therefore buys no facilities that season: that IS
+  the decision weight.
+- **Bindingness of leftover**: unspent bring converts to reserve at 0.5 at
+  auction completion (runs once — the completing txn holds the seasons row
+  lock and leaves the auction phase). At 1.0 the split is theater
+  (bring-everything strictly dominates); at 0.0 prudent bidding is punished
+  brutally; half-back makes over-bringing a real forecasting cost.
+- **Growth tick: ONCE per season, at rollover** (reserve carries
+  ×(1 + reserveGrowthRate) into season N+1). Interest is earned by HOLDING
+  across the season boundary — bank-at-auction, spend-at-window earns
+  nothing, killing the free intra-season interest play; and one compounding
+  event per season maps 1:1 onto the harness. The new draft starts unsplit.
+- **X = 0.10, CALIBRATED not guessed** (growth-harness scenario 4, CI
+  fixture gate): max-hoard (bank the full 100k allotment every season, buy
+  training facilities greedily) vs bring-everything (facility 0 forever) —
+  the worst-case strategy gap. Measured: XI-mean gap grows +0.21 over 5
+  seasons, DECELERATING (increments 0.041 → 0.029) — hoarding buys the
+  already-bounded facility ceiling faster, not more; interest is 20.2% of
+  principal banked (reserve ends ~471k of 500k). Honest finding: the gap
+  gate is X-INSENSITIVE (facilities max by season ~1 at any X — the channel
+  saturates), so the binding gate is the interest share (< 30%, "banking
+  not investing") as the proxy for un-modeled window buying power. At
+  X=0.5 that gate trips at 154.6% — the tripwire works. Verdict: "draft
+  lean, hoard, bank, snowball" is NOT dominant at 0.10.
+- Now-vs-later: the reserve system lands after rollover (#19) because the
+  growth tick needs a season boundary to ride, and before any richer
+  economy (prize money, gate receipts) so those can pay INTO an
+  already-bounded reserve rather than inventing a second pot.
+
 ## 2026-08-02 — season rollover: the multi-season loop (season_end → complete → N+1)
 
 - **The rollover rides the final week-close transaction**, immediately after

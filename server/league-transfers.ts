@@ -115,7 +115,11 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
     return season;
   }
 
-  /** Money lock + wage cap for one club; club_seasons row lock when forUpdate. */
+  /**
+   * Money lock + wage cap for one club; club_seasons row lock when forUpdate.
+   * The window spends the RESERVE (6b) — what the split held back — never
+   * the auction pot.
+   */
   async function clubEconomy(
     c: store.Queryable, seasonId: string, clubId: string, forUpdate: boolean,
   ): Promise<{ wageCap: number; remaining: number }> {
@@ -123,7 +127,7 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
     if (!row) throw new TransferError(404, { error: 'not_found' });
     const clubs = await store.clubsBySeed(c, seasonId);
     const wageCap = clubs.find((x) => x.clubId === clubId)?.wageCap ?? 0;
-    return { wageCap, remaining: await store.budgetRemaining(c, seasonId, clubId) };
+    return { wageCap, remaining: row.reserveBalance };
   }
 
   /** Buyer-side bounds shared by offers (advisory), accepts and pool signings. */

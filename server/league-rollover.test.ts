@@ -231,14 +231,19 @@ test('rollover: familiarity carries at ×carryOver for both-retained pairs only'
   assert.equal(Number(broken.rows[0].count), 0, 'a broken contract comes back cold');
 });
 
-test('rollover: budgets fresh, facilities + training dial carried', async () => {
+test('rollover: allotment fresh, facilities carried, reserve carries at the growth tick', async () => {
   const cs = await q(
-    `SELECT transfer_budget, wage_cap, training_level, medical_level FROM club_seasons WHERE season_id = $1 AND club_id = $2`,
+    `SELECT transfer_budget, auction_budget, reserve_balance, training_level FROM club_seasons
+     WHERE season_id = $1 AND club_id = $2`,
     [season2, clubA],
   );
-  assert.equal(Number(cs.rows[0].transfer_budget), 100_000, 'configured allotment copied');
+  assert.equal(Number(cs.rows[0].transfer_budget), 100_000, 'configured allotment copied, spend fresh');
+  assert.equal(cs.rows[0].auction_budget, null, 'no split yet — bring-everything default for the new draft');
   assert.equal(cs.rows[0].training_level, 2, 'the building persists');
-  assert.equal(await store.budgetRemaining(pool, season2, clubA), 100_000, 'spend is fresh (txns are per-season)');
+  // A never bid in season 1 (pre-contracted): leftover bring 100k half-converted
+  // to 50k reserve at auction completion, then earned its rollover growth tick
+  const expected = Math.floor(100_000 * LEAGUE_CFG.auctionLeftoverToReserve * (1 + LEAGUE_CFG.reserveGrowthRate));
+  assert.equal(Number(cs.rows[0].reserve_balance), expected, 'reserve = leftover×0.5, grown ×(1+X) at rollover');
 });
 
 // ── season 2: the loop closes ────────────────────────────────────────────────

@@ -110,16 +110,17 @@ test('invest: unknown facility 400; level cap 422; over-budget 422 leaves nothin
   assert.equal(capped.json().error, 'level_cap');
   await q(`UPDATE club_seasons SET medical_level = 1 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
 
-  await q(`UPDATE club_seasons SET transfer_budget = 7000 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
-  // 5,000 already spent → remaining 2,000 < 5,000 (training level 0 cost)
+  // facilities spend the RESERVE (6b): drain it below the next level's cost
+  await q(`UPDATE club_seasons SET reserve_balance = 2000 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
   const poor = await call({ method: 'POST', url: '/api/facilities/invest', payload: { facility: 'training' } });
   assert.equal(poor.statusCode, 422);
   assert.equal(poor.json().error, 'insufficient_budget');
-  const level = await q(`SELECT training_level FROM club_seasons WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
+  const level = await q(`SELECT training_level, reserve_balance FROM club_seasons WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
   assert.equal(level.rows[0].training_level, 0, 'rejected investment writes nothing');
+  assert.equal(Number(level.rows[0].reserve_balance), 2000, 'and debits nothing');
   const txns = await q(`SELECT count(*) FROM transactions WHERE club_id = $1 AND kind = 'facility_investment'`, [clubA]);
   assert.equal(Number(txns.rows[0].count), 1, 'no txn recorded for the rejection');
-  await q(`UPDATE club_seasons SET transfer_budget = 100000 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
+  await q(`UPDATE club_seasons SET reserve_balance = 95000 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
 });
 
 // ── medical effects on the real bookkeeping path ─────────────────────────────

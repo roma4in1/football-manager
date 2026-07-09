@@ -81,6 +81,20 @@ export const LEAGUE_CFG = {
   auctionDefaultContractDuration: 2, // signing default; winner may adjust 1–4 while phase='auction'
   matchweekCadenceDays: 7, // schedule generation: one deadline per week
 
+  // ── pre-auction budget split (6b) ──────────────────────────────────────────
+  // Reserve = money held back from the draft: spendable ONLY on facilities +
+  // the mid-season window, never auction bidding. Growth applies ONCE per
+  // season at rollover — interest is earned by holding across the boundary,
+  // so bank-at-auction-spend-at-window earns nothing (no free intra-season
+  // interest). Rate calibrated against the growth-compounding harness's
+  // reserve-strategy scenario (DECISIONS.md) — hoarding must not snowball.
+  reserveGrowthRate: 0.1,
+  // Unspent bring converts to reserve at this rate at auction completion:
+  // 1.0 would make the split theater (bring-everything strictly dominant),
+  // 0.0 punishes prudent bidding brutally; half-back makes over-bringing a
+  // real forecasting cost.
+  auctionLeftoverToReserve: 0.5,
+
   // mid-season transfer window (league-transfers.ts) — inter-club offers +
   // fixed-price pool signings; open only while phase='transfer_window'
   transferContractDuration: 2, // pool signings mid-season; no duration picker in the window

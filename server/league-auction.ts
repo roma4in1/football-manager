@@ -107,7 +107,16 @@ export interface AuctionStateView {
   } | null;
   turn: { clubId: string; name: string; you: boolean } | null;
   clubs: Array<{ clubId: string; name: string; remaining: number; squadCount: number; you: boolean }>;
-  you: { remaining: number; squadCount: number; wageBill: number; wageCap: number };
+  you: {
+    remaining: number;
+    squadCount: number;
+    wageBill: number;
+    wageCap: number;
+    totalPot: number;
+    auctionBudget: number;
+    reserve: number;
+    splitLocked: boolean;
+  };
   signings: store.OwnSigning[];
   squadMin: number;
   squadMax: number;
@@ -120,6 +129,8 @@ export interface AuctionCore {
   bid(clubId: string, lotId: string, amount: number): Promise<{ closesAt: Date }>;
   closeLot(lotId: string): Promise<'won' | 'forfeited' | 'unsold' | 'skipped' | 'completed'>;
   setDuration(clubId: string, playerId: string, duration: number): Promise<void>;
+  /** pre-auction budget split: hold `reserve` back from the draft (6b). */
+  setSplit(clubId: string, reserve: number): Promise<void>;
 }
 
 export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
@@ -155,6 +166,28 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
     const inPool = (await store.poolPlayers(c, seasonId)).find((p) => p.playerId === playerId);
     if (!inPool) throw new AuctionError(404, { error: 'not_in_pool' });
     return inPool;
+  }
+
+  /**
+   * The pre-auction split (6b): reserve is held back from the draft, the
+   * rest is the FIXED bidding balance. Adjustable until the club's first
+   * bid (or won lot) — from then on it BINDS: reserve never re-enters
+   * bidding, and unspent bring only half-converts at completion.
+   */
+  async function setSplit(clubId: string, reserve: number): Promise<void> {
+    await withTxn(async (c) => {
+      const season = await auctionSeason(c);
+      const row = await store.getFacilities(c, season.id, clubId, true); // money lock
+      if (!row) throw new AuctionError(404, { error: 'not_found' });
+      if (!Number.isInteger(reserve) || reserve < 0 || reserve > row.transferBudget) {
+        throw new AuctionError(422, { error: 'bad_split', totalPot: row.transferBudget });
+      }
+      if (await store.clubHasBidOrWon(c, season.id, clubId)) {
+        throw new AuctionError(409, { error: 'split_locked' });
+      }
+      const previousHeldBack = row.transferBudget - (row.auctionBudget ?? row.transferBudget);
+      await store.setBudgetSplit(c, season.id, clubId, row.transferBudget - reserve, reserve - previousHeldBack);
+    });
   }
 
   async function nominate(clubId: string, playerId: string): Promise<{ lotId: string; closesAt: Date }> {
@@ -205,7 +238,10 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       const clubs = await store.clubsBySeed(c, lot.seasonId);
       const club = clubs.find((x) => x.clubId === clubId);
       if (!club) throw new AuctionError(404, { error: 'not_found' });
-      const remaining = club.transferBudget - (await store.auctionSpend(c, lot.seasonId, clubId));
+      // the bidding balance is what the split BROUGHT (fixed for the whole
+      // draft — reserve never re-enters bidding); null = no split = everything
+      const bring = club.auctionBudget ?? club.transferBudget;
+      const remaining = bring - (await store.auctionSpend(c, lot.seasonId, clubId));
       if (amount > remaining) throw new AuctionError(422, { error: 'over_budget', remaining });
       if ((await store.squadCount(c, lot.seasonId, clubId)) >= squadMax) {
         throw new AuctionError(422, { error: 'squad_full', squadMax });
@@ -273,6 +309,16 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       const counts = await store.squadCounts(c, season.id);
       if (!clubs.every((club) => (counts.get(club.clubId) ?? 0) >= squadMin)) return null;
 
+      // the split BINDS: unspent bring converts to reserve at the configured
+      // rate — half-back, so over-bringing costs (DECISIONS.md). Runs once:
+      // this txn holds the seasons row lock and transitions out of 'auction'.
+      for (const club of clubs) {
+        const bring = club.auctionBudget ?? club.transferBudget;
+        const leftover = bring - (await store.auctionSpend(c, season.id, club.clubId));
+        const converted = Math.floor(leftover * LEAGUE_CFG.auctionLeftoverToReserve);
+        if (converted > 0) await store.adjustReserve(c, season.id, club.clubId, converted);
+      }
+
       // schedule: double round-robin in seed order, weekly cadence from now
       const schedule = doubleRoundRobin(clubs.map((x) => x.clubId));
       const rounds = schedule.length;
@@ -337,9 +383,13 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
     }
 
     const clubViews = [];
-    let you: AuctionStateView['you'] = { remaining: 0, squadCount: 0, wageBill: 0, wageCap: 0 };
+    let you: AuctionStateView['you'] = {
+      remaining: 0, squadCount: 0, wageBill: 0, wageCap: 0,
+      totalPot: 0, auctionBudget: 0, reserve: 0, splitLocked: true,
+    };
     for (const club of clubs) {
-      const remaining = club.transferBudget - (await store.auctionSpend(pool, season.id, club.clubId));
+      const bring = club.auctionBudget ?? club.transferBudget;
+      const remaining = bring - (await store.auctionSpend(pool, season.id, club.clubId));
       const view = {
         clubId: club.clubId,
         name: club.name,
@@ -354,6 +404,10 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
           squadCount: view.squadCount,
           wageBill: await store.activeWageSum(pool, club.clubId),
           wageCap: club.wageCap,
+          totalPot: club.transferBudget,
+          auctionBudget: bring,
+          reserve: club.reserveBalance,
+          splitLocked: season.phase !== 'auction' || (await store.clubHasBidOrWon(pool, season.id, club.clubId)),
         };
       }
     }
@@ -399,5 +453,6 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
     bid,
     closeLot,
     setDuration,
+    setSplit,
   };
 }

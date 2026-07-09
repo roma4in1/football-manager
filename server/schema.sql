@@ -72,8 +72,17 @@ CREATE TABLE clubs (
 CREATE TABLE club_seasons (
   club_id          UUID NOT NULL REFERENCES clubs(id),
   season_id        UUID NOT NULL REFERENCES seasons(id),
-  transfer_budget  BIGINT NOT NULL,                  -- integer currency units
+  transfer_budget  BIGINT NOT NULL,                  -- the season's configured allotment
   wage_cap         BIGINT NOT NULL,                  -- per-matchweek total wage ceiling
+  -- pre-auction budget split (6b): auction_budget = what the club BRINGS to
+  -- the draft (NULL = no split set = bring everything); the rest joins
+  -- reserve_balance — the LIVE balance facilities and the mid-season window
+  -- spend from (mutated under this row's lock; txns stay the audit trail).
+  -- Reserve NEVER re-enters auction bidding, carries across seasons at the
+  -- rollover growth tick, and receives half of any unspent bring at auction
+  -- completion (DECISIONS.md).
+  auction_budget   BIGINT CHECK (auction_budget IS NULL OR (auction_budget >= 0 AND auction_budget <= transfer_budget)),
+  reserve_balance  BIGINT NOT NULL DEFAULT 0 CHECK (reserve_balance >= 0),
   training_level   INT NOT NULL DEFAULT 0 CHECK (training_level BETWEEN 0 AND 5),
   medical_level    INT NOT NULL DEFAULT 0 CHECK (medical_level BETWEEN 0 AND 5),
   -- weekly training dial (league-growth.ts): what the squad works on and how

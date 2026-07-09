@@ -151,7 +151,16 @@ export interface AuctionStateView {
   } | null;
   turn: { clubId: string; name: string; you: boolean } | null;
   clubs: Array<{ clubId: string; name: string; remaining: number; squadCount: number; you: boolean }>;
-  you: { remaining: number; squadCount: number; wageBill: number; wageCap: number };
+  you: {
+    remaining: number;
+    squadCount: number;
+    wageBill: number;
+    wageCap: number;
+    totalPot: number;
+    auctionBudget: number;
+    reserve: number;
+    splitLocked: boolean;
+  };
   signings: Array<{ playerId: string; fullName: string; position: string; wage: number; duration: number; price: number }>;
   squadMin: number;
   squadMax: number;
@@ -224,6 +233,7 @@ export const api = {
   standings: () => req<{ season: { number: number }; table: StandingsRow[] }>('GET', '/api/standings'),
   saveDefaultTactics: (tactics: Tactics) => req<void>('PUT', '/api/default-tactics', tactics),
   auctionState: () => req<AuctionStateView>('GET', '/api/auction/state'),
+  setAuctionSplit: (reserve: number) => req<void>('PUT', '/api/auction/split', { reserve }),
   auctionPool: () => req<{ players: PoolPlayerView[] }>('GET', '/api/auction/pool'),
   nominate: (playerId: string) => req<{ lotId: string; closesAt: string }>('POST', '/api/auction/nominate', { playerId }),
   bid: (lotId: string, amount: number) => req<{ closesAt: string }>('POST', '/api/auction/bid', { lotId, amount }),
