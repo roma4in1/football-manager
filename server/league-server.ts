@@ -14,6 +14,7 @@ import { LEAGUE_CFG } from '@fm/engine/config';
 import { consoleLinkDelivery, createApi, type LinkDelivery } from './league-api.ts';
 import { resendLinkDelivery } from './league-email.ts';
 import { createOrchestrator } from './league-orchestrator.ts';
+import { cadenceOverrideActive, forceWeekCloseEnabled, matchweekCadenceMs } from './league-test-overrides.ts';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -54,9 +55,27 @@ if (process.env.AUCTION_LOT_SECONDS_TEST) {
   );
 }
 
+// ⚠️ TEST-ONLY matchweek overrides (league-test-overrides.ts) — same
+// discipline as the auction timer: env-gated, loud, in the launch checklist.
+if (cadenceOverrideActive()) {
+  console.warn(
+    `[league] ⚠️⚠️ TEST OVERRIDE ACTIVE: matchweek cadence ${matchweekCadenceMs() / 60_000} min ` +
+    `(real: ${LEAGUE_CFG.matchweekCadenceDays} days). Unset MATCHWEEK_CADENCE_MINUTES_TEST before launch.`,
+  );
+}
+if (forceWeekCloseEnabled()) {
+  console.warn(
+    '[league] ⚠️⚠️ TEST OVERRIDE ACTIVE: POST /api/admin/force-week-close is LIVE ' +
+    '(closes + sims the current matchweek on demand). Unset TEST_FORCE_WEEK_CLOSE before launch.',
+  );
+}
+
 const pool = new pg.Pool({ connectionString });
 const orchestrator = await createOrchestrator({ pool, connectionString, auctionTuning });
-const api = await createApi({ pool, orchestrator, sessionSecret, delivery, baseUrl });
+const api = await createApi({
+  pool, orchestrator, sessionSecret, delivery, baseUrl,
+  testForceWeekClose: forceWeekCloseEnabled(),
+});
 
 // serve the built client when present (npm --prefix web run build); the SPA owns
 // every non-/api path, so unknown GETs fall back to index.html for client routing

@@ -1397,6 +1397,17 @@ export async function currentMatchweek(c: Queryable, seasonId: string): Promise<
   };
 }
 
+/** TEST-ONLY (the force-week-close endpoint): pull an unrevealed matchweek's
+ * deadline to now() so the REAL runWeekClose path fires immediately. Returns
+ * false if the week was already revealed (nothing to force). */
+export async function forceMatchweekDeadline(c: Queryable, matchweekId: string): Promise<boolean> {
+  const res = await c.query(
+    `UPDATE matchweeks SET deadline_at = now() WHERE id = $1 AND revealed_at IS NULL`,
+    [matchweekId],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
 export async function fixtureForClub(c: Queryable, matchweekId: string, clubId: string): Promise<FixtureRow | null> {
   const { rows } = await c.query(
     `SELECT id, matchweek_id, home_club_id, away_club_id, state, ht_deadline, bookkept_at, seed, neutral_venue

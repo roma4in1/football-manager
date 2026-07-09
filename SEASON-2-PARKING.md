@@ -55,6 +55,13 @@ feedback says which of these the game actually wants.
   queries. Needs attribute-indexed querying over the pool (JSONB expression
   indexes or extracted columns) — a query-layer feature, not a view.
 
+## Queued season-1 follow-ups (NOT parked — just sequenced)
+- **Lineup-as-pitch** (split from the tactics-polish PR): the lineup tab
+  becomes a FIFA-style visual pitch — 11 positioned players, bench beneath,
+  drag on/off to sub (inherit-on-swap already exists), with formation/tactic
+  PRESETS offered first as a starting point. Its own PR, after the live MW1
+  match test.
+
 ## Rule for adding to this list
 During the design pass (or any future work), if an idea needs a new table,
 new engine behavior, or a calibration gate → it's a feature → it lands HERE,
