@@ -13,6 +13,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
+import { AgentEngine } from '@fm/engine/agent';
 import { createApi, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
 import { bootstrapSchema, seedClub, seedSeason } from './league-test-helpers.ts';
@@ -68,7 +69,10 @@ before(async () => {
   );
   fixtureId = fx.rows[0].id;
 
-  orch = await createOrchestrator({ pool, connectionString: DATABASE_URL, pollingIntervalSeconds: 0.5 });
+  // PINNED to the AgentEngine: this file is the standing integration proof
+  // for the engine switch (real sims through the real week-close, real replay
+  // frames) — it must keep passing regardless of the production default
+  orch = await createOrchestrator({ pool, connectionString: DATABASE_URL, pollingIntervalSeconds: 0.5, engine: new AgentEngine() });
   api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery, testForceWeekClose: true });
   apiDisabled = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery });
   cookie = await login(api, 'alpha@adm.io');
@@ -130,6 +134,45 @@ test('confirmed → the REAL week-close runs now: sims, bookkeeping, tick, revea
   });
   assert.equal(result.statusCode, 200);
   assert.equal(result.json().halves.length, 2);
+});
+
+test('the replay is REAL agent motion: dense frames, carrier tags, ball at the carrier\'s feet', async () => {
+  const replay = await api.inject({
+    method: 'GET', url: `/api/fixture/${fixtureId}/replay`,
+    cookies: { [SESSION_COOKIE]: cookie },
+  });
+  assert.equal(replay.statusCode, 200);
+  const halves = replay.json().halves as Array<{ half: number; frames: Array<{
+    t: number; ball: { x: number; y: number }; carrier?: string | null; players: Record<string, { x: number; y: number }>;
+  }> }>;
+  assert.equal(halves.length, 2);
+  const frames = halves.flatMap((h) => h.frames);
+  assert.ok(frames.length >= 800, `agent emits one frame per 6s of both halves (got ${frames.length})`);
+
+  // every frame carries the possession tag, and a carried ball is AT the
+  // carrier (the engine pins it every tick — this is simulated, not drawn)
+  const carried = frames.filter((f) => f.carrier);
+  assert.ok(carried.length / frames.length > 0.5, 'the ball is with somebody most of the match');
+  // ≥95%: a frame can land exactly on a goal/kickoff RESET tick, where the
+  // ball sits at the centre spot while the next kicker is already tagged —
+  // the every-tick pin re-attaches it one tick later
+  let atFeet = 0;
+  for (const f of carried) {
+    const p = f.players[f.carrier!];
+    assert.ok(p, 'the tagged carrier is on the pitch');
+    if (Math.hypot(p.x - f.ball.x, p.y - f.ball.y) <= 1.5) atFeet++;
+  }
+  assert.ok(
+    atFeet / carried.length >= 0.95,
+    `carried ball is at the carrier's feet (${(100 * atFeet / carried.length).toFixed(1)}% of carried frames)`,
+  );
+
+  // real motion, not anchor noise: a player's positions across the half form
+  // a path with real displacement (fabricated frames hovered around anchors)
+  const someId = Object.keys(frames[0].players)[0];
+  const xs = frames.slice(0, 200).map((f) => f.players[someId]).filter(Boolean);
+  const span = Math.max(...xs.map((p) => p.x)) - Math.min(...xs.map((p) => p.x));
+  assert.ok(span > 5, `players actually travel (x-span ${span.toFixed(1)}m over 20 min)`);
 });
 
 test('a second force on the same (now revealed) week → 409 no_open_matchweek', async () => {

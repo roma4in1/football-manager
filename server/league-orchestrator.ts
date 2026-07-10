@@ -130,6 +130,12 @@ export interface CoreOptions {
 }
 
 export function createCore(opts: CoreOptions): OrchestratorCore {
+  // THE ENGINE (DECISIONS 2026-08-29): the intended switch to the AgentEngine
+  // is BLOCKED on outcomes — the agent passes integration (full suite green as
+  // default) and sim-cost (~1.6s/half on the prod machine) but fails 24 stat-
+  // harness bands (possession σ~13 vs 6–9, ~20 offsides/match, home-advantage
+  // shape, 4 instruction sweeps). Default stays the calibrated aggregate;
+  // SIM_ENGINE=agent (league-server.ts) opts a deployment in knowingly.
   const { pool, engine = new AggregateEngine(), onAssertion } = opts;
   const report = onAssertion ?? ((err: Error) => console.error('[league-core] ASSERTION FAILURE:', err));
   async function withTxn<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {

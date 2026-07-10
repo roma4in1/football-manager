@@ -42,7 +42,8 @@
     "realism:ci:sharp": "node realism-harness.ts --fixture --sharpness-mixed",
     "growth": "node growth-harness.ts",
     "growth:ci": "node growth-harness.ts --fixture",
-    "harness-fixture": "node make-harness-fixture.ts"
+    "harness-fixture": "node make-harness-fixture.ts",
+    "bench": "node bench-agent.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
