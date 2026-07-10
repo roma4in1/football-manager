@@ -40,6 +40,9 @@ export function stitchFrames(halves: ReplayHalf[]): ReplayFrame[] {
 export interface Snapshot {
   ball: { x: number; y: number; flight: string };
   players: Record<string, Vec2>;
+  /** engine-emitted possession when frames carry it: an id, null (loose/in
+   * transit), or undefined (pre-carrier frames — the viewer infers). */
+  carrier?: string | null;
 }
 
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
@@ -112,14 +115,35 @@ export function interpolate(frames: ReplayFrame[], t: number): Snapshot {
   const grounded = a.ball.flight === 'ground' && b.ball.flight === 'ground';
   const b0 = grounded && prev.ball.flight === 'ground' ? prev.ball : a.ball;
   const b3 = grounded && next.ball.flight === 'ground' ? next.ball : b.ball;
-  const ball = grounded
+  let ball = grounded
     ? { x: catmullRom(b0.x, a.ball.x, b.ball.x, b3.x, k), y: catmullRom(b0.y, a.ball.y, b.ball.y, b3.y, k) }
     : { x: lerp(a.ball.x, b.ball.x, k), y: lerp(a.ball.y, b.ball.y, k) };
+
+  // engine-emitted possession (frames since the carrier field): glue the
+  // ball to the carrier's interpolated dot; a carrier CHANGE renders as the
+  // ball travelling between the two moving players — a legible pass
+  let carrier: string | null | undefined = undefined;
+  if (a.carrier !== undefined && b.carrier !== undefined) {
+    const pa2 = a.carrier ? players[a.carrier] : undefined;
+    const pb2 = b.carrier ? players[b.carrier] : undefined;
+    if (a.carrier && a.carrier === b.carrier && pa2) {
+      ball.x = pa2.x;
+      ball.y = pa2.y;
+      carrier = a.carrier;
+    } else if (pa2 && pb2) {
+      ball.x = lerp(pa2.x, pb2.x, k);
+      ball.y = lerp(pa2.y, pb2.y, k);
+      carrier = null; // in transit between feet
+    } else {
+      carrier = k < 0.5 ? a.carrier : b.carrier; // released or claimed mid-gap
+    }
+  }
 
   return {
     // flight from the NEARER endpoint — a landed pass reads as landed
     ball: { ...ball, flight: k < 0.5 ? a.ball.flight : b.ball.flight },
     players,
+    carrier,
   };
 }
 
@@ -151,6 +175,7 @@ function frameSnapshot(f: ReplayFrame): Snapshot {
   return {
     ball: { x: f.ball.x, y: f.ball.y, flight: f.ball.flight },
     players: Object.fromEntries(Object.entries(f.players).map(([id, p]) => [id, { ...p }])),
+    carrier: f.carrier,
   };
 }
 

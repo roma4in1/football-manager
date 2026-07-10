@@ -98,6 +98,47 @@ describe('carrierAt', () => {
   });
 });
 
+describe('interpolate — engine-emitted carrier', () => {
+  const withCarrier = (t: number, px: number, carrier: string | null): ReplayFrame => ({
+    t,
+    ball: { x: px + 0.4, y: 30, flight: 'ground' },
+    carrier,
+    players: { p1: { x: px, y: 30 }, p2: { x: 80, y: 50 } },
+  });
+
+  it('same carrier both ends → ball glued to his interpolated dot', () => {
+    const frames = [withCarrier(0, 10, 'p1'), withCarrier(6, 20, 'p1')];
+    const snap = interpolate(frames, 3);
+    expect(snap.carrier).toBe('p1');
+    expect(snap.ball.x).toBeCloseTo(snap.players.p1.x);
+    expect(snap.ball.y).toBeCloseTo(snap.players.p1.y);
+  });
+
+  it('carrier change → ball travels between the two moving players, in-transit', () => {
+    const a = withCarrier(0, 10, 'p1');
+    const b: ReplayFrame = {
+      t: 6,
+      ball: { x: 80, y: 50, flight: 'ground' },
+      carrier: 'p2',
+      players: { p1: { x: 10, y: 30 }, p2: { x: 80, y: 50 } },
+    };
+    const snap = interpolate([a, b], 3);
+    expect(snap.carrier).toBeNull();
+    expect(snap.ball.x).toBeCloseTo((snap.players.p1.x + snap.players.p2.x) / 2);
+  });
+
+  it('pre-carrier frames leave possession undefined (viewer infers)', () => {
+    const frames = [frame(0, 10), frame(6, 22)];
+    expect(interpolate(frames, 3).carrier).toBeUndefined();
+  });
+
+  it('released mid-gap: carrier reads from the nearer endpoint', () => {
+    const frames = [withCarrier(0, 10, 'p1'), withCarrier(6, 20, null)];
+    expect(interpolate(frames, 1).carrier).toBe('p1');
+    expect(interpolate(frames, 5).carrier).toBeNull();
+  });
+});
+
 describe('ballAt', () => {
   it('matches the full interpolation', () => {
     const frames = [frame(0, 10), frame(6, 22), frame(12, 30)];

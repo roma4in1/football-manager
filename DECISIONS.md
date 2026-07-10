@@ -3,6 +3,45 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-28 — motion pass: the yoyo and the wandering ball — and the ENGINE FINDING
+
+- **FINDING (load-bearing): production runs the AggregateEngine.** The
+  orchestrator's default (`engine = new AggregateEngine()`,
+  league-orchestrator.ts) was never flipped; nothing in server/ instantiates
+  AgentEngine. So prod results are the aggregate engine's (stat-harness
+  gated — fine), and prod REPLAYS are `fabricateFrames` — cosmetic fiction,
+  not simulated motion. Both reported symptoms (yoyo, ball never at feet)
+  were artifacts of that fabrication: IID gauss noise re-rolled around
+  anchors every keyframe, and a ball random-walking (σ9m/frame) attached to
+  nobody. The calibrated agent sim was never what anyone watched. SWITCHING
+  ENGINES IS A SEPARATE DECISION (deliberately not made here): AgentEngine
+  implements the same SimEngine contract incl. HalfTimeState v2 resume and
+  passes the realism gates, but the switch needs its own validation pass —
+  integration suite against AgentEngine, per-fixture sim cost check, and
+  acceptance that all live-league results change generator.
+- **Aggregate fabrication reworked** (cosmetic-only path — no stat reads
+  frames): players get a persistent offset + momentum wander (calm drift,
+  held shape — no more per-keyframe re-roll); possession is fabricated
+  (carrier holds at feet a few frames → pass → occasional loose-frame
+  turnover) and frames emit `carrier`. Fabrication now draws from a
+  DEDICATED Rng fork; a legacy-stream burn shim replays the old draw
+  pattern on the outcome stream because dropping those draws re-noised all
+  three harness master seeds (v3 fell out of band). Shim removable only
+  with an aggregate recalibration or the engine switch. Stat harness: 82/0.
+- **Agent motion damped** (the yoyo fix where motion is real):
+  `stepToward` gains a deadzone (0.7m — stand calmly instead of
+  micro-hunting a jittering per-tick attractor) and velocity inertia
+  (accelSmoothing 0.65 — direction changes curve, not reverse).
+  CALIBRATION-TUNED: stronger damping (0.35–0.55 blends) compressed quality
+  separation — the sharp fixture fell to 0.525 and the real pool sat at
+  exactly 0.550 vs the >0.55 gate. At 0.7/0.65 ALL FOUR realism suites pass
+  with margin: real 0.650, real-sharp 0.575, fixture 0.725, fixture-sharp
+  0.625 (r 0.83–0.87 throughout).
+- **ReplayFrame.carrier** (optional field): both engines emit who has the
+  ball; the viewer glues the ball to the carrier's interpolated dot, renders
+  carrier changes as the ball travelling between the two MOVING players, and
+  falls back to nearest-player inference on pre-field frames.
+
 ## 2026-08-27 — replay viewer: spline motion + inferred possession
 
 - **Viewer-only pass, deliberately**: the improved presentation is the

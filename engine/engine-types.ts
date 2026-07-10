@@ -171,6 +171,9 @@ export interface MatchEvent {
 export interface ReplayFrame {
   t: number;
   ball: Vec2 & { flight: BallFlight };
+  /** who has the ball at this keyframe (null = loose/in flight). Optional:
+   * frames stored before 2026-08 lack it — viewers fall back to inference. */
+  carrier?: string | null;
   players: Record<string, Vec2>; // sampled at render rate (~4 Hz), not sim rate
 }
 

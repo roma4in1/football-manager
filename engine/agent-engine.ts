@@ -650,21 +650,41 @@ function setup(
 
 /** Returns the distance actually covered (feeds work-based fatigue). */
 function stepToward(s: AgentState, target: Vec2): number {
+  const d = dist(s.pos, target);
+
+  // deadzone: already at the target for practical purposes — stand calmly
+  // instead of micro-hunting a per-tick jittering attractor (the yoyo fix);
+  // velocity bleeds off so the pitch-control arrival model sees a stop
+  if (d <= AGENT_CAL.moveDeadzoneM) {
+    s.vel = { x: s.vel.x * 0.5, y: s.vel.y * 0.5 };
+    return 0;
+  }
+
   // urgency: sprint at distant targets (chases), jog positional shuffles —
   // this is what concentrates fatigue on pressers instead of everyone
-  const urgency = Math.min(1, dist(s.pos, target) / AGENT_CAL.urgencyDistM);
+  const urgency = Math.min(1, d / AGENT_CAL.urgencyDistM);
   const speed =
     AGENT_CAL.maxSpeedMps * (s.attributes.pace / 20) * (1 - AGENT_CAL.fatigueSpeedPenalty * s.fatigue) *
     (AGENT_CAL.cruiseSpeedShare + (1 - AGENT_CAL.cruiseSpeedShare) * urgency);
-  const step = speed * AGENT_CAL.tickSeconds;
-  const d = dist(s.pos, target);
+
+  // inertia: blend velocity toward the desired vector instead of snapping to
+  // it — direction changes carry momentum, so a flipped target curves the
+  // run rather than reversing it instantly
+  const desired = { x: ((target.x - s.pos.x) / d) * speed, y: ((target.y - s.pos.y) / d) * speed };
+  const blend = AGENT_CAL.accelSmoothing;
+  let vx = s.vel.x + (desired.x - s.vel.x) * blend;
+  let vy = s.vel.y + (desired.y - s.vel.y) * blend;
+  const vMag = Math.hypot(vx, vy);
+  if (vMag > speed) {
+    vx *= speed / vMag;
+    vy *= speed / vMag;
+  }
+
   const prev = s.pos;
-  s.pos = d <= step
-    ? clampToPitch({ ...target })
-    : clampToPitch({
-        x: s.pos.x + ((target.x - s.pos.x) / d) * step,
-        y: s.pos.y + ((target.y - s.pos.y) / d) * step,
-      });
+  const stepLen = Math.hypot(vx, vy) * AGENT_CAL.tickSeconds;
+  s.pos = d <= stepLen
+    ? clampToPitch({ ...target }) // arrival: land on the target, no orbiting
+    : clampToPitch({ x: s.pos.x + vx * AGENT_CAL.tickSeconds, y: s.pos.y + vy * AGENT_CAL.tickSeconds });
   // velocity feeds the pitch-control arrival model (reaction-window carry)
   const moved = dist(prev, s.pos);
   s.vel = {
@@ -723,7 +743,15 @@ function giveToKeeper(ball: BallState, states: AgentState[], tracker: PhaseTrack
 function frame(t: number, ball: BallState, states: AgentState[]): ReplayFrame {
   const players: Record<string, Vec2> = {};
   for (const s of active(states)) players[s.id] = { x: round1(s.pos.x), y: round1(s.pos.y) };
-  return { t: round1(t), ball: { x: round1(ball.pos.x), y: round1(ball.pos.y), flight: ball.flight }, players };
+  return {
+    t: round1(t),
+    ball: { x: round1(ball.pos.x), y: round1(ball.pos.y), flight: ball.flight },
+    // the sim pins a carried ball to the carrier every tick — emitting WHO
+    // lets the viewer keep it at their feet between 6s keyframes instead of
+    // interpolating it through open space (DECISIONS: the noted field)
+    carrier: ball.carrierId,
+    players,
+  };
 }
 
 class Tallies {

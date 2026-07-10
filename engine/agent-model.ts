@@ -38,6 +38,13 @@ export const AGENT_CAL = {
   maxSpeedMps: 7.5, // scaled by pace/20 at use sites
   cruiseSpeedShare: 0.35, // jog share of max speed for near-target shuffles
   urgencyDistM: 10, // target this far away → full sprint
+  // ── motion smoothing (the yoyo fix) ──────────────────────────────────────
+  // Targets recompute every tick from moving attractors (ball pulls, marking
+  // pickups, press membership), so raw target-chasing reverses direction
+  // tick-to-tick — the oscillation the replay made visible. Players hold
+  // still inside a small deadzone and carry momentum through target changes.
+  moveDeadzoneM: 0.7, // already this close to the target → stand, don't micro-hunt
+  accelSmoothing: 0.65, // per-tick blend of velocity toward the desired vector (1 = legacy instant turn)
   fatigueSpeedPenalty: 0.45, // ×(1 − penalty·fatigue)
   lineHeightShiftM: 12, // defensive base x shift across lineHeight 0→1
   widthSpreadBase: 0.7, // y spread = base + gain×width
