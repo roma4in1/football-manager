@@ -663,6 +663,14 @@ export async function squadCounts(c: Queryable, seasonId: string): Promise<Map<s
   return new Map(rows.map((r) => [r.club_id, r.n]));
 }
 
+/** Active contracts per club — the second ledger the completion floor checks. */
+export async function activeContractCounts(c: Queryable): Promise<Map<string, number>> {
+  const { rows } = await c.query(
+    `SELECT club_id, count(*)::int AS n FROM contracts WHERE released_at IS NULL GROUP BY club_id`,
+  );
+  return new Map(rows.map((r) => [r.club_id, r.n]));
+}
+
 export async function signPlayer(
   c: Queryable, seasonId: string, clubId: string, playerId: string, wage: number, duration: number, price: number,
 ): Promise<void> {
@@ -1397,12 +1405,21 @@ export async function currentMatchweek(c: Queryable, seasonId: string): Promise<
   };
 }
 
-/** TEST-ONLY (the force-week-close endpoint): pull an unrevealed matchweek's
- * deadline to now() so the REAL runWeekClose path fires immediately. Returns
- * false if the week was already revealed (nothing to force). */
+/** TEST-ONLY (the force-week-close endpoint): declare an unrevealed matchweek
+ * open-and-due NOW so the REAL runWeekClose path fires immediately. Returns
+ * false if the week was already revealed (nothing to force).
+ *
+ * opens_at must come along: the schedule lays weeks out on the original
+ * cadence (each opens at the prior deadline), so every week after the first
+ * forced one still has opens_at in the future — pulling only deadline_at
+ * violates CHECK (deadline_at > opens_at). That was the N=2 live-test 23514
+ * ("matchweeks_check") on the season's later weeks. */
 export async function forceMatchweekDeadline(c: Queryable, matchweekId: string): Promise<boolean> {
   const res = await c.query(
-    `UPDATE matchweeks SET deadline_at = now() WHERE id = $1 AND revealed_at IS NULL`,
+    `UPDATE matchweeks
+        SET opens_at = LEAST(opens_at, now() - interval '1 second'),
+            deadline_at = now()
+      WHERE id = $1 AND revealed_at IS NULL`,
     [matchweekId],
   );
   return (res.rowCount ?? 0) > 0;
