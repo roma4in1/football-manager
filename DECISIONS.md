@@ -3,6 +3,46 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-30 — agent calibration step 1: the offside MODEL + the sweep diagnosis
+
+- **Offsides diagnosed, then re-modeled** (was ~21/team-match; real ~2.2).
+  The margin probe showed 100% of flags in the 0.5–1.5m band with receivers
+  moving BACK toward onside — not stranded runners, and not a broken line
+  (second-last defender was computed correctly). The cause was structural:
+  passer judgement (accept ≤ line+1.5m) was LOOSER than the flag (+0.5m),
+  and both evaluate the SAME tick's positions — so every pass to a
+  band-sitting shoulder-rider was a deterministic offside. "Run timing"
+  did not exist as a mechanic.
+- **The new model**: passers judge STRICTLY (accept receivers at/behind the
+  line — passerLineJudgementM 0), which makes same-tick geometric flags
+  impossible for chosen receivers (the geometric check stays as a backstop).
+  Offsides now come from MISTIMED RUNS: a line-riding receiver (within
+  offsideRideZoneM 4 of the line) of a forward pass strays on a keyed draw
+  (`rng.chance(…, tick, receiverId, 'offside-timing')` — no stream
+  reshuffle), scaled by off-the-ball movement (offsideTimingSkill 0.5: OTB
+  20 halves the rate, OTB 0 ×1.5). mistimedRunProb 0.015 — harness squads
+  attempt ~160 line-riding passes/match → **2.2–2.3 offsides/team-match on
+  all three seeds** (was 15.4–16.3 at prob 0.1; real ~2.2). The
+  lineHeight↑→offsides↑ sweep still passes (2.70 vs 1.60, gate +0.5)
+  because a higher line clamps more receivers into the ride zone —
+  the mechanism preserves the tactical signal by construction.
+- **Sweep diagnosis (Part B — the arc-scoping answer): wired, but drowned.**
+  A choice-counting probe (decision-model injection) shows instruction
+  biases ARE in the scoring and directionally correct — but the softmax
+  temperature averages ~0.80 in play (base 0.55 + pressure noise) while the
+  top1–top2 score gap averages ~0.08. Signal-to-temperature ≈ 0.1: choice
+  is near-uniform among plausible options, so risk 0.15→0.85 moves option
+  shares by ~1% (longPass 1.8→2.1%). THIS IS ONE ROOT CAUSE, NOT FOUR:
+  press/risk/cross sweeps all fail for the same reason. Fix class:
+  medium — re-scale the temperature stack (base/pressure-noise/decisions
+  relief) so scoring expresses, then re-tune every band that shifts (this
+  is the real calibration arc, one global knob with global consequences —
+  NOT a per-instruction gain hunt, and NOT a rewiring problem). Caveat: the
+  cross share was 0% in the synthetic probe (geometry gate), so crossBias
+  needs re-probing with winger anchors after the temperature work.
+- Realism (league ordering) re-verified ×4 after the offside change; the
+  aggregate engine untouched (agent-only files).
+
 ## 2026-08-29 — engine switch attempted: BLOCKED on outcomes, not cost
 
 The decided switch to the AgentEngine ran its three gates. Two passed, one

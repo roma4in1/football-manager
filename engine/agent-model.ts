@@ -189,7 +189,19 @@ export const AGENT_CAL = {
   injuryPerTickBase: 0.0000019, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
   injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
   offsideToleranceM: 0.5, // linesman: receiver this far beyond the second-last defender → flagged
-  passerLineJudgementM: 1.5, // passers skip receivers beyond line+this; the flag band is tolerance..judgement
+  // Passers now judge STRICTLY (accept only receivers at/behind the line):
+  // the old +1.5m judgement band made every band-sitting pass a
+  // deterministic same-tick offside (~20/team-match with realistic squads —
+  // DECISIONS 2026-08-30). Offsides instead come from MISTIMED RUNS below.
+  passerLineJudgementM: 0, // accept receivers up to line+this — 0 = at the line
+  // ── mistimed runs (the offside model) ─────────────────────────────────────
+  // A receiver riding the line (within rideZone of it) on a forward pass
+  // occasionally mistimes the run — keyed draw, better off-the-ball movement
+  // strays less. This is where offsides come from now; the geometric flag
+  // stays as a backstop for genuinely-beyond receivers.
+  offsideRideZoneM: 3.5, // "on the shoulder" = within this of the second-last defender
+  mistimedRunProb: 0.015, // per risky (line-riding, forward) pass; harness squads ride ~160/match → ~2.4 offsides (real ~2.2)
+  offsideTimingSkill: 0.5, // ×(1 − skill·(offTheBall/20 − 0.5)·2): OTB 20 halves it, OTB 0 ×1.5
   lineHoldBufferM: 2.0, // attackers hold this far INSIDE the line (onside-safe hover)
   penaltyGoalProb: 0.76,
   cornerProb: 0.1, // P(corner | shot saved or off target)

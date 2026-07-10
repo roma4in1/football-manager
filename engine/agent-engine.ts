@@ -387,14 +387,27 @@ export class AgentEngine implements SimEngine {
             : passReceiver.pos.x < line - AGENT_CAL.offsideToleranceM;
           const beyondBall = side === 'home' ? passReceiver.pos.x > ball.pos.x : passReceiver.pos.x < ball.pos.x;
           const inOppHalf = ownRelX(side, passReceiver.pos.x) > PITCH_LENGTH / 2;
-          if (beyondLine && beyondBall && inOppHalf) {
+          // the offside MODEL (DECISIONS 2026-08-30): passers no longer pick
+          // visibly-offside receivers (strict judgement in agent-decision), so
+          // the geometric flag is a backstop; offsides come from MISTIMED
+          // RUNS — a line-riding receiver of a forward pass strays on a keyed
+          // draw, less often the better their off-the-ball movement
+          const ridingLine = side === 'home'
+            ? passReceiver.pos.x > line - AGENT_CAL.offsideRideZoneM
+            : passReceiver.pos.x < line + AGENT_CAL.offsideRideZoneM;
+          const timing = 1 - AGENT_CAL.offsideTimingSkill * (passReceiver.attributes.offTheBall / 20 - 0.5) * 2;
+          const mistimed = !beyondLine && ridingLine && beyondBall && inOppHalf &&
+            rng.chance(AGENT_CAL.mistimedRunProb * Math.max(0.2, timing), tick, passReceiver.id, 'offside-timing');
+          if ((beyondLine && beyondBall && inOppHalf) || mistimed) {
             const margin = side === 'home' ? passReceiver.pos.x - line : line - passReceiver.pos.x;
             events.push({
               t: now, type: 'offside', playerId: passReceiver.id, from: { ...passReceiver.pos },
-              // diagnosis meta: how far beyond, and was the receiver moving
+              // diagnosis meta: geometric margin (mistimes are ≤ tolerance),
+              // receiver velocity, and which channel flagged it
               meta: {
                 margin: Math.round(margin * 10) / 10,
                 recvVx: Math.round(passReceiver.vel.x * 10) / 10,
+                mistimed: mistimed ? 1 : 0,
               },
             });
             giveToKeeper(ball, states, tracker, oppositeOf(side));
