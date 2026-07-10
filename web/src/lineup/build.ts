@@ -4,7 +4,7 @@
  * the v0 stand-in for the two-anchor pitch input (DECISIONS.md).
  */
 
-import type { PlayerInstructions, Tactics, TeamInstructions } from '@fm/engine/types';
+import type { PlayerInstructions, PlayerTactic, Tactics, TeamInstructions } from '@fm/engine/types';
 import {
   formationSlots,
   groupOf,
@@ -83,6 +83,24 @@ export function buildTactics(
       penalties: best((p) => p.attributes.finishing),
     },
   };
+}
+
+/**
+ * Inherit-on-swap: the tactical config (phase anchors, sliders, zones)
+ * belongs to slot i — remapping the starters onto the slots changes only the
+ * playerIds. A slot beyond the configured list (squad smaller than a full
+ * plan) synthesizes a default from the shared template.
+ */
+export function inheritSlots(
+  slots: PlayerTactic[],
+  starters: string[],
+  squad: SquadPlayerView[],
+  team: TeamInstructions,
+): PlayerTactic[] {
+  return starters.map((id, i) => {
+    const slotConfig = slots[i] ?? buildTactics({ starters: [id], bench: [] }, squad, {}, team).players[0];
+    return { ...slotConfig, playerId: id };
+  });
 }
 
 /** The client-side mirror: same pure validator the server runs. */

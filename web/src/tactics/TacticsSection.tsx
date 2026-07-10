@@ -1,7 +1,8 @@
 /**
  * tactics — deploy (DESIGN-SPEC): the pitch editor (6 phase tabs, gravity
- * anchors, zones, per-player sliders), the lineup (slot assignment with
- * inherit-on-swap), team instructions (their own surface), and presets.
+ * anchors, zones, per-player sliders), the lineup-as-pitch (presets first,
+ * XI on a pitch, bench underneath, drag/tap to sub with inherit-on-swap),
+ * team instructions (their own surface), and presets.
  *
  * The draft edits the club's DEFAULT tactics (the standing plan every
  * fixture auto-fills from); this week's one-off submission stays in the
@@ -18,8 +19,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InstructionZone, Phase, PlayerInstructions, Tactics, Vec2 } from '@fm/engine/types';
 import { api, ApiError, type SquadPlayerView } from '../api.ts';
-import { buildTactics, defaultTeamInstructions, type Selection } from '../lineup/build.ts';
-import { LineupPicker } from '../lineup/LineupPicker.tsx';
+import { buildTactics, defaultTeamInstructions, inheritSlots, type Selection } from '../lineup/build.ts';
+import { LineupPitch } from '../lineup/LineupPitch.tsx';
 import { PitchEditor, type PitchPlayer, type ZoneCorner } from './PitchEditor.tsx';
 import { TeamShapePitch } from './TeamShapePitch.tsx';
 
@@ -70,6 +71,7 @@ export function TacticsSection() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [presetName, setPresetName] = useState('');
+  const [lineupIntro, setLineupIntro] = useState(true); // presets-first gate on the lineup tab
 
   useEffect(() => {
     void (async () => {
@@ -188,14 +190,7 @@ export function TacticsSection() {
 
   /** inherit-on-swap: the config belongs to slot i; only playerIds change */
   const remapLineup = (sel: Selection) =>
-    setDraft((d) => {
-      if (!d) return d;
-      const players = sel.starters.map((id, i) => {
-        const slotConfig = d.players[i] ?? buildTactics({ starters: [id], bench: [] }, squad, {}, d.team).players[0];
-        return { ...slotConfig, playerId: id };
-      });
-      return { ...d, players, bench: sel.bench };
-    });
+    setDraft((d) => d && { ...d, players: inheritSlots(d.players, sel.starters, squad, d.team), bench: sel.bench });
 
   const zones = selected?.zones[phase] ?? [];
 
@@ -306,19 +301,63 @@ export function TacticsSection() {
           </div>
         )}
 
-        {tab === 'lineup' && (
-          <div className="pane pane-scroll" style={{ height: '100%' }}>
-            <p className="muted" style={{ marginTop: 0 }}>
-              A swapped-in player inherits the slot's phase anchors, sliders and zones.
+        {tab === 'lineup' && (lineupIntro ? (
+          /* PRESETS FIRST: pick a starting point, then fine-tune on the pitch */
+          <div className="pane pane-scroll lineup-start" style={{ height: '100%' }} data-testid="lineup-start">
+            <h2 style={{ marginTop: 0 }}>Start from…</h2>
+            <p className="muted" style={{ margin: '0 0 0.6rem' }}>
+              Lay out the XI from a plan, then fine-tune on the pitch.
             </p>
-            <LineupPicker
-              key={draft.players.map((p) => p.playerId).join(',')}
-              squad={squad}
-              initial={{ starters: draft.players.map((p) => p.playerId), bench: draft.bench }}
-              onChange={(sel) => remapLineup(sel)}
-            />
+            <div className="lineup-start-cards">
+              <button type="button" className="card tight start-card" onClick={() => setLineupIntro(false)}>
+                <strong>Current draft</strong>
+                <span className="muted">keep editing what's on the pitch now</span>
+              </button>
+              <button
+                type="button"
+                className="card tight start-card"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      const { payload } = await api.defaultTactics();
+                      setDraft(payload);
+                      setSelectedId(payload.players[0]?.playerId ?? null);
+                    } catch {
+                      setNotice('No standing plan saved yet — starting from the current draft.');
+                    }
+                    setLineupIntro(false);
+                  })();
+                }}
+              >
+                <strong>My standing plan</strong>
+                <span className="muted">the saved default every fixture auto-fills from</span>
+              </button>
+              {Object.entries(readStore<Tactics>(FULL_KEY)).map(([name, t]) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="card tight start-card"
+                  onClick={() => {
+                    setDraft(t);
+                    setSelectedId(t.players[0]?.playerId ?? null);
+                    setLineupIntro(false);
+                  }}
+                >
+                  <strong>{name}</strong>
+                  <span className="muted">saved tactic preset (this device)</span>
+                </button>
+              ))}
+            </div>
           </div>
-        )}
+        ) : (
+          <LineupPitch
+            squad={squad}
+            slots={draft.players}
+            bench={draft.bench}
+            onChange={remapLineup}
+            onOpenPresets={() => setLineupIntro(true)}
+          />
+        ))}
 
         {tab === 'team' && (
           <div className="screen">

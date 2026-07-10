@@ -388,6 +388,63 @@ button.watch { padding: 0.14rem 0.55rem; font-size: 0.78rem; color: var(--accent
   .editor-hint { display: none; }
 }
 
+/* ── lineup-as-pitch: XI on the pitch, bench underneath, reserves aside ──── */
+.lineup-hero { min-height: 0; }
+.pitch-slot, .bench-chip, .reserves .player-row { user-select: none; -webkit-user-select: none; }
+
+.bench-strip {
+  display: flex; align-items: stretch; gap: 0.4rem;
+  margin-top: 0.45rem; padding-bottom: 2px;
+  overflow-x: auto; flex-shrink: 0;
+}
+.bench-label {
+  align-self: center; flex-shrink: 0; line-height: 1.25; text-align: right;
+  font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.bench-chip {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-width: 88px; flex-shrink: 0; padding: 0.28rem 0.45rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-size: 0.78rem; text-align: left; cursor: grab;
+  touch-action: pan-x; /* strip pans sideways; a vertical pull starts the drag */
+}
+.bench-chip .chip-name { font-weight: 600; max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bench-chip .chip-meta { display: flex; align-items: center; gap: 0.25rem; }
+.bench-chip .fitbars { margin: 0; }
+.bench-chip .fitbar { width: 34px; height: 4px; }
+.bench-chip .badge { position: absolute; top: 2px; right: 3px; font-size: 0.58rem; padding: 0 0.28rem; }
+.bench-chip.empty {
+  align-items: center; justify-content: center; min-width: 44px;
+  border-style: dashed; color: var(--faint); font-weight: 700; cursor: pointer;
+}
+
+.bench-chip.sel, .player-row.sel { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--accent-soft); }
+.bench-chip.hover, .player-row.hover { outline: 2px dashed var(--accent); outline-offset: -1px; }
+
+.reserves { touch-action: pan-y; } /* list scrolls; a sideways pull starts the drag */
+.lineup-hint { font-size: 0.74rem; margin: 0 0 0.5rem; }
+
+.drag-ghost {
+  position: fixed; z-index: 50; transform: translate(-50%, -130%);
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 0.78rem; font-weight: 700; padding: 0.18rem 0.55rem; border-radius: 999px;
+  pointer-events: none; box-shadow: var(--shadow); white-space: nowrap;
+}
+
+.lineup-start-cards { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: stretch; }
+.start-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-width: 178px; max-width: 250px; margin: 0; cursor: pointer; text-align: left;
+}
+.start-card .muted { font-size: 0.76rem; font-weight: 400; }
+
+@media (max-height: 480px) {
+  .bench-chip { min-width: 80px; padding: 0.2rem 0.4rem; }
+  .lineup-hint { display: none; }
+}
+
 /* ── auction: the three-pane room (the tightest 375px fit) ──────────────── */
 .auction { gap: 0.6rem; }
 .auction-left { flex: 0 0 168px; }
