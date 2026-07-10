@@ -273,6 +273,11 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
     const result = await withTxn(async (c) => {
       const lot = await store.getLot(c, lotId, true);
       if (!lot || lot.wonBy) return 'skipped' as const;
+      // a close job that fires after the auction ended (queue lag) must not
+      // sign anyone — post-completion signings would mutate squads outside
+      // the completion floor's watch. The player simply stays in the pool.
+      const season = await store.currentSeason(c);
+      if (!season || season.phase !== 'auction' || season.id !== lot.seasonId) return 'skipped' as const;
       const now = await store.dbNow(c);
       if (lot.closesAt > now) return 'skipped' as const; // extended — a later timer owns it
 
@@ -309,9 +314,23 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       if (!row || row.phase !== 'auction') return null;
       if (await store.liveLot(c, season.id)) return null;
 
+      // The floor is checked against BOTH ledgers — squad_players AND active
+      // contracts — and whichever is LOWER binds. The live test completed
+      // with a club at 11/13 (DECISIONS 2026-08-26, open investigation); the
+      // divergence was never reproduced from these code paths, so instead of
+      // trusting one count the gate now refuses completion whenever the two
+      // ledgers disagree about a club having reached squadMin.
       const clubs = await store.clubsBySeed(c, season.id);
-      const counts = await store.squadCounts(c, season.id);
-      if (!clubs.every((club) => (counts.get(club.clubId) ?? 0) >= squadMin)) return null;
+      const floors = async (): Promise<Map<string, number>> => {
+        const counts = await store.squadCounts(c, season.id);
+        const contracted = await store.activeContractCounts(c);
+        return new Map(clubs.map((club) => [
+          club.clubId,
+          Math.min(counts.get(club.clubId) ?? 0, contracted.get(club.clubId) ?? 0),
+        ]));
+      };
+      const atGate = await floors();
+      if (clubs.length === 0 || clubs.some((club) => atGate.get(club.clubId)! < squadMin)) return null;
 
       // the split BINDS: unspent bring converts to reserve at the configured
       // rate — half-back, so over-bringing costs (DECISIONS.md). Runs once:
@@ -351,6 +370,17 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       }
 
       await store.transitionSeason(c, season.id, 'regular'); // guarded by the SQL state machine
+
+      // backstop: the transition NEVER commits with a club under the floor —
+      // if a future edit weakens the gate above, this throw rolls the whole
+      // completion (schedule included) back instead of opening the season.
+      const atCommit = await floors();
+      const short = clubs.filter((club) => atCommit.get(club.clubId)! < squadMin);
+      if (short.length > 0) {
+        throw new Error(
+          `auction completion invariant violated: ${short.map((x) => x.name).join(', ')} below squadMin ${squadMin}`,
+        );
+      }
       return matchweekIds;
     });
     if (!generated) return false;
