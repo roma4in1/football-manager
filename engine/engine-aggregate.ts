@@ -467,7 +467,29 @@ export class AggregateEngine implements SimEngine {
     events.sort((a, b) => a.t - b.t || a.seq - b.seq);
 
     // ── frames + heatmaps
-    const frames = fabricateFrames(rng, t0, tiltH, home, away);
+    // frames draw from a DEDICATED fork: fabrication noise must never consume
+    // the outcome stream (endState.rngState below resumes half 2 from it)
+    const frames = fabricateFrames(Rng.fromSeed(`${fixture.fixtureId}|${seed}|frames|${fixture.half}`), t0, tiltH, home, away);
+    // legacy-stream shim: the OLD fabrication drew from the outcome stream
+    // right here (2 gauss + 1 weighted + 2 gauss per player, per frame).
+    // Burn the identical call pattern so every historical seed keeps
+    // reproducing byte-identically — dropping the draws re-noised all three
+    // harness master seeds and pushed harness-v3 out of band (draw_share,
+    // home_win_share, headed_goal_share). Remove only alongside an aggregate
+    // recalibration (or the agent-engine switch).
+    {
+      const nBurn = Math.floor(HALF_SECONDS / CAL.frameDt);
+      const legacyWeights = [0.75, 0.1, 0.1, 0.05];
+      for (let k = 0; k < nBurn; k++) {
+        rng.gauss(0, 9);
+        rng.gauss(0, 6);
+        rng.weighted(legacyWeights);
+        for (let i = 0; i < home.players.length + away.players.length; i++) {
+          rng.gauss(0, 2.5);
+          rng.gauss(0, 2.5);
+        }
+      }
+    }
     const heatmaps: Record<string, number[]> = {};
     for (const [team] of pairs(home, away)) {
       const possFrac = (team.side === 'home' ? possH : 100 - possH) / 100;
@@ -630,37 +652,109 @@ function heatmapFor(p: ActivePlayer, possFrac: number): number[] {
   return cells.map((x) => round(x / total, 4));
 }
 
-const FLIGHT_TABLE: Array<[BallFlight, number]> = [
-  ['ground', 0.75],
-  ['driven', 0.1],
-  ['lofted', 0.1],
-  ['high', 0.05],
+const PASS_FLIGHT_TABLE: Array<[BallFlight, number]> = [
+  ['ground', 0.45],
+  ['driven', 0.25],
+  ['lofted', 0.2],
+  ['high', 0.1],
 ];
 
+/**
+ * Fabricated replay frames (this engine has no spatial sim — frames are
+ * cosmetic and read by nothing but the viewer).
+ *
+ * The 2026-08 rework, after the smooth viewer exposed the old fabrication:
+ *  - players used to get IID gauss noise around the anchor EVERY keyframe —
+ *    interpolation turned that into perpetual oscillation (the "yoyo").
+ *    Now each player carries a persistent offset plus a momentum wander:
+ *    calm drift, held shape.
+ *  - the ball used to random-walk detached from everyone (sigma 9m/frame — in
+ *    open space nearly always). Now possession is fabricated: a carrier
+ *    HOLDS the ball at his feet for a few frames, passes to a teammate,
+ *    occasionally loses it (a loose frame, then the other side picks up) —
+ *    and the frame emits `carrier` so the viewer glues ball to player.
+ */
 function fabricateFrames(rng: Rng, t0: number, tiltH: number, home: TeamCtx, away: TeamCtx) {
   const frames = [];
+  const n = Math.floor(HALF_SECONDS / CAL.frameDt);
+
+  const offsets = new Map<string, Vec2>();
+  const wander = new Map<string, Vec2>();
+  for (const p of [...home.players, ...away.players]) {
+    offsets.set(p.id, { x: rng.gauss(0, 1.2), y: rng.gauss(0, 1.2) });
+    wander.set(p.id, { x: 0, y: 0 });
+  }
+
+  const pHome = clamp(0.3 + (tiltH / 100) * 0.4, 0.3, 0.7); // tilt biases who has it
+  let side: TeamCtx = rng.float() < pHome ? home : away;
+  let carrier: ActivePlayer | null = null;
+  let holdLeft = 0;
   let bx = 52.5;
   let by = 34;
-  const drift = (tiltH - 50) * 0.02;
-  const n = Math.floor(HALF_SECONDS / CAL.frameDt);
+
+  const pickCarrier = (t: TeamCtx): ActivePlayer => {
+    const outfield = t.players.filter((p) => !p.isGk);
+    const pool = outfield.length > 0 ? outfield : t.players;
+    return pool[Math.min(pool.length - 1, Math.floor(rng.float() * pool.length))];
+  };
+
   for (let k = 0; k < n; k++) {
     const t = t0 + k * CAL.frameDt;
-    bx = clamp(bx + rng.gauss(drift, 9), 2, 103);
-    by = clamp(by + rng.gauss(0, 6), 2, 66);
-    const flight = FLIGHT_TABLE[rng.weighted(FLIGHT_TABLE.map(([, w]) => w))][0];
-    // coarse phase guess from ball x (global frame): home attacks +x
+
+    // possession bookkeeping: hold, then pass (same side) or turn over
+    // (one loose frame, then the other side picks up)
+    let changed = false;
+    if (holdLeft <= 0) {
+      changed = true;
+      if (carrier && rng.float() < 0.3) {
+        side = side === home ? away : home;
+        carrier = null; // loose ball this frame — the transition is a state
+        holdLeft = 1;
+      } else {
+        carrier = pickCarrier(side);
+        holdLeft = 1 + Math.floor(rng.float() * 3);
+      }
+    }
+    holdLeft--;
+
+    // coarse phase from the ball (global frame): home attacks +x
     const homePhase: Phase = bx < 35 ? 'buildUp' : bx < 70 ? 'progression' : 'finalThird';
     const awayPhase: Phase = bx > 70 ? 'buildUp' : bx > 35 ? 'progression' : 'finalThird';
     const players: Record<string, Vec2> = {};
-    for (const p of home.players) {
-      const a = p.pt.anchors[homePhase];
-      players[p.id] = { x: round(clamp(a.x + rng.gauss(0, 2.5), 0, 105), 1), y: round(clamp(a.y + rng.gauss(0, 2.5), 0, 68), 1) };
+    const place = (id: string, a: Vec2): void => {
+      const off = offsets.get(id)!;
+      const w = wander.get(id)!;
+      // momentum wander: mostly keep going, gently redirect — a drift
+      w.x = clamp(w.x * 0.8 + rng.gauss(0, 0.6), -2.5, 2.5);
+      w.y = clamp(w.y * 0.8 + rng.gauss(0, 0.6), -2.5, 2.5);
+      players[id] = {
+        x: round(clamp(a.x + off.x + w.x, 0, 105), 1),
+        y: round(clamp(a.y + off.y + w.y, 0, 68), 1),
+      };
+    };
+    for (const p of home.players) place(p.id, p.pt.anchors[homePhase]);
+    for (const p of away.players) place(p.id, flip(p.pt.anchors[awayPhase]));
+
+    let flight: BallFlight = 'ground';
+    if (carrier) {
+      // at the carrier's feet — within a stride of the dot
+      const cp = players[carrier.id];
+      bx = clamp(cp.x + rng.gauss(0, 0.35), 0, 105);
+      by = clamp(cp.y + rng.gauss(0, 0.35), 0, 68);
+      if (changed) flight = PASS_FLIGHT_TABLE[rng.weighted(PASS_FLIGHT_TABLE.map(([, w]) => w))][0];
+    } else {
+      // loose: the ball travels toward the side that will pick it up
+      bx = clamp(bx + rng.gauss(side === home ? -6 : 6, 5), 2, 103);
+      by = clamp(by + rng.gauss(0, 5), 2, 66);
+      flight = PASS_FLIGHT_TABLE[rng.weighted(PASS_FLIGHT_TABLE.map(([, w]) => w))][0];
     }
-    for (const p of away.players) {
-      const a = flip(p.pt.anchors[awayPhase]);
-      players[p.id] = { x: round(clamp(a.x + rng.gauss(0, 2.5), 0, 105), 1), y: round(clamp(a.y + rng.gauss(0, 2.5), 0, 68), 1) };
-    }
-    frames.push({ t: round(t, 1), ball: { x: round(bx, 1), y: round(by, 1), flight }, players });
+
+    frames.push({
+      t: round(t, 1),
+      ball: { x: round(bx, 1), y: round(by, 1), flight },
+      carrier: carrier?.id ?? null,
+      players,
+    });
   }
   return frames;
 }

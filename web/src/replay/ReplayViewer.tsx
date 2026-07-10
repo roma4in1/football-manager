@@ -91,12 +91,16 @@ export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds
         // hysteresis: the last carrier keeps the ball while still plausibly
         // on it (radius + slack), so possession doesn't flicker between two
         // players closing on the same ball
-        const prev = carrierRef.current;
-        const prevPos = prev ? snap.players[prev] : undefined;
-        const prevHolds =
-          prevPos && snap.ball.flight === 'ground' &&
-          Math.hypot(prevPos.x - snap.ball.x, prevPos.y - snap.ball.y) <= CARRY_RADIUS_M + 0.8;
-        carrierRef.current = prevHolds ? prev : carrierAt(snap)?.id ?? null;
+        if (snap.carrier !== undefined) {
+          carrierRef.current = snap.carrier; // engine truth — no inference needed
+        } else {
+          const prev = carrierRef.current;
+          const prevPos = prev ? snap.players[prev] : undefined;
+          const prevHolds =
+            prevPos && snap.ball.flight === 'ground' &&
+            Math.hypot(prevPos.x - snap.ball.x, prevPos.y - snap.ball.y) <= CARRY_RADIUS_M + 0.8;
+          carrierRef.current = prevHolds ? prev : carrierAt(snap)?.id ?? null;
+        }
         // short trail behind a moving ball — passes/shots/loose balls read
         // as the BALL travelling, not a glitch
         const trail = [
