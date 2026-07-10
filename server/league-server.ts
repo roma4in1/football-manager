@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import pg from 'pg';
+import { AgentEngine } from '@fm/engine/agent';
 import { LEAGUE_CFG } from '@fm/engine/config';
 import { consoleLinkDelivery, createApi, type LinkDelivery } from './league-api.ts';
 import { resendLinkDelivery } from './league-email.ts';
@@ -70,8 +71,24 @@ if (forceWeekCloseEnabled()) {
   );
 }
 
+// sim engine: default = the calibrated AggregateEngine. SIM_ENGINE=agent
+// opts in to the spatial sim — integration + sim-cost verified, but it does
+// NOT yet meet the stat-harness bands (DECISIONS 2026-08-29): per-match
+// stats will read off-spec (possession spreads, offsides). Visible in
+// `fly config show`, like every operational knob.
+if (process.env.SIM_ENGINE && !['agent', 'aggregate'].includes(process.env.SIM_ENGINE)) {
+  throw new Error(`SIM_ENGINE must be 'agent' or 'aggregate', got ${process.env.SIM_ENGINE}`);
+}
+const engine = process.env.SIM_ENGINE === 'agent' ? new AgentEngine() : undefined; // undefined → orchestrator default (aggregate)
+if (engine) {
+  console.warn(
+    '[league] ⚠️ SIM_ENGINE=agent — the spatial sim is live: real replay motion, but per-match ' +
+    'stats are NOT yet calibrated to the harness bands (possession spread, offsides — DECISIONS 2026-08-29)',
+  );
+}
+
 const pool = new pg.Pool({ connectionString });
-const orchestrator = await createOrchestrator({ pool, connectionString, auctionTuning });
+const orchestrator = await createOrchestrator({ pool, connectionString, auctionTuning, engine });
 const api = await createApi({
   pool, orchestrator, sessionSecret, delivery, baseUrl,
   testForceWeekClose: forceWeekCloseEnabled(),

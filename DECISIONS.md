@@ -3,6 +3,45 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-29 — engine switch attempted: BLOCKED on outcomes, not cost
+
+The decided switch to the AgentEngine ran its three gates. Two passed, one
+failed — the default STAYS AggregateEngine, and the failure is precisely
+scoped:
+
+- **INTEGRATION: PASS.** Full server suite (14 files) green with AgentEngine
+  as the default (1:51 total — sims add ~20s). league-admin.test.ts is now
+  PINNED to the AgentEngine as the standing proof: a real forced week-close
+  sims through the real pipeline and the stored replay is verified real
+  motion — ≥800 frames, carrier-tagged, ball within 1.5m of the tagged
+  carrier on ≥95% of carried frames (the exception is a frame landing
+  exactly on a goal-reset tick, where the ball sits at the centre spot while
+  the next kicker is tagged), players covering real distance.
+- **SIM-COST: PASS.** engine/bench-agent.ts (pnpm bench), run ON the
+  production machine (shared-cpu-1x/512MB via fly ssh): mean 1.6s/half,
+  p95 2.2s, ~3.2s/match, 545KiB frames/match, 14MB heap. An 8-club
+  matchweek ≈ 13s inside the week-close job. No OOM, no timeout risk.
+- **OUTCOMES: FAIL.** ENGINE=agent stat harness: **58 pass / 24 fail**.
+  Systematic, not noise: possession σ ~13 vs the 6–9 band, ~20 offsides per
+  team-match (info metric, visibly absurd in event lists), home-advantage
+  shape off (home 0.39–0.43 vs 0.43–0.46, away high), second-half goal share
+  low, and 4 instruction sweeps unresponsive (press↑→ppda↓, risk↑→passAcc↓,
+  press↑→fatigue↑, crossBias↑→aerials). ISOLATED: re-run at legacy motion
+  (deadzone 0 / smoothing 1) fails identically — PR #34's damping did NOT
+  cause this; the agent engine was never calibrated to the stat bands. The
+  stat-harness comment ("bands expected to fail until calibrated") was
+  accurate; the realism harness (7/7 ×4) gates league-level ordering only.
+- **What the switch now needs**: an agent calibration project — the offside
+  mechanic first (~20/match points at run-timing/tolerance, likely a model
+  fix not a knob), then possession-spread and home-advantage tuning across
+  AGENT_CAL, then the sweep responsiveness — gated by ENGINE=agent stat
+  runs. Same shape of work as the aggregate's original calibration arc.
+- **Shipped anyway (inert without opt-in)**: `SIM_ENGINE=agent` env lets a
+  deployment run the spatial sim knowingly (loud boot warning about the
+  uncalibrated stats) — the test league can watch real motion today;
+  `SIM_ENGINE` validated, default aggregate. bench-agent.ts stays as the
+  cost gate for the eventual switch.
+
 ## 2026-08-28 — motion pass: the yoyo and the wandering ball — and the ENGINE FINDING
 
 - **FINDING (load-bearing): production runs the AggregateEngine.** The
