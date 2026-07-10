@@ -119,9 +119,10 @@ export class GeometricDecisionModel implements DecisionModel {
     const inFinalThird = ownRelX > AGENT_CAL.finalThirdX;
     const isWide = Math.abs(ctx.carrier.pos.y - PITCH_WIDTH / 2) > AGENT_CAL.crossWideYOffsetM;
 
-    // passers don't play teammates standing clearly offside — they wait for
-    // the runner to come back. The judgement band (passerLineJudgementM vs
-    // the tighter flag tolerance) is where real offsides come from.
+    // passers don't play teammates who LOOK offside — judgement is strict
+    // (at/behind the line), so same-tick geometry can't flag a chosen
+    // receiver; offsides come from the mistimed-run draw at the kick
+    // (agent-engine.ts) instead.
     const defXs = ctx.opponents.map((o) => o.pos.x).sort((a, b) => (goalX > 0 ? b - a : a - b));
     const offsideLine = defXs[1] ?? defXs[0] ?? goalX;
     const looksOnside = (p: Vec2): boolean =>
