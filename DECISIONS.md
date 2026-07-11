@@ -3,6 +3,51 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-31 — calibration step 2 attempted: NO safe temperature exists — joint re-fit required
+
+The step-2 thesis (rescale the temperature, re-tune possession σ + home
+shape) is FALSIFIED by a four-point bracket. Engine changes REVERTED; the
+evidence and the revised plan are the deliverable.
+
+- **The bracket** (ENGINE=agent, n=150 × 3 seeds, band failures + sweep
+  responsiveness at each effective temperature):
+  | stack | eff. T | band fails | the 4 sweeps |
+  | baseline | ~0.80 | ~14 | unresponsive (the step-1 diagnosis) |
+  | ÷1.3 | ~0.55 | 39 | press/risk STILL unresponsive |
+  | ÷1.6 | ~0.42 | 44 | press/risk/xg unresponsive |
+  | ÷2.75 | ~0.28 | ~50 | crossBias responds; press/risk don't |
+  | ÷4 | ~0.18 | 55 | mostly unresponsive |
+  Sweep responsiveness does NOT emerge at any point before the equilibrium
+  collapses. Choice SHARES respond (probe: risk hi doubles longPass share at
+  ÷4) but the sweeps measure OUTCOMES, and the same temperature change that
+  frees the instruction signal also breaks goals/shots/xg-mix/fouls/headers/
+  possession-σ — the outcome deltas drown in equilibrium shift.
+- **Why the equilibrium breaks**: every cardinal score was implicitly FITTED
+  to noise-dominated choice. Exposed at expressive T: shotBaseScore −0.76 is
+  a noise gate (a 0.3-xg chance scored −0.45 vs +0.4 for a square pass —
+  shots only ever fired via sampling noise; the live "striker passes
+  backward" bug in one number); carries chain unrealistically (score fitted
+  under noise); fouls/cards/headers collapse with the option mix.
+- **press↑→ppda↓ is not a decision-layer failure at all**: pressingIntensity
+  acts through positioning (chase pull), and no temperature made ppda
+  respond — the pressing→forced-turnover pipeline needs a MECHANISM (defensive
+  challenges off pressure), not a knob.
+- **What step 2 actually is**: a joint automated re-fit of ~10–12 coupled
+  knobs (temperature stack + option-score cardinals + completion logits)
+  against the full 82-check objective, plus the pressing-turnover mechanism,
+  plus the clear-chance shot kink (right shape, proven unshippable at old T:
+  1.12× preference — drowned). Tooling now exists: scripts/cal-run.py runs
+  hardened parallel evaluations on temporary Fly performance machines.
+- **The dispatch pipeline** (hard-won, for every future run): fly ssh kills
+  the session's process tree on disconnect (nohup does NOT survive) → remote
+  work must be owned by the machine's PID1 (init waits on a go-flag);
+  the stat harness prints NOTHING until completion → liveness = process
+  existence via /proc, never log growth; every step verified, hard time cap,
+  destroy-in-finally. Local-network blips must not be read as remote death
+  (PID1 runs survive them — reattach, don't rerun).
+- Working tree reverted to the step-1 state: all gates hold by construction
+  (agent 64/18, realism 7/7 ×4, aggregate 82/0, offsides ~2).
+
 ## 2026-08-30 — agent calibration step 1: the offside MODEL + the sweep diagnosis
 
 - **Offsides diagnosed, then re-modeled** (was ~21/team-match; real ~2.2).
