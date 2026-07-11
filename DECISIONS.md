@@ -47,6 +47,43 @@ evidence and the revised plan are the deliverable.
   (PID1 runs survive them — reattach, don't rerun).
 - Working tree reverted to the step-1 state: all gates hold by construction
   (agent 64/18, realism 7/7 ×4, aggregate 82/0, offsides ~2).
+## 2026-08-31 — launch blockers: the forced-close 23514 + the completion floor made structural
+
+- **BUG 1 (N=2 season-boundary 23514) diagnosed and fixed — it was never the
+  season-advance.** `forceMatchweekDeadline` pulled only `deadline_at` to
+  now(); the schedule lays weeks out on the REAL cadence (each opens at the
+  prior deadline), so every week after the first forced one still has
+  `opens_at` in the future — the UPDATE violates
+  `CHECK (deadline_at > opens_at)` (Postgres reports an UPDATE's new tuple
+  as a "new row", hence the misleading message). Reproduced deterministically
+  on a fresh N=2 league: week 1 forces fine, week 2 throws 23514. The N<4
+  regular → season_end → rollover advance itself creates NO matchweek rows
+  and is sound for all N (N≥4 seeds playoff weeks at now/now+cadence — also
+  sound). Fix: forcing declares the week open-and-due NOW (`opens_at` comes
+  along, LEAST-clamped). league-season-boundary.test.ts walks an entire N=2
+  season through the force path to season 2's auction.
+- **BUG 2 (auction completed at 11/13): made IMPOSSIBLE structurally; the
+  historical root cause still needs the prod query.** Archaeology on current
+  and prior code found no app path that passes the gate below the floor
+  (counts are committed reads under the seasons row lock; nothing ever
+  deletes squad_players; squadMin has been 13 since it existed). Rather than
+  trust one ledger, completion now requires BOTH `squad_players` and ACTIVE
+  `contracts` at squadMin per club (whichever is lower binds — the note's
+  "counts diverge" suspect is now a blocker, not a slip-through), re-asserts
+  the floor after the phase transition (violation throws and rolls back the
+  whole completion, schedule included), and stale auction-close jobs firing
+  after completion (queue lag — observed live with 1s lots) are now no-ops
+  instead of signing players into a post-auction season — the one real
+  post-completion squad-mutation path found. league-auction-floor.test.ts
+  pins all three. Verification SQL for the live DB (run when convenient):
+  `SELECT club_id, count(*) FROM squad_players WHERE season_id=<s> GROUP BY 1`
+  vs `SELECT club_id, count(*) FROM contracts WHERE released_at IS NULL
+  GROUP BY 1`, plus `SELECT * FROM auction_lots WHERE season_id=<s>` for the
+  forfeit/re-open history.
+- **Ops finding (launch checklist):** the fly app currently runs TWO
+  machines; fly.toml's contract is ONE always-on process (duplicate pg-boss
+  pollers are lock-safe but double timer traffic, and the per-process login
+  rate limit halves). `fly scale count 1` before launch.
 
 ## 2026-08-30 — agent calibration step 1: the offside MODEL + the sweep diagnosis
 
