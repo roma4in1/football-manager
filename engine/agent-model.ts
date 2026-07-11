@@ -61,23 +61,32 @@ export const AGENT_CAL = {
   gkBallTrackY: 0.3, // GK lateral ball tracking share
 
   // ── decision ───────────────────────────────────────────────────────────────
-  softmaxBaseTemperature: 0.55,
-  temperaturePerDecisionsPoint: 0.03, // T = base − k·(decisions−10), floored
-  temperatureFloor: 0.25,
+  // EV REBUILD (DECISIONS 2026-09-01): every option is scored in ONE honest
+  // currency — expected goals this possession chain. A shot is worth its xG;
+  // a pass is worth P·PV(target) − κ(1−P)·PV_opp(target) on the possession-
+  // value surface below. The old cardinal constants (shotBaseScore −0.76
+  // etc.) were noise-fitted and are GONE, not re-tuned — the four-point
+  // temperature bracket (PR #39) falsified that whole regime.
+  // Temperature now means "how often a player picks a slightly-worse option"
+  // on the xG scale: EV gaps run ~0.01–0.15, so T≈0.04 = mostly-best-with-
+  // variance, never deterministic.
+  softmaxBaseTemperature: 0.04,
+  temperaturePerDecisionsPoint: 0.002, // T = base − k·(decisions−10), floored
+  temperatureFloor: 0.012,
   // sharpness (condition/sharpness split; league layer feeds 0–1, 1 = sharp).
   // MEDIUM by design: full-unsharp ≈ −2 decisions points on the choice
-  // channel (0.06 / 0.03-per-point) — a marginal call flips, a star doesn't
-  // become filler. 0.09 (−3 pts) dragged the REAL-pool mixed-distribution
-  // realism run to the 0.55 win-share boundary and r 0.69 — too heavy per
-  // the medium spec; trimmed and re-measured. Decision + fatigue layers
+  // channel (0.004 / 0.002-per-point) — a marginal call flips, a star doesn't
+  // become filler (magnitudes rescaled with the EV rebuild; the realism
+  // sharp suites re-verify the medium weight). Decision + fatigue layers
   // ONLY: execution noise stays attribute-driven (frozen invariant).
-  sharpnessTemperaturePenalty: 0.06, // T += this · (1 − sharpness)
+  sharpnessTemperaturePenalty: 0.004, // T += this · (1 − sharpness)
+  pressureTemperatureGain: 0.05, // pressure's rushed-thinking share of T (EV scale)
   sharpnessFatigueGain: 0.5, // fatigue accrual ×(1 + this·(1 − sharpness)) — condition drains faster when rusty
   composurePressureRelief: 0.02, // pressure penalty attenuation per composure point
   pressureSecondWeight: 0.5, // second-nearest opponent's share of felt pressure
   passOptionCount: 5, // geometric candidates per decision (vision widens toward this)
   carryOptionCount: 3, // forward + two diagonals
-  riskAppetiteScoreBias: 0.35, // instructions bias SCORING only (frozen invariant)
+  riskAppetiteScoreBias: 0.015, // instructions bias SCORING only (frozen invariant; EV units, centered)
   riskTurnoverDiscount: 0.8, // riskAppetite shrinks the turnover-cost term
   // score-state behavior (DECISIONS.md): chasing teams open up, leading teams
   // see the game out. scoreState ∈ [−stateMax, stateMax], positive = chasing,
@@ -87,17 +96,19 @@ export const AGENT_CAL = {
   stateUrgencyTimeGain: 1.0,
   stateMax: 1.1,
   stateRiskTurnoverDiscount: 0.32, // chasing discounts turnover fear (tempered)
-  stateShotBias: 0.15, // chasing shoots earlier
-  stateHoldBias: 0.26, // chasing hates holding; leading loves it
+  stateShotBias: 0.02, // chasing shoots earlier (EV units)
+  stateHoldBias: 0.02, // chasing hates holding; leading loves it (EV units)
   statePushShiftM: 7, // team base line shifts this far at full urgency
   stateForwardRunGain: 0.5, // chasing off-ball runs push harder
   stateGapTaper: 0.3, // each extra goal of deficit adds only this much urgency
   stateLeadCautionShare: 0.6, // leaders keep this share of the see-it-out shift
   homeExpansiveness: 0.3, // constant home scoreState offset — expansive hosts
-  shootingBiasScoreBias: 0.25,
-  holdPositionScoreBias: 0.2,
-  dribbleBiasScoreBias: 0.15,
-  crossBiasScoreBias: 0.9,
+  // instruction biases — EV units, CENTERED on 0.5 (a default slider is a
+  // strict no-op by construction); ±bias at the extremes
+  shootingBiasScoreBias: 0.03,
+  holdPositionScoreBias: 0.02,
+  dribbleBiasScoreBias: 0.015,
+  crossBiasScoreBias: 0.04,
   // option geometry
   passRangeM: 30, // beyond → longPass (lofted)
   leadPassM: 2.5, // targets lead the receiver toward goal
@@ -109,30 +120,58 @@ export const AGENT_CAL = {
   carryStepM: 8,
   clearOwnRelXM: 30, // inside own-relative x AND pressured → clear is an option
   clearPressureFloor: 0.45,
-  // scoring: score = P(complete)·V(target) − turnoverCost·(1−P)·V_opp(target)
-  valueControlWeight: 0.5, // pitch-control share folded into V(target)
-  turnoverCostWeight: 1.25,
-  xtProgressExp: 1.6, // positionValue = (x_rel/105)^exp × width falloff
+  // ── the possession-value surface (EV currency: expected goals) ────────────
+  // PV(p) = floor + max·(x_rel/105)^exp × width-taper — the simple xT-style
+  // grid-as-formula (stop-rule honored: no learned grid). Anchors: own box
+  // ~0.01, midfield ~0.05, box edge ~0.2, penalty spot ~0.27 — so a 0.3-xG
+  // chance BEATS keeping the ball there, and a box-edge shot (0.08) LOSES to
+  // retaining possession (0.2): shoot-vs-play falls out of the units.
+  pvMax: 0.34,
+  pvProgressExp: 3.0,
+  pvWidthPenalty: 0.35,
+  pvFloor: 0.01,
+  // EV scoring: P·PV(target) − κ(1−P)·PV_opp(target); κ modulated by risk
+  // appetite + score state exactly as before (unit-free multipliers)
+  valueControlWeight: 0.05, // pitch-control fold into PV(target) — EV units
+  turnoverCostWeight: 1.0,
+  // hold/clear — principled context terms on the same PV scale
+  holdRiskBase: 0.04, // dispossession risk while holding, unpressured
+  holdRiskPressureGain: 0.3, // + this × pressure
+  holdDecay: 0.88, // holding never creates value by itself
+  tempoHoldPenaltyEv: 0.02, // high tempo teams hate standing on the ball (EV units)
+  // turnovers launch COUNTERS: their value on winning the ball is the static
+  // surface plus a transition premium that grows the deeper WE were — this is
+  // what prices a sloppy final-third giveaway (static PV alone made it free)
+  counterPremium: 0.05,
+  clearKeepShare: 0.35, // a clearance is a contested 65/35 giveaway…
+  clearEscapeGain: 0.5, // …that buys out of pressure×PV_opp(here) danger
+  xtProgressExp: 1.6, // positionValue = (x_rel/105)^exp × width falloff (legacy surface: positioning/heatmaps)
   xtWidthPenalty: 0.5,
   passBaseLogit: 1.9, // P(complete) logit intercept
   passSkillLogit: 1.0, // ×(skill/20 − 0.5)·2
   passDistDecayM: 20, // logit −d/decay
   laneRiskLogit: 1.6, // ×(1 − nearest-opponent-to-lane / laneRadius)
   laneRadiusM: 4,
-  controlCompletionLogit: 0.8, // ×(ourControl(target) − 0.5)
+  controlCompletionLogit: 1.8, // ×(ourControl(target) − 0.5)
   carryBaseLogit: 1.0,
-  carryPressureLogit: 1.5,
-  shotBaseScore: -0.76, // negative gate on shot volume (xg term restores good chances)
-  shotValueWeight: 0.6, // shot score = base + weight × xgProxy + biases
-  holdBaseScore: -0.15,
-  holdPressurePenalty: 0.5,
-  tempoHoldPenalty: 0.25, // high tempo teams hate standing on the ball
-  clearBaseScore: -0.5,
-  clearPressureGain: 1.0,
+  carryPressureLogit: 2.2,
+  // (shotBaseScore/shotValueWeight/holdBaseScore/holdPressurePenalty/
+  //  clearBaseScore/clearPressureGain: DELETED — noise-fitted cardinals,
+  //  replaced by the EV formulas in agent-decision.ts)
   // shared xG proxy (decision scoring now, shot/GK models in parts c–d)
   xgMax: 0.45,
   xgDistDecayM: 11,
   xgCentralityFloor: 0.25, // angle factor: floor + (1−floor)×centrality
+
+  // ── pressing challenges (Phase B, DECISIONS 2026-09-01) ───────────────────
+  // The mechanism the press sweep needed: defenders close enough to the
+  // carrier ATTEMPT to win the ball — an attribute duel, frequency scaled by
+  // the challenger's pressingIntensity and the team's pressTrigger. This is
+  // how press↑ produces turnovers/ppda↓/fouls, through play, not a knob.
+  challengeRadiusM: 1.8, // a defender this close may engage the carrier
+  challengeAttemptBase: 0.05, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
+  challengeDuelLogit: 1.1, // ×(tackler duel skill − carrier retention skill), sigmoid
+  challengeFoulShare: 0.16, // failed challenges that clip the man — feeds the card ladder
 
   // ── execution ──────────────────────────────────────────────────────────────
   passDirectionNoiseRad: 0.12, // ×(20 − passing)/20 at use sites
@@ -294,6 +333,19 @@ export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.
  * xT-style proxy: grows toward the opponent goal (power curve), damped
  * toward the touchlines. In [0, 1].
  */
+/**
+ * Possession value in EXPECTED-GOALS units: P(this possession chain ends in
+ * a goal | ball at p). The decision layer's single currency — a shot's xG
+ * and a pass target's PV are directly comparable. Simple xT-style formula
+ * (power curve to goal, tapered wide); anchors documented at the knobs.
+ */
+export function possessionValue(p: Vec2, goalX: number): number {
+  const xRel = goalX === 0 ? PITCH_LENGTH - p.x : p.x;
+  const progress = Math.pow(Math.max(0, xRel) / PITCH_LENGTH, AGENT_CAL.pvProgressExp);
+  const widthTaper = 1 - AGENT_CAL.pvWidthPenalty * Math.pow(Math.abs(p.y - PITCH_WIDTH / 2) / (PITCH_WIDTH / 2), 2);
+  return AGENT_CAL.pvFloor + AGENT_CAL.pvMax * progress * widthTaper;
+}
+
 export function positionValue(p: Vec2, goalX: number): number {
   const xRel = goalX === 0 ? PITCH_LENGTH - p.x : p.x;
   const progress = Math.pow(Math.max(0, xRel) / PITCH_LENGTH, AGENT_CAL.xtProgressExp);

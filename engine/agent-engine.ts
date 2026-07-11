@@ -344,6 +344,43 @@ export class AgentEngine implements SimEngine {
         }
       }
 
+      // ── pressing challenge (Phase B): a defender in touching distance may
+      // engage the carrier BEFORE he gets his next decision — an attribute
+      // duel whose frequency rides pressingIntensity + pressTrigger. This is
+      // the mechanism behind press↑ → turnovers/ppda↓/fouls (a knob couldn't
+      // produce it: DECISIONS 2026-08-31). Keyed draws — no stream reshuffle.
+      {
+        const holder = ball.carrierId ? byId.get(ball.carrierId) : undefined;
+        if (holder && !holder.sentOff && ball.flight === 'ground') {
+          const challenger = nearestTo(states, oppositeOf(holder.side), holder.pos);
+          if (challenger && dist(challenger.pos, holder.pos) <= AGENT_CAL.challengeRadiusM) {
+            const trigger = (challenger.side === 'home' ? homeCtx : awayCtx).tactics.team.pressTrigger;
+            const attemptP = AGENT_CAL.challengeAttemptBase *
+              (0.5 + challenger.instructions.pressingIntensity) * (0.5 + trigger);
+            if (rng.chance(attemptP, tick, challenger.id, 'challenge')) {
+              const duelSkill = (challenger.attributes.tackling + challenger.attributes.anticipation) / 2;
+              const keepSkill = (holder.attributes.dribbling + holder.attributes.composure) / 2;
+              const winP = 1 / (1 + Math.exp(-AGENT_CAL.challengeDuelLogit * ((duelSkill - keepSkill) / 20) * 2));
+              if (rng.chance(winP, tick, challenger.id, 'challenge-win')) {
+                events.push({ t: now, type: 'tackle', playerId: challenger.id, outcome: 'success' });
+                if (inBuildup(holder.side, holder.pos.x)) defActions[challenger.side]++;
+                ball.pos = { ...challenger.pos };
+                ball.carrierId = challenger.id;
+                ball.lastTouchSide = challenger.side;
+                tracker.turnover(challenger.side);
+              } else if (rng.chance(AGENT_CAL.challengeFoulShare, tick, challenger.id, 'challenge-foul')) {
+                bookFoul(challenger, holder.pos, now, tick);
+                if (inAttackingBox(holder.side, holder.pos)) {
+                  resolvePenalty(holder.side, holder, now + 0.2, tick);
+                } else if (ownRelX(holder.side, holder.pos.x) > AGENT_CAL.finalThirdX) {
+                  resolveSetPieceDelivery(holder.side, 'freeKick', now + 0.2, tick);
+                }
+              }
+            }
+          }
+        }
+      }
+
       // ── decide + execute (carrier only, at the decision cadence)
       const carrier = ball.carrierId ? byId.get(ball.carrierId) : undefined;
       if (carrier && tick % AGENT_CAL.decisionEveryTicks === 0) {
