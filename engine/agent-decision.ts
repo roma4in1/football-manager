@@ -22,7 +22,7 @@ import {
   PITCH_LENGTH,
   PITCH_WIDTH,
   possessionValue,
-  xgProxy,
+  shotQuality,
   type AgentSnapshot,
   type Side,
 } from './agent-model.ts';
@@ -183,13 +183,13 @@ export class GeometricDecisionModel implements DecisionModel {
       options.push({ type: 'pass', target, flight: 'ground', receiverId: mate.id });
     }
 
-    // carries: straight at goal plus two diagonals
+    // carries: straight at goal plus two diagonals — never across the byline
     const carryAngles = [0, Math.PI / 5, -Math.PI / 5].slice(0, AGENT_CAL.carryOptionCount);
     for (const a of carryAngles) {
       options.push({
         type: 'carry',
         target: {
-          x: clampX(ctx.carrier.pos.x + Math.cos(a) * AGENT_CAL.carryStepM * attackSign),
+          x: Math.min(PITCH_LENGTH - 2, Math.max(2, ctx.carrier.pos.x + Math.cos(a) * AGENT_CAL.carryStepM * attackSign)),
           y: clampY(ctx.carrier.pos.y + Math.sin(a) * AGENT_CAL.carryStepM),
         },
         flight: 'ground',
@@ -266,7 +266,7 @@ export class GeometricDecisionModel implements DecisionModel {
           // a shot IS its xG (the miss leaves the opponent restarting deep —
           // negligible on this scale). A clear chance beats a square pass by
           // construction: xG 0.3 vs P·PV(edge of box) ≈ 0.1.
-          score = xgProxy(ctx.carrier.pos, goalX) +
+          score = shotQuality(ctx.carrier.pos, goalX) + AGENT_CAL.shotOptimism +
             centered(AGENT_CAL.shootingBiasScoreBias, ctx.instructions.shootingBias) +
             AGENT_CAL.stateShotBias * Math.max(0, ctx.scoreState); // chasers shoot earlier
           break;

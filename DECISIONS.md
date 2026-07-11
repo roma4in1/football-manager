@@ -3,6 +3,54 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-01 — the EV rebuild: principled decision layer (phases A+B done, C partial)
+
+The decision layer was rebuilt on first principles per the step-2′ decision —
+one currency (expected goals this possession chain), no noise-fitted
+cardinals. Phase report:
+
+- **Phase A (done)**: `possessionValue(p)` — xT-style surface in honest xG
+  units, PLATEAUING at the penalty spot (rational carriers exploited a
+  monotone surface by dribbling to x=105); `shotQuality` = shared xgProxy ×
+  the goal's SUBTENDED ANGLE (agent-only — xgProxy itself frozen for the
+  aggregate); shot EV = its quality (+ documented shooter-optimism 0.017 for
+  the speculative mix); pass/carry EV = P·PV(target) − κ(1−P)·PV_opp(target)
+  with a COUNTER PREMIUM on turnover value (static PV made final-third
+  giveaways free); hold/clear context-priced on the same scale. Instruction
+  biases centered (0.5 = strict no-op) in EV units; temperature rescaled to
+  the EV gap scale (base 0.04) = mostly-best-with-variance. Completion
+  models and execution noise untouched — the attribute invariant holds by
+  construction.
+- **Phase B (done)**: pressing CHALLENGES — a defender within 2.9m may
+  engage the carrier (attribute duel: tackling+anticipation vs
+  dribbling+composure), frequency riding pressingIntensity × pressTrigger,
+  failed challenges feed the foul/card ladder. Plus the physics rational
+  play demanded: KEEPER CLAIMS (the goalmouth was dribble-through-able),
+  receive-grace (strip-cycle prevention), GK unchallengeable.
+- **Phase C (two search rounds — partial)**: automated random search
+  (scratch cal-search.py) over the residual knob set. Banded for the first
+  time ever: possession σ 9.2 (target 6–9 — was 13–15 under every previous
+  regime). PROVEN structurally out of the searched space: ppda (17–19 vs
+  10–13) and fouls (7–9 vs 10–13) — rational high-completion play collapsed
+  the old failed-carry dispossession supply, and challenges don't land in
+  the ppda-counted BUILDUP zone; next mechanism = buildup-zone defensive
+  action supply. xg/shot (~0.15 vs ≤0.12) trades against volume via
+  optimism; goals ~5.8 until those land.
+- **GATES at checkpoint**: realism 7/7 ×4 (the ordering guard held through
+  the entire rebuild); sweeps at n=150: press→fatigue PASS, risk→xg/shot
+  PASS, crossBias→aerials PASS (three of the four dead sweeps now respond
+  DECISIVELY — the point of the rebuild); press→ppda directionally right,
+  gated on the buildup mechanism; lineHeight→offsides needs its threshold
+  revisited (EV play yields ~1.3 offsides — box-centric, fewer line-riders).
+  Aggregate 82/0 (bit-identical path), unit 31/31, agent e2e 5/5,
+  keyed-RNG determinism throughout.
+- **The human acceptance is visible**: strikers SHOOT from shooting
+  positions (a 0.3-xG chance now outscores a square pass by construction).
+  Goals/match not yet in band — remaining work is the two scoped items, not
+  a rethink. Process note: a git-stash timeout nearly lost the rebuild
+  mid-arc (two harness reads silently measured the old engine); recovered,
+  and WIP now commits immediately.
+
 ## 2026-08-31 — calibration step 2 attempted: NO safe temperature exists — joint re-fit required
 
 The step-2 thesis (rescale the temperature, re-tune possession σ + home

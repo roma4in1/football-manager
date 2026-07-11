@@ -126,8 +126,19 @@ export const AGENT_CAL = {
   // ~0.01, midfield ~0.05, box edge ~0.2, penalty spot ~0.27 — so a 0.3-xG
   // chance BEATS keeping the ball there, and a box-edge shot (0.08) LOSES to
   // retaining possession (0.2): shoot-vs-play falls out of the units.
-  pvMax: 0.34,
+  // shooter optimism: a small documented behavioral bias — players overrate
+  // shots (half of real shots are speculative range efforts). This supplies
+  // the low-xG mix that pure EV never chooses; execution still converts at
+  // honest shotQuality, so optimism costs goals exactly like real punts do.
+  shotOptimism: 0.017,
+  pvMax: 0.376,
   pvProgressExp: 3.0,
+  pvPeakXRelM: 94, // PV plateaus at the penalty spot — the byline is worth LESS, not more
+  // the keeper's area is not dribble-through-able: the GK claims/smothers a
+  // carrier this close to goal (rational play exposed that nothing else
+  // stops a carry to the goal line)
+  keeperClaimRadiusM: 8,
+  keeperClaimBase: 0.357, // per tick inside the radius, ×(0.5 + gkPositioning/20)
   pvWidthPenalty: 0.35,
   pvFloor: 0.01,
   // EV scoring: P·PV(target) − κ(1−P)·PV_opp(target); κ modulated by risk
@@ -142,17 +153,17 @@ export const AGENT_CAL = {
   // turnovers launch COUNTERS: their value on winning the ball is the static
   // surface plus a transition premium that grows the deeper WE were — this is
   // what prices a sloppy final-third giveaway (static PV alone made it free)
-  counterPremium: 0.05,
+  counterPremium: 0.127,
   clearKeepShare: 0.35, // a clearance is a contested 65/35 giveaway…
   clearEscapeGain: 0.5, // …that buys out of pressure×PV_opp(here) danger
   xtProgressExp: 1.6, // positionValue = (x_rel/105)^exp × width falloff (legacy surface: positioning/heatmaps)
   xtWidthPenalty: 0.5,
-  passBaseLogit: 1.9, // P(complete) logit intercept
+  passBaseLogit: 1.919, // P(complete) logit intercept
   passSkillLogit: 1.0, // ×(skill/20 − 0.5)·2
   passDistDecayM: 20, // logit −d/decay
-  laneRiskLogit: 1.6, // ×(1 − nearest-opponent-to-lane / laneRadius)
+  laneRiskLogit: 2.2, // ×(1 − nearest-opponent-to-lane / laneRadius)
   laneRadiusM: 4,
-  controlCompletionLogit: 1.8, // ×(ourControl(target) − 0.5)
+  controlCompletionLogit: 3.408, // ×(ourControl(target) − 0.5)
   carryBaseLogit: 1.0,
   carryPressureLogit: 2.2,
   // (shotBaseScore/shotValueWeight/holdBaseScore/holdPressurePenalty/
@@ -168,10 +179,11 @@ export const AGENT_CAL = {
   // carrier ATTEMPT to win the ball — an attribute duel, frequency scaled by
   // the challenger's pressingIntensity and the team's pressTrigger. This is
   // how press↑ produces turnovers/ppda↓/fouls, through play, not a knob.
-  challengeRadiusM: 1.8, // a defender this close may engage the carrier
-  challengeAttemptBase: 0.05, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
-  challengeDuelLogit: 1.1, // ×(tackler duel skill − carrier retention skill), sigmoid
-  challengeFoulShare: 0.16, // failed challenges that clip the man — feeds the card ladder
+  challengeRadiusM: 2.901, // a defender this close may engage the carrier
+  challengeAttemptBase: 0.150, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
+  challengeDuelLogit: 0.9, // ×(tackler duel skill − carrier retention skill), sigmoid
+  challengeFoulShare: 0.282, // failed challenges that clip the man — feeds the card ladder
+  challengeGraceTicks: 2, // a fresh receiver can't be stripped for this many ticks (1s)
 
   // ── execution ──────────────────────────────────────────────────────────────
   passDirectionNoiseRad: 0.12, // ×(20 − passing)/20 at use sites
@@ -341,9 +353,29 @@ export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.
  */
 export function possessionValue(p: Vec2, goalX: number): number {
   const xRel = goalX === 0 ? PITCH_LENGTH - p.x : p.x;
-  const progress = Math.pow(Math.max(0, xRel) / PITCH_LENGTH, AGENT_CAL.pvProgressExp);
+  // plateau at the spot: possession ON the byline is not more valuable than
+  // at the penalty spot — without this, rational carriers dribble to x=105
+  const progress = Math.pow(Math.min(AGENT_CAL.pvPeakXRelM, Math.max(0, xRel)) / PITCH_LENGTH, AGENT_CAL.pvProgressExp);
   const widthTaper = 1 - AGENT_CAL.pvWidthPenalty * Math.pow(Math.abs(p.y - PITCH_WIDTH / 2) / (PITCH_WIDTH / 2), 2);
   return AGENT_CAL.pvFloor + AGENT_CAL.pvMax * progress * widthTaper;
+}
+
+/**
+ * Agent-side shot quality: xgProxy × the SHOOTING-ANGLE reality — the goal's
+ * subtended angle from the shot position, normalized to the penalty spot.
+ * Kills the byline exploit (rational carriers drove to x=105 where distance-
+ * only xg peaks; the actual angle there is ~zero). AGENT ENGINE ONLY —
+ * xgProxy itself is shared with the aggregate engine and stays frozen.
+ */
+export function shotQuality(shotPos: Vec2, goalX: number): number {
+  const postNear = { x: goalX, y: PITCH_WIDTH / 2 - 3.66 };
+  const postFar = { x: goalX, y: PITCH_WIDTH / 2 + 3.66 };
+  const a1 = Math.atan2(postNear.y - shotPos.y, postNear.x - shotPos.x);
+  const a2 = Math.atan2(postFar.y - shotPos.y, postFar.x - shotPos.x);
+  let subtended = Math.abs(a1 - a2);
+  if (subtended > Math.PI) subtended = 2 * Math.PI - subtended;
+  const ref = 2 * Math.atan(3.66 / 11); // the angle from the penalty spot
+  return xgProxy(shotPos, goalX) * Math.min(1, subtended / ref);
 }
 
 export function positionValue(p: Vec2, goalX: number): number {
