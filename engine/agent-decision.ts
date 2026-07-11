@@ -7,7 +7,7 @@
  * scoring only; execution noise lives in the execution model, never here.
  *
  * Scoring is REAL: every ball-moving option is scored
- *   P(complete) · V(target) − turnoverCost · (1 − P(complete)) · V_opp(target)
+ *   P(complete) · PV(target) − κ · (1 − P(complete)) · PV_opp(target)   [expected-goals units]
  * where V reads the shared pitch-control field plus an xT-style
  * position-value proxy (agent-model), and P(complete) is a logistic over
  * distance, passing-lane risk (nearest opponent to the lane), control at the
@@ -21,8 +21,8 @@ import {
   dist,
   PITCH_LENGTH,
   PITCH_WIDTH,
-  positionValue,
-  xgProxy,
+  possessionValue,
+  shotQuality,
   type AgentSnapshot,
   type Side,
 } from './agent-model.ts';
@@ -77,7 +77,7 @@ export interface DecisionModel {
  */
 export function temperatureFor(ctx: DecisionContext): number {
   const decisionsRelief = AGENT_CAL.temperaturePerDecisionsPoint * (ctx.carrier.attributes.decisions - 10);
-  const pressureNoise = ctx.pressure * (1 - AGENT_CAL.composurePressureRelief * ctx.carrier.attributes.composure);
+  const pressureNoise = AGENT_CAL.pressureTemperatureGain * ctx.pressure * (1 - AGENT_CAL.composurePressureRelief * ctx.carrier.attributes.composure);
   const rustNoise = AGENT_CAL.sharpnessTemperaturePenalty * (1 - ctx.carrier.sharpness);
   return Math.max(AGENT_CAL.temperatureFloor, AGENT_CAL.softmaxBaseTemperature - decisionsRelief + pressureNoise + rustNoise);
 }
@@ -183,13 +183,13 @@ export class GeometricDecisionModel implements DecisionModel {
       options.push({ type: 'pass', target, flight: 'ground', receiverId: mate.id });
     }
 
-    // carries: straight at goal plus two diagonals
+    // carries: straight at goal plus two diagonals — never across the byline
     const carryAngles = [0, Math.PI / 5, -Math.PI / 5].slice(0, AGENT_CAL.carryOptionCount);
     for (const a of carryAngles) {
       options.push({
         type: 'carry',
         target: {
-          x: clampX(ctx.carrier.pos.x + Math.cos(a) * AGENT_CAL.carryStepM * attackSign),
+          x: Math.min(PITCH_LENGTH - 2, Math.max(2, ctx.carrier.pos.x + Math.cos(a) * AGENT_CAL.carryStepM * attackSign)),
           y: clampY(ctx.carrier.pos.y + Math.sin(a) * AGENT_CAL.carryStepM),
         },
         flight: 'ground',
@@ -211,21 +211,41 @@ export class GeometricDecisionModel implements DecisionModel {
     return options;
   }
 
+  /**
+   * EV scoring (the 2026-09 rebuild): every option is valued in EXPECTED
+   * GOALS this possession chain — the one currency where a shot's xG and a
+   * pass target's possession value are directly comparable, so shoot-vs-
+   * pass falls out of the units instead of a fitted constant. Instructions
+   * BIAS these values (small, centered — 0.5 is a strict no-op); attributes
+   * keep driving completion probabilities and execution noise (frozen
+   * invariant). The noise-fitted cardinals this replaces were falsified by
+   * the four-point temperature bracket (DECISIONS 2026-08-31).
+   */
   scoreOptions(ctx: DecisionContext, options: ActionOption[]): ScoredOption[] {
     const goalX = ctx.attackingGoal.x;
     const oppGoalX = PITCH_LENGTH - goalX;
     // pitch control is stored as HOME share — flip for away
     const ourControl = (p: Vec2): number =>
       ctx.side === 'home' ? ctx.pitchControl.controlAtPoint(p) : 1 - ctx.pitchControl.controlAtPoint(p);
-    // risk appetite + score state discount how much losing the ball is
-    // feared (scoring only): a chasing team stops protecting the ball, a
-    // leading team protects it harder
-    const turnoverCost = Math.max(0.1, AGENT_CAL.turnoverCostWeight *
+    // κ: how much conceding possession THERE is feared, relative to true EV.
+    // Risk appetite + score state discount it (scoring only): a chasing team
+    // stops protecting the ball, a leading team protects it harder.
+    const kTurnover = Math.max(0.1, AGENT_CAL.turnoverCostWeight *
       (1 - AGENT_CAL.riskTurnoverDiscount * (ctx.instructions.riskAppetite - 0.5) * 2 -
         AGENT_CAL.stateRiskTurnoverDiscount * ctx.scoreState));
-    // V(target): where would the ball be worth having, weighted by who'd have it
-    const valueAt = (p: Vec2): number =>
-      positionValue(p, goalX) + AGENT_CAL.valueControlWeight * (ourControl(p) - 0.5);
+    /** our PV of having the ball at p, nudged by who controls the space */
+    const pvOurs = (p: Vec2): number =>
+      possessionValue(p, goalX) + AGENT_CAL.valueControlWeight * (ourControl(p) - 0.5);
+    /** THEIR PV if they take over at p — static surface + counter premium
+     * (a turnover where WE are committed forward launches their transition) */
+    const pvTheirs = (p: Vec2): number => {
+      const ourProgress = (goalX === 0 ? PITCH_LENGTH - p.x : p.x) / PITCH_LENGTH;
+      return possessionValue(p, oppGoalX) + AGENT_CAL.counterPremium * ourProgress;
+    };
+    /** EV of a completion gamble: keep-and-be-there vs lose-it-there */
+    const gambleEv = (pComplete: number, at: Vec2): number =>
+      pComplete * pvOurs(at) - kTurnover * (1 - pComplete) * pvTheirs(at);
+    const centered = (bias: number, instr: number): number => bias * (instr - 0.5) * 2;
 
     return options.map((option) => {
       const t = option.target;
@@ -233,18 +253,21 @@ export class GeometricDecisionModel implements DecisionModel {
 
       switch (option.type) {
         case 'hold': {
-          score = AGENT_CAL.holdBaseScore +
-            AGENT_CAL.holdPositionScoreBias * ctx.instructions.holdPosition -
-            AGENT_CAL.holdPressurePenalty * ctx.pressure -
-            AGENT_CAL.tempoHoldPenalty * ctx.team.tempo -
+          // holding is a small dispossession gamble that creates no value
+          const r = Math.min(0.9, AGENT_CAL.holdRiskBase + AGENT_CAL.holdRiskPressureGain * ctx.pressure);
+          score = (1 - r) * AGENT_CAL.holdDecay * pvOurs(ctx.carrier.pos) -
+            r * kTurnover * pvTheirs(ctx.carrier.pos) +
+            centered(AGENT_CAL.holdPositionScoreBias, ctx.instructions.holdPosition) -
+            AGENT_CAL.tempoHoldPenaltyEv * ctx.team.tempo -
             AGENT_CAL.stateHoldBias * ctx.scoreState; // leading: hold; chasing: move it
           break;
         }
         case 'shot': {
-          // negative base gates volume; the xg term keeps the quality gradient
-          score = AGENT_CAL.shotBaseScore +
-            AGENT_CAL.shotValueWeight * xgProxy(ctx.carrier.pos, goalX) +
-            AGENT_CAL.shootingBiasScoreBias * ctx.instructions.shootingBias +
+          // a shot IS its xG (the miss leaves the opponent restarting deep —
+          // negligible on this scale). A clear chance beats a square pass by
+          // construction: xG 0.3 vs P·PV(edge of box) ≈ 0.1.
+          score = shotQuality(ctx.carrier.pos, goalX) + AGENT_CAL.shotOptimism +
+            centered(AGENT_CAL.shootingBiasScoreBias, ctx.instructions.shootingBias) +
             AGENT_CAL.stateShotBias * Math.max(0, ctx.scoreState); // chasers shoot earlier
           break;
         }
@@ -256,9 +279,7 @@ export class GeometricDecisionModel implements DecisionModel {
             AGENT_CAL.carryPressureLogit * ctx.pressure +
             AGENT_CAL.controlCompletionLogit * (ourControl(t) - 0.5),
           );
-          score = p * valueAt(t) -
-            turnoverCost * (1 - p) * positionValue(t, oppGoalX) +
-            AGENT_CAL.dribbleBiasScoreBias * ctx.instructions.dribbleBias;
+          score = gambleEv(p, t) + centered(AGENT_CAL.dribbleBiasScoreBias, ctx.instructions.dribbleBias);
           break;
         }
         default: {
@@ -277,15 +298,20 @@ export class GeometricDecisionModel implements DecisionModel {
             AGENT_CAL.laneRiskLogit * laneRisk(ctx.carrier.pos, t, ctx.opponents) +
             AGENT_CAL.controlCompletionLogit * (ourControl(t) - 0.5),
           );
-          score = p * valueAt(t) - turnoverCost * (1 - p) * positionValue(t, oppGoalX);
+          if (option.type === 'clear') {
+            // a clearance is a contested giveaway that buys OUT of the
+            // pressure-scaled danger of losing it right here
+            score = AGENT_CAL.clearKeepShare * pvOurs(t) -
+              (1 - AGENT_CAL.clearKeepShare) * kTurnover * pvTheirs(t) +
+              AGENT_CAL.clearEscapeGain * ctx.pressure * pvTheirs(ctx.carrier.pos);
+            break;
+          }
+          score = gambleEv(p, t);
           if (option.type === 'longPass' || option.type === 'cross') {
-            score += AGENT_CAL.riskAppetiteScoreBias * (ctx.instructions.riskAppetite - 0.5);
+            score += centered(AGENT_CAL.riskAppetiteScoreBias, ctx.instructions.riskAppetite);
           }
           if (option.type === 'cross') {
-            score += AGENT_CAL.crossBiasScoreBias * ctx.instructions.crossBias;
-          }
-          if (option.type === 'clear') {
-            score = AGENT_CAL.clearBaseScore + AGENT_CAL.clearPressureGain * ctx.pressure;
+            score += centered(AGENT_CAL.crossBiasScoreBias, ctx.instructions.crossBias);
           }
           break;
         }

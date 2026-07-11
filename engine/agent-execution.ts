@@ -24,7 +24,7 @@
  */
 
 import type { BallFlight, Vec2 } from './engine-types.ts';
-import { AGENT_CAL, arrivalTime, clampToPitch, dist, xgProxy, type AgentSnapshot } from './agent-model.ts';
+import { AGENT_CAL, arrivalTime, clampToPitch, dist, shotQuality, type AgentSnapshot } from './agent-model.ts';
 import type { ActionOption } from './agent-decision.ts';
 import type { KeyedRng } from './agent-rng.ts';
 
@@ -152,7 +152,7 @@ export class NoisyExecutionModel implements ExecutionModel {
         const gkQuality = gk ? (gk.attributes.gkReflexes + gk.attributes.gkPositioning) / 2 : 10;
         const pBeat = sigmoid(
           AGENT_CAL.gkBeatBase +
-          AGENT_CAL.gkXgWeight * (xgProxy(actor.pos, ctx.attackingGoalX) - 0.1) -
+          AGENT_CAL.gkXgWeight * (shotQuality(actor.pos, ctx.attackingGoalX) - 0.1) -
           AGENT_CAL.gkQualityLogit * skillEdge(gkQuality),
         );
         goal = rng.chance(pBeat, tick, actor.id, 'outcome', 'gk');

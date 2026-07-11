@@ -36,6 +36,7 @@ import {
   dist,
   PITCH_LENGTH,
   PITCH_WIDTH,
+  shotQuality,
   xgProxy,
   type AgentSnapshot,
   type AgentState,
@@ -157,6 +158,8 @@ export class AgentEngine implements SimEngine {
     const possessionTicks: Record<Side, number> = { home: 0, away: 0 };
 
     const workOf = new Map<string, number>(); // per-tick share of max sprint, feeds fatigue
+    let lastCarrierId: string | null = ball.carrierId; // challenge receive-grace tracking
+    let carrierSinceTick = 0;
     const ticks = Math.floor(HALF_SECONDS / AGENT_CAL.tickSeconds);
     const framePeriod = Math.round(AGENT_CAL.frameEverySeconds / AGENT_CAL.tickSeconds);
 
@@ -344,6 +347,67 @@ export class AgentEngine implements SimEngine {
         }
       }
 
+      // ── pressing challenge (Phase B): a defender in touching distance may
+      // engage the carrier BEFORE he gets his next decision — an attribute
+      // duel whose frequency rides pressingIntensity + pressTrigger. This is
+      // the mechanism behind press↑ → turnovers/ppda↓/fouls (a knob couldn't
+      // produce it: DECISIONS 2026-08-31). Keyed draws — no stream reshuffle.
+      // possession grace: you can't be dispossessed the instant you receive —
+      // this is what breaks strip-cycles (win ball → instantly stripped back)
+      if (ball.carrierId !== lastCarrierId) {
+        lastCarrierId = ball.carrierId;
+        carrierSinceTick = tick;
+      }
+      {
+        const holder = ball.carrierId ? byId.get(ball.carrierId) : undefined;
+        // KEEPER CLAIM: a carrier inside the keeper's area gets smothered —
+        // the goalmouth is not dribble-through-able (rational play found the
+        // byline exploit; this is the physics that stops it)
+        if (holder && !holder.sentOff && !holder.isGk && ball.flight === 'ground') {
+          const goalCenter = { x: holder.side === 'home' ? PITCH_LENGTH : 0, y: PITCH_WIDTH / 2 };
+          if (dist(holder.pos, goalCenter) <= AGENT_CAL.keeperClaimRadiusM) {
+            const gk = active(states).find((s2) => s2.side !== holder.side && s2.isGk);
+            if (gk) {
+              const claimP = AGENT_CAL.keeperClaimBase * (0.5 + gk.attributes.gkPositioning / 20);
+              if (rng.chance(claimP, tick, gk.id, 'keeper-claim')) {
+                giveToKeeper(ball, states, tracker, gk.side);
+              }
+            }
+          }
+        }
+        // keepers are never challenged (they pick it up); receive grace 2 ticks
+        if (holder && !holder.sentOff && !holder.isGk && ball.flight === 'ground' &&
+            ball.carrierId === holder.id &&
+            tick - carrierSinceTick >= AGENT_CAL.challengeGraceTicks) {
+          const challenger = nearestTo(states, oppositeOf(holder.side), holder.pos);
+          if (challenger && dist(challenger.pos, holder.pos) <= AGENT_CAL.challengeRadiusM) {
+            const trigger = (challenger.side === 'home' ? homeCtx : awayCtx).tactics.team.pressTrigger;
+            const attemptP = AGENT_CAL.challengeAttemptBase *
+              (0.5 + challenger.instructions.pressingIntensity) * (0.5 + trigger);
+            if (rng.chance(attemptP, tick, challenger.id, 'challenge')) {
+              const duelSkill = (challenger.attributes.tackling + challenger.attributes.anticipation) / 2;
+              const keepSkill = (holder.attributes.dribbling + holder.attributes.composure) / 2;
+              const winP = 1 / (1 + Math.exp(-AGENT_CAL.challengeDuelLogit * ((duelSkill - keepSkill) / 20) * 2));
+              if (rng.chance(winP, tick, challenger.id, 'challenge-win')) {
+                events.push({ t: now, type: 'tackle', playerId: challenger.id, outcome: 'success' });
+                if (inBuildup(holder.side, holder.pos.x)) defActions[challenger.side]++;
+                ball.pos = { ...challenger.pos };
+                ball.carrierId = challenger.id;
+                ball.lastTouchSide = challenger.side;
+                tracker.turnover(challenger.side);
+              } else if (rng.chance(AGENT_CAL.challengeFoulShare, tick, challenger.id, 'challenge-foul')) {
+                bookFoul(challenger, holder.pos, now, tick);
+                if (inAttackingBox(holder.side, holder.pos)) {
+                  resolvePenalty(holder.side, holder, now + 0.2, tick);
+                } else if (ownRelX(holder.side, holder.pos.x) > AGENT_CAL.finalThirdX) {
+                  resolveSetPieceDelivery(holder.side, 'freeKick', now + 0.2, tick);
+                }
+              }
+            }
+          }
+        }
+      }
+
       // ── decide + execute (carrier only, at the decision cadence)
       const carrier = ball.carrierId ? byId.get(ball.carrierId) : undefined;
       if (carrier && tick % AGENT_CAL.decisionEveryTicks === 0) {
@@ -427,7 +491,7 @@ export class AgentEngine implements SimEngine {
 
         // ── resolve ball + detect events
         if (chosen.type === 'shot') {
-          const xg = xgProxy(carrier.pos, side === 'home' ? PITCH_LENGTH : 0);
+          const xg = shotQuality(carrier.pos, side === 'home' ? PITCH_LENGTH : 0); // angle-honest (agent-only)
           tallies.shot(carrier.id);
           xgSum[side] += xg;
           if (outcome.success) tallies.sot(carrier.id); // success = on target
