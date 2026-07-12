@@ -3,6 +3,43 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-03 — transition round: hypothesis REFUTED, the real structure named, stop-rule invoked
+
+The scoped mechanism (transition-defense reformation) was NOT built — the
+brief's own diagnose-first order killed it, and what the diagnosis found is
+recorded with the engine reverted to the #41 state (the most balanced
+calibration achieved: everything banded except the goal cluster).
+
+- **Transition hypothesis refuted by provenance**: only 9–10% of open-play
+  shots come within 6s of a turnover (median 16s). The excess is NOT fast
+  breaks into unformed shapes. Reformation would have fixed a fiction.
+- **What the provenance actually found — carry physics**: the median
+  pre-shot possession contains ZERO passes. carryStepM 8 per 1s decision =
+  dribblers at 8 m/s WITH the ball, above the 7.5 m/s sprint cap: carriers
+  were unchaseable by construction, walking 40–100m into the box. Fixing it
+  (4.5 m/s) shifted the regime but not the totals — event traces then showed
+  tackle→tackle→tackle PINBALL: the buildup-supply rates (tuned under 8 m/s
+  carriers) over-fire against chaseable ones, churning possession, and
+  box-adjacent churn manufactures shooting episodes.
+- **The floor, measured**: a fourth automated search round (churn-rate
+  rebalance, 10 candidates; 40 total across the arc) bottoms at goals 5.15 /
+  shots 16.9 / xg 0.146 — with possession σ regressing when rates rebalance.
+  No reachable configuration satisfies goals ~2.75 within this structure.
+- **The remaining structure (next suspect, untested)**: INSTANT PASS
+  ARRIVAL — every completed pass TELEPORTS the receiver to the endpoint
+  (`receiver.pos = endPoint`): no ball flight time, no defender race, 10–25m
+  of free progression per completion. Chance creation rides it everywhere
+  (and it interacts with carry speed: fixing one reshuffles into the other).
+  The fix is a BALL-FLIGHT/ARRIVAL model — travel time, receiver runs,
+  interception races. That is a real project (its own arc), not a knob or a
+  contained mechanism, and per the stop-rule it is reported, not smuggled in.
+- **Launch recommendation**: the engine arc cannot complete on this
+  trajectory without the ball-flight project. The AGGREGATE engine remains
+  the calibrated (82/0), launch-ready generator. Launch on aggregate now;
+  continue the agent arc post-launch behind SIM_ENGINE=agent. Everything
+  the arc built is real and keeps its value: EV decisions, 5 responsive
+  sweeps, banded ppda/fouls/σ/offsides, real replay motion.
+
 ## 2026-09-02 — buildup supply + the trap: ALL FOUR dead sweeps now respond
 
 The final scoped round of the calibration arc (post-#40). Both mechanisms
