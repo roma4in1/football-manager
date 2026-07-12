@@ -3,6 +3,44 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-02 — buildup supply + the trap: ALL FOUR dead sweeps now respond
+
+The final scoped round of the calibration arc (post-#40). Both mechanisms
+delivered; the goals/xg/shots cluster is the one open item, now with a
+named suspect.
+
+- **RECEPTION PRESSURE (the buildup-zone action supply)**: rational
+  quick-release play made deep builders challenge-immune (grace ticks =
+  decision cadence — release-on-first-decision is unstrippable), which is
+  why ppda/fouls were knob-insensitive across 20 candidates. The missing
+  physics is the PRESSED FIRST TOUCH: a presser within 4m of a teammate
+  completion forces an error draw — defender tackling/aggression vs
+  receiver firstTouch/composure, rate ×(0.5+intensity)(0.5+trigger), won
+  duels sometimes fouls (card ladder + penalty/free-kick chains). Result:
+  **ppda 12.7–13.1 IN BAND, fouls 12.4–12.8 IN BAND**, and
+  **press↑→ppda↓ passes decisively** (10.7 vs 14.0−2 at n=150).
+- **THE TRAP (offside sweep)**: box-centric EV play pushed the ride zone
+  toward halfway where offsides are illegal, inverting the sweep. Modeled
+  the trap itself: mistime probability ×(0.6 + 0.8·defending lineHeight) —
+  a high line IS a harder timing problem. **lineHeight↑→offsides↑ passes**
+  (2.58 vs 1.46+0.5); default offsides ~2.0/team ✓.
+- **Sweep scoreboard at n=150**: press→ppda PASS, press→fatigue PASS,
+  risk→xg/shot PASS, lineHeight→offsides PASS, crossBias→aerials PASS.
+  risk→passAcc is directionally right but noise-bound at the −1.0 gate
+  (deltas 0.3–0.9 across runs); the risk slider demonstrably expresses
+  through the xg channel. Risk bias is now LEAD-SCALED for ground passes
+  (a square ball is not a risk decision; a hard through ball is).
+- **OPEN (the last cluster, next round's brief)**: goals ~6.2, shots ~18,
+  xg/shot ~0.165 — proven insensitive to the ENTIRE defensive knob space
+  (three search rounds, 30 candidates; more pressure raises shots via
+  turnover transitions). Prime suspect: TRANSITION DEFENSE — turnovers
+  launch attacks into press-committed, un-reformed shapes; the chance
+  quality of those transitions is what no completion logit touches.
+  Diagnose with possession-length-before-shot provenance first.
+- Guards: realism 7/7 ×4, aggregate 82/0 (n=600), unit 31/31, agent e2e
+  5/5, offsides ~2, possession σ ~9–10 (marginal band edge), keyed
+  determinism throughout.
+
 ## 2026-09-01 — the EV rebuild: principled decision layer (phases A+B done, C partial)
 
 The decision layer was rebuilt on first principles per the step-2′ decision —

@@ -460,8 +460,13 @@ export class AgentEngine implements SimEngine {
             ? passReceiver.pos.x > line - AGENT_CAL.offsideRideZoneM
             : passReceiver.pos.x < line + AGENT_CAL.offsideRideZoneM;
           const timing = 1 - AGENT_CAL.offsideTimingSkill * (passReceiver.attributes.offTheBall / 20 - 0.5) * 2;
+          // the TRAP: a higher defensive line squeezes the timing window —
+          // this is what makes lineHeight↑ produce offsides↑ even though a
+          // halfway-high line pushes the ride zone where flags are illegal
+          const defLine = (side === 'home' ? awayCtx : homeCtx).tactics.team.lineHeight;
+          const trap = 0.6 + AGENT_CAL.offsideTrapGain * defLine;
           const mistimed = !beyondLine && ridingLine && beyondBall && inOppHalf &&
-            rng.chance(AGENT_CAL.mistimedRunProb * Math.max(0.2, timing), tick, passReceiver.id, 'offside-timing');
+            rng.chance(AGENT_CAL.mistimedRunProb * trap * Math.max(0.2, timing), tick, passReceiver.id, 'offside-timing');
           if ((beyondLine && beyondBall && inOppHalf) || mistimed) {
             const margin = side === 'home' ? passReceiver.pos.x - line : line - passReceiver.pos.x;
             events.push({
@@ -593,6 +598,43 @@ export class AgentEngine implements SimEngine {
             ball.flight = 'ground';
             ball.lastTouchSide = receiver.side;
             tracker.turnover(receiver.side);
+
+            // RECEPTION PRESSURE (the buildup-zone action supply, DECISIONS
+            // 2026-09-02): a presser arriving on a TEAMMATE completion can
+            // force a first-touch error — defender bite vs carrier control,
+            // riding pressing intensity. Rational quick-release play made
+            // deep builders challenge-immune; the pressed touch is where
+            // buildup turnovers and fouls actually live.
+            if (receiver.side === side && !receiver.isGk) {
+              const presser = nearestTo(states, oppositeOf(side), receiver.pos);
+              if (presser && dist(presser.pos, receiver.pos) <= AGENT_CAL.receptionPressRadiusM) {
+                const trigger2 = (presser.side === 'home' ? homeCtx : awayCtx).tactics.team.pressTrigger;
+                const attemptP = AGENT_CAL.receptionErrorBase *
+                  (0.5 + presser.instructions.pressingIntensity) * (0.5 + trigger2);
+                if (rng.chance(attemptP, tick, receiver.id, 'reception-press')) {
+                  const bite = (presser.attributes.tackling + presser.attributes.aggression) / 2;
+                  const control = (receiver.attributes.firstTouch + receiver.attributes.composure) / 2;
+                  const winP = 1 / (1 + Math.exp(-AGENT_CAL.receptionDuelLogit * ((bite - control) / 20) * 2));
+                  if (rng.chance(winP, tick, presser.id, 'reception-win')) {
+                    if (rng.chance(AGENT_CAL.receptionFoulShare, tick, presser.id, 'reception-foul')) {
+                      bookFoul(presser, receiver.pos, now + 0.1, tick);
+                      if (inAttackingBox(side, receiver.pos)) {
+                        resolvePenalty(side, receiver, now + 0.2, tick);
+                      } else if (ownRelX(side, receiver.pos.x) > AGENT_CAL.finalThirdX) {
+                        resolveSetPieceDelivery(side, 'freeKick', now + 0.2, tick);
+                      }
+                    } else {
+                      events.push({ t: now, type: 'tackle', playerId: presser.id, outcome: 'success', meta: { source: 'reception' } });
+                      if (inBuildup(side, receiver.pos.x)) defActions[presser.side]++;
+                      ball.pos = { ...presser.pos };
+                      ball.carrierId = presser.id;
+                      ball.lastTouchSide = presser.side;
+                      tracker.turnover(presser.side);
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       } else if (!carrier) {

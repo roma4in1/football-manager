@@ -86,7 +86,7 @@ export const AGENT_CAL = {
   pressureSecondWeight: 0.5, // second-nearest opponent's share of felt pressure
   passOptionCount: 5, // geometric candidates per decision (vision widens toward this)
   carryOptionCount: 3, // forward + two diagonals
-  riskAppetiteScoreBias: 0.015, // instructions bias SCORING only (frozen invariant; EV units, centered)
+  riskAppetiteScoreBias: 0.024, // instructions bias SCORING only (frozen invariant; EV units, centered)
   riskTurnoverDiscount: 0.8, // riskAppetite shrinks the turnover-cost term
   // score-state behavior (DECISIONS.md): chasing teams open up, leading teams
   // see the game out. scoreState ∈ [−stateMax, stateMax], positive = chasing,
@@ -130,15 +130,15 @@ export const AGENT_CAL = {
   // shots (half of real shots are speculative range efforts). This supplies
   // the low-xG mix that pure EV never chooses; execution still converts at
   // honest shotQuality, so optimism costs goals exactly like real punts do.
-  shotOptimism: 0.017,
-  pvMax: 0.376,
+  shotOptimism: 0.012,
+  pvMax: 0.341,
   pvProgressExp: 3.0,
   pvPeakXRelM: 94, // PV plateaus at the penalty spot — the byline is worth LESS, not more
   // the keeper's area is not dribble-through-able: the GK claims/smothers a
   // carrier this close to goal (rational play exposed that nothing else
   // stops a carry to the goal line)
   keeperClaimRadiusM: 8,
-  keeperClaimBase: 0.357, // per tick inside the radius, ×(0.5 + gkPositioning/20)
+  keeperClaimBase: 0.381, // per tick inside the radius, ×(0.5 + gkPositioning/20)
   pvWidthPenalty: 0.35,
   pvFloor: 0.01,
   // EV scoring: P·PV(target) − κ(1−P)·PV_opp(target); κ modulated by risk
@@ -153,7 +153,7 @@ export const AGENT_CAL = {
   // turnovers launch COUNTERS: their value on winning the ball is the static
   // surface plus a transition premium that grows the deeper WE were — this is
   // what prices a sloppy final-third giveaway (static PV alone made it free)
-  counterPremium: 0.127,
+  counterPremium: 0.121,
   clearKeepShare: 0.35, // a clearance is a contested 65/35 giveaway…
   clearEscapeGain: 0.5, // …that buys out of pressure×PV_opp(here) danger
   xtProgressExp: 1.6, // positionValue = (x_rel/105)^exp × width falloff (legacy surface: positioning/heatmaps)
@@ -161,9 +161,9 @@ export const AGENT_CAL = {
   passBaseLogit: 1.919, // P(complete) logit intercept
   passSkillLogit: 1.0, // ×(skill/20 − 0.5)·2
   passDistDecayM: 20, // logit −d/decay
-  laneRiskLogit: 2.2, // ×(1 − nearest-opponent-to-lane / laneRadius)
+  laneRiskLogit: 2.652, // ×(1 − nearest-opponent-to-lane / laneRadius)
   laneRadiusM: 4,
-  controlCompletionLogit: 3.408, // ×(ourControl(target) − 0.5)
+  controlCompletionLogit: 4.279, // ×(ourControl(target) − 0.5)
   carryBaseLogit: 1.0,
   carryPressureLogit: 2.2,
   // (shotBaseScore/shotValueWeight/holdBaseScore/holdPressurePenalty/
@@ -184,6 +184,16 @@ export const AGENT_CAL = {
   challengeDuelLogit: 0.9, // ×(tackler duel skill − carrier retention skill), sigmoid
   challengeFoulShare: 0.282, // failed challenges that clip the man — feeds the card ladder
   challengeGraceTicks: 2, // a fresh receiver can't be stripped for this many ticks (1s)
+  // ── reception pressure (the buildup-zone action supply) ───────────────────
+  // Rational play made deep builders challenge-immune (they release on the
+  // exact tick the grace expires), collapsing ppda/foul supply. The missing
+  // physics is the PRESSED FIRST TOUCH: a presser arriving on the receiver
+  // forces an error sometimes — defender bite (tackling/aggression) vs
+  // carrier control (firstTouch/composure), scaled by pressing intensity.
+  receptionPressRadiusM: 4.340, // presser this close at the moment of reception
+  receptionErrorBase: 0.332, // ×(0.5+intensity)×(0.5+trigger) attempt rate
+  receptionDuelLogit: 1.0, // duel slope, same shape as challenges
+  receptionFoulShare: 0.18, // won duels that came through the man — card ladder
 
   // ── execution ──────────────────────────────────────────────────────────────
   passDirectionNoiseRad: 0.12, // ×(20 − passing)/20 at use sites
@@ -251,7 +261,8 @@ export const AGENT_CAL = {
   // strays less. This is where offsides come from now; the geometric flag
   // stays as a backstop for genuinely-beyond receivers.
   offsideRideZoneM: 3.5, // "on the shoulder" = within this of the second-last defender
-  mistimedRunProb: 0.015, // per risky (line-riding, forward) pass; harness squads ride ~160/match → ~2.4 offsides (real ~2.2)
+  mistimedRunProb: 0.024, // per risky (line-riding, forward) pass; harness squads ride ~160/match → ~2.4 offsides (real ~2.2)
+  offsideTrapGain: 0.8, // mistime prob ×(0.6 + this·defLineHeight): a high line IS the trap
   offsideTimingSkill: 0.5, // ×(1 − skill·(offTheBall/20 − 0.5)·2): OTB 20 halves it, OTB 0 ×1.5
   lineHoldBufferM: 2.0, // attackers hold this far INSIDE the line (onside-safe hover)
   penaltyGoalProb: 0.76,

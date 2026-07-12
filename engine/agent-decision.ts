@@ -307,8 +307,17 @@ export class GeometricDecisionModel implements DecisionModel {
             break;
           }
           score = gambleEv(p, t);
+          // risk appetite prefers AGGRESSIVE targets: scale the bias by how
+          // hard the pass leads its receiver goalward (a square ball is not
+          // a risk decision; a hard through ball is) — this is the channel
+          // that lets risk↑ actually dent ground-pass accuracy
+          const rcv = option.receiverId ? ctx.teammates.find((m) => m.id === option.receiverId) : undefined;
+          const attackSign2 = goalX > 0 ? 1 : -1;
+          const lead = rcv ? Math.min(1, Math.max(0, (t.x - rcv.pos.x) * attackSign2) / AGENT_CAL.throughLeadM) : 0;
           if (option.type === 'longPass' || option.type === 'cross') {
             score += centered(AGENT_CAL.riskAppetiteScoreBias, ctx.instructions.riskAppetite);
+          } else {
+            score += centered(AGENT_CAL.riskAppetiteScoreBias, ctx.instructions.riskAppetite) * lead;
           }
           if (option.type === 'cross') {
             score += centered(AGENT_CAL.crossBiasScoreBias, ctx.instructions.crossBias);
