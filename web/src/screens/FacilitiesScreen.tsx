@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type FacilitiesView } from '../api.ts';
+import { useToast } from '../ui.tsx';
 
 const MEDICAL_BLURB = 'Fewer and shorter injuries, faster fatigue recovery.';
 const TRAINING_BLURB = 'Faster player growth at season end (arrives with training focus).';
@@ -8,6 +9,7 @@ export function FacilitiesScreen() {
   const [view, setView] = useState<FacilitiesView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { toast } = useToast();
 
   const refresh = useCallback(() => {
     api.facilities().then(setView, () => setError('Facilities unavailable.'));
@@ -20,6 +22,7 @@ export function FacilitiesScreen() {
     try {
       await api.investFacility(facility);
       refresh();
+      toast(facility === 'training' ? 'Training ground upgraded' : 'Medical centre upgraded', 'success');
     } catch (err) {
       if (err instanceof ApiError && err.body.error === 'insufficient_budget') setError('Not enough budget.');
       else if (err instanceof ApiError && err.body.error === 'level_cap') setError('Already at the maximum level.');

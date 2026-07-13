@@ -19,6 +19,7 @@ import { api, ApiError, type AuctionStateView, type PoolPlayerView } from '../ap
 import { Countdown } from '../components.tsx';
 import { fmtMoney } from '../format.ts';
 import { PosChip } from '../shell/Section.tsx';
+import { ConfirmDialog, useToast } from '../ui.tsx';
 
 const POLL_MS = 5_000;
 const POOL_PAGE = 100; // rows rendered per scroll chunk — the WHOLE pool stays reachable
@@ -83,6 +84,9 @@ export function AuctionScreen() {
   const [extended, setExtended] = useState(false);
   const prevCloseRef = useRef<string | null>(null);
   const [squadPositions, setSquadPositions] = useState<string[]>([]);
+  const [pendingBid, setPendingBid] = useState<number | null>(null); // amount awaiting confirmation
+  const [bidBusy, setBidBusy] = useState(false);
+  const { toast } = useToast();
 
   const load = useCallback(async () => {
     const s = await api.auctionState();
@@ -145,11 +149,12 @@ export function AuctionScreen() {
 
   const minBid = (state.lot?.highBid?.amount ?? 0) + LEAGUE_CFG.bidIncrementMin;
 
-  const act = async (fn: () => Promise<unknown>): Promise<void> => {
+  const act = async (fn: () => Promise<unknown>, done?: string): Promise<void> => {
     setNotice(null);
     try {
       await fn();
       await load();
+      if (done) toast(done, 'success');
     } catch (err) {
       if (err instanceof ApiError) {
         const e = err.body.error;
@@ -253,7 +258,7 @@ export function AuctionScreen() {
               className="bid-row"
               onSubmit={(e) => {
                 e.preventDefault();
-                void act(() => api.bid(state.lot!.lotId, amount || minBid));
+                setPendingBid(amount || minBid); // confirm — a placed bid can't be retracted
               }}
             >
               <button type="button" onClick={() => setAmount(minBid)}>min {fmtMoney(minBid)}</button>
@@ -298,7 +303,7 @@ export function AuctionScreen() {
                         <PosChip position={p.position} /> {fmtMoney(p.marketValue)} · {fmtMoney(wageFromMarketValue(p.marketValue))}/wk
                       </span>
                       <span className="player-actions">
-                        <button onClick={() => void act(() => api.nominate(p.playerId))}>Nominate</button>
+                        <button onClick={() => void act(() => api.nominate(p.playerId), `${p.fullName} nominated`)}>Nominate</button>
                       </span>
                     </li>
                   ))}
@@ -349,6 +354,29 @@ export function AuctionScreen() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingBid !== null && !!state.lot}
+        title="Place this bid?"
+        body={
+          lotPlayer && pendingBid !== null ? (
+            <>Bidding <strong>{fmtMoney(pendingBid)}</strong> for <strong>{lotPlayer.fullName}</strong>. A placed bid can't be retracted.</>
+          ) : null
+        }
+        confirmLabel={pendingBid !== null ? `Bid ${fmtMoney(pendingBid)}` : 'Bid'}
+        busy={bidBusy}
+        onCancel={() => setPendingBid(null)}
+        onConfirm={() => {
+          const lotId = state.lot?.lotId;
+          const amt = pendingBid;
+          if (!lotId || amt === null) return;
+          setBidBusy(true);
+          void act(() => api.bid(lotId, amt), 'Bid placed').finally(() => {
+            setBidBusy(false);
+            setPendingBid(null);
+          });
+        }}
+      />
     </div>
   );
 }

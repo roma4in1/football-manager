@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type TrainingView } from '../api.ts';
+import { useToast } from '../ui.tsx';
 
 const FOCUS_BLURB: Record<string, string> = {
   balanced: 'A little of everything, slowly.',
@@ -15,6 +16,7 @@ export function TrainingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const { toast } = useToast();
 
   const refresh = useCallback(() => {
     api.training().then(
@@ -35,6 +37,7 @@ export function TrainingScreen() {
       await api.setTraining(focus, nextIntensity);
       setSaved(true);
       refresh();
+      toast('Training saved', 'success');
     } catch (err) {
       if (err instanceof ApiError && err.body.error === 'training_closed') {
         setError('Training can only be set during the season.');
