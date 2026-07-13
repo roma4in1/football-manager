@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PlayerInstructions, TeamInstructions } from '@fm/engine/types';
 import { LEAGUE_CFG } from '@fm/engine/config';
 import { api, ApiError, type SquadPlayerView } from '../api.ts';
+import { ConfirmDialog, useToast } from '../ui.tsx';
 import { buildTactics, defaultTeamInstructions, type Selection } from './build.ts';
 import { LineupPicker } from './LineupPicker.tsx';
 
@@ -50,6 +51,8 @@ export function LineupEditor({ fixtureId, half, onSubmitted }: LineupEditorProps
   const [alsoDefault, setAlsoDefault] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     void (async () => {
@@ -90,8 +93,10 @@ export function LineupEditor({ fixtureId, half, onSubmitted }: LineupEditorProps
       const tactics = buildTactics(selection, squad, instructions, team);
       await api.submitTactics(fixtureId, half, tactics);
       if (alsoDefault) await api.saveDefaultTactics(tactics);
+      toast(half === 1 ? 'Lineup submitted' : 'Half-time changes submitted', 'success');
       onSubmitted();
     } catch (err) {
+      setConfirming(false);
       if (err instanceof ApiError && err.status === 422) {
         setError(`Rejected: ${(err.body.issues ?? []).map((i) => i.code).join(', ')}`);
       } else if (err instanceof ApiError && err.status === 409) {
@@ -177,10 +182,24 @@ export function LineupEditor({ fixtureId, half, onSubmitted }: LineupEditorProps
         type="button"
         className="primary"
         disabled={!selectionValid || swapsExceeded || busy}
-        onClick={() => void submit()}
+        onClick={() => setConfirming(true)}
       >
         {busy ? 'Submitting…' : half === 1 ? 'Submit lineup' : 'Submit half-time changes'}
       </button>
+
+      <ConfirmDialog
+        open={confirming}
+        title={half === 1 ? 'Submit your lineup?' : 'Submit half-time changes?'}
+        body={
+          half === 1
+            ? <>This is your team sheet for the match. You can edit it until the deadline, but not after kickoff.</>
+            : <>These changes apply to the second half and can't be undone once the half sims.</>
+        }
+        confirmLabel={half === 1 ? 'Submit lineup' : 'Submit changes'}
+        busy={busy}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => void submit()}
+      />
     </div>
   );
 }

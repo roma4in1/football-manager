@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type MarketView, type Me, type TransferStateView } from '../api.ts';
 import { Countdown } from '../components.tsx';
 import { PosChip } from '../shell/Section.tsx';
+import { useToast } from '../ui.tsx';
 
 const ERROR_TEXT: Record<string, string> = {
   window_closed: 'The transfer window is closed.',
@@ -33,6 +34,7 @@ export function TransferScreen({ me }: { me: Me }) {
   const [busy, setBusy] = useState(false);
   const [offerFor, setOfferFor] = useState<string | null>(null);
   const [fee, setFee] = useState('');
+  const { toast } = useToast();
 
   const refresh = useCallback(() => {
     Promise.all([api.transferState(), api.transferMarket()])
@@ -44,7 +46,7 @@ export function TransferScreen({ me }: { me: Me }) {
   }, []);
   useEffect(refresh, [refresh]);
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = async (fn: () => Promise<unknown>, done?: string) => {
     setBusy(true);
     setError(null);
     try {
@@ -52,6 +54,7 @@ export function TransferScreen({ me }: { me: Me }) {
       setOfferFor(null);
       setFee('');
       refresh();
+      if (done) toast(done, 'success');
     } catch (err) {
       setError(describe(err));
     } finally {
@@ -86,7 +89,7 @@ export function TransferScreen({ me }: { me: Me }) {
                   <button
                     className="primary"
                     disabled={busy || !canBuy || p.marketValue > you.budgetRemaining}
-                    onClick={() => act(() => api.signPoolPlayer(p.playerId))}
+                    onClick={() => act(() => api.signPoolPlayer(p.playerId), `${p.fullName} signed`)}
                   >
                     Sign
                   </button>
@@ -118,7 +121,7 @@ export function TransferScreen({ me }: { me: Me }) {
                         <button
                           className="primary"
                           disabled={busy || !/^\d+$/.test(fee) || Number(fee) < 1}
-                          onClick={() => act(() => api.makeOffer(p.playerId, Number(fee)))}
+                          onClick={() => act(() => api.makeOffer(p.playerId, Number(fee)), `Offer sent for ${p.fullName}`)}
                         >
                           Send
                         </button>
@@ -160,8 +163,8 @@ export function TransferScreen({ me }: { me: Me }) {
             <p key={o.id} style={{ margin: '0.3rem 0' }}>
               {o.buyerName} offers <strong>{o.fee.toLocaleString()}</strong> for {o.playerName}
               <span style={{ display: 'inline-flex', gap: '0.3rem', marginLeft: '0.4rem' }}>
-                <button className="primary" disabled={busy} onClick={() => act(() => api.acceptOffer(o.id))}>Accept</button>
-                <button disabled={busy} onClick={() => act(() => api.rejectOffer(o.id))}>Reject</button>
+                <button className="primary" disabled={busy} onClick={() => act(() => api.acceptOffer(o.id), `Sold ${o.playerName}`)}>Accept</button>
+                <button disabled={busy} onClick={() => act(() => api.rejectOffer(o.id), 'Offer rejected')}>Reject</button>
               </span>
             </p>
           ))}

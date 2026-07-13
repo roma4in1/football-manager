@@ -21,6 +21,7 @@ import type { InstructionZone, Phase, PlayerInstructions, Tactics, Vec2 } from '
 import { api, ApiError, type SquadPlayerView } from '../api.ts';
 import { buildTactics, defaultTeamInstructions, inheritSlots, type Selection } from '../lineup/build.ts';
 import { LineupPitch } from '../lineup/LineupPitch.tsx';
+import { ConfirmDialog, useToast } from '../ui.tsx';
 import { PitchEditor, type PitchPlayer, type ZoneCorner } from './PitchEditor.tsx';
 import { TeamShapePitch } from './TeamShapePitch.tsx';
 
@@ -72,6 +73,8 @@ export function TacticsSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const [presetName, setPresetName] = useState('');
   const [lineupIntro, setLineupIntro] = useState(true); // presets-first gate on the lineup tab
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'full' | 'phase'; name: string } | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     void (async () => {
@@ -160,6 +163,18 @@ export function TacticsSection() {
     });
     setDraft((d) => d && { ...d }); // re-render preset lists
     setNotice(`Phase preset “${name}” saved (this device).`);
+    toast(`Phase preset “${name}” saved`, 'success');
+  };
+
+  /** delete a device-local preset, confirmed (they can't be recovered) */
+  const deletePreset = ({ kind, name }: { kind: 'full' | 'phase'; name: string }) => {
+    const key = kind === 'full' ? FULL_KEY : PHASE_KEY;
+    const all = readStore(key);
+    delete all[name];
+    writeStore(key, all);
+    setDraft((d) => d && { ...d }); // re-render the list
+    setPendingDelete(null);
+    toast(`Preset “${name}” deleted`);
   };
 
   const addZone = (zoneType: InstructionZone['zoneType']) => {
@@ -181,6 +196,7 @@ export function TacticsSection() {
     try {
       await api.saveDefaultTactics(draft);
       setNotice('Saved as your standing plan.');
+      toast('Standing plan saved', 'success');
     } catch (err) {
       setNotice(err instanceof ApiError && err.status === 422
         ? `Rejected: ${(err.body.issues ?? []).map((i) => i.code).join(', ')}`
@@ -391,21 +407,18 @@ export function TacticsSection() {
               <p>
                 <input type="text" placeholder="preset name" value={presetName} onChange={(e) => setPresetName(e.target.value)} style={{ width: '12rem' }} />{' '}
                 <button disabled={!presetName.trim()} onClick={() => {
-                  writeStore(FULL_KEY, { ...readStore<Tactics>(FULL_KEY), [presetName.trim()]: draft });
+                  const name = presetName.trim();
+                  writeStore(FULL_KEY, { ...readStore<Tactics>(FULL_KEY), [name]: draft });
                   setPresetName('');
                   setDraft((d) => d && { ...d }); // re-render the list
+                  toast(`Tactic preset “${name}” saved`, 'success');
                 }}>Save current plan</button>
               </p>
               {Object.entries(readStore<Tactics>(FULL_KEY)).map(([name, t]) => (
                 <p key={name} className="zone-row">
                   <strong className="grow">{name}</strong>
                   <button onClick={() => { setDraft(t); setSelectedId(t.players[0]?.playerId ?? null); }}>Load</button>
-                  <button onClick={() => {
-                    const all = readStore<Tactics>(FULL_KEY);
-                    delete all[name];
-                    writeStore(FULL_KEY, all);
-                    setDraft((d) => d && { ...d }); // re-render
-                  }}>✕</button>
+                  <button className="danger" aria-label={`delete preset ${name}`} onClick={() => setPendingDelete({ kind: 'full', name })}>✕</button>
                 </p>
               ))}
             </div>
@@ -428,18 +441,24 @@ export function TacticsSection() {
                     // pre-zones presets (no `zones` field) leave zones untouched
                     ...(p.zones ? { zones: { ...t.zones, [phase]: p.zones } } : {}),
                   }))}>Apply</button>
-                  <button onClick={() => {
-                    const all = readStore<PhasePreset>(PHASE_KEY);
-                    delete all[name];
-                    writeStore(PHASE_KEY, all);
-                    setDraft((d) => d && { ...d });
-                  }}>✕</button>
+                  <button className="danger" aria-label={`delete preset ${name}`} onClick={() => setPendingDelete({ kind: 'phase', name })}>✕</button>
                 </p>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this preset?"
+        body={<>“<strong>{pendingDelete?.name}</strong>” will be removed from this device. This can't be undone.</>}
+        confirmLabel="Delete preset"
+        cancelLabel="Keep"
+        tone="danger"
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && deletePreset(pendingDelete)}
+      />
     </div>
   );
 }
