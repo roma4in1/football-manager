@@ -12,7 +12,7 @@ import {
   api,
   type FacilitiesView,
   type MatchweekView,
-  type Me,
+  type MeWithClub,
   type ResultsView,
   type SquadPlayerView,
   type StandingsRow,
@@ -22,7 +22,7 @@ import { Countdown } from '../components.tsx';
 
 const POLL_MS = 30_000;
 
-export function Home({ me }: { me: Me }) {
+export function Home({ me }: { me: MeWithClub }) {
   const [view, setView] = useState<MatchweekView | null>(null);
   const [squad, setSquad] = useState<SquadPlayerView[]>([]);
   const [facilities, setFacilities] = useState<FacilitiesView | null>(null);

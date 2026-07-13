@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api, type Me, type StandingsRow } from '../api.ts';
+import { api, type MeWithClub, type StandingsRow } from '../api.ts';
 
-export function StandingsScreen({ me }: { me: Me }) {
+export function StandingsScreen({ me }: { me: MeWithClub }) {
   const [table, setTable] = useState<StandingsRow[] | null>(null);
 
   useEffect(() => {

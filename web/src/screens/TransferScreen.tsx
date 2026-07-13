@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type MarketView, type Me, type TransferStateView } from '../api.ts';
+import { api, ApiError, type MarketView, type MeWithClub, type TransferStateView } from '../api.ts';
 import { Countdown } from '../components.tsx';
 import { PosChip } from '../shell/Section.tsx';
 import { useToast } from '../ui.tsx';
@@ -27,7 +27,7 @@ const ERROR_TEXT: Record<string, string> = {
 const describe = (err: unknown): string =>
   err instanceof ApiError ? ERROR_TEXT[err.body.error ?? ''] ?? 'Action failed.' : 'Action failed.';
 
-export function TransferScreen({ me }: { me: Me }) {
+export function TransferScreen({ me }: { me: MeWithClub }) {
   const [state, setState] = useState<TransferStateView | null>(null);
   const [market, setMarket] = useState<MarketView | null>(null);
   const [error, setError] = useState<string | null>(null);

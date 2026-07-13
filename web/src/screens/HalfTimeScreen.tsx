@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, type HtView, type Me } from '../api.ts';
+import { api, type HtView, type MeWithClub } from '../api.ts';
 import { Countdown, Ratings, StatsTable } from '../components.tsx';
 import { eventLines } from '../format.ts';
 import { LineupEditor } from '../lineup/LineupEditor.tsx';
 
-export function HalfTimeScreen({ me }: { me: Me }) {
+export function HalfTimeScreen({ me }: { me: MeWithClub }) {
   const { fixtureId } = useParams<{ fixtureId: string }>();
   const navigate = useNavigate();
   const [view, setView] = useState<HtView | null>(null);

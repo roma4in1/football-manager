@@ -16,11 +16,11 @@ import pg from 'pg';
 import type { HalfResult, HalfStats, MatchEvent } from '@fm/engine/types';
 import { LEAGUE_CFG, trainingGrowthMul } from '@fm/engine/config';
 import { ageDecline, minutesMul } from '@fm/engine/growth';
-import { createApi, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
+import { createApi, SESSION_COOKIE } from './league-api.ts';
 import { createCore, createOrchestrator, type Orchestrator, type OrchestratorCore } from './league-orchestrator.ts';
 import { applySeasonEndGrowth } from './league-training.ts';
 import * as store from './league-store.ts';
-import { bootstrapSchema, flatAttributes, seedClub } from './league-test-helpers.ts';
+import { apiLogin, bootstrapSchema, flatAttributes, seedClub } from './league-test-helpers.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 const SECRET = 'training-test-secret';
@@ -36,21 +36,9 @@ let youngId: string, oldId: string, poolId: string;
 let cookieA: string, cookieB: string;
 let mw1: string, mwBye: string, mwFinal: string;
 
-const delivered: Array<{ email: string; url: string }> = [];
-const delivery: LinkDelivery = {
-  async sendLoginLink(email, url) {
-    delivered.push({ email, url });
-  },
-};
 const q = (text: string, params?: unknown[]) => pool.query(text, params);
 
-async function login(email: string): Promise<string> {
-  delivered.length = 0;
-  await api.inject({ method: 'POST', url: '/api/auth/request-link', payload: { email } });
-  const token = new URL(delivered[0].url).searchParams.get('token')!;
-  const res = await api.inject({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  return res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
-}
+const login = (email: string): Promise<string> => apiLogin(api, email);
 
 const progressOf = async (playerId: string): Promise<Record<string, number>> =>
   (await q(`SELECT training_progress FROM squad_players WHERE season_id = $1 AND player_id = $2`, [seasonId, playerId]))
@@ -132,7 +120,7 @@ before(async () => {
 
   core = createCore({ pool });
   orch = await createOrchestrator({ pool, connectionString: DATABASE_URL, pollingIntervalSeconds: 0.5 });
-  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery });
+  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET });
   cookieA = await login('alpha@tr.io');
   cookieB = await login('beta@tr.io');
 });

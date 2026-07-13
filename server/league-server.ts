@@ -12,8 +12,8 @@ import fastifyStatic from '@fastify/static';
 import pg from 'pg';
 import { AgentEngine } from '@fm/engine/agent';
 import { LEAGUE_CFG } from '@fm/engine/config';
-import { consoleLinkDelivery, createApi, type LinkDelivery } from './league-api.ts';
-import { resendLinkDelivery } from './league-email.ts';
+import { consoleEmailDelivery, createApi, type EmailDelivery } from './league-api.ts';
+import { resendEmailDelivery } from './league-email.ts';
 import { createOrchestrator } from './league-orchestrator.ts';
 import { cadenceOverrideActive, forceWeekCloseEnabled, matchweekCadenceMs } from './league-test-overrides.ts';
 
@@ -26,16 +26,16 @@ if (!sessionSecret) throw new Error('SESSION_SECRET is required');
 const host = process.env.HOST ?? LEAGUE_CFG.apiHost;
 const port = Number(process.env.PORT ?? LEAGUE_CFG.apiPort);
 if (!Number.isInteger(port) || port <= 0) throw new Error(`PORT must be a positive integer, got ${process.env.PORT}`);
-const baseUrl = process.env.BASE_URL ?? `http://${host}:${port}`; // magic links point here
+const baseUrl = process.env.BASE_URL ?? `http://${host}:${port}`; // password-reset links point here
 
-let delivery: LinkDelivery = consoleLinkDelivery;
+let delivery: EmailDelivery = consoleEmailDelivery;
 if (process.env.RESEND_API_KEY) {
   const from = process.env.EMAIL_FROM;
   if (!from) throw new Error('EMAIL_FROM is required when RESEND_API_KEY is set');
-  delivery = resendLinkDelivery({ apiKey: process.env.RESEND_API_KEY, from });
+  delivery = resendEmailDelivery({ apiKey: process.env.RESEND_API_KEY, from });
 } else if (process.env.BASE_URL) {
   // BASE_URL set but no email provider smells like a misconfigured production env
-  console.warn('[league] RESEND_API_KEY not set — login links only go to stdout');
+  console.warn('[league] RESEND_API_KEY not set — password-reset links only go to stdout');
 }
 
 // ⚠️ TEST-ONLY auction timer override. The REAL timers are LEAGUE_CFG's

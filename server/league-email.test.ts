@@ -1,10 +1,11 @@
 /**
- * league-email.test.ts — Resend LinkDelivery, fetch injected. No network, no DB.
+ * league-email.test.ts — Resend EmailDelivery (password reset), fetch injected.
+ * No network, no DB.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resendLinkDelivery } from './league-email.ts';
+import { resendEmailDelivery } from './league-email.ts';
 
 interface Captured {
   url: string;
@@ -18,15 +19,15 @@ function fakeFetch(status: number, calls: Captured[]): typeof fetch {
   }) as typeof fetch;
 }
 
-test('sendLoginLink posts to Resend with auth header, sender, recipient and the link', async () => {
+test('sendPasswordReset posts to Resend with auth header, sender, recipient and the link', async () => {
   const calls: Captured[] = [];
-  const delivery = resendLinkDelivery({
+  const delivery = resendEmailDelivery({
     apiKey: 're_test_key',
     from: 'FM League <login@topfootballgame.com>',
     fetchImpl: fakeFetch(200, calls),
   });
 
-  await delivery.sendLoginLink('alpha@test.io', 'https://topfootballgame.com/api/auth/redeem?token=abc');
+  await delivery.sendPasswordReset('alpha@test.io', 'https://topfootballgame.com/reset?token=abc');
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://api.resend.com/emails');
@@ -37,15 +38,16 @@ test('sendLoginLink posts to Resend with auth header, sender, recipient and the 
   const body = JSON.parse(calls[0].init.body as string) as Record<string, unknown>;
   assert.equal(body.from, 'FM League <login@topfootballgame.com>');
   assert.deepEqual(body.to, ['alpha@test.io']);
-  assert.ok(String(body.text).includes('https://topfootballgame.com/api/auth/redeem?token=abc'));
-  assert.ok(String(body.html).includes('href="https://topfootballgame.com/api/auth/redeem?token=abc"'));
+  assert.ok(String(body.subject).toLowerCase().includes('reset'));
+  assert.ok(String(body.text).includes('https://topfootballgame.com/reset?token=abc'));
+  assert.ok(String(body.html).includes('href="https://topfootballgame.com/reset?token=abc"'));
 });
 
-test('a non-2xx from Resend throws (request-link must surface the failure, not fake a 204)', async () => {
+test('a non-2xx from Resend throws (the caller must surface the failure)', async () => {
   const calls: Captured[] = [];
-  const delivery = resendLinkDelivery({ apiKey: 'k', from: 'a@b.c', fetchImpl: fakeFetch(422, calls) });
+  const delivery = resendEmailDelivery({ apiKey: 'k', from: 'a@b.c', fetchImpl: fakeFetch(422, calls) });
   await assert.rejects(
-    () => delivery.sendLoginLink('alpha@test.io', 'https://x/redeem?token=t'),
+    () => delivery.sendPasswordReset('alpha@test.io', 'https://x/reset?token=t'),
     /resend 422/,
   );
 });

@@ -14,9 +14,9 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { AgentEngine } from '@fm/engine/agent';
-import { createApi, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
+import { createApi, SESSION_COOKIE } from './league-api.ts';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
-import { bootstrapSchema, seedClub, seedSeason } from './league-test-helpers.ts';
+import { apiLogin, bootstrapSchema, seedClub, seedSeason } from './league-test-helpers.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 const SECRET = 'admin-test-secret';
@@ -31,22 +31,9 @@ let fixtureId: string;
 let matchweekId: string;
 let cookie: string;
 
-const delivered: Array<{ url: string }> = [];
-const delivery: LinkDelivery = {
-  async sendLoginLink(_email, url) {
-    delivered.push({ url });
-  },
-};
-
 const q = (text: string, params?: unknown[]) => pool.query(text, params);
 
-async function login(app: FastifyInstance, email: string): Promise<string> {
-  delivered.length = 0;
-  await app.inject({ method: 'POST', url: '/api/auth/request-link', payload: { email } });
-  const token = new URL(delivered[0].url).searchParams.get('token')!;
-  const res = await app.inject({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  return res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
-}
+const login = (app: FastifyInstance, email: string): Promise<string> => apiLogin(app, email);
 
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
@@ -73,8 +60,8 @@ before(async () => {
   // for the engine switch (real sims through the real week-close, real replay
   // frames) — it must keep passing regardless of the production default
   orch = await createOrchestrator({ pool, connectionString: DATABASE_URL, pollingIntervalSeconds: 0.5, engine: new AgentEngine() });
-  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery, testForceWeekClose: true });
-  apiDisabled = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery });
+  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, testForceWeekClose: true });
+  apiDisabled = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET });
   cookie = await login(api, 'alpha@adm.io');
 });
 

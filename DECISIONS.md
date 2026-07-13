@@ -3,6 +3,39 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-04 — accounts arc phase 1: email + password auth replaces magic links
+
+Kicked off LOBBY-DESIGN-SPEC (self-service accounts → club identity → league
+lobbies). Phase 1 only: kill magic-link login, add email + password accounts.
+
+- **Why drop magic links:** Gmail's link pre-scanning redeemed the single-use
+  token before the human clicked, so real logins hit `link_already_used`. A
+  password has no single-use token to burn.
+- **Hashing = Node's built-in `scrypt`, NOT argon2id/bcrypt** (the spec named
+  those). scrypt is the same OWASP tier (memory-hard) and ships with Node, so
+  the zero-runtime-dependency / no-native-build discipline that keeps
+  `node:24-slim` buildable holds — argon2/bcrypt are native modules node-gyp
+  can't build in that image without extra toolchain. Hash is a self-describing
+  PHC string `scrypt$N$r$p$salt$hash` (`server/league-password.ts`) so cost
+  params can be raised later without a migration. N=2^15, r=8, p=1.
+- **`accounts` BRIDGES to `managers`, sessions stay manager-keyed.** New
+  `accounts(email, password_hash, manager_id, reset_token…)`; `sessions` still
+  reference `manager_id`, so ALL gameplay code (keyed on sessions→managers→
+  clubs) is untouched. Phase 3 moves sessions/gameplay onto `account_id` and
+  retires the seeded managers/clubs. Reset tokens stored as sha256(token), never
+  raw.
+- **Sign-up CLAIMS a seeded manager** with the same email that has no account
+  yet, so the existing seeded test clubs stay reachable (verified: signing up
+  `alice@demo.io` lands on Alpha FC's auction). A brand-new email creates a
+  clubless manager → `/me` returns `club:null` and the web shows an account
+  placeholder (club/league creation is Phases 2–4). setup-production.ts is left
+  in place; it's removed in Phase 3.
+- **`/me` is now session-scoped** (works before a club exists, nullable
+  club/season); gameplay routes stay club-scoped (403 without a club). Reset
+  link points at `/reset` (an SPA route), so the SW `/api/*` navigation denylist
+  from PR #27 is unaffected. One Fly machine keeps the per-process login
+  rate-limiter whole. Enforced: `server/league-api.ts`, `web/src/App.tsx`.
+
 ## 2026-09-03 — transition round: hypothesis REFUTED, the real structure named, stop-rule invoked
 
 The scoped mechanism (transition-defense reformation) was NOT built — the

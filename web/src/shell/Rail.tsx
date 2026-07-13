@@ -51,7 +51,7 @@ const SECTIONS = [
   { to: '/season', label: 'season', icon: ICONS.season },
 ];
 
-export function Rail({ phase, clubName }: { phase: string; clubName: string }) {
+export function Rail({ phase, clubName, onLogout }: { phase: string; clubName: string; onLogout?: () => void }) {
   const windowOpen = phase === 'auction' || phase === 'transfer_window';
   return (
     <nav className="rail" aria-label="sections">
@@ -64,6 +64,14 @@ export function Rail({ phase, clubName }: { phase: string; clubName: string }) {
       ))}
       <span className="spacer" />
       <span className="whoami">{clubName}</span>
+      {onLogout && (
+        <button className="rail-signout" onClick={onLogout} aria-label="Sign out" title="Sign out">
+          <svg viewBox="0 0 24 24" {...stroke}>
+            <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3" />
+            <path d="M10 12H3m0 0 3-3m-3 3 3 3" />
+          </svg>
+        </button>
+      )}
     </nav>
   );
 }

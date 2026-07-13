@@ -7,8 +7,24 @@
  */
 
 import { readFileSync } from 'node:fs';
+import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { Attributes, Phase, Tactics, Vec2 } from '@fm/engine/types';
+import { SESSION_COOKIE } from './league-api.ts';
+
+/**
+ * Get a session cookie for `email` via the real password flow. Sign-up either
+ * creates the account (claiming a seeded manager row with the same email, so
+ * its club/season stays reachable) or 409s if it already exists — either way we
+ * then log in and return the fm_session cookie. Test-only convenience.
+ */
+export async function apiLogin(app: FastifyInstance, email: string, password = 'password123'): Promise<string> {
+  await app.inject({ method: 'POST', url: '/api/auth/signup', payload: { email, password } });
+  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
+  const cookie = res.cookies.find((c) => c.name === SESSION_COOKIE);
+  if (!cookie) throw new Error(`apiLogin(${email}) failed: ${res.statusCode} ${res.body}`);
+  return cookie.value;
+}
 
 export const ATTR_KEYS: Array<keyof Attributes> = [
   'passing', 'longPassing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking',

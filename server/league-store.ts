@@ -1338,9 +1338,9 @@ export async function clearServedSuspensions(c: Queryable, seasonId: string, iss
 // ── auth sessions ────────────────────────────────────────────────────────────
 
 /**
- * Single-use redemption: the session id is derived from the magic link's jti,
- * so a second redeem of the same link conflicts on the PK. Returns whether the
- * session was created (false = link already redeemed).
+ * Create a session for a manager. sessionId is a random UUID (email+password
+ * auth, league-api.ts); ON CONFLICT DO NOTHING keeps it idempotent. Returns
+ * whether a row was created.
  */
 export async function createSession(
   c: Queryable, sessionId: string, managerId: string, expiresAt: Date,
@@ -1350,6 +1350,10 @@ export async function createSession(
     [sessionId, managerId, expiresAt],
   );
   return (res.rowCount ?? 0) > 0;
+}
+
+export async function deleteSession(c: Queryable, sessionId: string): Promise<void> {
+  await c.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
 }
 
 export interface SessionContext {
@@ -1377,6 +1381,76 @@ export async function getSessionContext(c: Queryable, sessionId: string): Promis
 export async function managerIdByEmail(c: Queryable, email: string): Promise<string | null> {
   const { rows } = await c.query(`SELECT id FROM managers WHERE email = $1`, [email]);
   return rows[0]?.id ?? null;
+}
+
+// ── accounts (email + password; LOBBY-DESIGN-SPEC §3) ─────────────────────────
+
+export interface AccountRow {
+  id: string;
+  managerId: string;
+  passwordHash: string;
+}
+
+export async function accountByEmail(c: Queryable, email: string): Promise<AccountRow | null> {
+  const { rows } = await c.query(
+    `SELECT id, manager_id, password_hash FROM accounts WHERE email = $1`, [email],
+  );
+  const r = rows[0];
+  return r ? { id: r.id, managerId: r.manager_id, passwordHash: r.password_hash } : null;
+}
+
+export async function createManager(c: Queryable, email: string, displayName: string): Promise<string> {
+  const { rows } = await c.query(
+    `INSERT INTO managers (email, display_name) VALUES ($1, $2) RETURNING id`, [email, displayName],
+  );
+  return rows[0].id as string;
+}
+
+/** A seeded manager (setup-production/seed-demo) with this email that has no
+ *  account yet — sign-up CLAIMS it so the seeded club/season stays reachable. */
+export async function claimableManagerIdByEmail(c: Queryable, email: string): Promise<string | null> {
+  const { rows } = await c.query(
+    `SELECT m.id FROM managers m
+      LEFT JOIN accounts a ON a.manager_id = m.id
+      WHERE m.email = $1 AND a.id IS NULL`,
+    [email],
+  );
+  return rows[0]?.id ?? null;
+}
+
+export async function createAccount(
+  c: Queryable, email: string, passwordHash: string, managerId: string,
+): Promise<string> {
+  const { rows } = await c.query(
+    `INSERT INTO accounts (email, password_hash, manager_id) VALUES ($1, $2, $3) RETURNING id`,
+    [email, passwordHash, managerId],
+  );
+  return rows[0].id as string;
+}
+
+export async function setResetToken(
+  c: Queryable, accountId: string, tokenHash: string, expiresAt: Date,
+): Promise<void> {
+  await c.query(
+    `UPDATE accounts SET reset_token = $2, reset_expires_at = $3 WHERE id = $1`,
+    [accountId, tokenHash, expiresAt],
+  );
+}
+
+/** Account with a matching, unexpired reset token (token stored as its hash). */
+export async function accountByResetToken(c: Queryable, tokenHash: string): Promise<{ id: string } | null> {
+  const { rows } = await c.query(
+    `SELECT id FROM accounts WHERE reset_token = $1 AND reset_expires_at > now()`, [tokenHash],
+  );
+  return rows[0] ? { id: rows[0].id } : null;
+}
+
+/** Set a new password and clear any pending reset token (single-use). */
+export async function setPassword(c: Queryable, accountId: string, passwordHash: string): Promise<void> {
+  await c.query(
+    `UPDATE accounts SET password_hash = $2, reset_token = NULL, reset_expires_at = NULL WHERE id = $1`,
+    [accountId, passwordHash],
+  );
 }
 
 // ── API read models ──────────────────────────────────────────────────────────
