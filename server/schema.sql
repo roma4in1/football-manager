@@ -51,6 +51,24 @@ CREATE TABLE sessions (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Account = login identity (email + password). Phase 1 of the accounts arc
+-- (LOBBY-DESIGN-SPEC §8): it BRIDGES to a manager row (manager_id) so all
+-- existing gameplay — keyed on sessions.manager_id → clubs — is untouched.
+-- Phase 3 moves sessions/gameplay onto account_id directly and retires the
+-- seeded managers/clubs model. password_hash is a scrypt PHC string
+-- (league-password.ts); reset_token stores sha256(token) hex, NEVER the raw
+-- token, so a DB read can't be replayed into a reset.
+CREATE TABLE accounts (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email             TEXT NOT NULL UNIQUE,
+  password_hash     TEXT NOT NULL,
+  manager_id        UUID NOT NULL UNIQUE REFERENCES managers(id),
+  reset_token       TEXT,                               -- sha256(token) hex; NULL when no reset pending
+  reset_expires_at  TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX accounts_reset_token ON accounts(reset_token) WHERE reset_token IS NOT NULL;
+
 CREATE TABLE seasons (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   number          INT NOT NULL UNIQUE,               -- 1, 2, ...

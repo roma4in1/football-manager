@@ -3,7 +3,7 @@
 One Fly.io machine runs the whole app (`server/league-server.ts`: Fastify API +
 pg-boss worker in a single process, serving the built PWA from `web/dist`).
 Supabase hosts Postgres — **connection string only**: auth is our own
-magic-link system, so no Supabase Auth/Realtime/Storage is ever wired in.
+email + password system, so no Supabase Auth/Realtime/Storage is ever wired in.
 Cloudflare holds the `topfootballgame.com` DNS zone and points it at Fly.
 
 ```
@@ -21,8 +21,8 @@ the secrets in Fly's secret store (§3). Nothing is committed.
 | Secret | What it is | Generate / obtain |
 | --- | --- | --- |
 | `DATABASE_URL` | Supabase **session-pooler** connection string | Supabase dashboard (§1.2) |
-| `SESSION_SECRET` | HMAC key signing magic links + deriving session ids | `openssl rand -base64 48` |
-| `RESEND_API_KEY` | transactional email key for login links | Resend dashboard (§2) |
+| `SESSION_SECRET` | reserved secret for cookie/token signing (unused by password auth today; keep it provisioned) | `openssl rand -base64 48` |
+| `RESEND_API_KEY` | transactional email key for password-reset links | Resend dashboard (§2) |
 
 Costs: Fly `shared-cpu-1x` / 512 MB always-on ≈ **$3–5/mo**; Supabase free
 tier and Resend free tier (100 emails/day) comfortably hold an 8-manager
@@ -100,8 +100,8 @@ zero clubs).
 > `seed-demo.ts`, no overlap.
 
 Write a clubs file (shape in `server/scripts/clubs.example.json`) — one entry
-per club, and **emails must be real**: managers are seeded, not registered,
-and login links are delivered to exactly these addresses.
+per club, and **emails must be real**: a manager signs up with this exact
+address to claim the seeded club, and password-reset links are delivered here.
 
 ```jsonc
 // clubs.json — 2-club TEST season (validate the full game yourself first)
@@ -129,8 +129,11 @@ DATABASE_URL='<session-pooler url, §1.2>' node scripts/setup-production.ts club
 
 It prints the season id, the schedule shape, each club with its manager (and
 whether the manager already existed and was linked), and whose nomination
-opens the auction. After that, managers log in via magic link and the auction
-is live.
+opens the auction. Managers **sign up with that same email** to claim the seeded
+club (the account links to it), or use forgot-password; then the auction is live.
+Auth is email + password (`/auth/signup`, `/auth/login`); the only email left is
+password reset. Phase 3 of the accounts arc (LOBBY-DESIGN-SPEC) removes this
+seeded path for a self-service create/join flow.
 
 **Replacing the test season with the real one:** the script refuses to run
 when any season exists — it creates the *first* season only (rollover owns
@@ -187,9 +190,9 @@ DATABASE_URL='<url>' node scripts/reset-league.ts --confirm
    it only sends.
 
 The server picks Resend automatically when `RESEND_API_KEY` is set
-(`server/league-server.ts`); without it, links go to stdout (dev behavior) and
-a warning is logged if `BASE_URL` is set. Free tier: 100 emails/day — an
-8-manager league's login traffic rounds to zero.
+(`server/league-server.ts`); without it, password-reset links go to stdout (dev
+behavior) and a warning is logged if `BASE_URL` is set. Free tier: 100 emails/day
+— an 8-manager league's reset traffic rounds to zero.
 
 **Reveal-notification fallback:** if the planned iOS-push weekly reveal turns
 out flaky (push is parked pending a device test), this same email path is the
@@ -252,9 +255,9 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
    ```sh
    curl https://topfootballgame.com/api/health     # → {"ok":true}
    ```
-   Then the real thing: open the site on a phone, request a login link for a
-   seeded manager email, click it from the inbox, land signed-in. The session
-   cookie is `Secure` + `httpOnly` in production.
+   Then the real thing: open the site on a phone, sign up (or log in) with email
+   + password, land in the app. The session cookie is `Secure` + `httpOnly` in
+   production. Forgot-password emails a `/reset?token=…` link via Resend.
 
 ## 6. Go-live checklist (condensed order)
 
@@ -300,11 +303,10 @@ database connection, not just the HTTP layer. Crash-restarts are automatic
 (`[[restart]] policy = "always"`).
 
 ### Rotating secrets
-- `SESSION_SECRET` — **rotating it invalidates every session and all
-  unredeemed login links** (sessions and links are HMAC-derived from it, per
-  the PR #11 design). Everyone just logs in again — do it between matchweeks,
-  not mid-auction: `fly secrets set SESSION_SECRET="$(openssl rand -base64 48)"`
-  (secrets-set restarts the machine).
+- `SESSION_SECRET` — currently unused by auth (session ids are random UUIDs in
+  the `sessions` table, not derived from it), so rotating it has no user impact
+  today. Kept provisioned for future cookie/token signing. `fly secrets set
+  SESSION_SECRET="$(openssl rand -base64 48)"` restarts the machine.
 - `RESEND_API_KEY` — create the new key in Resend, `fly secrets set`, revoke
   the old one. No user impact.
 - `DATABASE_URL` (Supabase password reset) — reset in Supabase, update the Fly
@@ -354,7 +356,7 @@ locally.
 
 ## 9. What is deliberately NOT here
 
-- **Supabase Auth / Realtime / Storage** — our magic-link auth is the auth.
+- **Supabase Auth / Realtime / Storage** — our email + password auth is the auth.
 - **A migration framework** — see the §1.3 cutover note.
 - **Public Postgres exposure** — only Fly (and the backup workflow) hold the
   connection string; Supabase's pooler requires TLS.

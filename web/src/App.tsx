@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { api, ApiError, type Me } from './api.ts';
+import { api, ApiError, type Me, type MeWithClub } from './api.ts';
+import { Login } from './screens/Login.tsx';
+import { ResetPassword } from './screens/ResetPassword.tsx';
+import { AccountLanding } from './screens/AccountLanding.tsx';
 import { Rail } from './shell/Rail.tsx';
 import { Section } from './shell/Section.tsx';
 import { TacticsSection } from './tactics/TacticsSection.tsx';
@@ -10,7 +13,6 @@ import { FacilitiesScreen } from './screens/FacilitiesScreen.tsx';
 import { HalfTimeScreen } from './screens/HalfTimeScreen.tsx';
 import { Home } from './screens/Home.tsx';
 import { LineupScreen } from './screens/LineupScreen.tsx';
-import { Login } from './screens/Login.tsx';
 import { MatchDetailScreen } from './screens/MatchDetailScreen.tsx';
 import { ResultsListScreen } from './screens/ResultsListScreen.tsx';
 import { SquadScreen } from './screens/SquadScreen.tsx';
@@ -44,20 +46,22 @@ function MatchDetailRedirect() {
 export function App() {
   const [me, setMe] = useState<Me | 'anon' | 'loading'>('loading');
 
+  const load = useCallback(
+    () => api.me().then(setMe, (err) => setMe(err instanceof ApiError && err.status === 401 ? 'anon' : 'anon')),
+    [],
+  );
+
   useEffect(() => {
-    const load = () =>
-      api.me().then(setMe, (err) => {
-        setMe(err instanceof ApiError && err.status === 401 ? 'anon' : 'anon');
-      });
     void load();
     const iv = setInterval(load, ME_POLL_MS);
     return () => clearInterval(iv);
+  }, [load]);
+
+  const logout = useCallback(async () => {
+    try { await api.logout(); } finally { setMe('anon'); }
   }, []);
 
   if (me === 'loading') return <p className="muted center">…</p>;
-  if (me === 'anon') return <Login />;
-
-  const marketHome = me.season.phase === 'auction' ? '/market/auction' : '/market/transfers';
 
   return (
     <BrowserRouter>
@@ -66,8 +70,27 @@ export function App() {
         <strong>Hold your phone sideways</strong>
         <span>The league plays in landscape.</span>
       </div>
-      <div className="app">
-        <Rail phase={me.season.phase} clubName={me.club.name} />
+      {me === 'anon' ? (
+        <Routes>
+          <Route path="/reset" element={<ResetPassword />} />
+          <Route path="*" element={<Login onAuthed={load} />} />
+        </Routes>
+      ) : me.club && me.season ? (
+        <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={logout} />
+      ) : (
+        <AccountLanding email={me.manager.email} onLogout={logout} />
+      )}
+    </BrowserRouter>
+  );
+}
+
+/** The logged-in, club-scoped app: the persistent rail + every game screen. */
+function GameShell({ me, onLogout }: { me: MeWithClub; onLogout: () => void }) {
+  const marketHome = me.season.phase === 'auction' ? '/market/auction' : '/market/transfers';
+
+  return (
+    <div className="app">
+        <Rail phase={me.season.phase} clubName={me.club.name} onLogout={onLogout} />
         <div className="content">
           <Routes>
             <Route path="/" element={<Home me={me} />} />
@@ -121,6 +144,5 @@ export function App() {
           </Routes>
         </div>
       </div>
-    </BrowserRouter>
   );
 }

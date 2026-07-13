@@ -5,9 +5,9 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Me, type ResultsView } from '../api.ts';
+import { api, type MeWithClub, type ResultsView } from '../api.ts';
 
-export function ResultsListScreen({ me }: { me: Me }) {
+export function ResultsListScreen({ me }: { me: MeWithClub }) {
   const [view, setView] = useState<ResultsView | null>(null);
 
   useEffect(() => {

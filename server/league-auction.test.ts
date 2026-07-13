@@ -13,11 +13,11 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
-import { createApi, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
+import { createApi, SESSION_COOKIE } from './league-api.ts';
 import { doubleRoundRobin, snakeNominator } from './league-auction.ts';
 import { wageFromMarketValue } from '@fm/engine/config';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
-import { bootstrapSchema, seedBareClub, seedPoolPlayers, seedSeason, waitFor } from './league-test-helpers.ts';
+import { apiLogin, bootstrapSchema, seedBareClub, seedPoolPlayers, seedSeason, waitFor } from './league-test-helpers.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 const SECRET = 'auction-test-secret';
@@ -30,13 +30,6 @@ let clubAlpha: string, clubBeta: string;
 let poolIds: string[] = [];
 let cookieAlpha: string, cookieBeta: string;
 
-const delivered: Array<{ email: string; url: string }> = [];
-const captureDelivery: LinkDelivery = {
-  async sendLoginLink(email, url) {
-    delivered.push({ email, url });
-  },
-};
-
 const q = (text: string, params?: unknown[]) => pool.query(text, params);
 
 async function call(method: 'GET' | 'POST' | 'PUT', url: string, cookie: string, payload?: unknown) {
@@ -47,13 +40,7 @@ async function call(method: 'GET' | 'POST' | 'PUT', url: string, cookie: string,
   });
 }
 
-async function login(email: string): Promise<string> {
-  delivered.length = 0;
-  await api.inject({ method: 'POST', url: '/api/auth/request-link', payload: { email } });
-  const token = new URL(delivered[0].url).searchParams.get('token')!;
-  const res = await api.inject({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  return res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
-}
+const login = (email: string): Promise<string> => apiLogin(api, email);
 
 /** Wait until a lot is resolved (won, or expired past closes_at with the close job done). */
 async function waitForResolution(lotId: string): Promise<void> {
@@ -80,7 +67,7 @@ before(async () => {
     pollingIntervalSeconds: 0.5,
     auctionTuning: { lotSeconds: 3, softCloseSeconds: 1.5, bidIncrementMin: 1, squadMin: 2, squadMax: 3 },
   });
-  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery: captureDelivery });
+  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET });
   cookieAlpha = await login('alpha@test.io');
   cookieBeta = await login('beta@test.io');
 });

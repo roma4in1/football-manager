@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import type { MatchEvent } from '@fm/engine/types';
-import { api, type Me, type ReplayView, type ResultView } from '../api.ts';
+import { api, type MeWithClub, type ReplayView, type ResultView } from '../api.ts';
 import { Ratings, StatsTable } from '../components.tsx';
 import { eventLabel, minuteOf } from '../format.ts';
 import { ReplayViewer } from '../replay/ReplayViewer.tsx';
@@ -20,7 +20,7 @@ type Tab = 'timeline' | 'replay' | 'stats';
 const TIMELINE_TYPES = new Set(['goal', 'card', 'injury', 'sub']);
 const ICON: Record<string, string> = { goal: '⚽', card: '🟨', injury: '✚', sub: '⇄' };
 
-export function MatchDetailScreen({ me }: { me: Me }) {
+export function MatchDetailScreen({ me }: { me: MeWithClub }) {
   const { fixtureId } = useParams<{ fixtureId: string }>();
   const [view, setView] = useState<ResultView | null>(null);
   const [replay, setReplay] = useState<ReplayView | 'unavailable' | null>(null);

@@ -119,10 +119,12 @@ export const LEAGUE_CFG = {
   // HTTP API (league-api.ts / league-server.ts)
   apiHost: '127.0.0.1',
   apiPort: 8080,
-  authTokenTtlMinutes: 15, // magic-link validity
   sessionTtlDays: 30,
-  requestLinkMax: 3, // per email, per window
-  requestLinkWindowMinutes: 15,
+  // email + password accounts (LOBBY-DESIGN-SPEC §3)
+  passwordMinLength: 8,
+  loginRateMax: 10, // failed-or-not login attempts per email, per window
+  loginRateWindowMinutes: 15,
+  resetTokenTtlMinutes: 60, // password-reset link validity
 } as const;
 
 /** Auction signing wage — linear in market value (g in the auction spec). */

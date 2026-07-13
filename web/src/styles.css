@@ -680,3 +680,32 @@ button.watch:hover { background: var(--accent-soft); }
   }
   button:active:not(:disabled), .button:active, .tabs button:active, .tabs a:active, .rail a:active { transform: none; }
 }
+
+/* ── auth screens (login / signup / forgot / reset) ─────────────────────── */
+.content > main.narrow.auth,
+.app > main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
+/* auth renders full-viewport (outside the rail shell) — center it vertically */
+.auth { display: flex; flex-direction: column; justify-content: center; min-height: 100dvh; }
+.auth-brand {
+  text-align: center; font-size: 1.5rem; letter-spacing: -0.02em;
+  color: var(--accent-deep); margin: 0 0 var(--sp-4);
+}
+.auth-card { margin: 0; box-shadow: var(--shadow-md); }
+.auth-card h2 { margin-bottom: var(--sp-3); }
+.field { display: block; margin: 0 0 var(--sp-3); font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.field input { margin: 0.28rem 0 0; }
+.auth-cta { width: 100%; margin-top: var(--sp-1); }
+.auth-switch { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-top: var(--sp-3); }
+.auth-switch .ghost { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.auth-switch .ghost:hover { color: var(--accent-deep); }
+
+/* rail sign-out — sits under the club name at the foot of the rail */
+.rail-signout {
+  border: none; background: transparent; color: var(--faint); cursor: pointer;
+  padding: 0.3rem; margin-top: 2px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+}
+.rail-signout svg { width: 19px; height: 19px; }
+.rail-signout:hover { color: var(--danger); background: var(--danger-soft); }
+.rail-signout:active { transform: scale(0.94); }
+.rail-signout:focus-visible { outline: none; box-shadow: var(--ring); }

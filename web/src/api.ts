@@ -31,9 +31,18 @@ async function req<T>(method: 'GET' | 'POST' | 'PUT', url: string, body?: unknow
 
 export interface Me {
   manager: { id: string; email: string; displayName: string };
-  club: { id: string; name: string };
-  season: { id: string; number: number; phase: string };
+  /** null until the account has a club (created in a later accounts-arc phase). */
+  club: { id: string; name: string } | null;
+  /** null when no season is configured yet. */
+  season: { id: string; number: number; phase: string } | null;
 }
+
+/** Me narrowed to an account that has a club in a configured season — the shape
+ *  every gameplay screen needs (App gates on it before rendering them). */
+export type MeWithClub = Me & {
+  club: NonNullable<Me['club']>;
+  season: NonNullable<Me['season']>;
+};
 
 export interface SquadPlayerView {
   playerId: string;
@@ -251,7 +260,11 @@ export interface PlayoffsView {
 
 export const api = {
   me: () => req<Me>('GET', '/api/me'),
-  requestLink: (email: string) => req<void>('POST', '/api/auth/request-link', { email }),
+  signup: (email: string, password: string) => req<{ ok: true }>('POST', '/api/auth/signup', { email, password }),
+  login: (email: string, password: string) => req<{ ok: true }>('POST', '/api/auth/login', { email, password }),
+  logout: () => req<void>('POST', '/api/auth/logout'),
+  forgotPassword: (email: string) => req<void>('POST', '/api/auth/forgot-password', { email }),
+  resetPassword: (token: string, password: string) => req<{ ok: true }>('POST', '/api/auth/reset-password', { token, password }),
   squad: () => req<{ players: SquadPlayerView[] }>('GET', '/api/squad'),
   playerDetail: (playerId: string) => req<PlayerDetailView>('GET', `/api/squad/player/${playerId}`),
   defaultTactics: () => req<{ payload: Tactics }>('GET', '/api/default-tactics'),

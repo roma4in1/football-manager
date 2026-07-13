@@ -1,21 +1,25 @@
 /**
- * league-email.ts — production LinkDelivery via Resend (https://resend.com).
+ * league-email.ts — production EmailDelivery via Resend (https://resend.com).
+ *
+ * Since the accounts arc (LOBBY-DESIGN-SPEC §3) email is used for ONE thing:
+ * password-reset links. Login is email + password (no magic link), so the only
+ * transactional mail left is "forgot password".
  *
  * Why Resend: single HTTPS POST, no SDK, free tier (100/day, 3k/mo) dwarfs an
- * 8-manager league's login traffic, and domain verification is two DNS records
+ * 8-manager league's reset traffic, and domain verification is two DNS records
  * on the Cloudflare zone we already manage (docs/DEPLOY.md). The provider hides
- * behind the existing LinkDelivery interface, so swapping it is one module.
+ * behind the EmailDelivery interface, so swapping it is one module.
  *
  * No new dependency: global fetch (Node ≥ 18). Failures throw — the
- * request-link route surfaces a 500 and the manager retries; a swallowed send
- * would look identical to the deliberate unknown-email 204.
+ * forgot-password route swallows the error into the same 204 it returns for an
+ * unknown email (no account enumeration), and logs server-side.
  */
 
 import { LEAGUE_CFG } from '@fm/engine/config';
-import type { LinkDelivery } from './league-api.ts';
+import type { EmailDelivery } from './league-api.ts';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
-const TTL = `${LEAGUE_CFG.authTokenTtlMinutes} minutes`;
+const TTL = `${LEAGUE_CFG.resetTokenTtlMinutes} minutes`;
 
 export interface ResendOptions {
   apiKey: string;
@@ -25,10 +29,10 @@ export interface ResendOptions {
   fetchImpl?: typeof fetch;
 }
 
-export function resendLinkDelivery(opts: ResendOptions): LinkDelivery {
+export function resendEmailDelivery(opts: ResendOptions): EmailDelivery {
   const doFetch = opts.fetchImpl ?? fetch;
   return {
-    async sendLoginLink(email, url) {
+    async sendPasswordReset(email, url) {
       const res = await doFetch(RESEND_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -38,12 +42,12 @@ export function resendLinkDelivery(opts: ResendOptions): LinkDelivery {
         body: JSON.stringify({
           from: opts.from,
           to: [email],
-          subject: 'Your FM League login link',
-          text: `Sign in to FM League:\n\n${url}\n\nThe link is single-use and expires in ${TTL}. If you didn't request it, ignore this email.`,
+          subject: 'Reset your FM League password',
+          text: `Reset your FM League password:\n\n${url}\n\nThe link expires in ${TTL}. If you didn't request it, ignore this email — your password is unchanged.`,
           html:
-            `<p>Sign in to FM League:</p>` +
-            `<p><a href="${url}">Open FM League</a></p>` +
-            `<p style="color:#667">The link is single-use and expires in ${TTL}. If you didn't request it, ignore this email.</p>`,
+            `<p>Reset your FM League password:</p>` +
+            `<p><a href="${url}">Choose a new password</a></p>` +
+            `<p style="color:#667">The link expires in ${TTL}. If you didn't request it, ignore this email — your password is unchanged.</p>`,
         }),
       });
       if (!res.ok) {

@@ -12,11 +12,11 @@ import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import type { HalfResult, HalfStats, MatchEvent } from '@fm/engine/types';
 import { LEAGUE_CFG, facilityUpgradeCost, medicalInjuryAvoidProb, trainingGrowthMul } from '@fm/engine/config';
-import { createApi, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
+import { createApi, SESSION_COOKIE } from './league-api.ts';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
 import { injuryWeeks, createCore } from './league-orchestrator.ts';
 import * as store from './league-store.ts';
-import { bootstrapSchema, seedClub, seedSeason } from './league-test-helpers.ts';
+import { apiLogin, bootstrapSchema, seedClub, seedSeason } from './league-test-helpers.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 const SECRET = 'facilities-test-secret';
@@ -29,25 +29,13 @@ let clubA: string, clubB: string;
 let playersA: string[], playersB: string[];
 let cookieA: string;
 
-const delivered: Array<{ email: string; url: string }> = [];
-const delivery: LinkDelivery = {
-  async sendLoginLink(email, url) {
-    delivered.push({ email, url });
-  },
-};
 const q = (text: string, params?: unknown[]) => pool.query(text, params);
 
 // enough for the two invests this file makes (medical L0 here, training L0 in
 // the window test) with the next level's cost still visible in the view
 const RESERVE_START = LEAGUE_CFG.facilityCostByLevel[0] + LEAGUE_CFG.facilityCostByLevel[1];
 
-async function login(email: string): Promise<string> {
-  delivered.length = 0;
-  await api.inject({ method: 'POST', url: '/api/auth/request-link', payload: { email } });
-  const token = new URL(delivered[0].url).searchParams.get('token')!;
-  const res = await api.inject({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  return res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
-}
+const login = (email: string): Promise<string> => apiLogin(api, email);
 
 type Call = { method: 'GET' | 'POST'; url: string; payload?: unknown };
 const call = ({ method, url, payload }: Call) =>
@@ -68,7 +56,7 @@ before(async () => {
   // (economy rescale) — top clubA up to a scale-aware balance
   await q(`UPDATE club_seasons SET reserve_balance = $1 WHERE club_id = $2 AND season_id = $3`, [RESERVE_START, clubA, seasonId]);
   orch = await createOrchestrator({ pool, connectionString: DATABASE_URL, pollingIntervalSeconds: 0.5 });
-  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET, delivery });
+  api = await createApi({ pool, orchestrator: orch, sessionSecret: SECRET });
   cookieA = await login('alpha@fac.io');
 });
 

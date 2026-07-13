@@ -15,9 +15,10 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
-import { createApi, mintMagicToken, SESSION_COOKIE, type LinkDelivery } from './league-api.ts';
+import { createApi, SESSION_COOKIE, type EmailDelivery } from './league-api.ts';
 import { createOrchestrator, type Orchestrator } from './league-orchestrator.ts';
-import { bootstrapSchema, buildTactics, flatAttributes, seedClub, seedSeason, waitFor } from './league-test-helpers.ts';
+import { apiLogin, bootstrapSchema, buildTactics, flatAttributes, seedClub, seedSeason, waitFor } from './league-test-helpers.ts';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import type { Tactics } from '@fm/engine/types';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
@@ -35,8 +36,8 @@ let matchweekId: string;
 let cookieA: string, cookieB: string, cookieC: string;
 
 const delivered: Array<{ email: string; url: string }> = [];
-const captureDelivery: LinkDelivery = {
-  async sendLoginLink(email, url) {
+const captureDelivery: EmailDelivery = {
+  async sendPasswordReset(email, url) {
     delivered.push({ email, url });
   },
 };
@@ -53,19 +54,7 @@ async function call({ method, url, cookie, payload }: InjectOpts) {
   });
 }
 
-async function login(email: string): Promise<string> {
-  delivered.length = 0;
-  const req = await call({ method: 'POST', url: '/api/auth/request-link', payload: { email } });
-  assert.equal(req.statusCode, 204);
-  assert.equal(delivered.length, 1);
-  const token = new URL(delivered[0].url).searchParams.get('token')!;
-  const res = await call({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  assert.equal(res.statusCode, 302, 'redeem lands on the SPA root');
-  assert.equal(res.headers.location, '/');
-  const cookie = res.cookies.find((c) => c.name === SESSION_COOKIE);
-  assert.ok(cookie, 'redeem sets the session cookie');
-  return cookie.value;
-}
+const login = (email: string): Promise<string> => apiLogin(api, email);
 
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
@@ -108,42 +97,70 @@ test('health: 200 without a session (the Fly check probes unauthenticated)', asy
   assert.deepEqual(res.json(), { ok: true });
 });
 
-// ── auth ─────────────────────────────────────────────────────────────────────
+// ── auth: email + password (LOBBY-DESIGN-SPEC §3) ─────────────────────────────
 
-test('request-link: unknown email → 204 and nothing delivered', async () => {
+test('signup rejects a bad email or a short password', async () => {
+  assert.equal((await call({ method: 'POST', url: '/api/auth/signup', payload: { email: 'nope', password: 'longenough' } })).statusCode, 400);
+  assert.equal((await call({ method: 'POST', url: '/api/auth/signup', payload: { email: 'x@test.io', password: 'short' } })).statusCode, 400);
+});
+
+test('signup opens a session; duplicate email refused; a fresh account has no club yet', async () => {
+  const email = 'newbie@test.io';
+  const up = await call({ method: 'POST', url: '/api/auth/signup', payload: { email, password: 'password123' } });
+  assert.equal(up.statusCode, 200);
+  const cookie = up.cookies.find((c) => c.name === SESSION_COOKIE);
+  assert.ok(cookie, 'signup opens a session');
+
+  assert.equal((await call({ method: 'POST', url: '/api/auth/signup', payload: { email, password: 'password123' } })).statusCode, 409);
+
+  // a brand-new account is clubless → /me is 200 with club null (placeholder land)
+  const me = await call({ method: 'GET', url: '/api/me', cookie: cookie!.value });
+  assert.equal(me.statusCode, 200);
+  assert.equal(me.json().club, null);
+});
+
+test('login: correct password issues a session, wrong password → 401', async () => {
+  const good = await call({ method: 'POST', url: '/api/auth/login', payload: { email: 'newbie@test.io', password: 'password123' } });
+  assert.equal(good.statusCode, 200);
+  assert.ok(good.cookies.find((c) => c.name === SESSION_COOKIE));
+  assert.equal((await call({ method: 'POST', url: '/api/auth/login', payload: { email: 'newbie@test.io', password: 'wrongpass1' } })).statusCode, 401);
+});
+
+test('logout clears the session', async () => {
+  const cookie = await login('beta@test.io');
+  assert.equal((await call({ method: 'GET', url: '/api/me', cookie })).statusCode, 200);
+  assert.equal((await call({ method: 'POST', url: '/api/auth/logout', cookie })).statusCode, 204);
+  assert.equal((await call({ method: 'GET', url: '/api/me', cookie })).statusCode, 401, 'the session no longer resolves');
+});
+
+test('forgot → emailed link → reset → login with the new password (token single-use)', async () => {
+  const email = 'resetme@test.io';
+  await call({ method: 'POST', url: '/api/auth/signup', payload: { email, password: 'oldpassword' } });
   delivered.length = 0;
-  const res = await call({ method: 'POST', url: '/api/auth/request-link', payload: { email: 'stranger@test.io' } });
-  assert.equal(res.statusCode, 204, 'response does not reveal whether the email exists');
+  assert.equal((await call({ method: 'POST', url: '/api/auth/forgot-password', payload: { email } })).statusCode, 204);
+  assert.equal(delivered.length, 1, 'a reset link was emailed');
+  const token = new URL(delivered[0].url).searchParams.get('token')!;
+
+  assert.equal((await call({ method: 'POST', url: '/api/auth/reset-password', payload: { token, password: 'short' } })).statusCode, 400);
+  assert.equal((await call({ method: 'POST', url: '/api/auth/reset-password', payload: { token, password: 'brandnewpass' } })).statusCode, 200);
+
+  assert.equal((await call({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'oldpassword' } })).statusCode, 401);
+  assert.equal((await call({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'brandnewpass' } })).statusCode, 200);
+  assert.equal((await call({ method: 'POST', url: '/api/auth/reset-password', payload: { token, password: 'brandnewpass' } })).statusCode, 400, 'reset token is single-use');
+});
+
+test('forgot-password for an unknown email → 204, nothing sent (no enumeration)', async () => {
+  delivered.length = 0;
+  assert.equal((await call({ method: 'POST', url: '/api/auth/forgot-password', payload: { email: 'ghost@test.io' } })).statusCode, 204);
   assert.equal(delivered.length, 0);
 });
 
-test('redeem: a link is single-use', async () => {
-  delivered.length = 0;
-  await call({ method: 'POST', url: '/api/auth/request-link', payload: { email: 'alpha@test.io' } });
-  const token = new URL(delivered[0].url).searchParams.get('token')!;
-  const first = await call({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  assert.equal(first.statusCode, 302);
-  const second = await call({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(token)}` });
-  assert.equal(second.statusCode, 401);
-  assert.equal(second.json().error, 'link_already_used');
-});
-
-test('redeem: expired and forged tokens → 401', async () => {
-  const managerId = (await q(`SELECT id FROM managers WHERE email = 'alpha@test.io'`)).rows[0].id;
-  const expired = mintMagicToken(SECRET, managerId, -1000);
-  assert.equal((await call({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(expired)}` })).statusCode, 401);
-
-  const forged = mintMagicToken('wrong-secret', managerId, 60_000);
-  assert.equal((await call({ method: 'GET', url: `/api/auth/redeem?token=${encodeURIComponent(forged)}` })).statusCode, 401);
-  assert.equal((await call({ method: 'GET', url: '/api/auth/redeem?token=garbage' })).statusCode, 401);
-});
-
-test('request-link is rate-limited per email', async () => {
-  const email = 'ratelimit-probe@test.io'; // unknown emails are limited too
-  for (let i = 0; i < 3; i++) {
-    assert.equal((await call({ method: 'POST', url: '/api/auth/request-link', payload: { email } })).statusCode, 204);
+test('login is rate-limited per email', async () => {
+  const email = 'ratelimit-probe@test.io';
+  for (let i = 0; i < LEAGUE_CFG.loginRateMax; i++) {
+    assert.equal((await call({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'whatever1' } })).statusCode, 401);
   }
-  assert.equal((await call({ method: 'POST', url: '/api/auth/request-link', payload: { email } })).statusCode, 429);
+  assert.equal((await call({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'whatever1' } })).statusCode, 429);
 });
 
 test('no or bogus session → 401', async () => {

@@ -1,15 +1,18 @@
 /**
- * league-api.ts — HTTP API + magic-link auth (Fastify).
+ * league-api.ts — HTTP API + email/password auth (Fastify).
  *
  * Framework: Fastify (DECISIONS.md) — `app.inject()` gives supertest-style
  * tests without binding a port; @fastify/cookie handles the session cookie.
  *
- * Auth: no registration — the 8 managers are seeded. POST /auth/request-link
- * mints an HMAC-signed single-use token (15 min TTL) and hands the URL to a
- * LinkDelivery (console stub until the email PR). GET /auth/redeem exchanges
- * it for an httpOnly session cookie. Single-use without a token table: the
- * session id is HMAC(secret, jti), so a second redeem conflicts on the
- * sessions PK (schema.sql).
+ * Auth (LOBBY-DESIGN-SPEC §3, phase 1 of the accounts arc): self-service
+ * email + password accounts. POST /auth/signup creates an account (claiming a
+ * seeded manager row with the same email so its club/season stays reachable, or
+ * creating a fresh clubless one) and opens a session; /auth/login verifies the
+ * scrypt hash (league-password.ts) and sets the httpOnly fm_session cookie;
+ * /auth/logout clears it. The one remaining email path is password reset
+ * (/auth/forgot-password → emailed link → /auth/reset-password); everything
+ * else is passwordful. /me is session-scoped and works before a club exists;
+ * gameplay routes stay club-scoped (403 without a club).
  *
  * Embargo is THE security property here and it lives in SQL, not JS
  * post-filtering: /fixture/:id/result and /standings only see rows through
@@ -23,10 +26,11 @@
  *
  * All routes live under /api so the SPA owns every other path: Vite dev-proxies
  * /api, production Fastify serves web/dist with an index.html fallback
- * (league-server.ts). Redeem 302s to / so the magic link lands in the app.
+ * (league-server.ts). The reset link points at /reset (an SPA route), so the SW
+ * /api/* navigation denylist is unaffected.
  */
 
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fastifyCookie from '@fastify/cookie';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type pg from 'pg';
@@ -37,68 +41,43 @@ import { LEAGUE_CFG, facilityUpgradeCost } from '@fm/engine/config';
 import { validateHtResubmission, validateTactics } from '@fm/engine/eligibility';
 import type { Orchestrator } from './league-orchestrator.ts';
 import { createTransferCore, TransferError } from './league-transfers.ts';
+import { hashPassword, verifyPassword } from './league-password.ts';
 import * as store from './league-store.ts';
 
 export const SESSION_COOKIE = 'fm_session';
 
-// ── link delivery (real email is a later PR) ─────────────────────────────────
+// ── email delivery (password-reset links only) ───────────────────────────────
+// Login is email + password; the only transactional mail left is the reset link.
 
-export interface LinkDelivery {
-  sendLoginLink(email: string, url: string): Promise<void>;
+export interface EmailDelivery {
+  sendPasswordReset(email: string, url: string): Promise<void>;
 }
 
-export const consoleLinkDelivery: LinkDelivery = {
-  async sendLoginLink(email, url) {
-    console.log(`[auth] login link for ${email}: ${url}`);
+export const consoleEmailDelivery: EmailDelivery = {
+  async sendPasswordReset(email, url) {
+    console.log(`[auth] password reset for ${email}: ${url}`);
   },
 };
 
-// ── magic tokens ─────────────────────────────────────────────────────────────
-
-const b64url = (buf: Buffer): string => buf.toString('base64url');
-const hmac = (secret: string, data: string): Buffer => createHmac('sha256', secret).update(data).digest();
-
-/** Exported for tests (expiry crafting). Token = payload.signature, both base64url. */
-export function mintMagicToken(secret: string, managerId: string, ttlMs: number, now = Date.now()): string {
-  const payload = b64url(Buffer.from(JSON.stringify({ m: managerId, e: now + ttlMs, j: randomUUID() })));
-  return `${payload}.${b64url(hmac(secret, payload))}`;
-}
-
-function verifyMagicToken(secret: string, token: string, now = Date.now()): { managerId: string; jti: string } | null {
-  const dot = token.lastIndexOf('.');
-  if (dot <= 0) return null;
-  const payload = token.slice(0, dot);
-  const sig = Buffer.from(token.slice(dot + 1), 'base64url');
-  const expected = hmac(secret, payload);
-  if (sig.length !== expected.length || !timingSafeEqual(sig, expected)) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { m?: string; e?: number; j?: string };
-    if (typeof parsed.m !== 'string' || typeof parsed.e !== 'number' || typeof parsed.j !== 'string') return null;
-    if (now > parsed.e) return null;
-    return { managerId: parsed.m, jti: parsed.j };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Session id derived from the link's jti: deterministic (PK collision = link
- * already redeemed) but not computable from the link alone once redeemed.
- */
-export function sessionIdFromJti(secret: string, jti: string): string {
-  const h = hmac(secret, `session|${jti}`).subarray(0, 16).toString('hex');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
-}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Normalize + validate an email; null when it isn't a plausible address. */
+const normEmail = (e: unknown): string | null => {
+  if (typeof e !== 'string') return null;
+  const trimmed = e.trim().toLowerCase();
+  return EMAIL_RE.test(trimmed) ? trimmed : null;
+};
+const sha256hex = (s: string): string => createHash('sha256').update(s).digest('hex');
 
 // ── request context ──────────────────────────────────────────────────────────
 
 interface SessionCtx extends store.SessionContext {
-  clubId: string; // narrowed: club-scoped routes reject managers without a club
+  clubId: string; // narrowed: club-scoped routes reject accounts without a club
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
-    ctx: SessionCtx;
+    ctx: SessionCtx;                // club-scoped routes (clubId guaranteed non-null)
+    account: store.SessionContext;  // session-scoped routes (/me, /logout — clubId may be null)
   }
 }
 
@@ -111,34 +90,52 @@ export interface ApiOptions {
    *  sets this from TEST_FORCE_WEEK_CLOSE=1). Unset → the route does not
    *  exist (404) — it cannot fire in a real season by accident. */
   testForceWeekClose?: boolean;
-  sessionSecret: string;
-  delivery?: LinkDelivery;
+  /** Reserved for future cookie/token signing; unused by password auth (session
+   *  ids are random UUIDs). Kept so callers/tests can keep passing it. */
+  sessionSecret?: string;
+  delivery?: EmailDelivery;
   /** Base for links in emails, e.g. https://league.example — no trailing slash. */
   baseUrl?: string;
 }
 
 export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
-  const { pool, orchestrator, sessionSecret } = opts;
-  const delivery = opts.delivery ?? consoleLinkDelivery;
+  const { pool, orchestrator } = opts;
+  const delivery = opts.delivery ?? consoleEmailDelivery;
   const baseUrl = opts.baseUrl ?? `http://${LEAGUE_CFG.apiHost}:${LEAGUE_CFG.apiPort}`;
 
   const app = Fastify({ logger: false });
   await app.register(fastifyCookie);
   app.decorateRequest('ctx');
+  app.decorateRequest('account');
 
   await app.register(async (root) => {
-  // per-process rate limit — single-process deployment for now (league-server.ts)
-  const linkRequests = new Map<string, number[]>();
+  // per-process rate limit — single-process deployment for now (league-server.ts:
+  // keep ONE Fly machine so the window isn't split across instances). Guards
+  // login + forgot-password against brute force / email flooding, per email.
+  const attempts = new Map<string, number[]>();
   const rateLimited = (email: string, now = Date.now()): boolean => {
-    const windowMs = LEAGUE_CFG.requestLinkWindowMinutes * 60_000;
-    const recent = (linkRequests.get(email) ?? []).filter((t) => now - t < windowMs);
-    if (recent.length >= LEAGUE_CFG.requestLinkMax) {
-      linkRequests.set(email, recent);
+    const windowMs = LEAGUE_CFG.loginRateWindowMinutes * 60_000;
+    const recent = (attempts.get(email) ?? []).filter((t) => now - t < windowMs);
+    if (recent.length >= LEAGUE_CFG.loginRateMax) {
+      attempts.set(email, recent);
       return true;
     }
     recent.push(now);
-    linkRequests.set(email, recent);
+    attempts.set(email, recent);
     return false;
+  };
+
+  const startSession = async (reply: FastifyReply, managerId: string): Promise<void> => {
+    const sessionId = randomUUID();
+    const expiresAt = new Date(Date.now() + LEAGUE_CFG.sessionTtlDays * 86_400_000);
+    await store.createSession(pool, sessionId, managerId, expiresAt);
+    reply.setCookie(SESSION_COOKIE, sessionId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      expires: expiresAt,
+      secure: baseUrl.startsWith('https'), // production is https-only (Fly terminates TLS)
+    });
   };
 
   // ── health (no session required) ───────────────────────────────────────────
@@ -154,40 +151,108 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     }
   });
 
-  // ── auth (no session required) ─────────────────────────────────────────────
+  // ── auth: email + password accounts (no session required) ──────────────────
 
-  root.post('/auth/request-link', async (req, reply) => {
-    const email = (req.body as { email?: unknown } | null)?.email;
-    if (typeof email !== 'string' || email.length === 0) return reply.code(400).send({ error: 'email_required' });
-    if (rateLimited(email.toLowerCase())) return reply.code(429).send({ error: 'rate_limited' });
+  root.post('/auth/signup', async (req, reply) => {
+    const body = req.body as { email?: unknown; password?: unknown } | null;
+    const email = normEmail(body?.email);
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (!email) return reply.code(400).send({ error: 'invalid_email' });
+    if (password.length < LEAGUE_CFG.passwordMinLength) return reply.code(400).send({ error: 'weak_password' });
 
-    const managerId = await store.managerIdByEmail(pool, email);
-    if (managerId) {
-      const token = mintMagicToken(sessionSecret, managerId, LEAGUE_CFG.authTokenTtlMinutes * 60_000);
-      await delivery.sendLoginLink(email, `${baseUrl}/api/auth/redeem?token=${encodeURIComponent(token)}`);
+    if (await store.accountByEmail(pool, email)) return reply.code(409).send({ error: 'email_taken' });
+    const passwordHash = await hashPassword(password);
+    // claim a seeded manager with this email (keeps its club/season reachable);
+    // otherwise create a fresh manager — a clubless account until later phases.
+    const managerId =
+      (await store.claimableManagerIdByEmail(pool, email)) ??
+      (await store.createManager(pool, email, email.split('@')[0]));
+    try {
+      await store.createAccount(pool, email, passwordHash, managerId);
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') return reply.code(409).send({ error: 'email_taken' }); // race
+      throw err;
+    }
+    await startSession(reply, managerId);
+    return reply.code(200).send({ ok: true });
+  });
+
+  root.post('/auth/login', async (req, reply) => {
+    const body = req.body as { email?: unknown; password?: unknown } | null;
+    const email = normEmail(body?.email);
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (!email || !password) return reply.code(400).send({ error: 'invalid_credentials' });
+    if (rateLimited(email)) return reply.code(429).send({ error: 'rate_limited' });
+
+    const account = await store.accountByEmail(pool, email);
+    const ok = account ? await verifyPassword(password, account.passwordHash) : false;
+    if (!account || !ok) return reply.code(401).send({ error: 'invalid_credentials' });
+    await startSession(reply, account.managerId);
+    return reply.code(200).send({ ok: true });
+  });
+
+  root.post('/auth/logout', async (req, reply) => {
+    const sessionId = req.cookies[SESSION_COOKIE];
+    if (sessionId) await store.deleteSession(pool, sessionId);
+    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    return reply.code(204).send();
+  });
+
+  root.post('/auth/forgot-password', async (req, reply) => {
+    const email = normEmail((req.body as { email?: unknown } | null)?.email);
+    if (!email) return reply.code(400).send({ error: 'invalid_email' });
+    if (rateLimited(email)) return reply.code(429).send({ error: 'rate_limited' });
+
+    const account = await store.accountByEmail(pool, email);
+    if (account) {
+      const token = `${randomUUID()}${randomUUID()}`.replace(/-/g, ''); // 64 hex chars of entropy
+      const expiresAt = new Date(Date.now() + LEAGUE_CFG.resetTokenTtlMinutes * 60_000);
+      await store.setResetToken(pool, account.id, sha256hex(token), expiresAt);
+      try {
+        await delivery.sendPasswordReset(email, `${baseUrl}/reset?token=${encodeURIComponent(token)}`);
+      } catch (err) {
+        console.error('[auth] password-reset email failed:', err); // still 204 (no enumeration)
+      }
     }
     return reply.code(204).send(); // identical response whether or not the email is known
   });
 
-  root.get('/auth/redeem', async (req, reply) => {
-    const token = (req.query as { token?: unknown }).token;
-    if (typeof token !== 'string') return reply.code(400).send({ error: 'token_required' });
-    const verified = verifyMagicToken(sessionSecret, token);
-    if (!verified) return reply.code(401).send({ error: 'invalid_or_expired_token' });
+  root.post('/auth/reset-password', async (req, reply) => {
+    const body = req.body as { token?: unknown; password?: unknown } | null;
+    const token = typeof body?.token === 'string' ? body.token : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (!token) return reply.code(400).send({ error: 'token_required' });
+    if (password.length < LEAGUE_CFG.passwordMinLength) return reply.code(400).send({ error: 'weak_password' });
 
-    const sessionId = sessionIdFromJti(sessionSecret, verified.jti);
-    const expiresAt = new Date(Date.now() + LEAGUE_CFG.sessionTtlDays * 86_400_000);
-    const created = await store.createSession(pool, sessionId, verified.managerId, expiresAt);
-    if (!created) return reply.code(401).send({ error: 'link_already_used' });
+    const account = await store.accountByResetToken(pool, sha256hex(token));
+    if (!account) return reply.code(400).send({ error: 'invalid_or_expired_token' });
+    await store.setPassword(pool, account.id, await hashPassword(password));
+    return reply.code(200).send({ ok: true });
+  });
 
-    reply.setCookie(SESSION_COOKIE, sessionId, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      expires: expiresAt,
-      secure: baseUrl.startsWith('https'), // production is https-only (Fly terminates TLS)
+  // ── authenticated, session-scoped (club optional): the account's own view ──
+
+  await root.register(async (sessioned) => {
+    sessioned.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
+      const sessionId = req.cookies[SESSION_COOKIE];
+      if (!sessionId) return reply.code(401).send({ error: 'unauthenticated' });
+      const ctx = await store.getSessionContext(pool, sessionId);
+      if (!ctx) return reply.code(401).send({ error: 'unauthenticated' });
+      req.account = ctx;
     });
-    return reply.redirect('/', 302); // land in the SPA, cookie in hand
+
+    // /me works BEFORE a club exists — a fresh account lands on a placeholder,
+    // seeded/claimed accounts get their club + current season. (Phase 3 turns
+    // club/season into the selected-league entry.)
+    sessioned.get('/me', async (req) => {
+      const s = await store.currentSeason(pool);
+      const a = req.account;
+      return {
+        manager: { id: a.managerId, email: a.email, displayName: a.displayName },
+        club: a.clubId ? { id: a.clubId, name: a.clubName } : null,
+        season: s ? { id: s.id, number: s.number, phase: s.phase } : null,
+      };
+    });
   });
 
   // ── authenticated, club-scoped routes ──────────────────────────────────────
@@ -227,15 +292,6 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
         return { matchweek: mw.number, kind: mw.kind, status };
       });
     }
-
-    authed.get('/me', async (req) => {
-      const s = await season();
-      return {
-        manager: { id: req.ctx.managerId, email: req.ctx.email, displayName: req.ctx.displayName },
-        club: { id: req.ctx.clubId, name: req.ctx.clubName },
-        season: { id: s.id, number: s.number, phase: s.phase },
-      };
-    });
 
     authed.get('/squad', async (req) => {
       const s = await season();
