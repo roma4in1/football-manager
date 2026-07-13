@@ -134,10 +134,47 @@ is live.
 
 **Replacing the test season with the real one:** the script refuses to run
 when any season exists — it creates the *first* season only (rollover owns
-season N+1). Pre-launch, the clean path is: wipe the league rows (or simplest,
-re-run §1.3 on a fresh database and re-import the pool), then run the script
-with the real clubs file. Post-launch with real data, there is no replacing —
-that's the §1.3 cutover.
+season N+1). Pre-launch, the clean path is: reset the league rows (§1.5), then
+run the script with the real clubs file. Post-launch with real data, there is
+no replacing — that's the §1.3 cutover.
+
+### 1.5 Reset a TEST league — `scripts/reset-league.ts`
+Pre-launch you will want to tear a test league back down to zero (e.g. after
+smoke-testing, before loading the real clubs). `scripts/reset-league.ts` does
+exactly that: one `TRUNCATE seasons, clubs, matchweeks, fixtures CASCADE`
+empties the entire league graph — clubs, contracts, squads, fixtures, results,
+auctions, transfers, transactions, playoffs — while **keeping the imported
+`players` pool and the `managers`** (so §1.4 can re-link them). Afterwards the
+database is a virgin league again, ready for `setup-production.ts`.
+
+It runs locally against `DATABASE_URL`, same as `setup-production.ts` — no
+deploy involved. Two independent locks make wiping a real season by accident
+impossible:
+
+- **Dry-run by default.** Without `--confirm` it only connects, prints exactly
+  what it would delete (row counts per table) and the verdict, and writes
+  nothing.
+- **Test-season guard.** Even with `--confirm` it refuses unless the database
+  cannot be a real league — one of: *no season exists*, the `DATABASE_URL` host
+  is *local* (`localhost`/`127.0.0.1`/`::1` — a dev DB; the real league is on
+  Supabase), or *every club's manager email is a test address* (sub-addressed
+  like `you+alpha@gmail.com`, or a reserved/demo domain like `example.com` or
+  `demo.io`). A real league's clubs carry real, distinct inboxes, so it refuses
+  on the production database by construction. To replace a *real* season there
+  is no shortcut — that is the §1.3 drop-and-reinitialize cutover.
+
+```sh
+# from server/ — dry-run first: shows the plan + verdict, writes nothing
+DATABASE_URL='<url>' node scripts/reset-league.ts
+# execute the teardown (only proceeds if the guard says the league is a test one)
+DATABASE_URL='<url>' node scripts/reset-league.ts --confirm
+```
+
+> **☠️ It still deletes a league.** The guard protects against *accidents*
+> (pointing it at prod), not intent. Read the printed verdict before adding
+> `--confirm`, and take a backup (§8) if you are unsure. Like `seed-demo.ts`
+> this is a teardown tool; unlike it, `reset-league.ts` keeps the pool and
+> managers and is safe to point at a *remote test* season.
 
 ## 2. Resend — real login emails
 
