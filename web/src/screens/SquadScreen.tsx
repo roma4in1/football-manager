@@ -1,16 +1,19 @@
 /**
- * squad — the player hub (DESIGN-SPEC): two-pane. List left (name, position
- * hue, fitness + sharpness bars, status badges); detail right — 26 attributes
- * grouped technical/physical/mental(+gk), contract, status, own season stats,
- * and the growth trajectory from attribute_audit (the multi-season delight).
- * Single-player stats only — ranked leaderboards are season-2.
+ * squad — the player hub (DESIGN-SPEC): two-pane. List left, each row scannable
+ * at a glance (name, position hue, fitness, status + a headline key-attribute
+ * rating); detail right — 26 attributes grouped technical/physical/mental(+gk),
+ * contract, status, own season stats as stat tiles, and the growth trajectory
+ * from attribute_audit. Single-player stats only — leaderboards are season-2.
  */
 
 import { useEffect, useState } from 'react';
+import { HeartPulse, Users } from 'lucide-react';
 import type { Attributes } from '@fm/engine/types';
 import { api, type PlayerDetailView, type SquadPlayerView } from '../api.ts';
 import { FitnessBars } from '../lineup/FitnessBars.tsx';
 import { PosChip } from '../shell/Section.tsx';
+import { Attr, EmptyState, PositionRating, StatTile, StatusBadges } from '../data.tsx';
+import { fmtInt } from '../format.ts';
 
 const GROUPS: Array<{ label: string; keys: Array<keyof Attributes> }> = [
   { label: 'Technical', keys: ['passing', 'longPassing', 'vision', 'firstTouch', 'dribbling', 'finishing', 'heading', 'crossing', 'tackling', 'marking', 'setPieceDelivery'] },
@@ -20,7 +23,6 @@ const GROUPS: Array<{ label: string; keys: Array<keyof Attributes> }> = [
 ];
 
 const label = (k: string) => k.replace(/([A-Z])/g, ' $1').toLowerCase();
-const tone = (v: number) => (v >= 15 ? 'attr-high' : v >= 11 ? 'attr-mid' : 'attr-low');
 
 export function SquadScreen() {
   const [squad, setSquad] = useState<SquadPlayerView[]>([]);
@@ -41,7 +43,9 @@ export function SquadScreen() {
   }, [selectedId]);
 
   const p = squad.find((x) => x.playerId === selectedId) ?? null;
-  if (squad.length === 0) return <p className="muted">No contracted players yet.</p>;
+  if (squad.length === 0) {
+    return <EmptyState icon={Users} title="No players yet" hint="Your squad fills up once the auction runs." />;
+  }
 
   const growthLines = (detail?.growth ?? []).map((g) => {
     const deltas = Object.keys(g.after)
@@ -60,16 +64,17 @@ export function SquadScreen() {
           {squad.map((row) => (
             <li
               key={row.playerId}
-              className={`player-row clickable${row.playerId === selectedId ? ' selected' : ''}`}
+              className={`player-row squad-row clickable${row.playerId === selectedId ? ' selected' : ''}`}
               onClick={() => setSelectedId(row.playerId)}
             >
-              <span className="player-name">{row.fullName}</span>
-              <span className="player-meta">
+              <span className="squad-name">{row.fullName}</span>
+              <span className="squad-row-side">
+                <PositionRating attributes={row.attributes} position={row.position} />
+              </span>
+              <span className="squad-row-meta">
                 <PosChip position={row.position} />
                 <FitnessBars fatigue={row.fatigue} sharpness={row.sharpness} />
-                {row.injuryWeeksLeft > 0 && <span className="badge badge-inj">INJ {row.injuryWeeksLeft}w</span>}
-                {row.suspendedNext && <span className="badge badge-sus">SUS</span>}
-                {row.justReturned && <span className="badge badge-ret">RET</span>}
+                <StatusBadges injuryWeeksLeft={row.injuryWeeksLeft} suspendedNext={row.suspendedNext} justReturned={row.justReturned} />
               </span>
             </li>
           ))}
@@ -83,42 +88,39 @@ export function SquadScreen() {
             <div className="hub-head">
               <h2 style={{ margin: 0 }}>{p.fullName}</h2>
               <PosChip position={p.position} />
-              <FitnessBars fatigue={p.fatigue} sharpness={p.sharpness} />
+              <PositionRating attributes={p.attributes} position={p.position} />
+              <span style={{ marginLeft: 'auto' }}>
+                <FitnessBars fatigue={p.fatigue} sharpness={p.sharpness} />
+              </span>
             </div>
-            <p className="muted" style={{ margin: '0.25rem 0 0.5rem' }}>
+            <p className="muted" style={{ margin: '0.3rem 0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
               {detail?.contract
-                ? <>wage {detail.contract.wage.toLocaleString()}/wk · {Math.max(0, detail.contract.seasonsRemaining)} season{detail.contract.seasonsRemaining === 1 ? '' : 's'} left</>
+                ? <>wage {fmtInt(detail.contract.wage)}/wk · {Math.max(0, detail.contract.seasonsRemaining)} season{detail.contract.seasonsRemaining === 1 ? '' : 's'} left</>
                 : '…'}
-              {p.injuryWeeksLeft > 0 && <> · <span className="error">injured {p.injuryWeeksLeft}w</span></>}
-              {p.suspendedNext && <> · <span style={{ color: 'var(--warn)' }}>suspended next</span></>}
+              <StatusBadges injuryWeeksLeft={p.injuryWeeksLeft} suspendedNext={p.suspendedNext} justReturned={p.justReturned} />
             </p>
 
             {detail && (
-              <p className="hub-stats">
-                <span><strong>{detail.seasonStats.apps}</strong> apps</span>
-                <span><strong>{detail.seasonStats.goals}</strong> goals</span>
-                <span><strong>{detail.seasonStats.avgRating ?? '—'}</strong> avg rating</span>
-                <span><strong>{Math.round(detail.seasonStats.minutes)}</strong> mins</span>
-              </p>
+              <div className="stat-tiles">
+                <StatTile label="Apps" value={detail.seasonStats.apps} />
+                <StatTile label="Goals" value={detail.seasonStats.goals} />
+                <StatTile label="Avg rating" value={detail.seasonStats.avgRating ?? '—'} />
+                <StatTile label="Minutes" value={fmtInt(detail.seasonStats.minutes)} />
+              </div>
             )}
 
             {GROUPS.filter((g) => g.label !== 'Goalkeeping' || p.position.startsWith('GK')).map((g) => (
               <div key={g.label}>
                 <h3>{g.label}</h3>
                 <div className="attr-grid">
-                  {g.keys.map((k) => (
-                    <span key={k} className="attr">
-                      <span className="attr-name">{label(k)}</span>
-                      <span className={`attr-val ${tone(p.attributes[k])}`}>{Math.round(p.attributes[k] * 10) / 10}</span>
-                    </span>
-                  ))}
+                  {g.keys.map((k) => <Attr key={k} name={label(k)} value={p.attributes[k]} />)}
                 </div>
               </div>
             ))}
 
             {growthLines.length > 0 && (
               <div>
-                <h3>Growth</h3>
+                <h3><HeartPulse size={12} style={{ verticalAlign: '-1px', marginRight: 3 }} />Growth</h3>
                 {growthLines.map((g) => (
                   <p key={g.season} className="muted" style={{ margin: '0.15rem 0' }}>
                     <strong>S{g.season}</strong>{' '}

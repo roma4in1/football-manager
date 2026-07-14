@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { Save } from 'lucide-react';
 import type { InstructionZone, Phase, PlayerInstructions, Tactics, Vec2 } from '@fm/engine/types';
 import { api, ApiError, type SquadPlayerView } from '../api.ts';
 import { buildTactics, defaultTeamInstructions, inheritSlots, type Selection } from '../lineup/build.ts';
@@ -220,7 +221,7 @@ export function TacticsSection() {
           ))}
         </div>
         <span className="grow" />
-        <button className="primary" onClick={() => void save()}>Save plan</button>
+        <button className="primary head-action" onClick={() => void save()}><Save size={14} aria-hidden />Save plan</button>
       </div>
       {notice && <p className={notice.startsWith('Saved') ? 'muted' : 'error'} style={{ margin: '0 0 0.4rem' }}>{notice}</p>}
 

@@ -59,6 +59,18 @@ export function fmtRemaining(until: Date, now = new Date()): string {
 
 export const pct = (x: number): string => `${Math.round(x)}%`;
 
+/** Thousands-separated integer for counts/minutes — pair with tabular-nums. */
+export const fmtInt = (n: number): string => Math.round(n).toLocaleString('en-US');
+
+/** One-decimal rating (7 → "7.0", 6.83 → "6.8"). */
+export const fmtRating = (n: number): string => n.toFixed(1);
+
+/** Attribute value: one decimal, trailing ".0" dropped (15 → "15", 14.5 → "14.5"). */
+export const fmtAttr = (v: number): string => String(Math.round(v * 10) / 10);
+
+/** Signed integer for goal difference (+5 / 0 / −3, real minus glyph). */
+export const fmtSigned = (n: number): string => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
+
 /**
  * Compact money on the realistic-millions scale: 2,000,000,000 → "2.0B",
  * 350_000_000 → "350M", 18_600 → "18.6k". Ten-digit numbers don't fit a
