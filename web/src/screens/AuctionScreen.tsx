@@ -16,11 +16,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, Coins, Gavel, Search, Users, Wallet } from 'lucide-react';
 import type { Attributes } from '@fm/engine/types';
 import { LEAGUE_CFG, wageFromMarketValue } from '@fm/engine/config';
+import { groupOf } from '@fm/engine/eligibility';
 import { api, ApiError, type AuctionStateView, type PoolPlayerView } from '../api.ts';
 import { Countdown } from '../components.tsx';
 import { fmtMoney } from '../format.ts';
 import { PosChip } from '../shell/Section.tsx';
-import { EmptyState, groupOf, POSITION_KEY_ATTRS, PositionRating } from '../data.tsx';
+import { EmptyState, PositionRating } from '../data.tsx';
 import { ConfirmDialog, useToast } from '../ui.tsx';
 
 const POLL_MS = 5_000;
@@ -30,6 +31,16 @@ const RESERVE_GROWTH_PCT = 10; // LEAGUE_CFG.reserveGrowthRate, shown to the man
 
 const XI_MIN: Record<string, number> = { GK: 1, DF: 4, MF: 4, FW: 2 };
 const attrLabel = (k: string) => k.replace(/^gk/, 'gk ').replace(/([A-Z])/g, ' $1').toLowerCase();
+
+/** DISPLAY ONLY: which 6–8 attributes to SHOW on the bid card for a role — a
+ *  readable profile, NOT a valuation. The headline number is PositionRating,
+ *  which reads the engine's real per-position composite (data.tsx). */
+const BID_STATS: Record<string, Array<keyof Attributes>> = {
+  GK: ['gkReflexes', 'gkPositioning', 'gkDistribution', 'composure', 'decisions', 'jumping'],
+  DF: ['tackling', 'marking', 'positioning', 'heading', 'strength', 'pace', 'anticipation'],
+  MF: ['passing', 'vision', 'firstTouch', 'longPassing', 'stamina', 'decisions', 'workRate'],
+  FW: ['finishing', 'offTheBall', 'pace', 'dribbling', 'composure', 'heading'],
+};
 
 function SplitPanel({ you, onSet }: {
   you: AuctionStateView['you'];
@@ -167,7 +178,7 @@ export function AuctionScreen() {
   };
 
   const lotPlayer = state.lot?.player ?? null;
-  const bidKeys = lotPlayer ? POSITION_KEY_ATTRS[groupOf(lotPlayer.position)] : [];
+  const bidKeys = lotPlayer ? BID_STATS[groupOf(lotPlayer.position)] : [];
 
   return (
     <div className="screen auction">

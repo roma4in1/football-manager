@@ -15,36 +15,27 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { Attributes } from '@fm/engine/types';
+import { positionScore } from '@fm/engine/eligibility';
 import { fmtAttr, fmtRating } from './format.ts';
 
-/* ── position helpers + the headline rating (shared with the auction) ─────── */
+/* ── the headline rating: the engine's per-position fit score ─────────────── */
 
-export const groupOf = (position: string): 'GK' | 'DF' | 'MF' | 'FW' =>
-  position.startsWith('GK') ? 'GK' : position.startsWith('D') ? 'DF' : position.startsWith('M') ? 'MF' : 'FW';
-
-/** The 6–8 attributes that define each role — the auction bid summary and the
- *  squad list's headline rating both read from this one map. */
-export const POSITION_KEY_ATTRS: Record<'GK' | 'DF' | 'MF' | 'FW', Array<keyof Attributes>> = {
-  GK: ['gkReflexes', 'gkPositioning', 'gkDistribution', 'composure', 'decisions', 'jumping'],
-  DF: ['tackling', 'marking', 'positioning', 'heading', 'strength', 'pace', 'anticipation'],
-  MF: ['passing', 'vision', 'firstTouch', 'longPassing', 'stamina', 'decisions', 'workRate'],
-  FW: ['finishing', 'offTheBall', 'pace', 'dribbling', 'composure', 'heading'],
-};
-
-/** Position-weighted headline number (avg of the role's key attributes). A
- *  display-only "read it at a glance" figure, not an engine stat. */
+/**
+ * The player's role rating on the 0–20 attribute scale. This is the ENGINE's
+ * own per-position composite (positionScore → the exact weighting bestXI()
+ * ranks and selects on), so the number a manager reads is the number the
+ * selection + sim actually reward — no separate display formula to drift from.
+ */
 export function keyRating(attributes: Attributes, position: string): number {
-  const keys = POSITION_KEY_ATTRS[groupOf(position)];
-  const sum = keys.reduce((a, k) => a + (attributes[k] ?? 0), 0);
-  return Math.round((sum / keys.length) * 10) / 10;
+  return Math.round(positionScore(attributes, position) * 10) / 10;
 }
 
-/** The headline rating chip — a bold, tabular number with a tone by strength. */
+/** The role-rating chip — a bold, tabular number toned by strength. */
 export function PositionRating({ attributes, position }: { attributes: Attributes; position: string }) {
   const r = keyRating(attributes, position);
   const tone = r >= 14 ? 'high' : r >= 11 ? 'mid' : 'low';
   return (
-    <span className={`rating rating-${tone}`} title="Key-attribute rating">
+    <span className={`rating rating-${tone}`} title="Role rating — the engine's per-position fit score">
       {fmtRating(r)}
     </span>
   );

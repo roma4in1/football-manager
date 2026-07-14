@@ -803,3 +803,9 @@ button.watch:hover { background: var(--accent-soft); }
 .pool-filter .pool-search input[type='text'] { margin: 0; padding-left: 1.95rem; }
 .pool-search > svg { position: absolute; left: 0.55rem; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
 .money-sub { font-size: var(--fs-xs); color: var(--faint); margin: -0.05rem 0 0.28rem; }
+
+/* auction pool row: market value + wage are the economy's bid anchors and stay
+   visually PRIMARY; the role rating is a small scan-aid chip, not the headline */
+.pool-row .pool-num { color: var(--text); font-weight: 600; }
+.pool-row .pool-num .faint { font-weight: 400; }
+.pool-row .rating { font-size: var(--fs-xs); font-weight: 700; min-width: 1.75rem; padding: 0.03rem 0.22rem; }

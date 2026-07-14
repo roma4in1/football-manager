@@ -144,6 +144,16 @@ const SCORES: Record<Group, (a: Attributes) => number> = {
   FW: (a) => a.finishing * 0.3 + a.offTheBall * 0.25 + a.pace * 0.2 + a.dribbling * 0.15 + a.composure * 0.1,
 };
 
+/**
+ * The engine's per-position fit score for a player — the SAME weighted
+ * composite bestXI() ranks and selects on. Normalized (weights sum to 1) so it
+ * lands on the 0–20 attribute scale. Exported so the UI can display the score
+ * the selection logic actually uses; if SCORES is retuned, the display moves
+ * with it (one source of truth — never fork this).
+ */
+export const positionScore = (attributes: Attributes, position: string): number =>
+  SCORES[groupOf(position)](attributes);
+
 interface Slot { group: Group; def: Vec2; att: Vec2 }
 
 const FORMATION_442: Slot[] = [
