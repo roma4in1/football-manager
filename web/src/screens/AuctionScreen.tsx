@@ -13,12 +13,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, Coins, Gavel, Search, Users, Wallet } from 'lucide-react';
 import type { Attributes } from '@fm/engine/types';
 import { LEAGUE_CFG, wageFromMarketValue } from '@fm/engine/config';
+import { groupOf } from '@fm/engine/eligibility';
 import { api, ApiError, type AuctionStateView, type PoolPlayerView } from '../api.ts';
 import { Countdown } from '../components.tsx';
 import { fmtMoney } from '../format.ts';
 import { PosChip } from '../shell/Section.tsx';
+import { EmptyState, PositionRating } from '../data.tsx';
 import { ConfirmDialog, useToast } from '../ui.tsx';
 
 const POLL_MS = 5_000;
@@ -26,17 +29,18 @@ const POOL_PAGE = 100; // rows rendered per scroll chunk — the WHOLE pool stay
 const POSITIONS = ['ALL', 'GK', 'DF', 'MF', 'FW'] as const;
 const RESERVE_GROWTH_PCT = 10; // LEAGUE_CFG.reserveGrowthRate, shown to the manager
 
-/** 6–8 attributes that matter for the role — 26 don't fit a bid timer. */
+const XI_MIN: Record<string, number> = { GK: 1, DF: 4, MF: 4, FW: 2 };
+const attrLabel = (k: string) => k.replace(/^gk/, 'gk ').replace(/([A-Z])/g, ' $1').toLowerCase();
+
+/** DISPLAY ONLY: which 6–8 attributes to SHOW on the bid card for a role — a
+ *  readable profile, NOT a valuation. The headline number is PositionRating,
+ *  which reads the engine's real per-position composite (data.tsx). */
 const BID_STATS: Record<string, Array<keyof Attributes>> = {
   GK: ['gkReflexes', 'gkPositioning', 'gkDistribution', 'composure', 'decisions', 'jumping'],
   DF: ['tackling', 'marking', 'positioning', 'heading', 'strength', 'pace', 'anticipation'],
   MF: ['passing', 'vision', 'firstTouch', 'longPassing', 'stamina', 'decisions', 'workRate'],
   FW: ['finishing', 'offTheBall', 'pace', 'dribbling', 'composure', 'heading'],
 };
-const XI_MIN: Record<string, number> = { GK: 1, DF: 4, MF: 4, FW: 2 };
-const groupOf = (position: string) =>
-  position.startsWith('GK') ? 'GK' : position.startsWith('D') ? 'DF' : position.startsWith('M') ? 'MF' : 'FW';
-const attrLabel = (k: string) => k.replace(/^gk/, 'gk ').replace(/([A-Z])/g, ' $1').toLowerCase();
 
 function SplitPanel({ you, onSet }: {
   you: AuctionStateView['you'];
@@ -135,7 +139,7 @@ export function AuctionScreen() {
     return c;
   }, [squadPositions]);
 
-  if (!state) return <p className="muted">Loading auction…</p>;
+  if (!state) return <EmptyState icon={Gavel} title="Loading the auction room…" />;
 
   if (state.phase !== 'auction') {
     return (
@@ -181,7 +185,7 @@ export function AuctionScreen() {
       {/* LEFT — squad progress + thin warnings */}
       <div className="pane pane-scroll auction-left">
         <div className="card tight">
-          <h3>Squad</h3>
+          <h3><Users size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />Squad</h3>
           <p className="squad-progress">
             <strong>{state.you.squadCount}</strong>/{state.squadMin} needed
             <span className="progress"><span style={{ width: `${Math.min(100, (state.you.squadCount / state.squadMin) * 100)}%` }} /></span>
@@ -211,6 +215,7 @@ export function AuctionScreen() {
               <PosChip position={lotPlayer.position} />
               <h2 style={{ margin: 0 }}>{lotPlayer.fullName}</h2>
               <span className={`lot-timer${extended ? ' pulse' : ''}`}>
+                <Clock size={13} style={{ verticalAlign: '-2px', marginRight: 3 }} />
                 <Countdown until={state.lot.closesAt} />{extended && ' +extended'}
               </span>
             </div>
@@ -279,7 +284,10 @@ export function AuctionScreen() {
               <>
                 <h2 style={{ marginTop: 0 }}>Your turn — nominate</h2>
                 <div className="pool-filter">
-                  <input type="text" placeholder="search the pool" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  <span className="pool-search">
+                    <Search size={15} aria-hidden />
+                    <input type="text" placeholder="Search the pool" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  </span>
                   <div className="tabs">
                     {POSITIONS.map((p) => (
                       <button key={p} className={position === p ? 'active' : ''} onClick={() => setPosition(p)}>{p}</button>
@@ -297,12 +305,15 @@ export function AuctionScreen() {
                   }}
                 >
                   {filtered.slice(0, visible).map((p) => (
-                    <li key={p.playerId} className="player-row">
-                      <span className="player-name">{p.fullName}</span>
-                      <span className="player-meta">
-                        <PosChip position={p.position} /> {fmtMoney(p.marketValue)} · {fmtMoney(wageFromMarketValue(p.marketValue))}/wk
+                    <li key={p.playerId} className="player-row pool-row">
+                      <PosChip position={p.position} />
+                      <span className="pool-name">{p.fullName}</span>
+                      <span className="pool-num" title="market value · wage/wk">
+                        {fmtMoney(p.marketValue)}<br />
+                        <span className="faint">{fmtMoney(wageFromMarketValue(p.marketValue))}/wk</span>
                       </span>
                       <span className="player-actions">
+                        <PositionRating attributes={p.attributes} position={p.position} />
                         <button onClick={() => void act(() => api.nominate(p.playerId), `${p.fullName} nominated`)}>Nominate</button>
                       </span>
                     </li>
@@ -327,14 +338,28 @@ export function AuctionScreen() {
       {/* RIGHT — money (display + the split; never invest buttons) */}
       <div className="pane pane-scroll auction-right">
         <div className="card tight">
-          <h3>Money</h3>
-          <p className="money-line">bidding balance <strong>{fmtMoney(state.you.remaining)}</strong></p>
-          <p className="money-line muted">brought {fmtMoney(state.you.auctionBudget)} of {fmtMoney(state.you.totalPot)}</p>
-          <p className="money-line">reserve <strong>{fmtMoney(state.you.reserve)}</strong></p>
-          <p className="money-line">
-            wages <strong>{fmtMoney(state.you.wageBill)} / {fmtMoney(state.you.wageCap)}</strong>
-            <span className="muted"> · room {fmtMoney(Math.max(0, state.you.wageCap - state.you.wageBill))}</span>
+          <h3><Coins size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />Money</h3>
+          <p className="money-row">
+            <span className="money-label"><Wallet size={13} />balance</span>
+            <span className="money-val">{fmtMoney(state.you.remaining)}</span>
           </p>
+          <p className="money-sub">brought {fmtMoney(state.you.auctionBudget)} of {fmtMoney(state.you.totalPot)}</p>
+          <p className="money-row">
+            <span className="money-label">reserve</span>
+            <span className="money-val">{fmtMoney(state.you.reserve)}</span>
+          </p>
+          {(() => {
+            const room = Math.max(0, state.you.wageCap - state.you.wageBill);
+            return (
+              <>
+                <p className="money-row">
+                  <span className="money-label">wages</span>
+                  <span className={`money-val${room === 0 ? ' over' : ''}`}>{fmtMoney(state.you.wageBill)} / {fmtMoney(state.you.wageCap)}</span>
+                </p>
+                <p className="money-sub">room {fmtMoney(room)}</p>
+              </>
+            );
+          })()}
           <SplitPanel you={state.you} onSet={(reserve) => act(() => api.setAuctionSplit(reserve))} />
         </div>
         {state.signings.length > 0 && (

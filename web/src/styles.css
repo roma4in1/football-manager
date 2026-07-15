@@ -709,3 +709,103 @@ button.watch:hover { background: var(--accent-soft); }
 .rail-signout:hover { color: var(--danger); background: var(--danger-soft); }
 .rail-signout:active { transform: scale(0.94); }
 .rail-signout:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ═══ polish pass 2: data-display craft ═════════════════════════════════════
+   Reusable pieces (data.tsx) — the professional layer the persistent gameplay
+   screens and the lobby arc share. Tabular figures everywhere numbers align. */
+
+/* club crest (the signature) */
+.club-badge { display: block; flex-shrink: 0; border-radius: 30%; }
+
+/* headline key-attribute rating chip */
+.rating {
+  font-weight: 800; font-variant-numeric: tabular-nums; font-size: 0.98rem;
+  min-width: 2.15rem; text-align: center; padding: 0.08rem 0.34rem;
+  border-radius: var(--radius-xs); letter-spacing: -0.01em; line-height: 1.25;
+}
+.rating-high { color: var(--ok); background: var(--success-soft); }
+.rating-mid { color: var(--text); background: var(--surface-sunk); }
+.rating-low { color: var(--muted); background: var(--surface-sunk); }
+
+/* stat tiles — a labelled figure over a caption (squad hub, detail panes) */
+.stat-tiles { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin: 0.3rem 0 0.6rem; }
+.stat-tile {
+  display: flex; flex-direction: column; gap: 1px; min-width: 3.4rem;
+  padding: 0.4rem 0.6rem; background: var(--surface-sunk);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.stat-tile-val { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1.15; }
+.stat-tile-label { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+
+/* considered empty / loading states */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 0.3rem; padding: 2rem 1rem; color: var(--muted); min-height: 8rem;
+}
+.empty-icon { color: var(--faint); }
+.empty-title { font-weight: 600; color: var(--text); margin: 0.1rem 0 0; }
+.empty-hint { font-size: var(--fs-sm); color: var(--muted); margin: 0; max-width: 26rem; }
+
+/* ── squad list: a scannable two-line row (name over meta, rating aside) ──── */
+.squad-row {
+  display: grid; grid-template-columns: 1fr auto;
+  grid-template-areas: "name rating" "meta rating";
+  column-gap: 0.5rem; row-gap: 2px; align-items: center; padding: 0.5rem 0.55rem;
+}
+.squad-name { grid-area: name; min-width: 0; font-weight: 600; font-size: var(--fs-body);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.squad-row-meta { grid-area: meta; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.squad-row-side { grid-area: rating; align-self: center; }
+.squad-row .fitbars { margin: 0; }
+
+/* ── league table: reads like a real table (rank · crest · P/W/D/L/GD/Pts) ── */
+.league-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
+.league-table thead th {
+  text-align: right; padding: 0.4rem 0.45rem; font-size: var(--fs-xs);
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; color: var(--muted);
+  border-bottom: 1.5px solid var(--line-strong); position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.league-table td { padding: 0.42rem 0.45rem; border-bottom: 1px solid var(--line); text-align: right; }
+.league-table th.lt-rank, .league-table td.lt-rank { text-align: center; width: 2.1rem; color: var(--muted); font-weight: 700; }
+.league-table th.lt-club, .league-table td.lt-club { text-align: left; }
+.league-table td.lt-pts { font-weight: 800; color: var(--text); }
+.league-table td.lt-gd { color: var(--muted); }
+.league-table td.lt-gd.pos { color: var(--ok); }
+.league-table tbody tr { transition: background var(--dur-fast) var(--ease); }
+.league-table tbody tr:hover td { background: var(--surface-sunk); }
+.league-table tr.you td { background: var(--accent-soft); }
+.league-table tr.you:hover td { background: var(--accent-soft-2); }
+.league-table tr.you td.lt-club { font-weight: 700; }
+.lt-club-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.lt-club-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-rank-trophy { color: #d9a406; }
+
+/* ── dense-screen refinements: money rows + pool rows read in columns ─────── */
+.money-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin: 0.22rem 0; font-size: var(--fs-sm);
+}
+.money-row .money-label { color: var(--muted); display: inline-flex; align-items: center; gap: 0.3rem; }
+.money-row .money-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.money-row .money-val.over { color: var(--danger); }
+.money-row svg { color: var(--faint); flex-shrink: 0; }
+
+.pool-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 0.5rem; }
+.pool-row .pool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--fs-body); }
+.pool-row .pool-num { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--muted); text-align: right; }
+.pool-row .player-actions { margin-left: 0.15rem; }
+
+/* section-head trailing action (e.g. tactics Save plan) keeps icon + label tidy */
+.section-head .head-action svg { margin-right: -1px; }
+
+/* auction pool search — icon inside the field */
+.pool-filter .pool-search { position: relative; display: block; margin: 0 0 0.35rem; }
+.pool-filter .pool-search input[type='text'] { margin: 0; padding-left: 1.95rem; }
+.pool-search > svg { position: absolute; left: 0.55rem; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.money-sub { font-size: var(--fs-xs); color: var(--faint); margin: -0.05rem 0 0.28rem; }
+
+/* auction pool row: market value + wage are the economy's bid anchors and stay
+   visually PRIMARY; the role rating is a small scan-aid chip, not the headline */
+.pool-row .pool-num { color: var(--text); font-weight: 600; }
+.pool-row .pool-num .faint { font-weight: 400; }
+.pool-row .rating { font-size: var(--fs-xs); font-weight: 700; min-width: 1.75rem; padding: 0.03rem 0.22rem; }
