@@ -32,6 +32,7 @@ import type {
 } from './engine-types.ts';
 import {
   AGENT_CAL,
+  arrivalTime,
   clampToPitch,
   dist,
   PITCH_LENGTH,
@@ -160,6 +161,26 @@ export class AgentEngine implements SimEngine {
     const workOf = new Map<string, number>(); // per-tick share of max sprint, feeds fatigue
     let lastCarrierId: string | null = ball.carrierId; // challenge receive-grace tracking
     let carrierSinceTick = 0;
+
+    // ── PROVENANCE INSTRUMENT (Phase 1 diagnosis — ball-flight/arrival) ──────
+    // Per-possession-chain accounting, attached to shot events as meta. No rng
+    // draws (keyed rng makes reads free anyway); measures how much of the
+    // chance-creation pipeline rides the INSTANT-ARRIVAL artifact:
+    //   passProgressM   ball x-progress delivered by completed passes
+    //   carryProgressM  ball x-progress delivered by completed carries
+    //   flightDebtS     sim-time a real ball flight would have consumed (Σ d/v)
+    //   ghostRecv       completions whose receiver PHYSICALLY could not reach
+    //                   the endpoint before the ball (arrivalTime > flight+0.3s)
+    //   teleportM       total receiver displacement at completion (the warp)
+    const chain = {
+      side: tracker.inPossession as Side, startT: t0, passes: 0,
+      passProgressM: 0, carryProgressM: 0, flightDebtS: 0, ghostRecv: 0, teleportM: 0,
+    };
+    const chainReset = (side: Side, now: number): void => {
+      chain.side = side; chain.startT = now; chain.passes = 0;
+      chain.passProgressM = 0; chain.carryProgressM = 0; chain.flightDebtS = 0;
+      chain.ghostRecv = 0; chain.teleportM = 0;
+    };
     const ticks = Math.floor(HALF_SECONDS / AGENT_CAL.tickSeconds);
     const framePeriod = Math.round(AGENT_CAL.frameEverySeconds / AGENT_CAL.tickSeconds);
 
@@ -315,6 +336,7 @@ export class AgentEngine implements SimEngine {
     for (let tick = 0; tick < ticks; tick++) {
       const now = t0 + tick * AGENT_CAL.tickSeconds;
       tracker.advance(AGENT_CAL.tickSeconds);
+      if (tracker.inPossession !== chain.side) chainReset(tracker.inPossession, now); // provenance instrument
       possessionTicks[tracker.inPossession]++;
       if (ball.pos.x > AGENT_CAL.finalThirdX) tiltTicks.home++;
       else if (ball.pos.x < PITCH_LENGTH - AGENT_CAL.finalThirdX) tiltTicks.away++;
@@ -503,7 +525,17 @@ export class AgentEngine implements SimEngine {
           events.push({
             t: now, type: 'shot', playerId: carrier.id,
             from: { ...carrier.pos }, to: outcome.endPoint, flight: outcome.flight,
-            meta: { xg: Math.round(xg * 1000) / 1000 },
+            meta: {
+              xg: Math.round(xg * 1000) / 1000,
+              // provenance instrument (Phase 1 diagnosis): the chain behind this shot
+              chPasses: chain.passes,
+              chDurS: Math.round((now - chain.startT) * 10) / 10,
+              chPassM: Math.round(chain.passProgressM * 10) / 10,
+              chCarryM: Math.round(chain.carryProgressM * 10) / 10,
+              chFlightDebtS: Math.round(chain.flightDebtS * 10) / 10,
+              chGhostRecv: chain.ghostRecv,
+              chTeleportM: Math.round(chain.teleportM * 10) / 10,
+            },
           });
           if (outcome.goal) {
             score[side]++;
@@ -516,6 +548,9 @@ export class AgentEngine implements SimEngine {
             giveToKeeper(ball, states, tracker, oppositeOf(side));
           }
         } else if (chosen.type === 'carry' || chosen.type === 'hold') {
+          if (outcome.success && chosen.type === 'carry') {
+            chain.carryProgressM += (outcome.endPoint.x - carrier.pos.x) * (side === 'home' ? 1 : -1); // instrument
+          }
           if (outcome.success || chosen.type === 'hold') {
             carrier.pos = outcome.success ? outcome.endPoint : carrier.pos;
             ball.pos = { ...carrier.pos };
@@ -592,6 +627,19 @@ export class AgentEngine implements SimEngine {
             receiver = nearestAny(states, outcome.endPoint); // technical miss: loose ball
           }
           if (receiver) {
+            // ── provenance instrument: measure the instant-arrival artifact on
+            // TEAMMATE completions before the teleport below erases the evidence
+            if (outcome.success && receiver.side === side) {
+              const flightT = dist(carrier.pos, outcome.endPoint) /
+                (outcome.flight === 'lofted' || outcome.flight === 'high'
+                  ? AGENT_CAL.loftedPassSpeedMps : AGENT_CAL.groundPassSpeedMps);
+              const recvT = arrivalTime(snapshotOf(receiver), outcome.endPoint.x, outcome.endPoint.y);
+              chain.passes++;
+              chain.passProgressM += (outcome.endPoint.x - carrier.pos.x) * (side === 'home' ? 1 : -1);
+              chain.flightDebtS += flightT;
+              chain.teleportM += dist(receiver.pos, outcome.endPoint);
+              if (recvT > flightT + 0.3) chain.ghostRecv++;
+            }
             receiver.pos = clampToPitch({ ...outcome.endPoint });
             ball.pos = { ...receiver.pos };
             ball.carrierId = receiver.id;
