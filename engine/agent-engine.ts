@@ -585,6 +585,7 @@ export class AgentEngine implements SimEngine {
       const step = Math.min(f.speedMps * AGENT_CAL.tickSeconds, total - f.travelledM);
       if (f.flightEnum === 'ground' || f.flightEnum === 'driven') {
         // sub-sample the path so a 7m/tick ball cannot skip past a defender
+        const recv = f.receiverId ? byId.get(f.receiverId) : undefined;
         const subs = Math.max(1, Math.ceil(step / 1.0));
         for (let k = 1; k <= subs; k++) {
           const at = lerpPoint(f.from, f.to, (f.travelledM + (step * k) / subs) / total);
@@ -602,6 +603,15 @@ export class AgentEngine implements SimEngine {
               resolveInterception(s, at, tick, now);
               return;
             }
+          }
+          // the intended receiver MEETS the ball en route — a ground pass is
+          // received at the body wherever he gets to it, not at a theoretical
+          // endpoint (receivers come toward the ball; this is most of why the
+          // ball lives at feet in real football)
+          if (recv && !recv.sentOff && dist(recv.pos, at) <= AGENT_CAL.ballReceiveRadiusM) {
+            ball.pos = at;
+            cleanReception(recv, tick, now);
+            return;
           }
         }
       }
@@ -640,11 +650,24 @@ export class AgentEngine implements SimEngine {
         });
         for (const s of states) {
           if (s.side !== side || s.sentOff) continue;
-          // a pass's intended receiver RUNS onto the arrival point — the run
-          // that instant arrival used to fake with a teleport
-          const target = ball.inFlight?.receiverId === s.id
-            ? ball.inFlight.to
-            : targets.get(s.id) ?? s.pos;
+          // a pass's intended receiver runs to MEET the ball — he attacks the
+          // point the ball will shortly reach (ground balls are received at
+          // the body en route), falling back to the endpoint for high balls
+          let target = targets.get(s.id) ?? s.pos;
+          const fl = ball.inFlight;
+          if (fl?.receiverId === s.id) {
+            const atkSign = s.side === 'home' ? 1 : -1;
+            const intoSpace = (fl.to.x - s.pos.x) * atkSign > 1; // led goalward of him
+            if (!intoSpace && (fl.flightEnum === 'ground' || fl.flightEnum === 'driven')) {
+              // a ball to feet is MET — attack the point it will shortly reach
+              const total = Math.max(0.1, dist(fl.from, fl.to));
+              const aheadM = Math.min(total, fl.travelledM + fl.speedMps * 0.6);
+              target = lerpPoint(fl.from, fl.to, aheadM / total);
+            } else {
+              // a ball into space is RUN ONTO — keep attacking the endpoint
+              target = fl.to;
+            }
+          }
           const moved = stepToward(s, target);
           const maxStep = AGENT_CAL.maxSpeedMps * AGENT_CAL.tickSeconds;
           workOf.set(s.id, moved / maxStep);
@@ -1021,7 +1044,10 @@ export class AgentEngine implements SimEngine {
           }
         }
       }
-      if (tick % framePeriod === 0) {
+      // sample on ODD ticks: decisions fire on even ticks, so an aligned
+      // sample would systematically catch the just-kicked (carrier-null)
+      // instant and misread real possession as loose play
+      if (tick % framePeriod === framePeriod - 1) {
         frames.push(frame(now, ball, states));
         heat.sample(states);
       }
