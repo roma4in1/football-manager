@@ -188,6 +188,11 @@ export interface HalfStats {
   fieldTilt: [number, number];
   playerRatings: Record<string, number>;
   heatmaps: Record<string, number[]>; // flattened coarse grid, harness decodes
+  /** Per-player match stats beyond ratings — the agent engine emits these
+   *  (assists ride goal-event meta too); the aggregate engine does NOT set
+   *  the field, keeping its output bit-identical. Feeds the future season
+   *  stats/leaderboards layer: the engine's job is only to EMIT per match. */
+  playerStats?: Record<string, { assists: number; keyPasses: number; saves: number }>;
 }
 
 export interface HalfResult {

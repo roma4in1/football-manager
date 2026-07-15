@@ -152,26 +152,59 @@ export class AnchorPositioningModel implements PositioningModel {
     // fatigue model reads distance fine, the press just wasn't running far)
     // counter-pressing: the 6-second window after losing the ball is where
     // high-press teams sprint hardest — an extra body and a wider net
+    // BALL IN FLIGHT (Phase 1): the defender NEAREST the arrival point reads
+    // the kick and attacks the drop — the defender half of the receiver-vs-
+    // defender race. The rest keep tracking the moving ball / their marks;
+    // a whole back line redirecting onto every pass target isn't football.
+    // PHYSICS GATE: only chase a drop you can plausibly BEAT THE BALL to —
+    // nobody redirects onto an 8m pass that arrives before they can move.
+    const flight = ctx.ball.inFlight;
+    const flightRemainingS = flight
+      ? Math.max(0, dist(flight.from, flight.to) - flight.travelledM) / flight.speedMps
+      : 0;
+    const dropPoint = flight ? flight.to : null;
     const counterPressing = ctx.phase === 'counterPress' && team.pressTrigger > 0.5;
     const nPressers = Math.max(1, Math.round(AGENT_CAL.pressersCount * (0.5 + team.pressTrigger))) +
       (counterPressing ? 1 : 0);
     const chaseRange = AGENT_CAL.pressMaxDistM *
       (AGENT_CAL.pressRangeBase + AGENT_CAL.pressRangeGain * team.pressTrigger) *
       (counterPressing ? AGENT_CAL.counterPressRangeBoost : 1);
-    const pressers = new Set(
-      inPossession
-        ? []
-        : outfield
-            .filter((p) => dist(p.pos, ctx.ball.pos) < chaseRange)
-            .sort((a, b) => dist(a.pos, ctx.ball.pos) - dist(b.pos, ctx.ball.pos))
-            .slice(0, nPressers)
-            .map((p) => p.id),
-    );
+    const presserList = inPossession
+      ? []
+      : outfield
+          .filter((p) => dist(p.pos, dropPoint ?? ctx.ball.pos) < chaseRange)
+          .sort((a, b) => dist(a.pos, dropPoint ?? ctx.ball.pos) - dist(b.pos, dropPoint ?? ctx.ball.pos))
+          .slice(0, nPressers);
+    const pressers = new Set(presserList.map((p) => p.id));
+    const dropCandidate = dropPoint ? presserList[0] : undefined;
+    const dropSlack = flight && (flight.flightEnum === 'lofted' || flight.flightEnum === 'high')
+      ? AGENT_CAL.dropChaseSlackLoftedS : AGENT_CAL.dropChaseSlackGroundS;
+    const dropChaserId = dropCandidate && dropPoint &&
+      arrivalTime(dropCandidate, dropPoint.x, dropPoint.y) <= flightRemainingS + dropSlack
+      ? dropCandidate.id : undefined;
+
+    // a LOOSE ball (no carrier, not in flight) gets chased TO CONTACT: the
+    // nearest outfielder runs at the ball itself. Attractor blending cannot do
+    // this — a weighted average converges BETWEEN anchor and ball, stopping
+    // short of the claim radius forever (the stall the flight model exposed).
+    const looseBall = !ctx.ball.carrierId && !ctx.ball.inFlight;
+    const looseChaserId = looseBall
+      ? [...outfield].sort((a, b) => dist(a.pos, ctx.ball.pos) - dist(b.pos, ctx.ball.pos))[0]?.id
+      : undefined;
 
     for (const p of ctx.teammates) {
       // the carrier is steered by the decision model, not by shape
       if (p.id === ctx.ball.carrierId) {
         targets.set(p.id, p.pos);
+        continue;
+      }
+      // direct chases override the attractor blend: run AT the point
+      if (p.id === looseChaserId) {
+        targets.set(p.id, clampToPitch({ ...ctx.ball.pos }));
+        continue;
+      }
+      if (p.id === dropChaserId && dropPoint) {
+        targets.set(p.id, clampToPitch({ ...dropPoint }));
         continue;
       }
       if (p.isGk) {
@@ -204,7 +237,8 @@ export class AnchorPositioningModel implements PositioningModel {
       };
 
       if (pressers.has(p.id)) {
-        pull(ctx.ball.pos, AGENT_CAL.pressPullWeight * (0.5 + p.instructions.pressingIntensity) * (0.5 + team.pressTrigger));
+        const chaseTo = p.id === dropChaserId && dropPoint ? dropPoint : ctx.ball.pos;
+        pull(chaseTo, AGENT_CAL.pressPullWeight * (0.5 + p.instructions.pressingIntensity) * (0.5 + team.pressTrigger));
       } else if (!inPossession) {
         // marking: pick up the nearest unengaged opponent within radius
         const mark = ctx.opponents

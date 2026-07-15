@@ -6,13 +6,12 @@
  * enum is load-bearing: lofted/high deliveries route through aerial-duel
  * resolution (jumping/heading + height), ground/driven do not.
  *
- * Success resolution is REAL:
- * - pass family: an interception RACE along the actual (noised) ball path —
- *   defender arrival times (the shared arrival-time model, anticipation-
- *   shaved) vs ball travel time at sampled nodes — times a technical
- *   completion logistic (skill, pressure attenuated by composure).
- * - lofted balls race only at the reception point (receiver vs best
- *   defender); losing that race hands the contest to the aerial duel.
+ * Success resolution (Phase 1 ball-flight split):
+ * - pass family: execution owns the STRIKE only — a technical logistic
+ *   (skill, pressure attenuated by composure) decides clean vs shanked, and
+ *   a shank flies with amplified scatter. WHO GETS THE BALL is decided by
+ *   the engine's in-flight simulation (real travel time, receiver runs,
+ *   spatial defender interception) — never by a pre-resolved race here.
  * - carry: dribbling/pressure/control logistic; shot: on-target logistic
  *   (finishing, distance, pressure) then an xG-conditioned keeper beat
  *   (gkReflexes/gkPositioning) — the same xgProxy the decision scored with.
@@ -45,15 +44,13 @@ export interface ExecContext {
 
 export interface ExecutionOutcome {
   action: ActionOption;
-  /** did the action come off as intended (pass arrives, shot on target…) */
+  /** the action came off as intended (clean strike / carry held / shot on target) */
   success: boolean;
-  /** where the ball ends up (noise applied) */
+  /** where the ball is headed (noise applied; a shank scatters further) */
   endPoint: Vec2;
   flight: BallFlight;
   /** set on shots: whether it beat the keeper */
   goal?: boolean;
-  /** failed pass family: a defender won the race (vs a technical miss → loose ball) */
-  intercepted?: boolean;
 }
 
 export interface AerialContest {
@@ -77,7 +74,9 @@ export interface ExecutionModel {
 
 // ── noise helpers (real — these ARE the execution-noise plumbing) ────────────
 
-/** rotate + stretch the actor→target vector by attribute-scaled noise */
+/** rotate + stretch the actor→target vector by attribute-scaled noise.
+ * `clamp=false` (pass family): the raw point may leave the pitch — the engine
+ * turns that into a real out-of-bounds instead of pretending it stayed in. */
 function applyNoise(
   from: Vec2,
   target: Vec2,
@@ -85,13 +84,15 @@ function applyNoise(
   dirNoiseRad: number,
   velNoise: number,
   rng: KeyedRng,
+  clamp: boolean,
   ...key: (string | number)[]
 ): Vec2 {
   const slack = (20 - skill) / 20;
   const stream = rng.stream(...key);
   const angle = Math.atan2(target.y - from.y, target.x - from.x) + stream.gauss(0, dirNoiseRad * slack);
   const length = dist(from, target) * (1 + stream.gauss(0, velNoise * slack));
-  return clampToPitch({ x: from.x + Math.cos(angle) * length, y: from.y + Math.sin(angle) * length });
+  const raw = { x: from.x + Math.cos(angle) * length, y: from.y + Math.sin(angle) * length };
+  return clamp ? clampToPitch(raw) : raw;
 }
 
 // keepers' outfield attributes are seeded flat-low (MAPPING rule 3): their
@@ -118,11 +119,6 @@ const skillEdge = (attr: number): number => (attr / 20 - 0.5) * 2;
 const feltPressure = (p: AgentSnapshot, pressure: number): number =>
   pressure * Math.max(0, 1 - AGENT_CAL.execComposureRelief * p.attributes.composure);
 
-/** defender's arrival at a point, shaved by anticipation */
-function defenderArrival(o: AgentSnapshot, p: Vec2): number {
-  return arrivalTime(o, p.x, p.y) - AGENT_CAL.anticipationRaceS * (o.attributes.anticipation - 10);
-}
-
 // ── model implementation ──────────────────────────────────────────────────────
 
 export class NoisyExecutionModel implements ExecutionModel {
@@ -132,9 +128,10 @@ export class NoisyExecutionModel implements ExecutionModel {
       return { action, success: true, endPoint: actor.pos, flight: 'ground' };
     }
     const profile = NOISE_BY_TYPE[action.type] ?? NOISE_BY_TYPE.pass;
+    const passFamily = action.type !== 'shot' && action.type !== 'carry'; // hold early-returned above
     const endPoint = applyNoise(
       actor.pos, action.target, profile.skill(actor), profile.dir, profile.vel,
-      rng, tick, actor.id, 'exec', action.type,
+      rng, !passFamily, tick, actor.id, 'exec', action.type,
     );
 
     if (action.type === 'shot') {
@@ -171,11 +168,15 @@ export class NoisyExecutionModel implements ExecutionModel {
       return { action, success, endPoint, flight: 'ground' };
     }
 
-    // pass family: technical completion × interception race on the real path.
-    // Lofted balls get an EXTRA technical skill term: the receiver race
+    // pass family (Phase 1 ball-flight model): execution owns the STRIKE, the
+    // world owns the outcome. The technical logistic decides whether the ball
+    // is hit cleanly; a shank still flies — with amplified scatter — and the
+    // engine's in-flight simulation (receiver runs, defender convergence,
+    // spatial interception) decides who ends up with it. The old pre-resolved
+    // interception race (pSafe) is GONE: physics decides where physics should.
+    // Lofted balls keep the EXTRA technical skill term: the drop-point contest
     // forgives scatter (someone runs onto anything), so without it the
     // longPassing attribute barely moves completion.
-    const d = dist(actor.pos, endPoint);
     const lofted = action.flight === 'lofted' || action.flight === 'high';
     const pTechnical = sigmoid(
       AGENT_CAL.passExecBaseLogit +
@@ -183,45 +184,15 @@ export class NoisyExecutionModel implements ExecutionModel {
       (lofted ? AGENT_CAL.loftedSkillExtraLogit * skillEdge(profile.skill(actor)) : 0) -
       AGENT_CAL.passExecPressureLogit * feltPressure(actor, ctx.pressure),
     );
-
-    let pSafe: number; // P(no defender takes it en route / at arrival)
-    if (action.flight === 'ground' || action.flight === 'driven') {
-      const speed = AGENT_CAL.groundPassSpeedMps;
-      pSafe = 1;
-      for (const f of [0.35, 0.65, 0.95]) {
-        const node = { x: actor.pos.x + (endPoint.x - actor.pos.x) * f, y: actor.pos.y + (endPoint.y - actor.pos.y) * f };
-        const tBall = (d * f) / speed;
-        let tDef = Infinity;
-        for (const o of ctx.opponents) {
-          const t = defenderArrival(o, node);
-          if (t < tDef) tDef = t;
-        }
-        const margin = tDef - tBall; // positive: ball beats the defender
-        // same convention as the lofted branch: the defender only gets even
-        // odds when he beats the ball by the offset (σ at margin = −offset)
-        pSafe *= sigmoid(AGENT_CAL.raceSteepness * (margin + AGENT_CAL.interceptOffsetS));
-      }
-    } else {
-      // lofted/high: mid-flight is unplayable; the race is at the drop point,
-      // receiver vs best-placed defender. Losing it = contested → aerial duel.
-      const tBall = d / AGENT_CAL.loftedPassSpeedMps;
-      let tDef = Infinity;
-      for (const o of ctx.opponents) {
-        const t = defenderArrival(o, endPoint);
-        if (t < tDef) tDef = t;
-      }
-      const tRecv = ctx.receiver
-        ? arrivalTime(ctx.receiver, endPoint.x, endPoint.y)
-        : tBall + 0.8; // clear: nobody is timed onto it
-      const margin = tDef - Math.max(tBall, tRecv);
-      pSafe = sigmoid(AGENT_CAL.raceSteepness * (margin + AGENT_CAL.interceptOffsetS));
-    }
-
-    // two separate draws so the engine can tell a lost race (interception —
-    // a real defensive action) from a technical miss (loose ball)
-    const technicalOk = rng.chance(pTechnical, tick, actor.id, 'outcome', action.type);
-    const raceOk = rng.chance(pSafe, tick, actor.id, 'race', action.type);
-    return { action, success: technicalOk && raceOk, endPoint, flight: action.flight, intercepted: !raceOk };
+    const cleanStrike = rng.chance(pTechnical, tick, actor.id, 'outcome', action.type);
+    const finalPoint = cleanStrike
+      ? endPoint
+      : applyNoise(
+          actor.pos, action.target, profile.skill(actor),
+          profile.dir * AGENT_CAL.shankDirNoiseMul, profile.vel * AGENT_CAL.shankVelNoiseMul,
+          rng, false, tick, actor.id, 'shank', action.type,
+        );
+    return { action, success: cleanStrike, endPoint: finalPoint, flight: action.flight };
   }
 
   resolveAerialDuel(contest: AerialContest, rng: KeyedRng, tick: number): AerialOutcome {

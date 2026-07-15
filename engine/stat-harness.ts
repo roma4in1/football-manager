@@ -527,7 +527,7 @@ const setAll = (club: Club, f: (i: PlayerInstructions) => void): void =>
       instructions: { riskAppetite: 0.5, shootingBias: 0.5, dribbleBias: 0.5, pressingIntensity: 0.5, holdPosition: 0.5, crossBias: 0.5 },
     };
   };
-  const ball = { pos: { x: 52.5, y: 34 }, flight: 'ground' as const, carrierId: null, lastTouchSide: 'home' as const };
+  const ball = { pos: { x: 52.5, y: 34 }, flight: 'ground' as const, carrierId: null, lastTouchSide: 'home' as const, inFlight: null };
   const sample = (field: { cols: number; rows: number; controlAt(c: number, r: number): number }): number[] => {
     const out: number[] = [];
     for (let r = 0; r < field.rows; r++) for (let c = 0; c < field.cols; c++) out.push(field.controlAt(c, r));
