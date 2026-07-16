@@ -179,8 +179,15 @@ export class AnchorPositioningModel implements PositioningModel {
     const dropCandidate = dropPoint ? presserList[0] : undefined;
     const dropSlack = flight && (flight.flightEnum === 'lofted' || flight.flightEnum === 'high')
       ? AGENT_CAL.dropChaseSlackLoftedS : AGENT_CAL.dropChaseSlackGroundS;
+    // a CROSS dropping into our box is ALWAYS attacked — a centre-back meets
+    // the ball even when he can't beat it there (the duel decides); the
+    // beat-the-ball gate is for open-field balls, not boxes
+    const crossIntoOurBox = !!flight && flight.actionType === 'cross' && !inPossession &&
+      (side === 'home' ? flight.to.x < 16.5 : flight.to.x > PITCH_LENGTH - 16.5) &&
+      Math.abs(flight.to.y - PITCH_WIDTH / 2) < 20.16;
     const dropChaserId = dropCandidate && dropPoint &&
-      arrivalTime(dropCandidate, dropPoint.x, dropPoint.y) <= flightRemainingS + dropSlack
+      (crossIntoOurBox ||
+        arrivalTime(dropCandidate, dropPoint.x, dropPoint.y) <= flightRemainingS + dropSlack)
       ? dropCandidate.id : undefined;
 
     // a LOOSE ball (no carrier, not in flight) gets chased TO CONTACT: the
