@@ -184,7 +184,7 @@ export const AGENT_CAL = {
   // the challenger's pressingIntensity and the team's pressTrigger. This is
   // how press↑ produces turnovers/ppda↓/fouls, through play, not a knob.
   challengeRadiusM: 2.901, // a defender this close may engage the carrier
-  challengeAttemptBase: 0.100, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
+  challengeAttemptBase: 0.079, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
   challengeDuelLogit: 0.9, // ×(tackler duel skill − carrier retention skill), sigmoid
   challengeFoulShare: 0.282, // failed challenges that clip the man — feeds the card ladder
   challengeGraceTicks: 2, // a fresh receiver can't be stripped for this many ticks (1s)
@@ -195,7 +195,7 @@ export const AGENT_CAL = {
   // forces an error sometimes — defender bite (tackling/aggression) vs
   // carrier control (firstTouch/composure), scaled by pressing intensity.
   receptionPressRadiusM: 4.340, // presser this close at the moment of reception
-  receptionErrorBase: 0.284, // ×(0.5+intensity)×(0.5+trigger) attempt rate
+  receptionErrorBase: 0.218, // ×(0.5+intensity)×(0.5+trigger) attempt rate
   receptionDuelLogit: 1.0, // duel slope, same shape as challenges
   receptionFoulShare: 0.18, // won duels that came through the man — card ladder
 
@@ -211,14 +211,18 @@ export const AGENT_CAL = {
   // playable ≠ taken: a driven ball flashing past a boot is an ATTEMPT —
   // full probability only on dead-center contact, one try per defender per
   // flight (a beaten defender doesn't get a second bite at the same ball)
-  ballInterceptTakeBase: 0.519,
+  ballInterceptTakeBase: 0.384,
+  // take ×(1 − g/2 + g·anticipation/20): reading the game converts reach into
+  // takes — the attribute-expression half of interception (reach is the other).
+  // 0 = flat takes (no-op multiplier).
+  ballInterceptTakeSkillGain: 0,
   ballReceiveRadiusM: 1.6, // arrival: a body this close to the drop can take the ball
   // drop-chase gate slack: how late a defender may arrive and still contest.
   // A driven ball is gone when it's gone; a HANGING ball is contestable at
   // the bounce — high balls invite bodies (this is where aerial duels live)
   dropChaseSlackGroundS: 0.4,
   dropChaseSlackLoftedS: 1.6,
-  interceptControlBase: 0.576, // P(clean control | intercepted) = base + gain·firstTouch/20
+  interceptControlBase: 0.454, // P(clean control | intercepted) = base + gain·firstTouch/20
   interceptControlGain: 0.4,
   ballDeflectScatterM: 3.0, // failed control: the ball squirts loose this far (gauss)
   shankDirNoiseMul: 2.5, // a technically-missed pass is a REAL bad ball: extra scatter
@@ -226,8 +230,8 @@ export const AGENT_CAL = {
   // BLOCKED RELEASE: a pass struck under a presser's nose can hit his legs —
   // the loose-ball moment every crowded midfield produces. Rate rides felt
   // pressure; the blocker's anticipation reads the release.
-  ballBlockBase: 0.245, // ×pressure ×(0.5 + anticipation/20), at kick, pressure > floor
-  ballBlockPressureFloor: 0.359,
+  ballBlockBase: 0.17, // ×pressure ×(0.5 + anticipation/20), at kick, pressure > floor
+  ballBlockPressureFloor: 0.357,
   ballBlockScatterM: 2.5,
 
   // ── execution ──────────────────────────────────────────────────────────────
@@ -279,10 +283,10 @@ export const AGENT_CAL = {
   aggressionFoulGain: 0.4, // ×(1 + gain·(aggression/20 − 0.5))
   aerialFoulRate: 0.02, // duel loser brings the man down
   yellowPerFoul: 0.17,
-  redPerFoul: 0.006, // straight red; second yellow also sends off
+  redPerFoul: 0.0068, // straight red; second yellow also sends off
   bookedCautionFactor: 0.1, // players on a yellow tackle carefully
   boxFoulFactor: 0.18, // nobody dives in inside their own box
-  injuryPerTickBase: 0.00000332, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
+  injuryPerTickBase: 0.0000024, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
   injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
   offsideToleranceM: 0.5, // linesman: receiver this far beyond the second-last defender → flagged
   // Passers now judge STRICTLY (accept only receivers at/behind the line):
@@ -301,10 +305,10 @@ export const AGENT_CAL = {
   offsideTimingSkill: 0.5, // ×(1 − skill·(offTheBall/20 − 0.5)·2): OTB 20 halves it, OTB 0 ×1.5
   lineHoldBufferM: 2.0, // attackers hold this far INSIDE the line (onside-safe hover)
   penaltyGoalProb: 0.76,
-  cornerProb: 0.399, // P(corner | saved/off target) — deflection/parry supply at ~11-shot volume
-  setPieceHeaderXgFactor: 0.405, // headers convert worse than feet from the same spot
+  cornerProb: 0.638, // P(corner | saved/off target) — deflection/parry supply at ~11-shot volume
+  setPieceHeaderXgFactor: 0.41, // headers convert worse than feet from the same spot
   setPieceDeliveryNoiseM: 3.5, // ×(20 − setPieceDelivery)/20
-  homePressureRelief: 0.332, // re-fit for the flight-physics pressure economy (was 0.45: pressure gained teeth — blocks/challenges/receptions — and the one home mechanism over-compounded to 0.51-0.56 home share) // crowd effect: home carrier feels less pressure
+  homePressureRelief: 0.348, // re-fit for the flight-physics pressure economy (was 0.45: pressure gained teeth — blocks/challenges/receptions — and the one home mechanism over-compounded to 0.51-0.56 home share) // crowd effect: home carrier feels less pressure
 
   // ── bookkeeping ────────────────────────────────────────────────────────────
   fatiguePerTick: 0.00007, // ~0.24/half at tick 0.5 s before stamina scaling

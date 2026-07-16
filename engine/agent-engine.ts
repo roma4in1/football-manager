@@ -597,7 +597,9 @@ export class AgentEngine implements SimEngine {
             // in reach = an ATTEMPT, not a take: full odds only on dead-center
             // contact; one try per defender per flight (no second bites)
             f.attempted.add(s.id);
-            const pTake = AGENT_CAL.ballInterceptTakeBase * (1 - d / reach);
+            const g = AGENT_CAL.ballInterceptTakeSkillGain;
+            const pTake = AGENT_CAL.ballInterceptTakeBase * (1 - d / reach) *
+              (1 - g / 2 + g * (s.attributes.anticipation / 20));
             if (rng.chance(pTake, tick, s.id, 'intercept-take', f.flightId)) {
               ball.pos = at;
               resolveInterception(s, at, tick, now);
