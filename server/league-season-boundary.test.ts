@@ -59,7 +59,9 @@ before(async () => {
     pool,
     armClose: async () => {},
     scheduleWeekClose: async () => {},
-    tuning: { lotSeconds: 0.4, softCloseSeconds: 0.2, bidIncrementMin: 1 },
+    // the file's toy squad bounds (13/18) — must match the setupSeason tuning
+    // above or completion waits for the LEAGUE_CFG floor these squads never reach
+    tuning: { lotSeconds: 0.4, softCloseSeconds: 0.2, bidIncrementMin: 1, squadMin: 13, squadMax: 18 },
   });
   const turn = (await auction.state(clubIds[0])).turn;
   assert.ok(turn, 'auction has a nomination turn');

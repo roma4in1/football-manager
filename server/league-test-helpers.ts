@@ -2,14 +2,18 @@
  * league-test-helpers.ts — shared seeding for the DB-backed test suites
  * (league-integration.test.ts, league-api.test.ts). Test-only module.
  *
- * Squads are deterministic and flat-attributed: 13 players per club (11
- * lineup + 2 reserves), realism lives in the stat harness, not here.
+ * Squads are deterministic and flat-attributed: LEAGUE_CFG.squadMin players
+ * per club (11 lineup + reserves), realism lives in the stat harness, not
+ * here. Sized to the config floor so seeded clubs are always legal squads —
+ * a hardcoded count silently strands every club below the floor when the
+ * floor moves (as it did 13 → 20).
  */
 
 import { readFileSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { Attributes, Phase, Tactics, Vec2 } from '@fm/engine/types';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import { SESSION_COOKIE } from './league-api.ts';
 
 /**
@@ -145,7 +149,7 @@ export async function seedPoolPlayers(pool: pg.Pool, count: number, prefix = 'Po
   return ids;
 }
 
-/** Manager + club + 13 contracted players (wage 100 each) + default tactics. */
+/** Manager + club + squadMin contracted players (wage 100 each) + default tactics. */
 export async function seedClub(
   pool: pg.Pool, seasonId: string, name: string, managerEmail: string,
 ): Promise<{ clubId: string; playerIds: string[] }> {
@@ -166,7 +170,7 @@ export async function seedClub(
   );
   const playerIds: string[] = [];
   const positionFor = (i: number): string => (i === 0 ? 'GK' : i === 11 ? 'DF' : i === 12 ? 'FW' : 'MF');
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < LEAGUE_CFG.squadMin; i++) {
     const p = await pool.query(
       `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,

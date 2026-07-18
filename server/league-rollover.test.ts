@@ -74,7 +74,7 @@ async function playSeason(seasonId: string): Promise<void> {
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
   await bootstrapSchema(pool, DATABASE_URL);
-  await seedPoolPlayers(pool, 40, 'RP'); // GK/DF/DF/MF/MF/FW cycle
+  await seedPoolPlayers(pool, 60, 'RP'); // GK/DF/DF/MF/MF/FW cycle — sized for the 20-man floor (drainability needs ≥ squadMax + squadMin = 45)
 
   const setup = await setupSeason(pool, {
     clubs: [{ name: 'Alpha', managerEmail: 'a@ro.io' }, { name: 'Beta', managerEmail: 'b@ro.io' }],
@@ -87,23 +87,23 @@ before(async () => {
   season1 = setup.seasonId;
   [clubA, clubB] = setup.clubIds;
 
-  // balanced 13-a-side from the pool: 1 GK, 4 DF, 5 MF, 3 FW per club
+  // balanced squadMin-a-side from the pool: 1 GK, 6 DF, 8 MF, 5 FW per club
   const byPos = async (pos: string): Promise<string[]> =>
     (await q(`SELECT id FROM players p WHERE p.position = $1
               AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)
               ORDER BY full_name`, [pos])).rows.map((r) => r.id);
   const [gks, dfs, mfs, fws] = [await byPos('GK'), await byPos('DF'), await byPos('MF'), await byPos('FW')];
   const squadFor = (i: number): string[] => [
-    gks[i], ...dfs.slice(i * 4, i * 4 + 4), ...mfs.slice(i * 5, i * 5 + 5), ...fws.slice(i * 3, i * 3 + 3),
+    gks[i], ...dfs.slice(i * 6, i * 6 + 6), ...mfs.slice(i * 8, i * 8 + 8), ...fws.slice(i * 5, i * 5 + 5),
   ];
   const squadA = squadFor(0);
   const squadB = squadFor(1);
 
-  // A: 3 expiring (duration 1) + 10 carried (duration 2); B: 12 carried + 1 auction win
-  expiringA = [squadA[5], squadA[6], squadA[10]]; // DF, MF, MF — the GK carries
+  // A: 3 expiring (duration 1) + the rest carried (duration 2); B: squadMin−1 carried + 1 auction win
+  expiringA = [squadA[5], squadA[6], squadA[10]]; // DF, DF, MF — the GK carries
   carriedA = squadA.filter((id) => !expiringA.includes(id));
   for (const id of squadA) await sign(clubA, id, season1, expiringA.includes(id) ? 1 : 2);
-  for (const id of squadB.slice(0, 12)) await sign(clubB, id, season1, 2);
+  for (const id of squadB.slice(0, LEAGUE_CFG.squadMin - 1)) await sign(clubB, id, season1, 2);
 
   // an old carried player makes growth/decline visible and deterministic
   oldTimer = carriedA[1];
@@ -126,7 +126,7 @@ after(async () => {
 // ── season 1: auction → play → rollover ─────────────────────────────────────
 
 test('season 1: auction completes and the season plays to season_end + rollover', async () => {
-  // B's 13th: any free agent — the one real lot drives completion
+  // B's final signing: any free agent — the one real lot drives completion
   const free = (await q(
     `SELECT id FROM players p WHERE NOT EXISTS
        (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)

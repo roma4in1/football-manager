@@ -147,14 +147,14 @@ test('stubbed bracket: aggregates, level→shootout, neutral final, drawn final�
 
 test('e2e: a 5-club season crowns a champion through the playoffs, then rolls over', async () => {
   await bootstrapSchema(pool, DATABASE_URL);
-  await seedPoolPlayers(pool, 90, 'PO');
+  await seedPoolPlayers(pool, 126, 'PO'); // 5 clubs at the 20-man floor: drainability needs ≥ 4·squadMax + squadMin = 120
   const names = ['Ash', 'Birch', 'Cedar', 'Doyle', 'Elm'];
   const setup = await setupSeason(pool, {
     clubs: names.map((n) => ({ name: n, managerEmail: `${n.toLowerCase()}@po5.io` })),
   });
   const seasonId = setup.seasonId;
 
-  // balanced 13-a-side from the pool (1 GK / 4 DF / 5 MF / 3 FW per club)
+  // balanced squadMin-a-side from the pool (1 GK / 7 DF / 8 MF / 4 FW per club)
   const byPos = async (pos: string): Promise<string[]> =>
     (await q(`SELECT id FROM players p WHERE p.position = $1
               AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)
@@ -166,7 +166,7 @@ test('e2e: a 5-club season crowns a champion through the playoffs, then rolls ov
     await q(`INSERT INTO squad_players (club_id, season_id, player_id) VALUES ($1, $2, $3)`, [clubId, seasonId, playerId]);
   };
   for (const [i, clubId] of setup.clubIds.entries()) {
-    const squad = [gks[i], ...dfs.slice(i * 4, i * 4 + 4), ...mfs.slice(i * 5, i * 5 + 5), ...fws.slice(i * 3, i * 3 + 3)];
+    const squad = [gks[i], ...dfs.slice(i * 7, i * 7 + 7), ...mfs.slice(i * 8, i * 8 + 8), ...fws.slice(i * 4, i * 4 + 4)];
     for (const [j, id] of squad.entries()) {
       if (i === 0 && j === squad.length - 1) continue; // club 0 one short — the real lot completes
       await sign(clubId, id);

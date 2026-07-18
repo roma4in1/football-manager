@@ -3,9 +3,12 @@
  *
  * The invariant (DECISIONS.md): the WAGE CAP is the primary constraint on
  * squad-stacking. A maxed legal squad — 4 elite (~200M market value) plus
- * squadMin filled with solid ~90M starters — fits JUST under the 150k cap,
- * a 5th elite breaks it, and the 2B budget has headroom over that basket so
- * the money is never what stops you first.
+ * squadMin filled with solid ~90M starters — fits JUST under the cap, a 5th
+ * elite breaks it, and the budget has headroom over that basket so the money
+ * is never what stops you first. Every assertion derives the basket from
+ * LEAGUE_CFG.squadMin, so a squad-floor change forces the cap/budget/facility
+ * re-derivation to happen, not get forgotten (20-man floor: basket 2.24B →
+ * cap 210k, budget 2.8B, facilities ×1.4).
  */
 
 import { test } from 'node:test';
@@ -36,8 +39,8 @@ test('filling to squadMax with starters also breaks the cap (no free depth-stack
   assert.ok(basketWage(4, LEAGUE_CFG.squadMax) > LEAGUE_CFG.defaultWageCap);
 });
 
-test('the 2B budget has headroom over the cap-maximal basket — wages bind first', () => {
-  const basketValue = 4 * ELITE_MV + (LEAGUE_CFG.squadMin - 4) * STARTER_MV; // 1.61B
+test('the budget has headroom over the cap-maximal basket — wages bind first', () => {
+  const basketValue = 4 * ELITE_MV + (LEAGUE_CFG.squadMin - 4) * STARTER_MV;
   assert.ok(basketValue < LEAGUE_CFG.defaultTransferBudget, 'the basket is affordable');
   assert.ok(
     basketValue <= LEAGUE_CFG.defaultTransferBudget * 0.85,

@@ -31,6 +31,7 @@ import {
   type OrchestratorCore,
 } from './league-orchestrator.ts';
 import { bootstrapSchema, buildTactics as tacticsFor, seedClub, seedSeason, waitFor } from './league-test-helpers.ts';
+import { LEAGUE_CFG } from '@fm/engine/config';
 import type { HalfResult, HalfStats, MatchEvent, SimEngine, Tactics } from '@fm/engine/types';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
@@ -216,19 +217,19 @@ test('week-close: force-completes, bookkeeps, reveals', async () => {
     [`fixture:${f4}`],
   );
   assert.equal(wages.rowCount, 2, 'one wage txn per club (memo kept for traceability)');
-  assert.ok(wages.rows.every((r) => Number(r.amount) === 1300), '13 contracts × wage 100');
+  assert.ok(wages.rows.every((r) => Number(r.amount) === LEAGUE_CFG.squadMin * 100), 'squadMin contracts × wage 100');
 
   const sp = await q(
     `SELECT fatigue, season_minutes FROM squad_players WHERE season_id = $1`, [seasonId],
   );
-  assert.equal(sp.rowCount, 26);
+  assert.equal(sp.rowCount, 2 * LEAGUE_CFG.squadMin);
   // fixture ids are random UUIDs and feed the engine seed, so each run rolls a
   // fresh match — send-offs (45') are possible and legitimate
   const played = sp.rows.filter((r) => r.season_minutes > 0);
   assert.equal(played.length, 22, 'both lineups accrued minutes');
   assert.ok(played.every((r) => r.season_minutes === 90 || r.season_minutes === 45), 'minutes are 90, or 45 for a send-off');
   assert.ok(played.filter((r) => r.season_minutes === 90).length >= 20, 'send-offs are rare');
-  assert.equal(sp.rows.filter((r) => r.season_minutes === 0).length, 4, 'reserves did not play');
+  assert.equal(sp.rows.filter((r) => r.season_minutes === 0).length, 2 * (LEAGUE_CFG.squadMin - 11), 'reserves did not play');
   // between-week tick ran inside week-close: players who played carry real fatigue
   // (recovered once), unused reserves decayed below their 0.1 seed
   assert.ok(sp.rows.filter((r) => r.season_minutes > 0).every((r) => r.fatigue > 0.12));

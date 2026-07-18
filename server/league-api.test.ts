@@ -180,11 +180,11 @@ test('/me returns manager, club, season phase', async () => {
   assert.equal(body.season.phase, 'regular');
 });
 
-test('/squad returns own 13 players with league state', async () => {
+test('/squad returns own squadMin players with league state', async () => {
   const res = await call({ method: 'GET', url: '/api/squad', cookie: cookieA });
   assert.equal(res.statusCode, 200);
   const { players } = res.json();
-  assert.equal(players.length, 13);
+  assert.equal(players.length, LEAGUE_CFG.squadMin);
   for (const key of ['playerId', 'fullName', 'position', 'fatigue', 'injuryWeeksLeft', 'suspendedNext', 'justReturned', 'seasonMinutes']) {
     assert.ok(key in players[0], `squad row exposes ${key}`);
   }

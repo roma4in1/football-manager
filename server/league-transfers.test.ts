@@ -60,7 +60,7 @@ before(async () => {
   ({ clubId: clubA, playerIds: playersA } = await seedClub(pool, seasonId, 'Alpha', 'alpha@tw.io'));
   ({ clubId: clubB, playerIds: playersB } = await seedClub(pool, seasonId, 'Beta', 'beta@tw.io'));
 
-  // Beta's 14th player: one above squadMin (13), so exactly one sale is legal.
+  // Beta's extra player: one above squadMin, so exactly one sale is legal.
   // Distinct fatigue so the transfer test can assert per-season state rides along.
   const extra = await q(
     `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical)
@@ -117,7 +117,7 @@ test('closing the last pre-transfer matchweek opens the window (regular → tran
   const state = (await call({ method: 'GET', url: '/api/transfer/state', as: cookieA })).json();
   assert.equal(state.windowOpen, true);
   assert.ok(state.deadlineAt, 'the transfer bye matchweek deadline is the window clock');
-  assert.equal(state.you.squadCount, 13);
+  assert.equal(state.you.squadCount, LEAGUE_CFG.squadMin);
   assert.equal(state.you.budgetRemaining, 100_000);
 });
 
@@ -149,7 +149,7 @@ test('pool signing: fixed price = market value, wage = g(mv), txn recorded', asy
 
   const state = (await call({ method: 'GET', url: '/api/transfer/state', as: cookieA })).json();
   assert.equal(state.you.budgetRemaining, 100_000 - 8000);
-  assert.equal(state.you.squadCount, 14);
+  assert.equal(state.you.squadCount, LEAGUE_CFG.squadMin + 1);
 });
 
 // ── inter-club transfer ──────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ test('offer → accept: fee moves buyer→seller, contract and season state ride
 });
 
 test('accepting an offer is blocked when the seller is at the squad floor', async () => {
-  // Beta is back at 13 = squadMin: offering for any Beta player is refused
+  // Beta is back at squadMin: offering for any Beta player is refused
   const res = await call({ method: 'POST', url: '/api/transfer/offer', payload: { playerId: playersB[5], fee: 2000 }, as: cookieA });
   assert.equal(res.statusCode, 422);
   assert.equal(res.json().error, 'seller_at_floor');

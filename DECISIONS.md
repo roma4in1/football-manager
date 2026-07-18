@@ -3,7 +3,29 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
-## 2026-09-05 — ball-flight/arrival model: the goals floor is broken (engine arc phase 1)
+## 2026-09-06 — 20-player squad floor: the economy re-derived, not re-designed
+
+- User rule: every club must hold at least 20 players. `squadMin` 13 → 20,
+  `squadMax` 18 → 25 (same 5-slot headroom above the floor).
+- The wage-cap basket invariant (league-economy.test.ts) forces the rest: the
+  design basket is 4 elite (200M) + (squadMin−4) starters (90M). At 20 that is
+  2.24B of value / 208,320 in wages, so `defaultWageCap` 150k → 210k (basket =
+  99.2% — the cap still binds, a 5th elite still breaks it) and
+  `defaultTransferBudget` 2B → 2.8B (basket = 80% — money still never binds
+  first). `wagePerMarketValue` (9.3e-5) is UNCHANGED: per-player wages stay on
+  the real-euros scale; only the totals scale with squad size.
+- `facilityCostByLevel` ×1.4 (sum 1.82B): at a 2.8B budget the old 2.6B
+  both-maxed total would FIT inside one budget, silently repealing the PR #14
+  "can't max everything" rule. Growth harness 6b gates re-run: 15/15, hoarding
+  still non-dominant, interest share 26.4% < 30%.
+- Test fallout, fixed at the root: seedClub and the rollover/playoffs seeders
+  hardcoded 13-man squads and pools sized for them — all now derive from
+  `LEAGUE_CFG.squadMin` (a hardcoded count strands every seeded club below a
+  raised floor, which surfaced as seller_at_floor 422s and pool_drainable
+  setup rejections, not as anything naming the real cause).
+  league-season-boundary keeps its explicit toy 13/18 bounds but now passes
+  them to the auction core too — completion previously relied on the toy and
+  real values coinciding.
 
 The #42-named structure was rebuilt: the kicked ball is a first-class moving
 object. Goals 6.2 → **2.93–2.99** (n=600 ×3; the 5.15 floor across 40 prior

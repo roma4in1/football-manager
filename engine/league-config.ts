@@ -38,10 +38,10 @@ export const LEAGUE_CFG = {
 
   // ── facilities (levels 0–5 on club_seasons; economy PR) ────────────────────
   // Costs are for the NEXT level (index = current level). Rescaled with the
-  // realistic-millions economy: one facility maxes at 1.3B (65% of a 2B
-  // budget), BOTH at 2.6B > the budget — the PR #14 "can't max everything"
+  // realistic-millions economy: one facility maxes at 1.82B (65% of a 2.8B
+  // budget), BOTH at 3.64B > the budget — the PR #14 "can't max everything"
   // tradeoff survives, and every level is a real bite out of squad spend.
-  facilityCostByLevel: [50_000_000, 100_000_000, 200_000_000, 350_000_000, 600_000_000],
+  facilityCostByLevel: [70_000_000, 140_000_000, 280_000_000, 490_000_000, 840_000_000],
   facilityLevelMax: 5,
   // Medical curve — real values (was placeholder). Neutral at 0; at level 5:
   // 30% of match injuries shrugged off, duration ×0.70, fatigue recovery ×1.25.
@@ -72,16 +72,16 @@ export const LEAGUE_CFG = {
   startersRequired: 11,
   benchMax: 9,
   htSubsMax: 5, // half-time XI swaps vs the half-1 XI; server-enforced (no re-entry either)
-  squadMin: 13, // auction cannot complete until every club has at least this many
-  squadMax: 18, // hard bidding ceiling — a full club cannot win another lot
+  squadMin: 20, // auction cannot complete until every club has at least this many
+  squadMax: 25, // hard bidding ceiling — a full club cannot win another lot
 
   // ── economy scale (reconciled — DECISIONS.md) ───────────────────────────────
   // Player market values are REAL EUROS (the TM dump: an elite ~200M, a solid
   // starter ~90M); everything else binds against that scale. The WAGE CAP is
   // the designed primary constraint: the budget leaves headroom so what stops
   // squad-stacking is the cap, not the money.
-  defaultTransferBudget: 2_000_000_000, // per-season allotment (setupSeason + rollover default)
-  defaultWageCap: 150_000, // per matchweek — sized to fit ~4 elite + squadMin filled with ~90M players
+  defaultTransferBudget: 2_800_000_000, // per-season allotment (setupSeason + rollover default)
+  defaultWageCap: 210_000, // per matchweek — sized to fit ~4 elite + squadMin filled with ~90M players
 
   // season-start auction (league-auction.ts)
   auctionLotSeconds: 120, // initial bidding window per lot
@@ -91,9 +91,12 @@ export const LEAGUE_CFG = {
   // is 0.5% — fine-grained enough that sniping economics don't change.
   bidIncrementMin: 1_000_000,
   // g(mv): wage per matchweek = round(mv × this), linear v1. Derived from the
-  // cap-basket: 4×200M elite + 9×90M starters = 1.61B of value must land JUST
-  // under the 150k cap → 150k/1.61B ≈ 9.3e-5 (a 5th elite then breaks it).
-  // The old 1e-4 left that basket at 161k — over the cap by design accident.
+  // cap-basket: 4×200M elite + (squadMin−4)×90M starters must land JUST under
+  // the cap (a 5th elite then breaks it). At squadMin 20 that basket is 2.24B
+  // of value → 208,320/wk vs the 210k cap (99.2% — the cap binds). The rate
+  // 9.3e-5 is UNCHANGED from the 13-man derivation; the cap and budget moved
+  // instead (150k→210k, 2B→2.8B) when the 20-player floor came in — wages per
+  // player stay on the real-euros scale.
   wagePerMarketValue: 0.000093,
   auctionDefaultContractDuration: 2, // signing default; winner may adjust 1–4 while phase='auction'
   matchweekCadenceDays: 7, // schedule generation: one deadline per week
