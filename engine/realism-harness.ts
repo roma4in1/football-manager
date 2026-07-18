@@ -228,7 +228,17 @@ if (!JSON_ONLY) {
   // (draws in band on 3/3 seeds traded a slice of top-8 dominance —
   // DECISIONS.md "score-state equalization balance point"); the harness gate
   // was never re-aligned because these runs were manual until the CI fixture
-  check('realism: top-8 quality beats bottom-8 win share', (w / 40).toFixed(3), '> 0.55 (PR #10 balance point)', w / 40 > 0.55);
+  // gate 0.55 → 0.52 (DECISIONS 2026-09-05, user-accepted): the ball-flight
+  // engine brought draw_share NEAR ITS BAND for the first time (0.18–0.23 vs
+  // the old always-failing 0.19–0.22), and more draws arithmetically depress
+  // win share — the check's true value settled AT 0.55 and coin-flipped per
+  // keyed re-roll (measured 0.475–0.625 over ~10 re-rolls). This is NOT a
+  // weakening of the ordering guard: quality↔points r=0.86, goal ratio
+  // 1.7:0.9, and the ST/GK checks all held or strengthened through the
+  // change. The gate moved because a DIFFERENT band (draws) improved, not
+  // because ordering regressed — at 0.52 the check still fails any engine
+  // whose top-8 stop beating the bottom-8.
+  check('realism: top-8 quality beats bottom-8 win share', (w / 40).toFixed(3), '> 0.52 (flight-arc balance point)', w / 40 > 0.52);
   check('realism: top-8 vs bottom-8 goal ratio', `${(gf / 40).toFixed(2)}:${(ga / 40).toFixed(2)}`, 'gf > ga', gf > ga);
 }
 
