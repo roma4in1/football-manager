@@ -18,6 +18,7 @@
  */
 
 import type {
+  BallFlight,
   Fixture,
   HalfResult,
   HalfStats,
@@ -32,6 +33,7 @@ import type {
 } from './engine-types.ts';
 import {
   AGENT_CAL,
+  arrivalTime,
   clampToPitch,
   dist,
   PITCH_LENGTH,
@@ -148,7 +150,9 @@ export class AgentEngine implements SimEngine {
       flight: 'ground',
       carrierId: kickoffCarrier?.id ?? null,
       lastTouchSide: tracker.inPossession,
+      inFlight: null,
     };
+    let flightSeq = 0; // per-half kick sequence — keys flight draws + event emission
 
     const events: MatchEvent[] = [{ t: t0, type: 'kickoff' }];
     const frames: ReplayFrame[] = [];
@@ -160,6 +164,31 @@ export class AgentEngine implements SimEngine {
     const workOf = new Map<string, number>(); // per-tick share of max sprint, feeds fatigue
     let lastCarrierId: string | null = ball.carrierId; // challenge receive-grace tracking
     let carrierSinceTick = 0;
+
+    // ── PROVENANCE INSTRUMENT (Phase 1 diagnosis — ball-flight/arrival) ──────
+    // Per-possession-chain accounting, attached to shot events as meta. No rng
+    // draws (keyed rng makes reads free anyway); measures how much of the
+    // chance-creation pipeline rides the INSTANT-ARRIVAL artifact:
+    //   passProgressM   ball x-progress delivered by completed passes
+    //   carryProgressM  ball x-progress delivered by completed carries
+    //   flightDebtS     sim-time a real ball flight would have consumed (Σ d/v)
+    //   ghostRecv       completions whose receiver PHYSICALLY could not reach
+    //                   the endpoint before the ball (arrivalTime > flight+0.3s)
+    //   teleportM       total receiver displacement at completion (the warp)
+    const chain = {
+      side: tracker.inPossession as Side, startT: t0, passes: 0,
+      passProgressM: 0, carryProgressM: 0, flightDebtS: 0, ghostRecv: 0, teleportM: 0,
+      // assist/key-pass bookkeeping: who completed the pass to the current
+      // carrier (same possession, no opponent touch in between)
+      lastPasserId: null as string | null,
+      lastPassReceiverId: null as string | null,
+    };
+    const chainReset = (side: Side, now: number): void => {
+      chain.side = side; chain.startT = now; chain.passes = 0;
+      chain.passProgressM = 0; chain.carryProgressM = 0; chain.flightDebtS = 0;
+      chain.ghostRecv = 0; chain.teleportM = 0;
+      chain.lastPasserId = null; chain.lastPassReceiverId = null;
+    };
     const ticks = Math.floor(HALF_SECONDS / AGENT_CAL.tickSeconds);
     const framePeriod = Math.round(AGENT_CAL.frameEverySeconds / AGENT_CAL.tickSeconds);
 
@@ -241,11 +270,22 @@ export class AgentEngine implements SimEngine {
           score[side]++;
           tallies.goal(att.id);
           tallies.sot(att.id);
-          events.push({ t: now + 0.2, type: 'goal', playerId: att.id, outcome: 'success', meta: { source: 'setPiece', header: 1 } });
+          tallies.assist(taker.id); // the delivery IS the assist
+          events.push({
+            t: now + 0.2, type: 'goal', playerId: att.id, outcome: 'success',
+            meta: { source: 'setPiece', header: 1, assistId: taker.id },
+          });
           resetKickoff(ball, states, tracker, oppositeOf(side));
           return;
         }
-        if (rng.chance(0.4, tick, att.id, 'sp-sot')) tallies.sot(att.id);
+        if (rng.chance(0.4, tick, att.id, 'sp-sot')) {
+          tallies.sot(att.id);
+          const gk = defenders.find((d) => d.isGk);
+          if (gk) {
+            tallies.save(gk.id);
+            events.push({ t: now + 0.25, type: 'save', playerId: gk.id });
+          }
+        }
         giveToKeeper(ball, states, tracker, oppositeOf(side));
         return;
       }
@@ -253,6 +293,7 @@ export class AgentEngine implements SimEngine {
       const clearPoint = clampToPitch({ x: spot.x + (side === 'home' ? -18 : 18), y: spot.y + rng.gauss(0, 8, tick, def.id, 'sp-clear') });
       const claimant = nearestAny(states, clearPoint);
       if (claimant) {
+        ball.inFlight = null;
         ball.pos = { ...claimant.pos };
         ball.carrierId = claimant.id;
         ball.flight = 'ground';
@@ -283,6 +324,11 @@ export class AgentEngine implements SimEngine {
         resetKickoff(ball, states, tracker, oppositeOf(side));
       } else {
         tallies.sot(taker.id); // saved: still on target more often than not
+        const gk = active(states).find((s) => s.side !== side && s.isGk);
+        if (gk) {
+          tallies.save(gk.id);
+          events.push({ t: now + 0.15, type: 'save', playerId: gk.id });
+        }
         giveToKeeper(ball, states, tracker, oppositeOf(side));
       }
     };
@@ -312,9 +358,274 @@ export class AgentEngine implements SimEngine {
       return Math.max(-AGENT_CAL.stateMax, Math.min(AGENT_CAL.stateMax, shaped + home));
     };
 
+    // ── ball flight (Phase 1): the kicked ball is a real moving object ───────
+    // Travel time elapses, receivers run onto arrival points, defenders
+    // intercept WHERE THEIR BODIES MEET THE BALL. Replaces the instant-arrival
+    // teleport (`receiver.pos = endPoint`) the provenance instrument convicted:
+    // 98% of pre-shot chains rode physically-impossible receptions, attacks ran
+    // 33% faster than the movement model allows (DECISIONS 2026-09-03 suspect).
+
+    const lerpPoint = (a: Vec2, b: Vec2, t: number): Vec2 =>
+      ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+    /** the slice of a flight the stats need after the ball itself is resolved */
+    interface FlightRecord {
+      kickerId: string; kickerSide: Side; actionType: string;
+      flightEnum: BallFlight; from: Vec2; to: Vec2; kickT: number;
+    }
+    /** a flight that died in space: completion is judged at FIRST CONTROL —
+     *  a receiver collecting the bounce half a second late still completed
+     *  the pass; an opponent getting there first didn't. */
+    // boxed: closure writes are invisible to TS narrowing (issue #9998)
+    const pending = { flight: null as FlightRecord | null };
+
+    const settleFlightStats = (f: FlightRecord, completed: boolean): void => {
+      if (f.flightEnum === 'ground' || f.flightEnum === 'driven') {
+        tallies.pass(f.kickerId, completed);
+      } else if (f.actionType !== 'cross') {
+        // long-ball metrics read these; crosses excluded (FBref-style)
+        events.push({
+          t: f.kickT, type: 'pass', playerId: f.kickerId,
+          from: { ...f.from }, to: { ...f.to }, flight: f.flightEnum,
+          outcome: completed ? 'success' : 'fail',
+        });
+      }
+    };
+    const finishFlightTally = (completed: boolean): void => {
+      settleFlightStats(ball.inFlight!, completed);
+    };
+
+    /** a same-side body takes the ball cleanly at the end of a flight */
+    const cleanReception = (receiver: AgentState, tick: number, now: number): void => {
+      const f = ball.inFlight!;
+      finishFlightTally(true);
+      // provenance instrument: with real flight the receiver is HERE — the
+      // teleport term measures residual snap (≤ receive radius by construction)
+      if (receiver.side === f.kickerSide) {
+        chain.passes++;
+        chain.passProgressM += (ball.pos.x - f.from.x) * (f.kickerSide === 'home' ? 1 : -1);
+        chain.flightDebtS += 0; // flight time is PAID now — it elapsed on the clock
+        chain.teleportM += dist(receiver.pos, ball.pos);
+        chain.lastPasserId = f.kickerId;
+        chain.lastPassReceiverId = receiver.id;
+      }
+      ball.inFlight = null;
+      ball.flight = 'ground';
+      ball.carrierId = receiver.id;
+      ball.pos = { ...receiver.pos };
+      ball.lastTouchSide = receiver.side;
+      tracker.turnover(receiver.side);
+
+      // RECEPTION PRESSURE (the buildup-zone action supply, DECISIONS
+      // 2026-09-02): a presser arriving on the touch forces an error draw —
+      // defender bite vs receiver control. Unchanged mechanism, new moment.
+      if (receiver.side === f.kickerSide && !receiver.isGk) {
+        const presser = nearestTo(states, oppositeOf(receiver.side), receiver.pos);
+        if (presser && dist(presser.pos, receiver.pos) <= AGENT_CAL.receptionPressRadiusM) {
+          const trigger2 = (presser.side === 'home' ? homeCtx : awayCtx).tactics.team.pressTrigger;
+          const attemptP = AGENT_CAL.receptionErrorBase *
+            (0.5 + presser.instructions.pressingIntensity) * (0.5 + trigger2);
+          if (rng.chance(attemptP, tick, receiver.id, 'reception-press')) {
+            const bite = (presser.attributes.tackling + presser.attributes.aggression) / 2;
+            const control = (receiver.attributes.firstTouch + receiver.attributes.composure) / 2;
+            const winP = 1 / (1 + Math.exp(-AGENT_CAL.receptionDuelLogit * ((bite - control) / 20) * 2));
+            if (rng.chance(winP, tick, presser.id, 'reception-win')) {
+              // booked pressers pull out of 50/50s; nobody dives in inside
+              // their own box (parity with the carry-tackle foul path)
+              const foulShare = AGENT_CAL.receptionFoulShare *
+                (presser.yellows ? AGENT_CAL.bookedCautionFactor : 1) *
+                (inAttackingBox(receiver.side, receiver.pos) ? AGENT_CAL.boxFoulFactor : 1);
+              if (rng.chance(foulShare, tick, presser.id, 'reception-foul')) {
+                bookFoul(presser, receiver.pos, now + 0.1, tick);
+                if (inAttackingBox(receiver.side, receiver.pos)) {
+                  resolvePenalty(receiver.side, receiver, now + 0.2, tick);
+                } else if (ownRelX(receiver.side, receiver.pos.x) > AGENT_CAL.finalThirdX) {
+                  resolveSetPieceDelivery(receiver.side, 'freeKick', now + 0.2, tick);
+                }
+              } else {
+                events.push({ t: now, type: 'tackle', playerId: presser.id, outcome: 'success', meta: { source: 'reception' } });
+                if (inBuildup(receiver.side, receiver.pos.x)) defActions[presser.side]++;
+                ball.pos = { ...presser.pos };
+                ball.carrierId = presser.id;
+                ball.lastTouchSide = presser.side;
+                tracker.turnover(presser.side);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    /** an opponent meets the ball (mid-flight or at arrival): interception */
+    const resolveInterception = (enemy: AgentState, at: Vec2, tick: number, now: number): void => {
+      const f = ball.inFlight!;
+      finishFlightTally(false);
+      events.push({ t: now, type: 'interception', playerId: enemy.id });
+      if (inBuildup(f.kickerSide, at.x)) defActions[enemy.side]++;
+      ball.inFlight = null;
+      ball.flight = 'ground';
+      const pClean = Math.min(0.95, AGENT_CAL.interceptControlBase +
+        AGENT_CAL.interceptControlGain * (enemy.attributes.firstTouch / 20));
+      if (rng.chance(pClean, tick, enemy.id, 'intercept-control', f.flightId)) {
+        ball.carrierId = enemy.id;
+        ball.pos = { ...enemy.pos };
+        ball.lastTouchSide = enemy.side;
+        tracker.turnover(enemy.side);
+      } else {
+        // the ball squirts loose off the touch — a real second-ball moment
+        ball.carrierId = null;
+        ball.pos = clampToPitch({
+          x: at.x + rng.gauss(0, AGENT_CAL.ballDeflectScatterM, tick, enemy.id, 'deflect-x', f.flightId),
+          y: at.y + rng.gauss(0, AGENT_CAL.ballDeflectScatterM, tick, enemy.id, 'deflect-y', f.flightId),
+        });
+        ball.lastTouchSide = enemy.side;
+      }
+    };
+
+    /** interception reach: anticipation reads the pass earlier → wider reach */
+    const interceptReach = (p: AgentState): number =>
+      AGENT_CAL.ballInterceptRadiusM *
+      (1 - AGENT_CAL.ballInterceptAnticipationGain / 2 +
+        AGENT_CAL.ballInterceptAnticipationGain * (p.attributes.anticipation / 20));
+
+    /** the flight resolves at its endpoint: reception / arrival contest / loose */
+    const resolveArrival = (tick: number, now: number): void => {
+      const f = ball.inFlight!;
+      ball.pos = { ...f.to };
+      if (f.outOfBounds) {
+        // the ball crossed the line: dead, thrown back in by the other side
+        // (restart simplification — same family as giveToKeeper/resetKickoff)
+        finishFlightTally(false);
+        ball.inFlight = null;
+        ball.flight = 'ground';
+        const thrower = nearestTo(states, oppositeOf(f.kickerSide), f.to);
+        if (thrower) {
+          ball.carrierId = thrower.id;
+          ball.pos = { ...thrower.pos };
+          ball.lastTouchSide = thrower.side;
+          tracker.turnover(thrower.side);
+        } else {
+          ball.carrierId = null;
+        }
+        return;
+      }
+      if (f.flightEnum === 'lofted' || f.flightEnum === 'high') {
+        // drop-point contest: nearest body per side inside the contest radius
+        const near = active(states)
+          .filter((s) => dist(s.pos, f.to) <= AGENT_CAL.ballReceiveRadiusM + 1.0)
+          .sort((a, b) => dist(a.pos, f.to) - dist(b.pos, f.to));
+        const ours = near.find((s) => s.side === f.kickerSide);
+        const theirs = near.find((s) => s.side !== f.kickerSide);
+        if (ours && theirs) {
+          // both arrived: the aerial duel decides the first touch
+          const duel = this.execution.resolveAerialDuel(
+            { ball: f.to, contestants: [snapshotOf(ours), snapshotOf(theirs)], heightCmById: heights },
+            rng, tick,
+          );
+          tallies.aerial(duel.winnerId);
+          const winner = byId.get(duel.winnerId)!;
+          const loser = winner.id === ours.id ? theirs : ours;
+          if (rng.chance(AGENT_CAL.aerialFoulRate, tick, loser.id, 'foul')) {
+            bookFoul(loser, f.to, now + 0.1, tick);
+          }
+          finishFlightTally(winner.side === f.kickerSide);
+          ball.inFlight = null;
+          ball.flight = 'ground';
+          ball.lastTouchSide = winner.side;
+          if (dist(duel.endPoint, winner.pos) <= AGENT_CAL.ballReceiveRadiusM) {
+            ball.carrierId = winner.id;
+            ball.pos = { ...winner.pos };
+            tracker.turnover(winner.side);
+          } else {
+            // headed on/away: a loose second ball — players converge on it
+            ball.carrierId = null;
+            ball.pos = { ...duel.endPoint };
+          }
+          return;
+        }
+        const alone = ours ?? theirs;
+        if (!alone) {
+          pending.flight = { ...f }; // dies in space — completion judged at first control
+          ball.inFlight = null;
+          ball.flight = 'ground';
+          ball.carrierId = null;
+          return;
+        }
+        if (alone.side === f.kickerSide) cleanReception(alone, tick, now);
+        else resolveInterception(alone, f.to, tick, now);
+        return;
+      }
+      // ground/driven arrival: the CLOSEST body to the drop wins the ball —
+      // a marker tighter than his man picks off the pass into feet (ties and
+      // near-ties go to the intended receiver: it's his ball to shield)
+      const recv = f.receiverId ? byId.get(f.receiverId) : undefined;
+      const recvD = recv && !recv.sentOff ? dist(recv.pos, f.to) : Infinity;
+      const claimant = nearestAny(states, f.to);
+      const claimD = claimant ? dist(claimant.pos, f.to) : Infinity;
+      if (recvD <= AGENT_CAL.ballReceiveRadiusM && recvD <= claimD + 0.4) {
+        cleanReception(recv!, tick, now);
+        return;
+      }
+      if (claimant && claimD <= AGENT_CAL.ballReceiveRadiusM) {
+        if (claimant.side === f.kickerSide) cleanReception(claimant, tick, now);
+        else resolveInterception(claimant, f.to, tick, now);
+        return;
+      }
+      // nobody made it: the ball runs dead — completion judged at first control
+      pending.flight = { ...f };
+      ball.inFlight = null;
+      ball.flight = 'ground';
+      ball.carrierId = null;
+    };
+
+    /** one tick of ball travel; ground balls are interceptable EN ROUTE */
+    const advanceFlight = (tick: number, now: number): void => {
+      const f = ball.inFlight!;
+      const total = Math.max(0.1, dist(f.from, f.to));
+      const step = Math.min(f.speedMps * AGENT_CAL.tickSeconds, total - f.travelledM);
+      if (f.flightEnum === 'ground' || f.flightEnum === 'driven') {
+        // sub-sample the path so a 7m/tick ball cannot skip past a defender
+        const recv = f.receiverId ? byId.get(f.receiverId) : undefined;
+        const subs = Math.max(1, Math.ceil(step / 1.0));
+        for (let k = 1; k <= subs; k++) {
+          const at = lerpPoint(f.from, f.to, (f.travelledM + (step * k) / subs) / total);
+          for (const s of active(states)) {
+            if (s.side === f.kickerSide || f.attempted.has(s.id)) continue;
+            const reach = interceptReach(s);
+            const d = dist(s.pos, at);
+            if (d > reach) continue;
+            // in reach = an ATTEMPT, not a take: full odds only on dead-center
+            // contact; one try per defender per flight (no second bites)
+            f.attempted.add(s.id);
+            const g = AGENT_CAL.ballInterceptTakeSkillGain;
+            const pTake = AGENT_CAL.ballInterceptTakeBase * (1 - d / reach) *
+              (1 - g / 2 + g * (s.attributes.anticipation / 20));
+            if (rng.chance(pTake, tick, s.id, 'intercept-take', f.flightId)) {
+              ball.pos = at;
+              resolveInterception(s, at, tick, now);
+              return;
+            }
+          }
+          // the intended receiver MEETS the ball en route — a ground pass is
+          // received at the body wherever he gets to it, not at a theoretical
+          // endpoint (receivers come toward the ball; this is most of why the
+          // ball lives at feet in real football)
+          if (recv && !recv.sentOff && dist(recv.pos, at) <= AGENT_CAL.ballReceiveRadiusM) {
+            ball.pos = at;
+            cleanReception(recv, tick, now);
+            return;
+          }
+        }
+      }
+      f.travelledM += step;
+      ball.pos = lerpPoint(f.from, f.to, f.travelledM / total);
+      if (f.travelledM >= total - 1e-6) resolveArrival(tick, now);
+    };
+
     for (let tick = 0; tick < ticks; tick++) {
       const now = t0 + tick * AGENT_CAL.tickSeconds;
       tracker.advance(AGENT_CAL.tickSeconds);
+      if (tracker.inPossession !== chain.side) chainReset(tracker.inPossession, now); // provenance instrument
       possessionTicks[tracker.inPossession]++;
       if (ball.pos.x > AGENT_CAL.finalThirdX) tiltTicks.home++;
       else if (ball.pos.x < PITCH_LENGTH - AGENT_CAL.finalThirdX) tiltTicks.away++;
@@ -341,11 +652,32 @@ export class AgentEngine implements SimEngine {
         });
         for (const s of states) {
           if (s.side !== side || s.sentOff) continue;
-          const moved = stepToward(s, targets.get(s.id) ?? s.pos);
+          // a pass's intended receiver runs to MEET the ball — he attacks the
+          // point the ball will shortly reach (ground balls are received at
+          // the body en route), falling back to the endpoint for high balls
+          let target = targets.get(s.id) ?? s.pos;
+          const fl = ball.inFlight;
+          if (fl?.receiverId === s.id) {
+            const atkSign = s.side === 'home' ? 1 : -1;
+            const intoSpace = (fl.to.x - s.pos.x) * atkSign > 1; // led goalward of him
+            if (!intoSpace && (fl.flightEnum === 'ground' || fl.flightEnum === 'driven')) {
+              // a ball to feet is MET — attack the point it will shortly reach
+              const total = Math.max(0.1, dist(fl.from, fl.to));
+              const aheadM = Math.min(total, fl.travelledM + fl.speedMps * 0.6);
+              target = lerpPoint(fl.from, fl.to, aheadM / total);
+            } else {
+              // a ball into space is RUN ONTO — keep attacking the endpoint
+              target = fl.to;
+            }
+          }
+          const moved = stepToward(s, target);
           const maxStep = AGENT_CAL.maxSpeedMps * AGENT_CAL.tickSeconds;
           workOf.set(s.id, moved / maxStep);
         }
       }
+
+      // ── ball in flight: travel, interception races, arrival ───────────────
+      if (ball.inFlight) advanceFlight(tick, now);
 
       // ── pressing challenge (Phase B): a defender in touching distance may
       // engage the carrier BEFORE he gets his next decision — an attribute
@@ -395,7 +727,10 @@ export class AgentEngine implements SimEngine {
                 ball.carrierId = challenger.id;
                 ball.lastTouchSide = challenger.side;
                 tracker.turnover(challenger.side);
-              } else if (rng.chance(AGENT_CAL.challengeFoulShare, tick, challenger.id, 'challenge-foul')) {
+              } else if (rng.chance(
+                AGENT_CAL.challengeFoulShare * (challenger.yellows ? AGENT_CAL.bookedCautionFactor : 1) *
+                  (inAttackingBox(holder.side, holder.pos) ? AGENT_CAL.boxFoulFactor : 1),
+                tick, challenger.id, 'challenge-foul')) {
                 bookFoul(challenger, holder.pos, now, tick);
                 if (inAttackingBox(holder.side, holder.pos)) {
                   resolvePenalty(holder.side, holder, now + 0.2, tick);
@@ -500,15 +835,40 @@ export class AgentEngine implements SimEngine {
           tallies.shot(carrier.id);
           xgSum[side] += xg;
           if (outcome.success) tallies.sot(carrier.id); // success = on target
+          // key pass / assist: the completed pass that put the shooter in
+          // (same possession, no opponent touch in between — chain-tracked)
+          const assisterId = chain.lastPassReceiverId === carrier.id ? chain.lastPasserId : null;
+          if (assisterId) tallies.keyPass(assisterId);
+          if (outcome.success && !outcome.goal) {
+            const gk = opps.find((o) => o.isGk);
+            if (gk) {
+              tallies.save(gk.id);
+              events.push({ t: now + 0.05, type: 'save', playerId: gk.id });
+            }
+          }
           events.push({
             t: now, type: 'shot', playerId: carrier.id,
             from: { ...carrier.pos }, to: outcome.endPoint, flight: outcome.flight,
-            meta: { xg: Math.round(xg * 1000) / 1000 },
+            meta: {
+              xg: Math.round(xg * 1000) / 1000,
+              // provenance instrument (Phase 1 diagnosis): the chain behind this shot
+              chPasses: chain.passes,
+              chDurS: Math.round((now - chain.startT) * 10) / 10,
+              chPassM: Math.round(chain.passProgressM * 10) / 10,
+              chCarryM: Math.round(chain.carryProgressM * 10) / 10,
+              chFlightDebtS: Math.round(chain.flightDebtS * 10) / 10,
+              chGhostRecv: chain.ghostRecv,
+              chTeleportM: Math.round(chain.teleportM * 10) / 10,
+            },
           });
           if (outcome.goal) {
             score[side]++;
             tallies.goal(carrier.id);
-            events.push({ t: now + 0.1, type: 'goal', playerId: carrier.id, outcome: 'success' });
+            if (assisterId) tallies.assist(assisterId);
+            events.push({
+              t: now + 0.1, type: 'goal', playerId: carrier.id, outcome: 'success',
+              ...(assisterId ? { meta: { assistId: assisterId } } : {}),
+            });
             resetKickoff(ball, states, tracker, oppositeOf(side));
           } else if (rng.chance(AGENT_CAL.cornerProb, tick, carrier.id, 'corner')) {
             resolveSetPieceDelivery(side, 'corner', now + 0.2, tick);
@@ -516,6 +876,9 @@ export class AgentEngine implements SimEngine {
             giveToKeeper(ball, states, tracker, oppositeOf(side));
           }
         } else if (chosen.type === 'carry' || chosen.type === 'hold') {
+          if (outcome.success && chosen.type === 'carry') {
+            chain.carryProgressM += (outcome.endPoint.x - carrier.pos.x) * (side === 'home' ? 1 : -1); // instrument
+          }
           if (outcome.success || chosen.type === 'hold') {
             carrier.pos = outcome.success ? outcome.endPoint : carrier.pos;
             ball.pos = { ...carrier.pos };
@@ -546,106 +909,106 @@ export class AgentEngine implements SimEngine {
             }
           }
         } else {
-          // pass-like: lofted/high arrivals may contest an aerial duel.
-          // passAccuracy is GROUND passes only (the passing/longPassing split —
-          // long-ball completion is measured from pass events instead).
-          if (outcome.flight === 'ground' || outcome.flight === 'driven') {
-            tallies.pass(carrier.id, outcome.success);
-          }
-          // PPDA numerator counts every pass attempt, lofted included
+          // pass family: the ball is KICKED — it becomes a real flight the
+          // world resolves over the coming ticks (advanceFlight). Tallies and
+          // long-ball events are settled at RESOLUTION, not here.
+          // PPDA numerator counts every pass attempt, lofted included.
           if (inBuildup(side, carrier.pos.x)) buildupPasses[side]++;
-          if ((outcome.flight === 'lofted' || outcome.flight === 'high') && chosen.type !== 'cross') {
-            // long-ball metrics read these. Crosses are excluded (FBref-style:
-            // they read crossing, and would dilute the longPassing signal)
-            events.push({
-              t: now, type: 'pass', playerId: carrier.id,
-              from: { ...carrier.pos }, to: outcome.endPoint, flight: outcome.flight,
-              outcome: outcome.success ? 'success' : 'fail',
-            });
+          // provenance instrument (kick time): a pass aimed where its receiver
+          // cannot physically arrive before the ball is a GHOST-AIMED ball —
+          // under instant arrival these completed anyway; now the flight decides
+          if (passReceiver && chosen.receiverId) {
+            const flightT = dist(carrier.pos, outcome.endPoint) /
+              (outcome.flight === 'lofted' || outcome.flight === 'high'
+                ? AGENT_CAL.loftedPassSpeedMps : AGENT_CAL.groundPassSpeedMps);
+            const recvT = arrivalTime(passReceiver, outcome.endPoint.x, outcome.endPoint.y);
+            if (recvT > flightT + 0.3) chain.ghostRecv++;
           }
-          let receiver: AgentState | undefined;
-          if (!outcome.success && (outcome.flight === 'lofted' || outcome.flight === 'high')) {
-            const contestants = contestantsNear(states, outcome.endPoint);
-            const duel = this.execution.resolveAerialDuel(
-              { ball: outcome.endPoint, contestants, heightCmById: heights },
-              rng, tick,
-            );
-            tallies.aerial(duel.winnerId);
-            receiver = byId.get(duel.winnerId);
-            // the loser sometimes brings the winner down
-            const loser = contestants.find((c) => c.id !== duel.winnerId);
-            const loserState = loser ? byId.get(loser.id) : undefined;
-            if (loserState && rng.chance(AGENT_CAL.aerialFoulRate, tick, loserState.id, 'foul')) {
-              bookFoul(loserState, outcome.endPoint, now + 0.1, tick);
-            }
-          } else if (outcome.success && chosen.receiverId) {
-            receiver = byId.get(chosen.receiverId);
-          } else if (outcome.success) {
-            receiver = nearestAny(states, outcome.endPoint); // clear: loose ball, nearest body
-          } else if (outcome.intercepted) {
-            receiver = nearestTo(states, side === 'home' ? 'away' : 'home', outcome.endPoint); // race lost
-            if (receiver && (outcome.flight === 'ground' || outcome.flight === 'driven')) {
-              events.push({ t: now, type: 'interception', playerId: receiver.id });
-              if (inBuildup(side, outcome.endPoint.x)) defActions[receiver.side]++;
-            }
-          } else {
-            receiver = nearestAny(states, outcome.endPoint); // technical miss: loose ball
-          }
-          if (receiver) {
-            receiver.pos = clampToPitch({ ...outcome.endPoint });
-            ball.pos = { ...receiver.pos };
-            ball.carrierId = receiver.id;
-            ball.flight = 'ground';
-            ball.lastTouchSide = receiver.side;
-            tracker.turnover(receiver.side);
-
-            // RECEPTION PRESSURE (the buildup-zone action supply, DECISIONS
-            // 2026-09-02): a presser arriving on a TEAMMATE completion can
-            // force a first-touch error — defender bite vs carrier control,
-            // riding pressing intensity. Rational quick-release play made
-            // deep builders challenge-immune; the pressed touch is where
-            // buildup turnovers and fouls actually live.
-            if (receiver.side === side && !receiver.isGk) {
-              const presser = nearestTo(states, oppositeOf(side), receiver.pos);
-              if (presser && dist(presser.pos, receiver.pos) <= AGENT_CAL.receptionPressRadiusM) {
-                const trigger2 = (presser.side === 'home' ? homeCtx : awayCtx).tactics.team.pressTrigger;
-                const attemptP = AGENT_CAL.receptionErrorBase *
-                  (0.5 + presser.instructions.pressingIntensity) * (0.5 + trigger2);
-                if (rng.chance(attemptP, tick, receiver.id, 'reception-press')) {
-                  const bite = (presser.attributes.tackling + presser.attributes.aggression) / 2;
-                  const control = (receiver.attributes.firstTouch + receiver.attributes.composure) / 2;
-                  const winP = 1 / (1 + Math.exp(-AGENT_CAL.receptionDuelLogit * ((bite - control) / 20) * 2));
-                  if (rng.chance(winP, tick, presser.id, 'reception-win')) {
-                    if (rng.chance(AGENT_CAL.receptionFoulShare, tick, presser.id, 'reception-foul')) {
-                      bookFoul(presser, receiver.pos, now + 0.1, tick);
-                      if (inAttackingBox(side, receiver.pos)) {
-                        resolvePenalty(side, receiver, now + 0.2, tick);
-                      } else if (ownRelX(side, receiver.pos.x) > AGENT_CAL.finalThirdX) {
-                        resolveSetPieceDelivery(side, 'freeKick', now + 0.2, tick);
-                      }
-                    } else {
-                      events.push({ t: now, type: 'tackle', playerId: presser.id, outcome: 'success', meta: { source: 'reception' } });
-                      if (inBuildup(side, receiver.pos.x)) defActions[presser.side]++;
-                      ball.pos = { ...presser.pos };
-                      ball.carrierId = presser.id;
-                      ball.lastTouchSide = presser.side;
-                      tracker.turnover(presser.side);
-                    }
-                  }
-                }
+          // BLOCKED RELEASE: under a presser's nose the kick can hit his legs
+          // — the ball squirts loose right here instead of flying. This is the
+          // crowded-midfield physics the pressure logit alone can't produce
+          // (a shanked DIRECTION still finds a teammate; a block does not).
+          {
+            const blocker = nearestTo(states, oppositeOf(side), carrier.pos);
+            if (blocker && ctx.pressure > AGENT_CAL.ballBlockPressureFloor) {
+              const pBlock = AGENT_CAL.ballBlockBase * ctx.pressure * (0.5 + blocker.attributes.anticipation / 20);
+              if (rng.chance(pBlock, tick, carrier.id, 'block', blocker.id)) {
+                if (outcome.flight === 'ground' || outcome.flight === 'driven') tallies.pass(carrier.id, false);
+                ball.carrierId = null;
+                ball.flight = 'ground';
+                ball.inFlight = null;
+                ball.pos = clampToPitch({
+                  x: carrier.pos.x + rng.gauss(0, AGENT_CAL.ballBlockScatterM, tick, carrier.id, 'block-x'),
+                  y: carrier.pos.y + rng.gauss(0, AGENT_CAL.ballBlockScatterM, tick, carrier.id, 'block-y'),
+                });
+                ball.lastTouchSide = blocker.side;
+                continue;
               }
             }
           }
+          // OUT OF BOUNDS exists now: pass endpoints are unclamped — a flight
+          // crossing the boundary dies at the crossing (throw-in-style restart
+          // to the other side at arrival). Clip the path where it exits.
+          const rawTo = outcome.endPoint;
+          const oob = rawTo.x < 0 || rawTo.x > PITCH_LENGTH || rawTo.y < 0 || rawTo.y > PITCH_WIDTH;
+          let to = rawTo;
+          if (oob) {
+            const dx = rawTo.x - carrier.pos.x;
+            const dy = rawTo.y - carrier.pos.y;
+            let tHit = 1;
+            if (dx > 0) tHit = Math.min(tHit, (PITCH_LENGTH - carrier.pos.x) / dx);
+            if (dx < 0) tHit = Math.min(tHit, (0 - carrier.pos.x) / dx);
+            if (dy > 0) tHit = Math.min(tHit, (PITCH_WIDTH - carrier.pos.y) / dy);
+            if (dy < 0) tHit = Math.min(tHit, (0 - carrier.pos.y) / dy);
+            to = clampToPitch({ x: carrier.pos.x + dx * Math.max(0, tHit), y: carrier.pos.y + dy * Math.max(0, tHit) });
+          }
+          ball.inFlight = {
+            from: { ...carrier.pos },
+            to,
+            speedMps: outcome.flight === 'lofted' || outcome.flight === 'high'
+              ? AGENT_CAL.loftedPassSpeedMps : AGENT_CAL.groundPassSpeedMps,
+            travelledM: 0,
+            kickerId: carrier.id,
+            kickerSide: side,
+            receiverId: chosen.receiverId ?? null,
+            actionType: chosen.type as 'pass' | 'longPass' | 'cross' | 'clear',
+            flightEnum: outcome.flight,
+            kickT: now,
+            flightId: flightSeq++,
+            cleanStrike: outcome.success,
+            outOfBounds: oob,
+            attempted: new Set<string>(),
+          };
+          ball.pos = { ...carrier.pos };
+          ball.flight = outcome.flight;
+          ball.carrierId = null; // the ball has left his feet
+          ball.lastTouchSide = side;
         }
-      } else if (!carrier) {
-        // loose ball: nearest player claims it (stub — no chasing model yet)
+      } else if (!carrier && !ball.inFlight) {
+        // loose ball: claimed by a body that actually REACHES it (the loose
+        // chaser runs at the ball itself) — no instant grab
         const claimant = nearestAny(states, ball.pos);
-        if (claimant) {
+        if (claimant && dist(claimant.pos, ball.pos) <= AGENT_CAL.ballReceiveRadiusM) {
           ball.carrierId = claimant.id;
           ball.pos = { ...claimant.pos };
+          ball.lastTouchSide = claimant.side;
           tracker.turnover(claimant.side);
+          // a pass that died in space resolves NOW: collected by a teammate =
+          // completed; picked off = failed. Assist chain rides the collection.
+          const pf = pending.flight;
+          if (pf) {
+            const completed = claimant.side === pf.kickerSide;
+            settleFlightStats(pf, completed);
+            if (completed) {
+              chain.passes++;
+              chain.passProgressM += (ball.pos.x - pf.from.x) * (claimant.side === 'home' ? 1 : -1);
+              chain.lastPasserId = pf.kickerId;
+              chain.lastPassReceiverId = claimant.id;
+            }
+            pending.flight = null;
+          }
         }
-      } else {
+      } else if (carrier) {
         ball.pos = { ...carrier.pos };
       }
 
@@ -683,7 +1046,10 @@ export class AgentEngine implements SimEngine {
           }
         }
       }
-      if (tick % framePeriod === 0) {
+      // sample on ODD ticks: decisions fire on even ticks, so an aligned
+      // sample would systematically catch the just-kicked (carrier-null)
+      // instant and misread real possession as loose play
+      if (tick % framePeriod === framePeriod - 1) {
         frames.push(frame(now, ball, states));
         heat.sample(states);
       }
@@ -835,12 +1201,10 @@ const nearestTo = (states: AgentState[], side: Side, p: Vec2): AgentState | unde
 const nearestAny = (states: AgentState[], p: Vec2): AgentState | undefined =>
   active(states).sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0];
 
-const contestantsNear = (states: AgentState[], p: Vec2): AgentSnapshot[] =>
-  active(states).sort((a, b) => dist(a.pos, p) - dist(b.pos, p)).slice(0, 2).map(snapshotOf);
-
 function resetKickoff(ball: BallState, states: AgentState[], tracker: PhaseTracker, to: Side): void {
   ball.pos = { x: PITCH_LENGTH / 2, y: PITCH_WIDTH / 2 };
   ball.flight = 'ground';
+  ball.inFlight = null; // restarts kill any live flight
   tracker.turnover(to);
   const receiver = nearestTo(states, to, ball.pos);
   ball.carrierId = receiver?.id ?? null;
@@ -853,6 +1217,7 @@ function giveToKeeper(ball: BallState, states: AgentState[], tracker: PhaseTrack
   ball.pos = { ...gk.pos };
   ball.carrierId = gk.id;
   ball.flight = 'ground';
+  ball.inFlight = null; // the keeper collects — any live flight is dead
   ball.lastTouchSide = to;
   tracker.turnover(to);
 }
@@ -880,10 +1245,16 @@ class Tallies {
   passesAtt = new Map<string, number>();
   passesOk = new Map<string, number>();
   aerials = new Map<string, number>();
+  // per-player stats the season layer aggregates later (assists ride goal
+  // events too; these are the per-match emission)
+  assists = new Map<string, number>();
+  keyPasses = new Map<string, number>();
+  saves = new Map<string, number>();
   constructor(ids: string[]) {
     for (const id of ids) {
       this.goals.set(id, 0); this.shots.set(id, 0); this.sots.set(id, 0);
       this.passesAtt.set(id, 0); this.passesOk.set(id, 0); this.aerials.set(id, 0);
+      this.assists.set(id, 0); this.keyPasses.set(id, 0); this.saves.set(id, 0);
     }
   }
   private bump(m: Map<string, number>, id: string): void {
@@ -893,6 +1264,9 @@ class Tallies {
   shot(id: string): void { this.bump(this.shots, id); }
   sot(id: string): void { this.bump(this.sots, id); }
   aerial(id: string): void { this.bump(this.aerials, id); }
+  assist(id: string): void { this.bump(this.assists, id); }
+  keyPass(id: string): void { this.bump(this.keyPasses, id); }
+  save(id: string): void { this.bump(this.saves, id); }
   pass(id: string, ok: boolean): void {
     this.bump(this.passesAtt, id);
     if (ok) this.bump(this.passesOk, id);
@@ -959,6 +1333,14 @@ function buildStats(
     playerRatings[s.id] = Math.min(9.8, Math.max(4, Math.round(r * 10) / 10));
   }
   const tiltTotal = counters.tiltTicks.home + counters.tiltTicks.away || 1;
+  const playerStats: NonNullable<HalfStats['playerStats']> = {};
+  for (const s of states) {
+    playerStats[s.id] = {
+      assists: tallies.assists.get(s.id) ?? 0,
+      keyPasses: tallies.keyPasses.get(s.id) ?? 0,
+      saves: tallies.saves.get(s.id) ?? 0,
+    };
+  }
   return {
     possession: [possH, round1(100 - possH)],
     shots: [tallies.sum(tallies.shots, homeIds), tallies.sum(tallies.shots, awayIds)],
@@ -977,6 +1359,7 @@ function buildStats(
     ],
     playerRatings,
     heatmaps: heat.normalized(),
+    playerStats,
   };
 }
 
