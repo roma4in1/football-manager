@@ -147,10 +147,14 @@ export class Sim {
 
     // 4. carry coupling, then free-ball physics
     this.coupleCarry();
+    const ballFrom = { x: this.ball.pos.x, y: this.ball.pos.y };
     stepBall(this.ball);
 
-    // 5. loose-ball claims (and the chaseBall race resolution)
-    this.resolveClaims();
+    // 5. loose-ball claims (and the chaseBall race resolution) — against the
+    // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
+    // moves 1.6 m per tick and would otherwise tunnel through a claimant's
+    // control disc without ever interacting
+    this.resolveClaims(ballFrom);
 
     const frame = this.snapshot();
     this.tick++;
@@ -243,8 +247,18 @@ export class Sim {
     this.ball.phase = 'carried';
   }
 
-  private resolveClaims(): void {
+  private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ) return;
+    // closest approach of a point to the ball's segment [from → pos]
+    const segNearest = (p: Vec2): { d: number; at: Vec2 } => {
+      const dx = this.ball.pos.x - from.x;
+      const dy = this.ball.pos.y - from.y;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1,
+        ((p.x - from.x) * dx + (p.y - from.y) * dy) / len2));
+      const at = { x: from.x + dx * t, y: from.y + dy * t };
+      return { d: Math.hypot(p.x - at.x, p.y - at.y), at };
+    };
     // a coupled ball is pinchable only MID-TOUCH, and the pinch is an ARRIVAL
     // RACE for the touch: the stealer must be in reach AND meaningfully
     // closer to the ball than its carrier (a tight touch is protected by
@@ -256,18 +270,35 @@ export class Sim {
       carrierGap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
       if (carrierGap <= BALL.controlRadiusM) return;
     }
-    let best: { body: BodyState; d: number } | null = null;
+    let best: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
-      const d = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+      const { d, at } = segNearest(b.pos);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
+      // the carrier's body shields the touch: no pinch without a clear line
+      if (carrier) {
+        const sx = at.x - b.pos.x;
+        const sy = at.y - b.pos.y;
+        const len2 = sx * sx + sy * sy;
+        const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1,
+          ((carrier.pos.x - b.pos.x) * sx + (carrier.pos.y - b.pos.y) * sy) / len2));
+        const cx = b.pos.x + sx * t;
+        const cy = b.pos.y + sy * t;
+        if (Math.hypot(carrier.pos.x - cx, carrier.pos.y - cy) < BALL.shieldRadiusM) continue;
+      }
       if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && b.id < best.body.id)) {
-        best = { body: b, d };
+        best = { body: b, d, at };
       }
     }
     if (!best) return;
+    // the claim is a controlling TRAP at the meeting point: the ball stops at
+    // the man (perfectly at L2 — first-touch quality arrives with L3)
+    this.ball.pos = { x: best.at.x, y: best.at.y };
+    this.ball.vel = { x: 0, y: 0 };
+    this.ball.vz = 0;
+    this.ball.z = 0;
     this.ball.carrierId = best.body.id;
     this.ball.phase = 'carried';
     // the race is over: every chaseBall command completes (winner included —

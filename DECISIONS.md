@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-09 — L2 judgment round 2: the tunneling ball + the body shield
+
+Human note: pickups sometimes MISS — the ball passes through a player with
+its direction unchanged. Diagnosis: discrete-sample claims. A 16 m/s ball
+moves 1.6 m/tick, wider than the whole 0.9 m control disc — it crossed the
+claimant BETWEEN ticks and never interacted.
+
+- **Swept-path claims**: claiming now tests the ball's movement SEGMENT
+  this tick (closest approach per body), so nothing tunnels; a claim is a
+  controlling TRAP at the meeting point (ball stops at the man — perfect
+  at L2, first-touch quality arrives with L3). Regression test drives a
+  16 m/s ball through a standing body.
+- **The body SHIELD** (the fix exposed it): with tunneling gone, every
+  duel config pinched close control — defenders were reaching THROUGH the
+  attacker, because L2 had no bodies. Minimal body-blocking: a pinch needs
+  a clear stealer→ball line; if the carrier stands within 0.5 m of that
+  line, the touch is shielded. A heavy touch running meters ahead escapes
+  the shield's shadow — the L2 bridge to L3's full shielding contests.
+- Duel re-scanned under the corrected physics: the locked geometry (flank
+  recovery, pace 13) still separates — close control escapes the route,
+  heavy feet pinched mid-route. 32/32; 5.2 µs/tick.
+
 ## 2026-09-09 — L2 judgment round 1: four notes, five mechanisms, three probe-caught bugs
 
 Human notes on the first L2 build (anticipation, carry cost, speed-dominant

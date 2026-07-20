@@ -80,6 +80,10 @@ export const BALL = {
    * the ball than its carrier — the touch is an arrival race. Heavy touches
    * at speed get stolen; a glued ball cannot be pinched (L3's tackle). */
   pinchMarginM: 0.1,
+  /** the carrier's body SHIELDS his touch: a pinch needs a clear line —
+   * if the carrier stands within this of the stealer→ball line, the steal
+   * is blocked (minimal body-blocking; full shielding contests are L3) */
+  shieldRadiusM: 0.5,
 } as const;
 
 /** Predict the free ball's position `seconds` ahead by cloning and stepping

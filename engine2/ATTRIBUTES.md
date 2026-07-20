@@ -18,7 +18,7 @@ in `kinematics.ts`.
 
 | attribute | channel | formula / effect |
 | --- | --- | --- |
-| dribbling | touch length while carrying + carry speed | touch push = carrier speed × (1.04 + 0.18·(v/vmax) + 0.22·(1 − dribbling/20)) — SPEED is the dominant trend (L2 judgment) — capped by dribble-to-arrive on stop-legs; carry speed = regime cap × (0.84 + 0.04·dribbling/20), so carrying is ~12–16% slower than running free. Touches alternate feet (±0.12 rad) and are AIMED AT THE ROUTE. Mid-touch balls are pinchable via the touch arrival race (stealer must be in reach and nearer than the carrier). |
+| dribbling | touch length while carrying + carry speed | touch push = carrier speed × (1.04 + 0.18·(v/vmax) + 0.22·(1 − dribbling/20)) — SPEED is the dominant trend (L2 judgment) — capped by dribble-to-arrive on stop-legs; carry speed = regime cap × (0.84 + 0.04·dribbling/20), so carrying is ~12–16% slower than running free. Touches alternate feet (±0.12 rad) and are AIMED AT THE ROUTE. Mid-touch balls are pinchable via the touch arrival race (stealer in reach, nearer than the carrier, AND with a clear line — the carrier's body shields within 0.5m). Claims are swept-path (no tunneling) and trap the ball at the man. |
 
 Ball constants (ball.ts BALL): roll decel 1.7 m/s², restitution 0.55, bounce
 ground friction 0.75, control/claim radius 0.9 m, kicker refractory 0.8 s.

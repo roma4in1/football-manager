@@ -120,6 +120,30 @@ test('kicking releases possession; the ball leaves the boot at kick speed', () =
   assert.ok(v > 12 && v <= 14.5, `ground drive moves off at ~14 m/s (measured ${v.toFixed(1)})`);
 });
 
+test('no tunneling: a fast ball driven through a standing body is TRAPPED at the man', () => {
+  // 16 m/s = 1.6 m/tick — faster than the 0.9 m control disc is wide. The
+  // swept-path claim must catch it; the sampled-endpoint claim tunneled.
+  const def: import('./engine2-types.ts').ScenarioDef = {
+    version: 1,
+    name: 'tunnel-probe',
+    description: '',
+    durationTicks: 60,
+    bodies: [
+      { id: 'kicker', team: 'home', pos: { x: 20, y: 34 }, attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, dribbling: 12, stamina: 12 } },
+      { id: 'wall', team: 'away', pos: { x: 45, y: 34 }, attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, dribbling: 12, stamina: 12 } },
+    ],
+    ball: { carrier: 'kicker' },
+    script: [],
+    kicks: [{ atTick: 5, bodyId: 'kicker', kick: { target: { x: 90, y: 34 }, speedMps: 16, loftDeg: 0 } }],
+  };
+  const frames = runScenario(def, 'assert');
+  const claim = frames.find((f) => f.ball.carrierId === 'wall');
+  assert.ok(claim, 'the standing body claims the ball driven through him');
+  assert.ok(Math.abs(claim.ball.x - 45) < 1.2, `trapped AT the man (x=${claim.ball.x.toFixed(1)})`);
+  const after = frames[claim.tick + 3];
+  assert.ok(Math.hypot(after.ball.x - claim.ball.x, after.ball.y - claim.ball.y) < 0.5, 'the trap kills the ball — no fly-through');
+});
+
 test('loose-ball races resolve by physics: near-slow takes the short ball, far-fast takes the long one', () => {
   const frames = runScenario(scenarioByName('loose-ball-race'), 'assert');
   // race 1: first claim after the tick-10 feed
