@@ -1,0 +1,31 @@
+/* workbench — an instrument: dark, dense, zero decoration */
+* { box-sizing: border-box; margin: 0; }
+body { background: #0e1116; color: #dfe4ea; font: 14px/1.45 system-ui, sans-serif; }
+
+.wb { display: flex; height: 100vh; }
+.wb-side {
+  width: 250px; flex: none; padding: 14px; border-right: 1px solid #232a33;
+  display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+}
+.wb-side h1 { font-size: 15px; }
+.wb-sub { color: #8b95a3; font-size: 12px; margin-bottom: 6px; }
+.wb-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8b95a3; margin-top: 8px; }
+.wb-desc { font-size: 12px; color: #aeb7c2; }
+.wb-row { display: flex; gap: 6px; }
+.wb-check { display: flex; gap: 7px; align-items: center; font-size: 13px; }
+.wb-hint { margin-top: auto; font-size: 11px; color: #6a7482; }
+.wb-inspect { border: 1px solid #232a33; border-radius: 6px; padding: 8px; font-size: 12px; display: grid; gap: 2px; }
+
+select, button {
+  background: #171c23; color: #dfe4ea; border: 1px solid #2a323d; border-radius: 6px;
+  padding: 5px 10px; font-size: 13px; cursor: pointer;
+}
+button.active { border-color: #8f86ff; color: #b7b1ff; }
+button:hover { border-color: #3d4754; }
+
+.wb-main { flex: 1; display: flex; flex-direction: column; padding: 14px; gap: 10px; min-width: 0; }
+.wb-canvas { width: 100%; border-radius: 8px; cursor: crosshair; }
+.wb-transport { display: flex; align-items: center; gap: 8px; }
+.wb-transport input[type='range'] { flex: 1; accent-color: #8f86ff; }
+.wb-play { min-width: 44px; }
+.wb-clock { font: 12px ui-monospace, monospace; color: #8b95a3; white-space: nowrap; }

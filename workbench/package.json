@@ -1,0 +1,24 @@
+{
+  "name": "@fm/workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Engine V2 dev workbench (ENGINE-V2-BEHAVIORAL-SPEC §4) — the viewer/instrument the behavior is judged through. Dev-only; never shipped to production.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fm/engine2": "workspace:*",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
+  }
+}

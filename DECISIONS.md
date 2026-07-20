@@ -3,6 +3,54 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-07 — Engine V2 session 1: L0 workbench + L1 kinematics (@fm/engine2, @fm/workbench)
+
+First build session of ENGINE-V2-BEHAVIORAL-SPEC.md. Ground-up `@fm/engine2`
+(zero deps, keyed RNG from birth, fixed 10 Hz tick) + the dev-only
+`@fm/workbench` instrument. One PR because kinematics can only be judged by
+watching them.
+
+- **L1 model**: bodies with momentum. Speed builds on a force–velocity curve
+  (available accel = peak × (1 − v/vmax)); braking = 1.3× accel; heading
+  changes bounded by lateral grip (ω = grip/v ⇒ turning radius v²/grip grows
+  with speed²); misaligned movers brake toward cornering speed (a 180°
+  re-target is brake → tight carve → re-launch, never a pivot); decelerate-
+  to-arrive targets a firm plant (residual 0.4 m/s), tolerance 0.35 m;
+  standstill pivots allowed, grip-rate-limited. Attribute maps (0–20, same
+  pool scale): pace → 5.0+0.26p m/s (elite 10.2), acceleration → 3.2+0.24a
+  m/s² peak, agility → 3.5+0.28g m/s² grip. Regimes walk/jog/run/sprint =
+  {abs 1.6, 0.5·vmax, 0.78·vmax, vmax} — the effort STRUCTURE lands now,
+  the stamina bill later (spec §5-L1).
+- **Scenario library v1** (versioned TS defs, workbench-loadable, asserted):
+  shuttle-runs, curved-run, arrival, chase, regimes. 18/18 assertions incl.
+  chase outcomes BY PHYSICS (70 m: pace-18 beats accel-18; 8 m: reversed),
+  per-tick continuity everywhere, byte-identical determinism ×2 per scenario.
+- **Frames**: full-rate 10 Hz internal; stored stream = 5 Hz delta-compressed
+  JSON (cm positions, deciradian facings, stance NOT stored — derived
+  presentation, was ~20% of bytes). §7 measurement (22 bodies, 54,000 ticks,
+  worst-case command churn): **3.2 µs/tick → 0.17 s per full match, ~1030×
+  inside the 3-min budget**; stream 9.1 MB raw / **2.5 MB gzipped** (the
+  as-stored figure; raw JSON exceeds the "few MB" wording — binary packing
+  is the known lever if L2+ pressure needs it, not built speculatively).
+- **Workbench**: canvas pitch (EA-2D legibility bar), oriented bodies
+  (facing notch), team colors, selected-body inspector; toggleable overlays
+  (velocity vectors, movement targets, id+regime labels, tick/clock HUD);
+  play/pause, scrub, 0.25×/0.5×/1×, single-tick step; scenario select
+  resets deterministically; live-10 Hz vs stored-5 Hz source toggle (judges
+  the replay format against the sim truth). `pnpm --filter @fm/workbench dev`.
+- **Boundaries**: engine2 imports nothing from v1/server/web (depcruise
+  `engine2-stays-pure` — concepts port, code does not); workbench reads
+  engine2 only. v1 byte-identical to main this PR; all v1 suites re-run
+  green (engine 31/31, server 18 files, web 63/63).
+- **V1 EA-compactness iteration SUPERSEDED and stood down** (spec §2): the
+  uncommitted block-frame + zone-discipline WIP is parked on
+  `park/v1-phase2-motion-wip`, unmerged, with its finding recorded there:
+  compressing v1's anchor geometry collapsed open play (goals 1.3–2.0,
+  shots 7–9 across all screened geometries) because v1's proximity-fired
+  duels multiply contact rates under compactness — behavioral compactness
+  needs zone-disciplined engagement, which is exactly V2 L5 territory on
+  continuous time, not a v1 keyframe retrofit.
+
 ## 2026-09-04 — accounts arc phase 1: email + password auth replaces magic links
 
 Kicked off LOBBY-DESIGN-SPEC (self-service accounts → club identity → league

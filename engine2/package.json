@@ -1,0 +1,24 @@
+{
+  "name": "@fm/engine2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Engine V2 — ground-up behavioral football engine (ENGINE-V2-BEHAVIORAL-SPEC.md). Layer 1: movement kinematics. Zero runtime dependencies, keyed RNG, 10 Hz fixed tick.",
+  "type": "module",
+  "exports": {
+    "./types": "./engine2-types.ts",
+    "./rng": "./keyed-rng.ts",
+    "./kinematics": "./kinematics.ts",
+    "./sim": "./sim.ts",
+    "./frames": "./frames.ts",
+    "./scenarios": "./scenarios/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "bench": "node bench.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^5.8.0"
+  }
+}
