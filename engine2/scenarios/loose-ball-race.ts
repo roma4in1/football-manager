@@ -8,8 +8,8 @@
  */
 import type { ScenarioDef } from '../engine2-types.ts';
 
-const slow = { pace: 10, acceleration: 11, agility: 12, balance: 12, dribbling: 12, stamina: 12 };
-const fast = { pace: 18, acceleration: 15, agility: 12, balance: 12, dribbling: 12, stamina: 12 };
+const slow = { pace: 10, acceleration: 11, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 };
+const fast = { pace: 18, acceleration: 15, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 };
 
 const scenario: ScenarioDef = {
   version: 1,
@@ -26,9 +26,11 @@ const scenario: ScenarioDef = {
     // race 1: ball dies around x≈45, 10m from near-slow, 15m from far-fast
     { atTick: 12, bodyId: 'near-slow', command: { type: 'chaseBall', regime: 'sprint' } },
     { atTick: 12, bodyId: 'far-fast', command: { type: 'chaseBall', regime: 'sprint' } },
-    // reset for race 2: both retreat to marks while the feeder collects
+    // reset for race 2: both retreat to marks while the feeder collects.
+    // far-fast stands down EARLY — a chaser whose opponent claimed now keeps
+    // hunting (the press), and this drill is about races, not duels
+    { atTick: 48, bodyId: 'far-fast', command: { type: 'moveTo', target: { x: 60, y: 26 }, regime: 'run' } },
     { atTick: 120, bodyId: 'near-slow', command: { type: 'moveTo', target: { x: 47, y: 18 }, regime: 'run' } },
-    { atTick: 120, bodyId: 'far-fast', command: { type: 'moveTo', target: { x: 60, y: 26 }, regime: 'run' } },
     { atTick: 120, bodyId: 'feeder', command: { type: 'chaseBall', regime: 'run' } },
     { afterPrevious: true, bodyId: 'feeder', command: { type: 'moveTo', target: { x: 15, y: 34 }, regime: 'jog' } },
     // race 2: a much longer feed — raw pace closes the 13m spot gap

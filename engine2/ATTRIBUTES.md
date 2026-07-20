@@ -18,7 +18,7 @@ in `kinematics.ts`.
 
 | attribute | channel | formula / effect |
 | --- | --- | --- |
-| dribbling | touch length while carrying + carry speed | touch push = carrier speed × (1.04 + 0.18·(v/vmax) + 0.22·(1 − dribbling/20)) — SPEED is the dominant trend (L2 judgment) — capped by dribble-to-arrive on stop-legs; carry speed = regime cap × (0.84 + 0.04·dribbling/20), so carrying is ~12–16% slower than running free. Touches alternate feet (±0.12 rad) and are AIMED AT THE ROUTE. Mid-touch balls are pinchable via the touch arrival race (stealer in reach, nearer than the carrier, AND with a clear line — the carrier's body shields within 0.5m). Claims are swept-path (no tunneling) and trap the ball at the man. |
+| dribbling | touch length while carrying + carry speed | touch push = carrier speed × (1.04 + 0.18·(v/vmax) + 0.22·(1 − dribbling/20)) — SPEED is the dominant trend (L2 judgment) — capped by dribble-to-arrive on stop-legs; carry speed = regime cap × (0.84 + 0.04·dribbling/20), so carrying is ~12–16% slower than running free. Touches alternate feet (±0.12 rad) and are AIMED AT THE ROUTE. Mid-touch balls are pinchable via the touch arrival race (stealer in reach, nearer than the carrier, AND with a clear line — the carrier's body shields within 0.5m). Claims are swept-path (no tunneling) and trap the ball at the man. PRESSURE shortens the touch: a defender set ahead (inside 4.5m, front cone) caps the roll-out to (0.55 − 0.15·dribbling/20)·gap — better feet keep it closer under pressure; heavy feet still serve the head-on pinch. |
 
 Ball constants (ball.ts BALL): roll decel 1.7 m/s², restitution 0.55, bounce
 ground friction 0.75, control/claim radius 0.9 m, kicker refractory 0.8 s.
@@ -28,6 +28,23 @@ owning receive quality).
 Attribute-free constants (candidates to ride stats later if the eye demands):
 facing rotation 7 rad/s, step-turn threshold 2.6 m/s and pivot rate 5.0 rad/s,
 arrival tolerance 0.35 m, turn time budget 0.55 s.
+
+## L3 — individual technique (current)
+
+| attribute | channel | formula / effect |
+| --- | --- | --- |
+| firstTouch | trap quality | pop probability = (0.02 + 0.055·(closingSpeed−4) + 0.25·height + 0.025·receiverSpeed + 0.22·pressured) × (1 − 0.75·firstTouch/20). CLOSING speed = ball relative to receiver (in-stride cushions are easy, charges are hard); the receiver's own gait adds difficulty (walk +0.04, sprint +0.20). A MOVING receiver's successful touch is DIRECTIONAL — redirected into his route at ~his speed × (1.02 + 0.2·(1−firstTouch/20)); standing receivers kill it dead. Heavy feet under pressure spill (~2–4.5 m/s squirt, fumbler claim-locked 0.8s). |
+| passing | kick fidelity | direction σ = 0.13·(0.15 + 0.85·slack) rad, power σ = 0.12·(0.2 + 0.8·slack); elite ≈ 1m lateral at 40m, poor ≈ 4m. Kicks are reach-gated (≤1.1m). |
+| tackling + strength | winning glued-ball contests | winP = clamp(0.42 + 0.055·edge), edge = (tackling+0.5·strength) − (dribbling+0.5·balance); ÷(1 + 0.2·carrierSpeed) — lunging at a sprinter is much harder. Win knocks the ball loose; loser claim-locked. Lunges cooldown 1.2s. |
+| strength + balance | shield width | shield radius 0.3 + 0.25·composite/40 (0.3–0.55m): the carrier's body blocks the stealer→ball line. Far-foot dribbling: touches bias away from a marker inside 2.4m. |
+
+RECEIVE REACH: a ball is claimable within 0.9 m of the body and below knee
+height (0.5 m), tested against the ball's swept path IN THE RECEIVER'S FRAME
+(both motions subtracted — two fast movers crossing cannot tunnel through
+each other's reach). Bodies are SOLID (radius 0.35m): soft pairwise
+separation at ≤2.5 m/s with inelastic closing-velocity resolution. Carriers ride their dying touch
+(speed caps to the dribble-to-arrive profile) — a probe showed sprinters
+overrunning their own slowing ball into a trailing defender's lap.
 
 ## Decided for later layers
 
@@ -45,6 +62,7 @@ arrival tolerance 0.35 m, turn time budget 0.55 s.
 ## Expected consumers, by layer (build order)
 
 - ~~L2 ball + possession: dribbling → touch distance at speed~~ (landed above)
+- ~~L3 technique: firstTouch, passing noise, tackling, strength~~ (landed above; crossing/finishing arrive with their actions)
 - L3 technique: firstTouch, passing/crossing/finishing noise, tackling,
   strength (shielding/duels), jumping+heading (aerials)
 - L4 decisions: vision, decisions, composure, anticipation

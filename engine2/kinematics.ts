@@ -130,6 +130,19 @@ export interface StepOptions {
   steer?: Vec2 | null;
   /** coupled to the ball this tick → regime caps take the carry penalty */
   carrying?: boolean;
+  /** don't outrun your own dying touch: near a stop the ball is weighted
+   * down long before the body needs to brake — the carrier rides just
+   * behind it instead of sprinting over it */
+  carrySpeedCapMps?: number;
+  /** stand this tick: decay to a stop WITHOUT completing the command (a
+   * containing presser holds his ground; arrival semantics stay untouched) */
+  stand?: boolean;
+  /** brake into the target as if it were a stop (an EARLY interceptor
+   * plants at the meeting point instead of blowing through the line) */
+  brakeAtTarget?: boolean;
+  /** general speed cap for this tick (a receiver TIMES his approach —
+   * arrive with the ball, not through it) */
+  speedCapMps?: number;
 }
 
 /**
@@ -138,6 +151,11 @@ export interface StepOptions {
  */
 export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}): void {
   const c = body.command;
+  if (opts.stand) {
+    decayToStop(body, brakePeakMps2(body.attributes.acceleration));
+    body.stance = body.speed > KIN.settleSpeedMps ? 'moving' : 'settled';
+    return;
+  }
   const steering = opts.steer ?? null;
   const target = steering ?? currentTarget(body, opts.external);
   const carrying = opts.carrying ?? false;
@@ -163,7 +181,8 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
   const d = dist(body.pos, target);
   const isFinalPoint = !steering && (c.type === 'moveTo' ||
     (c.type === 'followPath' && body.pathIndex >= c.points.length - 1));
-  const mustStopHere = isFinalPoint || (!steering && c.type === 'followPath' && c.stopAtEach === true);
+  const mustStopHere = isFinalPoint || (!steering && c.type === 'followPath' && c.stopAtEach === true) ||
+    opts.brakeAtTarget === true;
 
   // ── arrival check (never while steering, and never for chaseBall — a
   // fetched touch is re-taken by the coupling and an intercept is completed
@@ -186,7 +205,11 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
 
   const regime = c.type === 'hold' ? 'walk' : c.regime;
   let cap = regimeCapMps(body.attributes.pace, regime);
-  if (carrying) cap *= KIN.carrySpeedBase + KIN.carrySpeedControlGain * (body.attributes.dribbling / 20);
+  if (carrying) {
+    cap *= KIN.carrySpeedBase + KIN.carrySpeedControlGain * (body.attributes.dribbling / 20);
+    if (opts.carrySpeedCapMps !== undefined) cap = Math.min(cap, opts.carrySpeedCapMps);
+  }
+  if (opts.speedCapMps !== undefined) cap = Math.min(cap, Math.max(opts.speedCapMps, 0.6));
 
   // ── desired speed: regime cap, shaved by arrival braking and by turn need ─
   let desired = cap;

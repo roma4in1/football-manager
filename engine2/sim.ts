@@ -27,6 +27,7 @@ import {
 } from './engine2-types.ts';
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
+import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -112,6 +113,10 @@ export class Sim {
     // carrier whose touch ran beyond reach STEERS to fetch it — the route is
     // the intent, the ball is the path
     this.liveTargets.clear();
+    this.prevPos.clear();
+    for (const body of this.bodies) {
+      this.prevPos.set(body.id, { x: body.pos.x, y: body.pos.y });
+    }
     for (const body of this.bodies) {
       const isCarrier = this.ball.carrierId === body.id;
       const gap = isCarrier
@@ -120,30 +125,164 @@ export class Sim {
       const fetching = isCarrier && gap > BALL.controlRadiusM &&
         body.command.type !== 'chaseBall' && body.command.type !== 'hold';
       let live: Vec2 | undefined;
+      let standing = false;
+      let timedCap: number | undefined;
+      let brakeIntoLine = false;
       if (body.command.type === 'chaseBall' || fetching) {
-        live = this.interceptPoint(body);
+        const icept = this.interceptPoint(body);
+        live = icept.pMeet;
+        // the RECEIVE state machine (judged over eight rounds):
+        //  off the line → attack the nearest path point (toward the ball),
+        //    braking in when receiving; STICKY phase boundary — a threshold
+        //    without hysteresis flapped the target every tick (the judged
+        //    rapid right-left-right);
+        //  on the line, ball near → STEP AT THE BALL for the final stride
+        //    (standing a meter off, waiting, is not how touches are taken);
+        //  on the line, ball still far → time the meet, set, watch it in.
+        if (body.command.type === 'chaseBall') {
+          // CONTESTED chases are RACES: an opponent carries the ball or is
+          // hunting it too — sprint to be first, no timing, no final-stride
+          // politeness (the receive machine cost the knock-past attacker
+          // his race). Uncontested chases RECEIVE.
+          const contested =
+            (this.ball.carrierId !== null && this.byId.get(this.ball.carrierId)!.team !== body.team) ||
+            this.bodies.some((o) => o.id !== body.id && o.team !== body.team && o.command.type === 'chaseBall');
+          if (contested) {
+            // race mode: run flat-out at the meet point (contain below still
+            // takes over at contact range against a glued carrier)
+            this.receiveOnLine.delete(body.id);
+            live = icept.pMeet;
+          } else {
+            let onLine = this.receiveOnLine.get(body.id) ?? false;
+            if (!onLine && icept.lineDist <= 1.2) onLine = true;
+            else if (onLine && icept.lineDist > 1.8) onLine = false;
+            this.receiveOnLine.set(body.id, onLine);
+            const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
+            if (!onLine) {
+              live = icept.pNear;
+              if (icept.tNear > 0.5) brakeIntoLine = true;
+            } else if (icept.tMeet <= 1.2) {
+              live = { x: this.ball.pos.x, y: this.ball.pos.y };
+              timedCap = 2.4; // the final stride: step INTO the arriving ball
+            } else {
+              live = icept.pMeet;
+              const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
+              const need = d / Math.max(icept.tMeet, 0.2);
+              if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
+              if (d <= 0.5) standing = true;
+            }
+          }
+        }
+        // CONTAIN at contact: a hunter already within lunging reach of a
+        // GLUED ball stands his ground and works the tackle cooldown —
+        // driving on converts to tangential slide around the carrier's
+        // collision disc (the judged 360° orbit)
+        if (body.command.type === 'chaseBall' && this.ball.carrierId !== null && !isCarrier) {
+          const carrierB = this.byId.get(this.ball.carrierId)!;
+          const gapBC = Math.hypot(this.ball.pos.x - carrierB.pos.x, this.ball.pos.y - carrierB.pos.y);
+          const dToCar = Math.hypot(body.pos.x - carrierB.pos.x, body.pos.y - carrierB.pos.y);
+          const containing = this.containBearing.has(body.id);
+          // hysteresis: enter the press close-in, leave only when knocked
+          // well out — a single threshold FLAPS (charge → bounce → charge),
+          // thrashing a rotating bearing (the judged 360°)
+          const engage = gapBC <= BALL.controlRadiusM && (dToCar <= 1.9 || (containing && dToCar <= 2.6));
+          if (engage) {
+            let bearing = this.containBearing.get(body.id);
+            if (bearing === undefined) {
+              bearing = Math.atan2(body.pos.y - carrierB.pos.y, body.pos.x - carrierB.pos.x);
+              this.containBearing.set(body.id, bearing);
+            }
+            // press point relative to the CARRIER, clear of his collision
+            // disc — clipping it creeps the presser around tangentially
+            const hold = TECH.bodyRadiusM * 2 + 0.35;
+            live = { x: carrierB.pos.x + Math.cos(bearing) * hold, y: carrierB.pos.y + Math.sin(bearing) * hold };
+            // at the press point: STAND (stop without completing the chase)
+            if (Math.hypot(body.pos.x - live.x, body.pos.y - live.y) <= 0.45) standing = true;
+          } else {
+            this.containBearing.delete(body.id);
+          }
+        }
         this.liveTargets.set(body.id, live);
       }
       stepBody(body, this.tick, {
         external: body.command.type === 'chaseBall' ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,
+        carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
+        stand: standing,
+        brakeAtTarget: timedCap !== undefined || brakeIntoLine,
+        speedCapMps: timedCap,
       });
+      if (standing) {
+        // a set receiver watches the ball in
+        const toBall = Math.atan2(this.ball.pos.y - body.pos.y, this.ball.pos.x - body.pos.x);
+        const delta = ((toBall - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        body.facing += Math.sign(delta) * Math.min(Math.abs(delta), 4.0 * DT);
+      }
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
         if (next) this.assign(body, next);
       }
     }
 
-    // 3. scripted kicks — only the current carrier can strike
+    // 2b. bodies are SOLID (soft): pairwise separation — nobody ghosts
+    // through an opponent. Accumulate displacements, then apply (order-free).
+    {
+      const minSep = TECH.bodyRadiusM * 2;
+      const push = new Map<string, Vec2>();
+      for (let i = 0; i < this.bodies.length; i++) {
+        for (let j = i + 1; j < this.bodies.length; j++) {
+          const a = this.bodies[i];
+          const b = this.bodies[j];
+          const dx = b.pos.x - a.pos.x;
+          const dy = b.pos.y - a.pos.y;
+          const d = Math.hypot(dx, dy);
+          if (d >= minSep || d < 1e-9) continue;
+          const overlap = Math.min((minSep - d) / 2, TECH.separationSpeedMps * DT);
+          const nx = dx / d;
+          const ny = dy / d;
+          const pa = push.get(a.id) ?? { x: 0, y: 0 };
+          const pb = push.get(b.id) ?? { x: 0, y: 0 };
+          push.set(a.id, { x: pa.x - nx * overlap, y: pa.y - ny * overlap });
+          push.set(b.id, { x: pb.x + nx * overlap, y: pb.y + ny * overlap });
+          // velocity resolution: colliding bodies stop CLOSING — remove the
+          // approaching components (inelastic shoulder contact, not a bounce)
+          const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
+          if (closing > 0) {
+            a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
+            b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
+            a.speed = Math.hypot(a.vel.x, a.vel.y);
+            b.speed = Math.hypot(b.vel.x, b.vel.y);
+          }
+        }
+      }
+      for (const b of this.bodies) {
+        const p = push.get(b.id);
+        if (p) b.pos = { x: b.pos.x + p.x, y: b.pos.y + p.y };
+      }
+    }
+
+    // 3. scripted kicks — only the current carrier can strike, and only with
+    // the ball at the boot (reach-gated — the audit item); execution noise
+    // is attribute-driven (L3): the situation picks the kick, the feet decide
+    // how faithfully it comes off
     const kicks = this.kicksAt.get(this.tick);
     if (kicks) {
       for (const k of kicks) {
-        if (this.ball.carrierId === k.bodyId) {
-          kickBall(this.ball, k.kick.target, k.kick.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
+        const kicker = this.byId.get(k.bodyId)!;
+        const reach = Math.hypot(this.ball.pos.x - kicker.pos.x, this.ball.pos.y - kicker.pos.y);
+        if (this.ball.carrierId === k.bodyId && reach <= TECH.kickReachM) {
+          const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
+          kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
         }
       }
     }
+
+    // 3b. tackles (L3): a hunting body (chaseBall) in reach of a GLUED ball
+    // contests it physically — tackling+strength vs dribbling+balance. Won:
+    // the ball is knocked loose away from the carrier. Lost: the tackler is
+    // beaten and cools down before lunging again. Fouls arrive at L9.
+    this.resolveTackles();
 
     // 4. carry coupling, then free-ball physics
     this.coupleCarry();
@@ -159,6 +298,68 @@ export class Sim {
     const frame = this.snapshot();
     this.tick++;
     return frame;
+  }
+
+  private readonly tackleCooldown = new Map<string, number>();
+  /** contain bearings anchor when a press starts — re-deriving them each
+   * tick is a feedback loop that walks the presser around the carrier */
+  private readonly containBearing = new Map<string, number>();
+  /** pre-movement positions this tick — claims sweep the ball's path in the
+   * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
+   * against his end position alone skips the reach window) */
+  private readonly prevPos = new Map<string, Vec2>();
+  /** sticky receive-phase state per chaser (hysteresis on the line band) */
+  private readonly receiveOnLine = new Map<string, boolean>();
+
+  /** the dribble-to-arrive push cap for this carrier's current stop-leg —
+   * also the speed HE should ride at (you decelerate WITH your touch; a
+   * probe showed a sprinter overrunning his dying touch straight into the
+   * trailing defender's lap) */
+  private dribbleArriveCap(carrier: BodyState): number | undefined {
+    const cc = carrier.command;
+    const legStops = cc.type === 'moveTo' ||
+      (cc.type === 'followPath' && (cc.stopAtEach === true || carrier.pathIndex >= cc.points.length - 1));
+    if (!legStops) return undefined;
+    const dest = currentTarget(carrier);
+    if (!dest) return undefined;
+    const distToDest = Math.hypot(dest.x - this.ball.pos.x, dest.y - this.ball.pos.y);
+    const cap = Math.sqrt(
+      BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * Math.max(0, distToDest),
+    );
+    return cap * 1.05;
+  }
+
+  private resolveTackles(): void {
+    const carrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+    if (!carrier) return;
+    const gap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
+    if (gap > BALL.controlRadiusM) return; // a running touch is the pinch's domain
+    for (const b of this.bodies) {
+      if (b.id === carrier.id || b.team === carrier.team) continue;
+      if (b.command.type !== 'chaseBall') continue; // intent to win the ball
+      if ((this.tackleCooldown.get(b.id) ?? -1) > this.tick) continue;
+      const reach = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+      if (reach > TECH.tackleReachM) continue;
+      this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
+      const winP = tackleWinProbability(b.attributes, carrier.attributes) /
+        (1 + TECH.tackleCarrierSpeedFactor * carrier.speed);
+      if (this.rng.chance(winP, this.tick, b.id, 'tackle')) {
+        // knocked loose AWAY from the carrier, scattered
+        const away = Math.atan2(this.ball.pos.y - carrier.pos.y + (b.pos.y - carrier.pos.y) * -1,
+          this.ball.pos.x - carrier.pos.x + (b.pos.x - carrier.pos.x) * -1);
+        const dir = away + this.rng.gauss(0, TECH.tackleKnockScatterRad, this.tick, b.id, 'tackle-dir');
+        const speed = TECH.tackleKnockMinMps +
+          (TECH.tackleKnockMaxMps - TECH.tackleKnockMinMps) * this.rng.float(this.tick, b.id, 'tackle-v');
+        this.ball.carrierId = null;
+        this.ball.phase = 'rolling';
+        this.ball.vel = { x: Math.cos(dir) * speed, y: Math.sin(dir) * speed };
+        // the DISPOSSESSED man cannot instantly re-claim the knock (the
+        // kicker-refractory class of bug: without this the standing carrier
+        // swept-claims the ball back within a tick and the win is undone)
+        this.ball.kickerId = carrier.id;
+        this.ball.kickerLockUntilTick = this.tick + 8;
+      }
+    }
   }
 
   /** the dribble loop: standing keeps the ball at the feet; a mover TOUCHES
@@ -209,6 +410,23 @@ export class Sim {
       this.ball.vz = 0;
       this.ball.z = 0;
       this.ball.phase = 'carried';
+      // shield bracing: rotate to put the body between ball and the nearest
+      // presser (back-on) — the visible truth of a shield
+      let brace: BodyState | null = null;
+      let braceD = 2.2;
+      for (const o of this.bodies) {
+        if (o.team === carrier.team) continue;
+        const od = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+        if (od < braceD) {
+          braceD = od;
+          brace = o;
+        }
+      }
+      if (brace) {
+        const away = Math.atan2(carrier.pos.y - brace.pos.y, carrier.pos.x - brace.pos.x);
+        const delta = ((away - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        carrier.facing += Math.sign(delta) * Math.min(Math.abs(delta), 3.5 * DT);
+      }
       return;
     }
     // a touch is AIMED AT THE ROUTE (you push the ball toward where you are
@@ -219,8 +437,30 @@ export class Sim {
     const baseHeading = routeTarget
       ? Math.atan2(routeTarget.y - this.ball.pos.y, routeTarget.x - this.ball.pos.x)
       : Math.atan2(carrier.vel.y, carrier.vel.x);
-    const heading = baseHeading + (this.ball.touchParity ? 1 : -1) * BALL.touchAlternateRad;
+    // far-foot dribbling: near a marker the touch biases AWAY from him
+    // (alternating feet would play every second ball into his reach); free
+    // of pressure, the feet alternate for the natural weave
+    let lateral = (this.ball.touchParity ? 1 : -1) * BALL.touchAlternateRad;
     this.ball.touchParity = !this.ball.touchParity;
+    let nearestOpp: BodyState | null = null;
+    let nearestD: number = BALL.touchShieldRangeM;
+    for (const o of this.bodies) {
+      if (o.team === carrier.team) continue;
+      const od = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+      if (od < nearestD) {
+        nearestD = od;
+        nearestOpp = o;
+      }
+    }
+    if (nearestOpp) {
+      // side of the route line the opponent is on → push the other way
+      const side = Math.sign(
+        Math.cos(baseHeading) * (nearestOpp.pos.y - carrier.pos.y) -
+        Math.sin(baseHeading) * (nearestOpp.pos.x - carrier.pos.x),
+      ) || 1;
+      lateral = -side * BALL.touchShieldRad;
+    }
+    const heading = baseHeading + lateral;
     const vmax = topSpeedMps(carrier.attributes.pace);
     let push = carrier.speed * (
       BALL.touchPushBase +
@@ -241,6 +481,30 @@ export class Sim {
         BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * Math.max(0, distToDest),
       ));
     }
+    // pressure-shortened touches: a defender set AHEAD caps the roll-out to
+    // a control-scaled fraction of the gap — you don't push a cruise-weight
+    // ball into the man in front of you (riding the shorter dying touch
+    // also slows the carrier into the duel, which is the real approach)
+    let press: BodyState | null = null;
+    let pressD: number = BALL.pressAwareRangeM;
+    for (const o of this.bodies) {
+      if (o.team === carrier.team) continue;
+      const dx = o.pos.x - carrier.pos.x;
+      const dy = o.pos.y - carrier.pos.y;
+      const od = Math.hypot(dx, dy);
+      if (od >= pressD || od < 1e-6) continue;
+      if ((dx * Math.cos(heading) + dy * Math.sin(heading)) / od < BALL.pressAwareConeCos) continue;
+      press = o;
+      pressD = od;
+    }
+    if (press) {
+      const frac = BALL.pressRollFracBase -
+        BALL.pressRollFracControlGain * (carrier.attributes.dribbling / 20);
+      const rollMax = Math.max(BALL.pressRollMinM, pressD * frac);
+      push = Math.min(push, Math.sqrt(
+        BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * rollMax,
+      ));
+    }
     this.ball.vel = { x: Math.cos(heading) * push, y: Math.sin(heading) * push };
     this.ball.z = 0;
     this.ball.vz = 0;
@@ -249,15 +513,22 @@ export class Sim {
 
   private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ) return;
-    // closest approach of a point to the ball's segment [from → pos]
-    const segNearest = (p: Vec2): { d: number; at: Vec2 } => {
-      const dx = this.ball.pos.x - from.x;
-      const dy = this.ball.pos.y - from.y;
+    // closest approach of a body to the ball's swept path — in the BODY'S
+    // frame: subtract his own displacement so two fast movers crossing
+    // cannot tunnel through each other's reach between samples
+    const segNearest = (b: BodyState): { d: number; at: Vec2 } => {
+      const prev = this.prevPos.get(b.id) ?? b.pos;
+      const bdx = b.pos.x - prev.x;
+      const bdy = b.pos.y - prev.y;
+      const fx = from.x - bdx;
+      const fy = from.y - bdy;
+      const dx = this.ball.pos.x - fx;
+      const dy = this.ball.pos.y - fy;
       const len2 = dx * dx + dy * dy;
       const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1,
-        ((p.x - from.x) * dx + (p.y - from.y) * dy) / len2));
-      const at = { x: from.x + dx * t, y: from.y + dy * t };
-      return { d: Math.hypot(p.x - at.x, p.y - at.y), at };
+        ((b.pos.x - fx) * dx + (b.pos.y - fy) * dy) / len2));
+      const at = { x: fx + dx * t, y: fy + dy * t };
+      return { d: Math.hypot(b.pos.x - at.x, b.pos.y - at.y), at };
     };
     // a coupled ball is pinchable only MID-TOUCH, and the pinch is an ARRIVAL
     // RACE for the touch: the stealer must be in reach AND meaningfully
@@ -274,7 +545,7 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
-      const { d, at } = segNearest(b.pos);
+      const { d, at } = segNearest(b);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
       // the carrier's body shields the touch: no pinch without a clear line
@@ -286,25 +557,79 @@ export class Sim {
           ((carrier.pos.x - b.pos.x) * sx + (carrier.pos.y - b.pos.y) * sy) / len2));
         const cx = b.pos.x + sx * t;
         const cy = b.pos.y + sy * t;
-        if (Math.hypot(carrier.pos.x - cx, carrier.pos.y - cy) < BALL.shieldRadiusM) continue;
+        if (Math.hypot(carrier.pos.x - cx, carrier.pos.y - cy) < shieldRadiusM(carrier.attributes)) continue;
       }
       if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && b.id < best.body.id)) {
         best = { body: b, d, at };
       }
     }
     if (!best) return;
-    // the claim is a controlling TRAP at the meeting point: the ball stops at
-    // the man (perfectly at L2 — first-touch quality arrives with L3)
+    // the claim is a FIRST TOUCH at the meeting point (L3): control quality
+    // vs ball speed/height/pressure — a great touch kills a driven ball
+    // dead; a poor one under pressure pops loose, still contested
+    // difficulty rides the CLOSING speed: a ball cushioned while running
+    // with it is easy; charging into a drive is hard (the moving-receive
+    // judgment note)
+    const relVx = this.ball.vel.x - best.body.vel.x;
+    const relVy = this.ball.vel.y - best.body.vel.y;
+    const ballSpeed = Math.hypot(relVx, relVy);
+    const rawSpeed = Math.hypot(this.ball.vel.x, this.ball.vel.y);
+    const arrivalDir = rawSpeed > 0.1 ? Math.atan2(this.ball.vel.y, this.ball.vel.x) : best.body.facing;
+    const pressured = this.bodies.some((o) =>
+      o.team !== best.body.team &&
+      Math.hypot(o.pos.x - best.body.pos.x, o.pos.y - best.body.pos.y) <= TECH.touchPressureRangeM);
+    const touch = resolveFirstTouch(
+      this.rng, this.tick, best.body.id, best.body.attributes, arrivalDir, ballSpeed, this.ball.z, pressured,
+      best.body.speed,
+    );
     this.ball.pos = { x: best.at.x, y: best.at.y };
-    this.ball.vel = { x: 0, y: 0 };
     this.ball.vz = 0;
     this.ball.z = 0;
+    if (touch.pop) {
+      // the ball squirts — no possession awarded; the pop is itself loose
+      this.ball.carrierId = null;
+      this.ball.phase = 'rolling';
+      this.ball.vel = touch.vel;
+      // the fumbler cannot instantly re-claim the same squirt (his touch IS
+      // the miss); the kicker-lock mechanism expresses it
+      this.ball.kickerId = best.body.id;
+      this.ball.kickerLockUntilTick = this.tick + 8;
+      return;
+    }
     this.ball.carrierId = best.body.id;
     this.ball.phase = 'carried';
-    // the race is over: every chaseBall command completes (winner included —
-    // he now holds with the ball at his feet; losers pull their next command)
+    // chaseBall races complete NOW so the winner's NEXT command informs the
+    // directional touch below — but only for the WINNING side. A chaser whose
+    // OPPONENT came up with the ball is not done: his chase becomes the press
+    // (standing down for seven seconds after a defender's sweep was the
+    // judged give-up)
+    this.completeChases(best.body.team);
+    // the DIRECTIONAL first touch: a moving receiver sets the ball into his
+    // route in stride — a dead-stop trap made him overrun his own ball and
+    // circle back for it (the judged 360). Standing receivers kill it dead.
+    const rb = best.body;
+    if (rb.speed > BALL.standingSpeedMps + 0.4) {
+      const dest = currentTarget(rb);
+      const dir = dest
+        ? Math.atan2(dest.y - this.ball.pos.y, dest.x - this.ball.pos.x)
+        : Math.atan2(rb.vel.y, rb.vel.x);
+      let push = rb.speed * (
+        TECH.directionalTouchBase +
+        TECH.directionalTouchControlGain * (1 - rb.attributes.firstTouch / 20)
+      );
+      const cap = this.dribbleArriveCap(rb);
+      if (cap !== undefined) push = Math.min(push, cap);
+      this.ball.vel = { x: Math.cos(dir) * push, y: Math.sin(dir) * push };
+    } else {
+      this.ball.vel = { x: 0, y: 0 };
+    }
+  }
+
+  /** every chaseBall command completes — the race is over (the winner now
+   * carries; losers pull their next command) */
+  private completeChases(winningTeam: 'home' | 'away'): void {
     for (const b of this.bodies) {
-      if (b.command.type === 'chaseBall') {
+      if (b.command.type === 'chaseBall' && b.team === winningTeam) {
         b.command = { type: 'hold' };
         b.arrived = true;
         b.arrivedAtTick = this.tick;
@@ -317,18 +642,47 @@ export class Sim {
   /** earliest point on the ball's predicted path this body can reach — the
    * anticipation runners actually use. Coarse deterministic search: clone-
    * step the real ball physics ahead and take the first reachable horizon. */
-  private interceptPoint(body: BodyState): Vec2 {
+  /** the earliest point on the ball's predicted path this body can meet.
+   * withMargin: prefer a point he reaches COMFORTABLY early (≥0.55 s) — a
+   * receiver sets up on the line and takes the arriving ball; the marginal
+   * meet (tStar ≈ his arrival) makes him carry his momentum THROUGH the
+   * line and stern-chase the ball he just missed. Fetching your own touch
+   * never margins (a dribbler does not stop ahead of his ball and wait). */
+  /** the earliest point on the ball's predicted path this body can meet,
+   * and when the ball gets there. The APPROACH is time-matched by the
+   * caller: run at the ball's meeting point at the speed that arrives WITH
+   * it — toward the ball always, through it never. */
+  /** Where a chaser should run. Two-phase, like a real receiver:
+   *  1. OFF the ball's line → attack the nearest point of the path (this is
+   *     visually "moving toward the ball" — the earliest-meet target alone
+   *     produces a parallel converging drift that reads as running away);
+   *  2. ON the line → the earliest meeting point, approached at the speed
+   *     that arrives WITH the ball. */
+  private interceptPoint(body: BodyState): {
+    pNear: Vec2; tNear: number; lineDist: number; pMeet: Vec2; tMeet: number;
+  } {
     const regime = body.command.type === 'chaseBall' ? body.command.regime : 'run';
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
+    let meet: { p: Vec2; tStar: number } | null = null;
+    let near: { p: Vec2; d: number; t: number } | null = null;
     for (let t = 0.2; t <= 6.0; t += 0.2) {
       const p = predictBall(this.ball, t);
-      const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
-      if (reach <= t) return p;
+      const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
+      if (!near || d < near.d) near = { p, d, t };
+      if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
     }
-    return predictBall(this.ball, 6);
+    const far = predictBall(this.ball, 6);
+    return {
+      pNear: near?.p ?? far,
+      tNear: near?.t ?? 6,
+      lineDist: near?.d ?? 99,
+      pMeet: meet?.p ?? far,
+      tMeet: meet?.tStar ?? 6,
+    };
   }
 
   private assign(body: BodyState, command: MovementCommand): void {
+    this.receiveOnLine.delete(body.id);
     body.command = command;
     body.pathIndex = 0;
     body.arrived = command.type === 'hold' && command.facing === undefined && body.speed <= 0.02;

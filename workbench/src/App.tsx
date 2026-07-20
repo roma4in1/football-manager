@@ -20,14 +20,15 @@ interface Loaded {
   storedKB: number;
 }
 
-function load(def: ScenarioDef): Loaded {
-  const live = runScenario(def, 'workbench');
+function load(def: ScenarioDef, seed: number): Loaded {
+  const live = runScenario(def, `wb-${seed}`);
   const stream = decimate(live);
   return { def, live, stored: decode(stream), storedKB: Math.round(streamBytes(stream) / 1024) };
 }
 
 export function App() {
-  const [loaded, setLoaded] = useState<Loaded>(() => load(SCENARIOS[0]));
+  const [seed, setSeed] = useState(0);
+  const [loaded, setLoaded] = useState<Loaded>(() => load(SCENARIOS[0], 0));
   const [source, setSource] = useState<'live' | 'stored'>('live');
   const [overlays, setOverlays] = useState<Overlays>({ velocity: true, targets: true, labels: true, hud: true });
   const [playing, setPlaying] = useState(false);
@@ -46,11 +47,16 @@ export function App() {
   playingRef.current = playing;
   speedRef.current = speed;
 
-  const reload = (def: ScenarioDef) => {
-    setLoaded(load(def));
+  const reload = (def: ScenarioDef, s = seed) => {
+    setLoaded(load(def, s));
     simT.current = 0;
     setPlaying(false);
     setSelectedId(null);
+  };
+  const reroll = (delta: number) => {
+    const s = Math.max(0, seed + delta);
+    setSeed(s);
+    reload(loaded.def, s);
   };
 
   // playback + draw loop — interpolation is PRESENTATION ONLY (spec §3)
@@ -136,6 +142,13 @@ export function App() {
           ))}
         </select>
         <p className="wb-desc">{loaded.def.description}</p>
+
+        <label className="wb-label">Seed — stochastic drills differ per roll</label>
+        <div className="wb-row">
+          <button onClick={() => reroll(-1)}>−</button>
+          <span className="wb-seed">#{seed}</span>
+          <button onClick={() => reroll(1)}>+</button>
+        </div>
 
         <label className="wb-label">Source</label>
         <div className="wb-row">

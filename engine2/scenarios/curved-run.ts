@@ -12,8 +12,8 @@ const scenario: ScenarioDef = {
   description: 'Both sprint +x from 3s in; at 6s "ninety" is re-targeted 90° down, "reverse" 180° back. Watch the arc vs the brake-turn-relaunch.',
   durationTicks: 220, // 22 s
   bodies: [
-    { id: 'ninety', team: 'home', pos: { x: 15, y: 24 }, attributes: { pace: 15, acceleration: 14, agility: 12, balance: 12, dribbling: 12, stamina: 12 } },
-    { id: 'reverse', team: 'away', pos: { x: 15, y: 46 }, attributes: { pace: 15, acceleration: 14, agility: 12, balance: 12, dribbling: 12, stamina: 12 } },
+    { id: 'ninety', team: 'home', pos: { x: 15, y: 24 }, attributes: { pace: 15, acceleration: 14, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'reverse', team: 'away', pos: { x: 15, y: 46 }, attributes: { pace: 15, acceleration: 14, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
   ],
   script: [
     { atTick: 30, bodyId: 'ninety', command: { type: 'moveTo', target: { x: 95, y: 24 }, regime: 'sprint' } },

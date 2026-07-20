@@ -3,6 +3,306 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-20 — L3 ACCEPTED (builder's judgment) + the L5e head-on guardrail
+
+L3 (individual technique) passes acceptance after 12 judgment rounds; the
+user merges feat/engine2-l3 (L2 already merged). Standing target recorded
+for L5e marking/duels, agreed with the builder: the head-on duel's
+close-control carry-through (today 16/16 — a set defender with only a
+lunge, no jockey) must DROP to roughly 55–65% for a close-control carrier
+vs an average set defender once jockeying/backpedal + the shoulder barge
+land, with heavy feet well below that and tackling-class attributes moving
+the split. duel-1v1-front-* are the guardrail drills; re-floor their test
+rates at L5e (real take-on completion: elite ~55–65%, typical ~40–50%).
+
+## 2026-07-20 — L3 judgment round 12: the head-on duel + pressure-shortened touches
+
+The judged ask: duels only ever showed the defender arriving FROM BEHIND —
+"can we see an attacker running unto a defender?" New drills
+duel-1v1-front-close/-heavy: defender parked in the lane facing the
+carrier, stepping in to meet him; second efforts scripted both ways so the
+loser presses instead of jogging off.
+
+First cut exposed a real technique hole: carriers took full cruise-weight
+touches straight into the set defender's zone — instant pinch at a 4m gap,
+16/16, no duel at all. Fix (engine, coupleCarry): PRESSURE SHORTENS THE
+TOUCH — a defender ahead (inside 4.5m, ±60° of the touch heading) caps the
+roll-out to (0.55 − 0.15·dribbling/20)·gap, floor 0.7m. Same family as the
+pressured first touch: technique under pressure is L3's.
+
+Post: the duel actually happens (closest gap ~0.85m, 16/16 engagements) and
+touch quality decides it — close control carries through 16/16 (a set
+defender who can only lunge gets beaten; jockeying/backpedal is L5e's),
+heavy feet lose the head-on 8/16 to the pinch/tackle window. The lunge at a
+full-speed dribbler stays ~20% per attempt (the speed punishment) — honest,
+and the reason close control wins: real head-on stops come from jockeying,
+which this layer deliberately does not have. Knock-past unchanged (14/16).
+46/46.
+
+## 2026-07-20 — L3 judgment round 11: contested chases race, losers keep hunting (the knock-past regression)
+
+The judged report: "the attacker can no longer beat the man." Probing found
+FOUR stacked causes, two engine, two drill:
+
+- **Contested vs uncontested chases** (engine, sim.ts): the receive state
+  machine (rounds 6–10) applied to EVERY chaseBall — including races. A
+  chaser timing his meet and stepping politely into the ball loses any
+  contested ball. Now: an opponent carrying the ball, or an opposing chaser,
+  makes the chase a RACE — flat-out to the earliest meet point, no timed
+  caps. Uncontested chases keep the judged receive machine untouched.
+- **Losing chasers keep hunting** (engine, sim.ts): completeChases ended
+  ALL chases on any claim — the attacker whose sweep was stabbed by the
+  defender stood down for seven seconds (the judged give-up). Chases now
+  complete only for the CLAIMANT'S TEAM; an opponent's claim converts your
+  chase into the press. loose-ball-race's reset re-timed for this (far-fast
+  stands down by script — that drill is about races, not duels).
+- **The braking arc** (drill, knock-past.ts): the attacker's followPath
+  ENDED at (54,33), so he braked to a stop mid-move — the "flying start"
+  the scenario promised never existed. A tail waypoint keeps him at sprint
+  until the chase takes over (pattern: never end a followPath where the
+  next command needs momentum).
+- **The tight knock** (drill, knock-past.ts): the knock passed 0.75 m from
+  the parked defender — inside his 0.9 m claim reach, swept deterministically
+  in 14/16 seeds, at EVERY commit back to the round the user judged "fine"
+  (the watched seed was the lucky one). Widened (y 28.5→26) and firmed
+  (8→9 m/s), defender reaction humanized (0.6 s→1.0 s flat-footed).
+
+Post: attacker takes the first claim 14/16, carries beyond the park 16/16;
+the 2 defender stabs are the move's honest risk. The test now asserts the
+FIRST claim after the knock (≥11/16) — the old floor (recollect-anywhere
+≥7/16) passed on tackle-backs while the watched race was lost every time.
+Audit note for L5e: prolonged shoulder contact acts as a TOW (the inelastic
+closing-cancel equalizes pair speed — a pace-15 man cannot pull past a
+pace-11 man he's touching); the barge layer owns real shoulder contests.
+45/45.
+
+## 2026-09-13 — L3 judgment round 10: the fast feed is a timing problem, not a read problem
+
+The 17 m/s crossing drill never made the line — a scenario-timing error,
+not a behavior one: the receiver departed too late to ever beat a driven
+ball across, and no read fixes an impossible run. Departure re-timed like
+a real runner's cue (leave BEFORE the feed); 16/16 takes, met mid-stride
+on the line. The reliability floor returns to 13/16 — a driven ball's
+difficulty lives in the first-touch roll, not the read. 45/45.
+
+## 2026-09-13 — L3 judgment round 9: the receive state machine, settled
+
+- **The rapid right-left-right**: the two-phase boundary FLAPPED — hovering
+  at exactly 1.2 m off the line alternated the target between line-point
+  and meet-point every tick. The receive phase is now STICKY (enter ≤1.2 m,
+  exit >1.8 m) — same hysteresis lesson as the contain press, now applied
+  twice; recorded as a standing pattern: any behavioral phase boundary
+  needs hysteresis or it thrashes at the boundary.
+- **The final stride**: with the ball ≤1.2 s out, the receiver STEPS AT THE
+  BALL (~2.4 m/s) instead of standing a meter off waiting — touches are
+  taken moving into the ball. While set earlier than that, he now WATCHES
+  the ball in (facing tracks it — the head no longer wobbles with target
+  changes).
+- **Faster passes join the matrix** (the judgment ask): first-touch-run-
+  across-fast (17 m/s driven crossing feed) with an honest lower
+  reliability floor (10/16 vs 13/16) — a driven crossing ball is
+  legitimately missable even with a good read. 45/45.
+
+## 2026-09-13 — L3 judgment round 8: phase-1 receives brake into the line
+
+The angled receive overran on momentum: phase 1 (attack the line) was
+uncapped, and a 45° approach carried the receiver past the meeting point
+— he took the ball behind himself. Phase 1 now BRAKES into the line when
+in receiving posture (the ball needs >0.5 s to reach his line-point);
+stern chases of a ball already past stay uncapped. Probe: the angled
+receiver decelerates 6.5 → 1.5 m/s into the line, sets facing the ball,
+takes it in front of himself. 45/45.
+
+## 2026-09-12 — L3 judgment round 7: the TWO-PHASE receive (attack the line, then time the take)
+
+Third and final iteration on receive movement, human-driven each round:
+blow-through → wait-downfield → parallel-converge (still read as running
+away) → THIS. The earliest-meet target is mathematically right but
+produces a converging parallel drift; a real receiver's path has two
+phases, now implemented: OFF the ball's line → run at the nearest point
+of the path (visually attacking the ball); ON the line (≤1.2 m) → the
+earliest meeting point at arrive-with-the-ball speed, standing when set.
+Probe: the across receiver runs straight at the incoming ball's line,
+brakes as it arrives, and takes the touch AT the crossing. 45/45.
+
+## 2026-09-12 — L3 judgment round 6: TIME-MATCHED receiving replaces margin-seek
+
+Human note on the margin-seek fix: a player does not run AWAY from a close
+ball to wait downfield — he moves toward it. Correct. The margin-seek
+relocated the receiver to a comfortably-early point that could sit 15 m
+down the line.
+
+- **Time-matched approach**: chaseBall attacks the NEAR meeting point at
+  the speed that arrives WITH the ball (cap = distance/meeting-time, floor
+  0.6 m/s, braking into the point, standing only when already there with
+  the ball >0.5 s out). Toward the ball always; through the line never;
+  relocating away never. Chasers racing a ball they can barely reach are
+  uncapped (need ≥ vcap) — races unchanged. Probe: the across receiver now
+  converges alongside the rolling ball at ~5 m/s and takes it in stride at
+  the natural meeting point. 45/45 on first run — the earlier margin
+  machinery deleted, not patched.
+
+## 2026-09-12 — L3 judgment round 5: margin intercepts + the tackle/foul taxonomy decided
+
+- **The across overshoot, root-caused at last**: the intercept solver picks
+  the earliest MARGINALLY-reachable point — tStar ≈ the chaser's own
+  arrival by construction, so the "early" brake never fired and a matched
+  crosser carried his momentum through the line (then stern-chased the
+  ball he missed, target flipping 15 m downfield). chaseBall now MARGIN-
+  SEEKS: prefer the first path point reachable ≥0.55 s early — set up on
+  the line, brake, stand, take. Fetching your own touch never margins (a
+  dribbler doesn't stop ahead of his ball and wait). Fast feeds now get
+  taken further along the line — the honest adjustment, not a miss.
+- **Poke reach 1.45 m**: the contain press point is carrier-relative
+  (1.05 m) while the ball can rest a step beyond the carrier — 1.3 m
+  lunges stood 7 cm short forever. A lunge is a full leg extension.
+- **TACKLE/FOUL TAXONOMY (design locked, layer-homed)**:
+  (1) standing/poke tackle — BUILT (cooldown lunges at a glued ball,
+      tackling+strength vs dribbling+balance, carrier-speed-scaled);
+  (2) interception — BUILT (swept claims, pinch races, the passive reach);
+  (3) SLIDING tackle — L3-extension PR: high commitment (reach ~2.2 m,
+      stronger clean-contact win), slider DOWN ~1.2 s win or lose,
+      mistimed/through-the-man slides emit FOUL-CANDIDATE events;
+  (4) shoulder-to-shoulder barge (legal body contest nudging the carrier
+      off his line) — L5e duels, on top of the existing collision physics;
+  (5) holding/shirt-pulls/drag-backs — deliberate FOULS; the action only
+      lands WITH L9 adjudication (without a cost model, always-hold
+      dominates). Foul-candidate EMISSION can start at L3 (contact
+      geometry on failed tackles); adjudication (advantage, cards) is L9
+      per spec — fouls emerge from contests, never rolled abstractly.
+
+## 2026-09-12 — L3 judgment round 4: early interceptors plant; the knock-past exists
+
+- **The across/angled overshoot**: chaseBall targets never braked — an
+  EARLY interceptor blew through the meeting line at full run and the ball
+  passed behind him. interceptPoint now returns its meeting time; a chaser
+  arriving >0.4 s early brakes into the point (stepBody brakeAtTarget) and
+  STANDS to receive (≤0.5 m). Late chasers still sprint. The crossing
+  receiver now reads the path, plants, and takes it.
+- **knock-past** (the judgment ask: "take a touch around a defender into
+  space and run onto it"): new scenario — carry at run, release a low
+  knock mid-stride past the set defender's shoulder, cut the arc behind
+  him, run onto your own touch while he turns and races the re-collect.
+  Findings en route: the knock needs ~2 m of passing clearance (kick noise
+  drifts it into a parked defender's passive reach); a standing knock
+  gives up two seconds (the move needs the flying start); and vs a SET,
+  reacting defender the move is honestly ~even — beating a turned or
+  committed one, and picking that moment, is L4 decision intelligence.
+  Asserted: winnable (≥7/16 outright) and always a contest (≥14/16
+  resolve to either player, never the void).
+- **Scenario-scripting trap recorded**: afterPrevious commands live in ONE
+  queue consumed at EVERY arrival — mixing them with atTick re-targets
+  eats queued commands at earlier arrivals (a probe showed the attacker
+  frozen at his arc's end, command-less). Multi-stage single-body scripts
+  should be pure atTick. 45/45.
+
+## 2026-09-11 — L3 judgment round 3: the DIRECTIONAL first touch
+
+Human note: a charging receiver who survived the pop roll still killed the
+ball DEAD at the meeting point — then overran his own trap and had to
+circle back (the judged 360). No such thing as taking it in stride.
+
+- **The directional first touch**: a MOVING receiver's successful control
+  now redirects the ball into his route (next command's target — chase
+  completions resolve first so the touch aims at where he is actually
+  going) at ~his own speed, weighted by firstTouch (poor feet push it
+  heavier), capped by dribble-to-arrive. A standing receiver still kills
+  it dead. The dead-stop trap survives only where it is true.
+- Asserted: across 16 seeds of the head-on charge, successful takes stay
+  in stride ≥70% (carrier 1s later, ball progressing along the route, the
+  receiver's speed never collapsing to a stand-and-turn). 44/44.
+
+## 2026-09-11 — L3 judgment round 2: frame-relative sweep, gait difficulty, receive geometries
+
+- **"Doesn't reliably pick up the ball" was a second tunneling class**: the
+  swept claim tested the ball's path against the receiver's END position —
+  but a charging receiver moves ~0.6 m/tick himself, so RELATIVE motion hits
+  1.6 m/tick and skips the 0.9 m reach window. Claims now sweep in the
+  receiver's frame (his displacement subtracted). Regression: the full
+  receive-geometry matrix must make contact ≥13/16 seeds per drill.
+- **Receiver gait matters**: pop difficulty += 0.025 per m/s of the
+  receiver's OWN speed (walk +0.04 → sprint +0.20), on top of closing
+  speed. Ordering asserted (walk < run < sprint at fixed closing speed).
+- **Receive geometries**: new first-touch-run-across (90°) and -angled
+  (~45°) scenarios; the crossing runner ADJUSTS to the pass at the end
+  (kick noise moves the meeting point meters — nobody receives on rails;
+  the L3 script approximates what L4 perception will own). The onto-drill
+  keeps a genuine straight-line charge by shortening the feed (lateral
+  noise stays inside the charge line). Model choice recorded: reception
+  ANGLE expresses through relative-velocity magnitude + gait term — no
+  separate angle parameter until the eye demands one.
+- **Receive reach answered and pinned**: 0.9 m, below knee height (0.5 m),
+  frame-relative swept — in ATTRIBUTES.md. 43/43.
+
+## 2026-09-10 — L3 judgment round 1: the 360°, the seed problem, bracing, moving receives
+
+Human verdict on L3: first-touch matrix reads right (silk dead / heavy
+popped), tackle duels work; four notes, all landed:
+
+- **The 360° orbit → CONTAIN**: a chaseBall presser at a glued ball now
+  holds a press point (carrier-relative, outside the collision disc,
+  BEARING ANCHORED on entry, hysteresis on exit, STANDS at the point via a
+  new kinematics stand-mode that stops without completing the command).
+  The failure was three stacked loops, each probe-caught: drive-into-body
+  converts to tangential slide (orbit); single-threshold engagement flaps
+  (charge → bounce → re-anchor → thrash); and a presser who cannot stand
+  loops through his point, bumping the carrier off his own ball — which
+  was silently stealing every hold. Asserted: total bearing sweep < 1.5π.
+- **The workbench gained a SEED control**: stochastic drills differ per
+  roll by design (heavy-pressed kills ~60% of touches) — a fixed seed was
+  presenting one outcome as THE outcome. Judging stochastic behavior means
+  re-rolling; the instrument now does.
+- **Shield BRACING**: a pressed standing carrier rotates back-on to the
+  presser (~side-on through the turn) — the visible truth of the shield;
+  physics unchanged at L3.
+- **Moving receives + the CLOSING-SPEED model**: first-touch difficulty now
+  rides |ball − receiver| velocity, not raw ball speed — cushioning a ball
+  you run WITH is easy, charging ONTO a drive is hard. Two new scenarios
+  (first-touch-run-with / -onto) assert the split (in-stride ≤ 0.15 pop,
+  onto > with + 0.1). 42/42.
+
+## 2026-09-10 — Engine V2 session 3: L3 individual technique (@fm/engine2)
+
+First touch, kick execution noise, tackles, shielding — plus the two audit
+items (solid bodies, reach-gated kicks). The keyed RNG's first real
+consumers; stochastic mechanisms are asserted as RATES across seeds.
+
+- **First touch**: the trap is now a quality roll — pop probability from
+  ball speed/height/pressure, relieved by firstTouch (the spec's acceptance
+  line as a formula). Popped balls squirt 2–4.5 m/s scattered; the fumbler
+  is claim-locked 0.8 s (his touch WAS the miss). Rates asserted: silk kills
+  driven balls; heavy feet under pressure spill ~38%.
+- **Kick execution noise** (passing): direction/power sigmas with skill
+  floors; kicks reach-gated at 1.1 m (the remote-control-strike audit fix).
+  Scatter asserted across 30 seeds (elite σ≈0.9 m at 40 m, poor ≈4×).
+- **Tackles**: physical contests for a GLUED ball only (running touches are
+  the pinch's domain) — tackling+strength vs dribbling+balance, ÷(1+0.2·
+  carrierSpeed) because lunging at a sprinter is far harder than at a
+  standing shielder. Won tackles knock the ball loose AND claim-lock the
+  loser — the probe found the dispossessed carrier instantly re-claiming
+  the knock (the kicker-refractory bug class; the win was silently undone
+  and the claim even froze the tackler's completed chase).
+- **Solid bodies**: pairwise soft separation (0.7 m, ≤2.5 m/s resolution)
+  with inelastic closing-velocity cancellation — head-on sprints no longer
+  ghost through. Asserted across every scenario.
+- **Carriers ride their dying touch**: the dribble-to-arrive profile slows
+  the BALL ~3× earlier than the body's own braking would — a probe showed a
+  sprinter overrunning his slowing touch straight into the trailing
+  defender's lap. While carrying, body speed caps to the touch profile.
+- **Far-foot dribbling**: near a marker, touches bias away from him instead
+  of alternating (alternating feet fed every second touch to the shadow).
+- **STOP-RULE finding — the 1v1 outcome-split is L5e's, not L3's**: with a
+  chase-only defender (no jockey/contain — that intelligence IS L5e), the
+  recovery duel's outcome-split by touch quality proved a knife edge under
+  every honest physics refinement; forcing it via geometry scans was
+  fitting. The L3-crisp claims stand instead: a close-control dribbler
+  with a step on a chase-only recovery defender KEEPS the ball (11+/12,
+  asserted); attribute-decided dispossession lives in the standing tackle
+  duel (strip 20/20 at edge +13, hold 10/10 at edge −13). The duel-1v1
+  scenarios stay as watchable drills; their outcome-split assertion waits
+  for L5e.
+- 39/39 assertions; profile 7.2 µs/tick, 0.39 s/match (~460× headroom).
+
 ## 2026-09-09 — L2 physics audit: known holes, ranked, with owning layers
 
 Post-tunneling sweep of L1/L2 for more holes of the same families. Nothing

@@ -7,7 +7,7 @@
  */
 import type { ScenarioDef } from '../engine2-types.ts';
 
-const attrs = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, stamina: 12 };
+const attrs = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 };
 
 const scenario: ScenarioDef = {
   version: 1,
