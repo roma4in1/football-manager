@@ -46,6 +46,20 @@ separation at ≤2.5 m/s with inelastic closing-velocity resolution. Carriers ri
 (speed caps to the dribble-to-arrive profile) — a probe showed sprinters
 overrunning their own slowing ball into a trailing defender's lap.
 
+## L4 — on-ball decisions (current)
+
+The decision layer consumes attributes rather than adding movement effects:
+the situation and INSTRUCTIONS bias the choice; attributes govern execution
+(the §3 contract). Choices are pure EV over posValue/xG/lane models.
+
+| input | affects | mechanism |
+|---|---|---|
+| passing | pass/shot/clear execution fidelity | every decided kick goes through L3's noisyKick |
+| pace + acceleration (opponents') | lane risk | passCompletion runs an accel-honest intercept model (ramp sqrt(2d/a), then cruise) against every defender, projected along his velocity to ball-arrival time |
+| pace (own) | carry urgency | heel pressure within 4m switches the carry regime to sprint |
+| instructions.risk | choice distribution | scales the turnover penalty, the completion floor a pass must clear, AND the payoff weight of progressive balls (riskProgressGain) — low keeps the carry, high releases early |
+| instructions.objective | the value field | 'score' = posValue (goal-seeking); 'keep' = keepValue (space minus station-tether) — the rondo's truth |
+
 ## Decided for later layers
 
 - **Positioning split (decided 2026-09-07, implemented at L5)**: the pool

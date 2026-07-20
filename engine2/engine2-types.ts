@@ -52,6 +52,11 @@ export interface BodyInit {
   /** radians, 0 = +x; defaults to facing the pitch centre */
   facing?: number;
   attributes: BodyAttributes;
+  /** L4: this body runs the on-ball decision loop when it has (or is sent)
+   * the ball. Bodies without a brain follow their script only. */
+  brain?: 'onBall';
+  /** L4 instruction surface (spec: instructions bias the choice) */
+  instructions?: { risk?: number; objective?: 'keep' | 'score' };
 }
 
 /** Movement commands — the L1/L2 action vocabulary (scenario scripts issue
@@ -121,6 +126,9 @@ export interface FrameBody {
   /** current movement target (debug overlay), absent when holding */
   tx?: number;
   ty?: number;
+  /** L4: the current decision, for the action-label overlay (spec §4) —
+   * e.g. "carry", "pass→p3", "shoot", "shield", "clear", "receive" */
+  action?: string;
 }
 
 /** Scenario file format — versioned (spec §6). Version bumps on any shape

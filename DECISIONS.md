@@ -3,6 +3,61 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-20 — L4 OPENED: on-ball decisions (continuous EV) — first cut for judgment
+
+Branch feat/engine2-l4 (stacked on l3). The carrier evaluates carry / pass /
+shoot / shield / clear by EV against the actual world (decide.ts, pure +
+deterministic; execution noise stays in L3's noisyKick — the §3 contract).
+Value scale: 1.0 ≡ goal; PV ∈ [0,0.35]; non-shot actions ×0.55 possession
+discount — striker-shoots-by-construction falls out of the scale, no role
+flag (breakaway: 15/16 shoot, the 16th is the chaser honestly winning).
+Brains are per-body opt-in (`brain: 'onBall'`); scripted bodies untouched.
+Instructions: risk (turnover penalty + completion floor + progressive-payoff
+weight) and objective ('score' | 'keep').
+
+Mechanisms that earned their place through probes:
+
+- **Pass lanes, accel-honest + projected**: intercept threat = defender's
+  real accel ramp then cruise, at his projected position when the ball
+  passes. The flat d/vmax model doubled the threat and killed every lane.
+- **Next-touch release**: a decided kick fires the moment the ball is at the
+  boot (coupleCarry), not after a gather-trap — the 1.1s trap latency closed
+  every lane the decision had correctly picked.
+- **Carry commands run THROUGH the valued point** (16m command for a 6m
+  valuation) — a command AT the lookahead kept the carrier in permanent
+  arrive-braking (the knock-past lesson, third appearance).
+- **In-stride claims hook the ball to the boot**: a racing claim can resolve
+  with the ball behind the runner; any push from there trails him forever.
+- **Race final stride**: a contested chaser with the ball on top of him
+  steps AT it — the 0.3s reaction margin made imminent meets "unreachable"
+  (pMeet jumped deep and he carved off the line as the ball arrived).
+- **Static balls are braked into** (receive machine off-line branch): tNear
+  is meaningless for a waiting ball; charging it at 5.8 m/s overran by 2.7m.
+- **Pass friction (0.85)**: a pass is not a lossless value teleport, or the
+  square ball forever edges out carrying forward.
+- **keepValue with a station tether**: without the anchor the optimal rondo
+  is to flee the square (judged corner sprint); without 'keep' at all, the
+  rondo players rationally attack the goal.
+- **Point-blank xG crush**: a boot on the shot line within 2m blocks the
+  shot outright — else the EV shoots into the man on its toes forever.
+- **Dead ball at the boundary**: shots rolled to x=226 (restarts are L8's;
+  until then the ball dies where it crosses).
+
+The risk dial expresses as TEMPO, not target choice: low = keep it on the
+boot (0/16 early release), high = hit the early forward ball (16/16). The
+deep in-behind ball needs RUN ANTICIPATION (knowing the lane opens as the
+run develops) — that is L5b's run-trigger context, recorded as the layer
+boundary, not forced with more knobs. Scenarios: rondo-4v2 (keep objective,
+one-touch circulation, ~7 passes before the chasers win it), counter-3v2 +
+risk-low/-high pair, striker-breakaway. Action labels ride FrameBody.action
+into the workbench label overlay (live source only — the stored stream stays
+kinematic, matching tx/ty). 53/53 tests; ~14µs/tick with decisions on.
+
+Accepted residuals for later passes: decision-quality attributes (vision /
+decisions / composure / anticipation) don't yet modulate the EV (perception
+is perfect per spec §3 v2.0); off-ball brains don't press after turnovers
+(L5d); the sliding tackle remains the parked L3-extension.
+
 ## 2026-07-20 — L3 ACCEPTED (builder's judgment) + the L5e head-on guardrail
 
 L3 (individual technique) passes acceptance after 12 judgment rounds; the
