@@ -8,7 +8,7 @@
  */
 import type { ScenarioDef } from '../engine2-types.ts';
 
-const base = { pace: 14, acceleration: 14, agility: 13, balance: 13, stamina: 12 };
+const base = { pace: 14, acceleration: 14, agility: 13, balance: 13, firstTouch: 12, passing: 14, tackling: 12, strength: 12, stamina: 12 };
 
 const drill = (name: string, dribbling: number, regime: 'jog' | 'sprint'): ScenarioDef => ({
   version: 1,

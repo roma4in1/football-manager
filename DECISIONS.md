@@ -3,6 +3,48 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-10 — Engine V2 session 3: L3 individual technique (@fm/engine2)
+
+First touch, kick execution noise, tackles, shielding — plus the two audit
+items (solid bodies, reach-gated kicks). The keyed RNG's first real
+consumers; stochastic mechanisms are asserted as RATES across seeds.
+
+- **First touch**: the trap is now a quality roll — pop probability from
+  ball speed/height/pressure, relieved by firstTouch (the spec's acceptance
+  line as a formula). Popped balls squirt 2–4.5 m/s scattered; the fumbler
+  is claim-locked 0.8 s (his touch WAS the miss). Rates asserted: silk kills
+  driven balls; heavy feet under pressure spill ~38%.
+- **Kick execution noise** (passing): direction/power sigmas with skill
+  floors; kicks reach-gated at 1.1 m (the remote-control-strike audit fix).
+  Scatter asserted across 30 seeds (elite σ≈0.9 m at 40 m, poor ≈4×).
+- **Tackles**: physical contests for a GLUED ball only (running touches are
+  the pinch's domain) — tackling+strength vs dribbling+balance, ÷(1+0.2·
+  carrierSpeed) because lunging at a sprinter is far harder than at a
+  standing shielder. Won tackles knock the ball loose AND claim-lock the
+  loser — the probe found the dispossessed carrier instantly re-claiming
+  the knock (the kicker-refractory bug class; the win was silently undone
+  and the claim even froze the tackler's completed chase).
+- **Solid bodies**: pairwise soft separation (0.7 m, ≤2.5 m/s resolution)
+  with inelastic closing-velocity cancellation — head-on sprints no longer
+  ghost through. Asserted across every scenario.
+- **Carriers ride their dying touch**: the dribble-to-arrive profile slows
+  the BALL ~3× earlier than the body's own braking would — a probe showed a
+  sprinter overrunning his slowing touch straight into the trailing
+  defender's lap. While carrying, body speed caps to the touch profile.
+- **Far-foot dribbling**: near a marker, touches bias away from him instead
+  of alternating (alternating feet fed every second touch to the shadow).
+- **STOP-RULE finding — the 1v1 outcome-split is L5e's, not L3's**: with a
+  chase-only defender (no jockey/contain — that intelligence IS L5e), the
+  recovery duel's outcome-split by touch quality proved a knife edge under
+  every honest physics refinement; forcing it via geometry scans was
+  fitting. The L3-crisp claims stand instead: a close-control dribbler
+  with a step on a chase-only recovery defender KEEPS the ball (11+/12,
+  asserted); attribute-decided dispossession lives in the standing tackle
+  duel (strip 20/20 at edge +13, hold 10/10 at edge −13). The duel-1v1
+  scenarios stay as watchable drills; their outcome-split assertion waits
+  for L5e.
+- 39/39 assertions; profile 7.2 µs/tick, 0.39 s/match (~460× headroom).
+
 ## 2026-09-09 — L2 physics audit: known holes, ranked, with owning layers
 
 Post-tunneling sweep of L1/L2 for more holes of the same families. Nothing

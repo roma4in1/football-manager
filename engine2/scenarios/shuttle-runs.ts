@@ -13,8 +13,8 @@ const scenario: ScenarioDef = {
   description: 'Sprint 20m→85m and back, twice. Mid runner (12s) vs elite runner (18/16). Judge accel/decel honesty and the stop-turn at each end.',
   durationTicks: 600, // 60 s
   bodies: [
-    { id: 'mid', team: 'home', pos: { x: 20, y: 28 }, attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, dribbling: 12, stamina: 12 } },
-    { id: 'elite', team: 'away', pos: { x: 20, y: 40 }, attributes: { pace: 18, acceleration: 16, agility: 14, balance: 14, dribbling: 12, stamina: 14 } },
+    { id: 'mid', team: 'home', pos: { x: 20, y: 28 }, attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'elite', team: 'away', pos: { x: 20, y: 40 }, attributes: { pace: 18, acceleration: 16, agility: 14, balance: 14, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 14 } },
   ],
   script: [
     { atTick: 10, bodyId: 'mid', command: { type: 'moveTo', target: { x: 85, y: 28 }, regime: 'sprint' } },

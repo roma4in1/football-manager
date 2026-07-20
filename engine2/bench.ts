@@ -22,6 +22,7 @@ const bodies: BodyInit[] = Array.from({ length: 22 }, (_, i) => ({
     agility: 8 + Math.floor(rng.float(0, `p${i}`, 'agi') * 12),
     balance: 8 + Math.floor(rng.float(0, `p${i}`, 'bal') * 12),
     dribbling: 8 + Math.floor(rng.float(0, `p${i}`, 'dri') * 12),
+    firstTouch: 12, passing: 12, tackling: 12, strength: 12,
     stamina: 12,
   },
 }));

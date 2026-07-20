@@ -8,8 +8,8 @@
  */
 import type { ScenarioDef } from '../engine2-types.ts';
 
-const slow = { pace: 10, acceleration: 11, agility: 12, balance: 12, dribbling: 12, stamina: 12 };
-const fast = { pace: 18, acceleration: 15, agility: 12, balance: 12, dribbling: 12, stamina: 12 };
+const slow = { pace: 10, acceleration: 11, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 };
+const fast = { pace: 18, acceleration: 15, agility: 12, balance: 12, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 };
 
 const scenario: ScenarioDef = {
   version: 1,

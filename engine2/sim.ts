@@ -27,6 +27,7 @@ import {
 } from './engine2-types.ts';
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
+import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -128,6 +129,7 @@ export class Sim {
         external: body.command.type === 'chaseBall' ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,
+        carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
       });
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
@@ -135,15 +137,64 @@ export class Sim {
       }
     }
 
-    // 3. scripted kicks — only the current carrier can strike
+    // 2b. bodies are SOLID (soft): pairwise separation — nobody ghosts
+    // through an opponent. Accumulate displacements, then apply (order-free).
+    {
+      const minSep = TECH.bodyRadiusM * 2;
+      const push = new Map<string, Vec2>();
+      for (let i = 0; i < this.bodies.length; i++) {
+        for (let j = i + 1; j < this.bodies.length; j++) {
+          const a = this.bodies[i];
+          const b = this.bodies[j];
+          const dx = b.pos.x - a.pos.x;
+          const dy = b.pos.y - a.pos.y;
+          const d = Math.hypot(dx, dy);
+          if (d >= minSep || d < 1e-9) continue;
+          const overlap = Math.min((minSep - d) / 2, TECH.separationSpeedMps * DT);
+          const nx = dx / d;
+          const ny = dy / d;
+          const pa = push.get(a.id) ?? { x: 0, y: 0 };
+          const pb = push.get(b.id) ?? { x: 0, y: 0 };
+          push.set(a.id, { x: pa.x - nx * overlap, y: pa.y - ny * overlap });
+          push.set(b.id, { x: pb.x + nx * overlap, y: pb.y + ny * overlap });
+          // velocity resolution: colliding bodies stop CLOSING — remove the
+          // approaching components (inelastic shoulder contact, not a bounce)
+          const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
+          if (closing > 0) {
+            a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
+            b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
+            a.speed = Math.hypot(a.vel.x, a.vel.y);
+            b.speed = Math.hypot(b.vel.x, b.vel.y);
+          }
+        }
+      }
+      for (const b of this.bodies) {
+        const p = push.get(b.id);
+        if (p) b.pos = { x: b.pos.x + p.x, y: b.pos.y + p.y };
+      }
+    }
+
+    // 3. scripted kicks — only the current carrier can strike, and only with
+    // the ball at the boot (reach-gated — the audit item); execution noise
+    // is attribute-driven (L3): the situation picks the kick, the feet decide
+    // how faithfully it comes off
     const kicks = this.kicksAt.get(this.tick);
     if (kicks) {
       for (const k of kicks) {
-        if (this.ball.carrierId === k.bodyId) {
-          kickBall(this.ball, k.kick.target, k.kick.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
+        const kicker = this.byId.get(k.bodyId)!;
+        const reach = Math.hypot(this.ball.pos.x - kicker.pos.x, this.ball.pos.y - kicker.pos.y);
+        if (this.ball.carrierId === k.bodyId && reach <= TECH.kickReachM) {
+          const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
+          kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
         }
       }
     }
+
+    // 3b. tackles (L3): a hunting body (chaseBall) in reach of a GLUED ball
+    // contests it physically — tackling+strength vs dribbling+balance. Won:
+    // the ball is knocked loose away from the carrier. Lost: the tackler is
+    // beaten and cools down before lunging again. Fouls arrive at L9.
+    this.resolveTackles();
 
     // 4. carry coupling, then free-ball physics
     this.coupleCarry();
@@ -159,6 +210,59 @@ export class Sim {
     const frame = this.snapshot();
     this.tick++;
     return frame;
+  }
+
+  private readonly tackleCooldown = new Map<string, number>();
+
+  /** the dribble-to-arrive push cap for this carrier's current stop-leg —
+   * also the speed HE should ride at (you decelerate WITH your touch; a
+   * probe showed a sprinter overrunning his dying touch straight into the
+   * trailing defender's lap) */
+  private dribbleArriveCap(carrier: BodyState): number | undefined {
+    const cc = carrier.command;
+    const legStops = cc.type === 'moveTo' ||
+      (cc.type === 'followPath' && (cc.stopAtEach === true || carrier.pathIndex >= cc.points.length - 1));
+    if (!legStops) return undefined;
+    const dest = currentTarget(carrier);
+    if (!dest) return undefined;
+    const distToDest = Math.hypot(dest.x - this.ball.pos.x, dest.y - this.ball.pos.y);
+    const cap = Math.sqrt(
+      BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * Math.max(0, distToDest),
+    );
+    return cap * 1.05;
+  }
+
+  private resolveTackles(): void {
+    const carrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+    if (!carrier) return;
+    const gap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
+    if (gap > BALL.controlRadiusM) return; // a running touch is the pinch's domain
+    for (const b of this.bodies) {
+      if (b.id === carrier.id || b.team === carrier.team) continue;
+      if (b.command.type !== 'chaseBall') continue; // intent to win the ball
+      if ((this.tackleCooldown.get(b.id) ?? -1) > this.tick) continue;
+      const reach = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+      if (reach > TECH.tackleReachM) continue;
+      this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
+      const winP = tackleWinProbability(b.attributes, carrier.attributes) /
+        (1 + TECH.tackleCarrierSpeedFactor * carrier.speed);
+      if (this.rng.chance(winP, this.tick, b.id, 'tackle')) {
+        // knocked loose AWAY from the carrier, scattered
+        const away = Math.atan2(this.ball.pos.y - carrier.pos.y + (b.pos.y - carrier.pos.y) * -1,
+          this.ball.pos.x - carrier.pos.x + (b.pos.x - carrier.pos.x) * -1);
+        const dir = away + this.rng.gauss(0, TECH.tackleKnockScatterRad, this.tick, b.id, 'tackle-dir');
+        const speed = TECH.tackleKnockMinMps +
+          (TECH.tackleKnockMaxMps - TECH.tackleKnockMinMps) * this.rng.float(this.tick, b.id, 'tackle-v');
+        this.ball.carrierId = null;
+        this.ball.phase = 'rolling';
+        this.ball.vel = { x: Math.cos(dir) * speed, y: Math.sin(dir) * speed };
+        // the DISPOSSESSED man cannot instantly re-claim the knock (the
+        // kicker-refractory class of bug: without this the standing carrier
+        // swept-claims the ball back within a tick and the win is undone)
+        this.ball.kickerId = carrier.id;
+        this.ball.kickerLockUntilTick = this.tick + 8;
+      }
+    }
   }
 
   /** the dribble loop: standing keeps the ball at the feet; a mover TOUCHES
@@ -219,8 +323,30 @@ export class Sim {
     const baseHeading = routeTarget
       ? Math.atan2(routeTarget.y - this.ball.pos.y, routeTarget.x - this.ball.pos.x)
       : Math.atan2(carrier.vel.y, carrier.vel.x);
-    const heading = baseHeading + (this.ball.touchParity ? 1 : -1) * BALL.touchAlternateRad;
+    // far-foot dribbling: near a marker the touch biases AWAY from him
+    // (alternating feet would play every second ball into his reach); free
+    // of pressure, the feet alternate for the natural weave
+    let lateral = (this.ball.touchParity ? 1 : -1) * BALL.touchAlternateRad;
     this.ball.touchParity = !this.ball.touchParity;
+    let nearestOpp: BodyState | null = null;
+    let nearestD: number = BALL.touchShieldRangeM;
+    for (const o of this.bodies) {
+      if (o.team === carrier.team) continue;
+      const od = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+      if (od < nearestD) {
+        nearestD = od;
+        nearestOpp = o;
+      }
+    }
+    if (nearestOpp) {
+      // side of the route line the opponent is on → push the other way
+      const side = Math.sign(
+        Math.cos(baseHeading) * (nearestOpp.pos.y - carrier.pos.y) -
+        Math.sin(baseHeading) * (nearestOpp.pos.x - carrier.pos.x),
+      ) || 1;
+      lateral = -side * BALL.touchShieldRad;
+    }
+    const heading = baseHeading + lateral;
     const vmax = topSpeedMps(carrier.attributes.pace);
     let push = carrier.speed * (
       BALL.touchPushBase +
@@ -286,19 +412,39 @@ export class Sim {
           ((carrier.pos.x - b.pos.x) * sx + (carrier.pos.y - b.pos.y) * sy) / len2));
         const cx = b.pos.x + sx * t;
         const cy = b.pos.y + sy * t;
-        if (Math.hypot(carrier.pos.x - cx, carrier.pos.y - cy) < BALL.shieldRadiusM) continue;
+        if (Math.hypot(carrier.pos.x - cx, carrier.pos.y - cy) < shieldRadiusM(carrier.attributes)) continue;
       }
       if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && b.id < best.body.id)) {
         best = { body: b, d, at };
       }
     }
     if (!best) return;
-    // the claim is a controlling TRAP at the meeting point: the ball stops at
-    // the man (perfectly at L2 — first-touch quality arrives with L3)
+    // the claim is a FIRST TOUCH at the meeting point (L3): control quality
+    // vs ball speed/height/pressure — a great touch kills a driven ball
+    // dead; a poor one under pressure pops loose, still contested
+    const ballSpeed = Math.hypot(this.ball.vel.x, this.ball.vel.y);
+    const arrivalDir = ballSpeed > 0.1 ? Math.atan2(this.ball.vel.y, this.ball.vel.x) : best.body.facing;
+    const pressured = this.bodies.some((o) =>
+      o.team !== best.body.team &&
+      Math.hypot(o.pos.x - best.body.pos.x, o.pos.y - best.body.pos.y) <= TECH.touchPressureRangeM);
+    const touch = resolveFirstTouch(
+      this.rng, this.tick, best.body.id, best.body.attributes, arrivalDir, ballSpeed, this.ball.z, pressured,
+    );
     this.ball.pos = { x: best.at.x, y: best.at.y };
-    this.ball.vel = { x: 0, y: 0 };
     this.ball.vz = 0;
     this.ball.z = 0;
+    if (touch.pop) {
+      // the ball squirts — no possession awarded; the pop is itself loose
+      this.ball.carrierId = null;
+      this.ball.phase = 'rolling';
+      this.ball.vel = touch.vel;
+      // the fumbler cannot instantly re-claim the same squirt (his touch IS
+      // the miss); the kicker-lock mechanism expresses it
+      this.ball.kickerId = best.body.id;
+      this.ball.kickerLockUntilTick = this.tick + 8;
+      return;
+    }
+    this.ball.vel = { x: 0, y: 0 };
     this.ball.carrierId = best.body.id;
     this.ball.phase = 'carried';
     // the race is over: every chaseBall command completes (winner included —

@@ -12,9 +12,9 @@ const scenario: ScenarioDef = {
   description: 'Runs of 10m / 30m / 60m at run regime, each ending in a stop at the target. Judge decelerate-to-arrive: no overshoot, no orbit.',
   durationTicks: 200, // 20 s
   bodies: [
-    { id: 'short', team: 'home', pos: { x: 30, y: 20 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 12, stamina: 12 } },
-    { id: 'medium', team: 'home', pos: { x: 25, y: 34 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 12, stamina: 12 } },
-    { id: 'long', team: 'home', pos: { x: 20, y: 48 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 12, stamina: 12 } },
+    { id: 'short', team: 'home', pos: { x: 30, y: 20 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'medium', team: 'home', pos: { x: 25, y: 34 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'long', team: 'home', pos: { x: 20, y: 48 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 12, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
   ],
   script: [
     { atTick: 10, bodyId: 'short', command: { type: 'moveTo', target: { x: 40, y: 20 }, regime: 'run' } },

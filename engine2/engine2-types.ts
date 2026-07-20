@@ -35,6 +35,10 @@ export interface BodyAttributes {
   agility: number; // with balance: lateral grip → turn rate and cornering speed
   balance: number; // with agility: staying planted through direction change
   dribbling: number; // L2: touch length while carrying (close control)
+  firstTouch: number; // L3: control quality vs ball speed/height/pressure
+  passing: number; // L3: kick execution fidelity (direction/power noise)
+  tackling: number; // L3: winning physical contests for a glued ball
+  strength: number; // L3: tackle weight + shield width (with balance)
   stamina: number; // reserved: the effort model reads it in the later pass
 }
 

@@ -75,6 +75,11 @@ export const BALL = {
   /** touches alternate feet: lateral push offset per touch (radians, ~7°) —
    * the left-right texture of a real dribble */
   touchAlternateRad: 0.12,
+  /** far-foot dribbling: with an opponent inside this range, touches stop
+   * alternating and bias AWAY from him — you don't play the ball into a
+   * marker's side (the L3 duel-rate finding) */
+  touchShieldRangeM: 2.4,
+  touchShieldRad: 0.16,
   /** a mid-touch ball (farther than controlRadius from its carrier) is
    * PINCHABLE: the stealer must be in claim reach AND this much closer to
    * the ball than its carrier — the touch is an arrival race. Heavy touches

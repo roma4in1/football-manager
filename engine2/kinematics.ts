@@ -130,6 +130,10 @@ export interface StepOptions {
   steer?: Vec2 | null;
   /** coupled to the ball this tick → regime caps take the carry penalty */
   carrying?: boolean;
+  /** don't outrun your own dying touch: near a stop the ball is weighted
+   * down long before the body needs to brake — the carrier rides just
+   * behind it instead of sprinting over it */
+  carrySpeedCapMps?: number;
 }
 
 /**
@@ -186,7 +190,10 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
 
   const regime = c.type === 'hold' ? 'walk' : c.regime;
   let cap = regimeCapMps(body.attributes.pace, regime);
-  if (carrying) cap *= KIN.carrySpeedBase + KIN.carrySpeedControlGain * (body.attributes.dribbling / 20);
+  if (carrying) {
+    cap *= KIN.carrySpeedBase + KIN.carrySpeedControlGain * (body.attributes.dribbling / 20);
+    if (opts.carrySpeedCapMps !== undefined) cap = Math.min(cap, opts.carrySpeedCapMps);
+  }
 
   // ── desired speed: regime cap, shaved by arrival braking and by turn need ─
   let desired = cap;

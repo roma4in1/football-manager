@@ -11,15 +11,15 @@ import type { ScenarioDef } from '../engine2-types.ts';
 const duel = (name: string, dribbling: number): ScenarioDef => ({
   version: 1,
   name,
-  description: `Attacker (dribbling ${dribbling}) sprint-carries the line while a defender recovers from the flank, hunting the ball with anticipation. Touch quality decides: tight touches stay inside the protection race the whole route; heavy touches hang far enough ahead to be met. Nothing scripted about the outcome.`,
+  description: `Attacker (dribbling ${dribbling}) sprint-carries the line; a defender recovers from the flank hunting the ball. At L3 a chase-only defender cannot jockey — watch the shield, the touch races, and the lunges; the outcome-split by touch quality arrives with L5e marking/duels.`,
   durationTicks: 240, // 24 s
   bodies: [
-    { id: 'attacker', team: 'home', pos: { x: 25, y: 34 }, attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, stamina: 12 } },
-    { id: 'defender', team: 'away', pos: { x: 27, y: 38 }, attributes: { pace: 13, acceleration: 14, agility: 13, balance: 13, dribbling: 10, stamina: 12 } },
+    { id: 'attacker', team: 'home', pos: { x: 25, y: 34 }, attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'defender', team: 'away', pos: { x: 27, y: 38 }, attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
   ],
   ball: { carrier: 'attacker' },
   script: [
-    { atTick: 10, bodyId: 'attacker', command: { type: 'moveTo', target: { x: 88, y: 34 }, regime: 'sprint' } },
+    { atTick: 10, bodyId: 'attacker', command: { type: 'moveTo', target: { x: 95, y: 34 }, regime: 'sprint' } },
     { atTick: 16, bodyId: 'defender', command: { type: 'chaseBall', regime: 'sprint' } },
   ],
 });
@@ -32,7 +32,7 @@ export const weave: ScenarioDef = {
   description: 'Small direction changes with the ball: a close-control carrier weaves a five-gate slalom at run pace — left, right, left, right, home. Judge the touch-follow through each gate.',
   durationTicks: 260, // 26 s
   bodies: [
-    { id: 'carrier', team: 'home', pos: { x: 20, y: 34 }, attributes: { pace: 14, acceleration: 14, agility: 15, balance: 15, dribbling: 17, stamina: 12 } },
+    { id: 'carrier', team: 'home', pos: { x: 20, y: 34 }, attributes: { pace: 14, acceleration: 14, agility: 15, balance: 15, dribbling: 17, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
   ],
   ball: { carrier: 'carrier' },
   script: [
