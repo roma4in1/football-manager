@@ -3,6 +3,24 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-13 — L3 judgment round 9: the receive state machine, settled
+
+- **The rapid right-left-right**: the two-phase boundary FLAPPED — hovering
+  at exactly 1.2 m off the line alternated the target between line-point
+  and meet-point every tick. The receive phase is now STICKY (enter ≤1.2 m,
+  exit >1.8 m) — same hysteresis lesson as the contain press, now applied
+  twice; recorded as a standing pattern: any behavioral phase boundary
+  needs hysteresis or it thrashes at the boundary.
+- **The final stride**: with the ball ≤1.2 s out, the receiver STEPS AT THE
+  BALL (~2.4 m/s) instead of standing a meter off waiting — touches are
+  taken moving into the ball. While set earlier than that, he now WATCHES
+  the ball in (facing tracks it — the head no longer wobbles with target
+  changes).
+- **Faster passes join the matrix** (the judgment ask): first-touch-run-
+  across-fast (17 m/s driven crossing feed) with an honest lower
+  reliability floor (10/16 vs 13/16) — a driven crossing ball is
+  legitimately missable even with a good read. 45/45.
+
 ## 2026-09-13 — L3 judgment round 8: phase-1 receives brake into the line
 
 The angled receive overran on momentum: phase 1 (attack the line) was

@@ -55,6 +55,24 @@ export const firstTouchRunScenarios: ScenarioDef[] = [
 export const firstTouchAngleScenarios: ScenarioDef[] = [
   {
     version: 1,
+    name: 'first-touch-run-across-fast',
+    description: 'The 90° crossing receive against a DRIVEN 17 m/s feed — the fast end of the matrix; even set receivers spill more of these.',
+    durationTicks: 140,
+    bodies: [
+      { id: 'feeder', team: 'home', pos: { x: 25, y: 34 }, attributes: { ...base, firstTouch: 12 } },
+      { id: 'receiver', team: 'home', pos: { x: 58, y: 12 }, attributes: { ...base } },
+    ],
+    ball: { carrier: 'feeder' },
+    script: [
+      { atTick: 22, bodyId: 'receiver', command: { type: 'moveTo', target: { x: 58, y: 58 }, regime: 'run' } },
+      { atTick: 40, bodyId: 'receiver', command: { type: 'chaseBall', regime: 'run' } },
+    ],
+    kicks: [
+      { atTick: 30, bodyId: 'feeder', kick: { target: { x: 58, y: 33 }, speedMps: 17, loftDeg: 0 } },
+    ],
+  },
+  {
+    version: 1,
     name: 'first-touch-run-across',
     description: 'The receiver crosses the pass line at 90° — a ball taken across the body mid-stride.',
     durationTicks: 140,
