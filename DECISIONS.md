@@ -3,6 +3,36 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 2: turn-then-strike, wider caution, line-breakers
+
+Three judged asks, three mechanisms:
+
+- **Turn, then play** (sim.ts): a decided kick more than 60° off facing no
+  longer fires as a degraded backheel — the body TURNS first (hold-with-
+  facing, L1's rotation rate) and strikes clean when aligned. The turn's
+  delay is its honest cost: defenders keep closing, and the re-decide can
+  abort the pass the turn made stale. The backheel execution penalty stays
+  for whatever still fires misaligned.
+- **The cautious release** (decide.ts): the carry-pressure horizon is now
+  risk-scaled (7 m + 6·(1−risk)) — a safety-first carrier's danger radius
+  is wider, so he releases to the open man BEFORE engaging the 1v1 (wb-1:
+  safe ball at t=27, up from t=45; the judged ask). Same round also made
+  commitment inertia RELATIVE (8% of current utility, floor 0.004) — an
+  absolute switch cost was mis-sized at every utility scale and had blocked
+  three separate judged behaviors by a hair each.
+- **Line-breaking through balls** (decide.ts): a pass to a RUNNER (>2.5
+  m/s) evaluates a third candidate — the firm ball aimed 0.7 s BEYOND the
+  meet point, into the space he is running into — so the deep man takes it
+  in stride instead of checking back to his own feet (wb-1 high: received
+  at speed mid-run, carried 25 m). Soft-to-feet and firm-to-feet remain the
+  other two weights; EV picks.
+- **The xG-gradient carry** (decide.ts, surfaced by the striker rates):
+  within ~34 m of goal, carry directions add 0.8·xG(sample) — pure
+  positional value let a chased striker drift to the corner flag where the
+  angle dies (3/16 no-shot seeds, now 2/16, both honest chaser wins).
+
+53/53. Perf unchanged (~14 µs/tick).
+
 ## 2026-07-21 — L4 judgment round 1: the backheel, the corner-dodge, and the dial's true poles
 
 Four judged defects, four mechanisms:

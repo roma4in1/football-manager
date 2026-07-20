@@ -43,10 +43,11 @@ export type Intent =
 export const DECIDE = {
   /** re-evaluation cadence (ticks) — continuous but not per-tick (spec §3) */
   reconsiderTicks: 3,
-  /** commitment inertia: a new intent must beat the current one by this —
-   * sized to the utility scale (non-shot options live in ~[0, 0.19]; at
-   * 0.05 the first carry was unswitchable and rode into every tackle) */
-  switchCost: 0.008,
+  /** commitment inertia, RELATIVE: a new intent must beat the current one
+   * by this fraction (absolute costs were mis-sized at every utility scale
+   * — three separate judged behaviors were each blocked by a hair) */
+  switchCostRel: 0.08,
+  switchCostAbsFloor: 0.004,
   /** possession is not a goal: every non-shot EV is scaled by this */
   possessionDiscount: 0.55,
   /** PV: the most valuable non-shot spot on the pitch is worth this */
@@ -280,14 +281,22 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // both, keep the better.
     const softArrive = DECIDE.passArriveMps + 0.5 * mate.speed;
     let bestPass: Intent | null = null;
-    for (const arrive of [softArrive, softArrive + 4.5]) {
+    // weights: soft to feet, firm to feet, and — for a RUNNER — the firm
+    // ball INTO SPACE beyond the meet point (the line-breaker he runs onto;
+    // a ball at the meet itself arrives at his feet and checks his run)
+    const candidates: Array<{ arrive: number; leadExtraS: number }> = [
+      { arrive: softArrive, leadExtraS: 0 },
+      { arrive: softArrive + 4.5, leadExtraS: 0 },
+    ];
+    if (mate.speed > 2.5) candidates.push({ arrive: softArrive + 4.5, leadExtraS: 0.7 });
+    for (const { arrive, leadExtraS } of candidates) {
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
       // two-iteration lead on the mate's current velocity
       let dest = { x: mate.pos.x, y: mate.pos.y };
       for (let i = 0; i < 2; i++) {
         const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
-        const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55);
+        const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55) + leadExtraS;
         dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
       }
       let pC = passCompletion(here, dest, speed, opponents, dist0, mate);
@@ -319,6 +328,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     (o) => Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 4.0,
   );
   const carryRegime: 'run' | 'sprint' = heelPressure ? 'sprint' : 'run';
+  // a cautious player's danger radius is WIDER: he releases before ever
+  // engaging the 1v1 (the judged low-risk knock-on at a defender)
+  const pressRange = DECIDE.carryPressureRangeM + 6 * (1 - risk);
   for (let i = 0; i < DECIDE.carryDirections; i++) {
     const ang = (i / DECIDE.carryDirections) * Math.PI * 2;
     // VALUE the near point; COMMAND well past it — a target at the
@@ -332,9 +344,15 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     let pressure = 0;
     for (const o of opponents) {
       const dNow = Math.hypot(o.pos.x - p.x, o.pos.y - p.y);
-      pressure = Math.max(pressure, Math.max(0, 1 - dNow / DECIDE.carryPressureRangeM));
+      pressure = Math.max(pressure, Math.max(0, 1 - dNow / pressRange));
     }
-    const pv = value(p, carrier.id);
+    let pv = value(p, carrier.id);
+    // near goal the carry follows the xG GRADIENT — pure positional value
+    // let a chased striker drift to the corner flag, where the angle dies
+    if (!keep) {
+      const gd = Math.hypot(g.x - p.x, g.y - p.y);
+      if (gd < DECIDE.shootRangeM * 1.3) pv += 0.8 * xG(p, team, opponents);
+    }
     const u = DECIDE.possessionDiscount * (
       pv * (1 - 0.8 * pressure) * 0.92 -
       // carrying into reach risks the tackle — risk-scaled turnover, same
@@ -372,7 +390,8 @@ export const decide = (input: DecideInput): Intent => {
   if (current) {
     const same = options.find((o) => o.kind === current.kind &&
       (o.kind !== 'pass' || (current.kind === 'pass' && o.receiverId === current.receiverId)));
-    if (same && best.utility - same.utility < DECIDE.switchCost) best = same;
+    if (same && best.utility - same.utility <
+      Math.max(DECIDE.switchCostAbsFloor, DECIDE.switchCostRel * same.utility)) best = same;
   }
   return best;
 };

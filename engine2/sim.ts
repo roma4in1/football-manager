@@ -446,7 +446,11 @@ export class Sim {
     // a decided kick releases ON THIS TOUCH — the ball is at the boot for
     // one contact and that contact is the pass/shot/clear
     const pending = this.pendingKicks.get(carrier.id);
-    if (pending) {
+    const pendingAligned = pending !== undefined && (() => {
+      const d = Math.atan2(pending.dest.y - carrier.pos.y, pending.dest.x - carrier.pos.x);
+      return Math.abs(((d - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI) <= Math.PI / 3;
+    })();
+    if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
       kickBall(this.ball, noisy.target, noisy.speedMps, 0, carrier.id, this.tick);
       if (pending.receiverId) this.intendedReceiverId = pending.receiverId;
@@ -761,7 +765,15 @@ export class Sim {
         case 'clear': {
           this.actionLabels.set(id, intent.kind === 'pass' ? `pass→${intent.receiverId}` : intent.kind);
           const reach = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
-          if (reach <= TECH.kickReachM) {
+          const strikeDir = Math.atan2(intent.dest.y - body.pos.y, intent.dest.x - body.pos.x);
+          const strikeMis = Math.abs(((strikeDir - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          if (reach <= TECH.kickReachM && strikeMis > Math.PI / 3) {
+            // TURN, then strike — a misaligned kick is a backheel; the real
+            // action is rotate-and-play, and the turn's delay is its honest
+            // cost (defenders keep closing while the body comes around)
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+            body.command = { type: 'hold', facing: strikeDir };
+          } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
             kickBall(this.ball, noisy.target, noisy.speedMps, 0, id, this.tick);
