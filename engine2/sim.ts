@@ -126,17 +126,19 @@ export class Sim {
         body.command.type !== 'chaseBall' && body.command.type !== 'hold';
       let live: Vec2 | undefined;
       let standing = false;
-      let early = false;
+      let timedCap: number | undefined;
       if (body.command.type === 'chaseBall' || fetching) {
-        const icept = this.interceptPoint(body, body.command.type === 'chaseBall');
+        const icept = this.interceptPoint(body);
         live = icept.p;
-        // an EARLY interceptor brakes into the meeting point and WAITS —
-        // blowing through the line at full run put the ball behind him
-        // (the judged across/angled overshoot)
+        // TIME-MATCHED approach (the across judgment): attack the meeting
+        // point at the speed that arrives WITH the ball — toward the ball
+        // always, never through the line, never relocating away to wait
         if (body.command.type === 'chaseBall') {
-          early = icept.early;
           const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
-          if (early && d <= 0.5) standing = true;
+          const need = d / Math.max(icept.tStar, 0.2);
+          const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
+          if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
+          if (d <= 0.5 && icept.tStar > 0.5) standing = true;
         }
         // CONTAIN at contact: a hunter already within lunging reach of a
         // GLUED ball stands his ground and works the tackle cooldown —
@@ -175,7 +177,8 @@ export class Sim {
         carrying: isCarrier,
         carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
         stand: standing,
-        brakeAtTarget: early,
+        brakeAtTarget: timedCap !== undefined,
+        speedCapMps: timedCap,
       });
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
@@ -577,22 +580,19 @@ export class Sim {
    * meet (tStar ≈ his arrival) makes him carry his momentum THROUGH the
    * line and stern-chase the ball he just missed. Fetching your own touch
    * never margins (a dribbler does not stop ahead of his ball and wait). */
-  private interceptPoint(body: BodyState, withMargin: boolean): { p: Vec2; tStar: number; early: boolean } {
+  /** the earliest point on the ball's predicted path this body can meet,
+   * and when the ball gets there. The APPROACH is time-matched by the
+   * caller: run at the ball's meeting point at the speed that arrives WITH
+   * it — toward the ball always, through it never. */
+  private interceptPoint(body: BodyState): { p: Vec2; tStar: number } {
     const regime = body.command.type === 'chaseBall' ? body.command.regime : 'run';
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
-    if (withMargin) {
-      for (let t = 0.2; t <= 6.0; t += 0.2) {
-        const p = predictBall(this.ball, t);
-        const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
-        if (reach + 0.55 <= t) return { p, tStar: t, early: true };
-      }
-    }
     for (let t = 0.2; t <= 6.0; t += 0.2) {
       const p = predictBall(this.ball, t);
       const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
-      if (reach <= t) return { p, tStar: t, early: false };
+      if (reach <= t) return { p, tStar: t };
     }
-    return { p: predictBall(this.ball, 6), tStar: 6, early: false };
+    return { p: predictBall(this.ball, 6), tStar: 6 };
   }
 
   private assign(body: BodyState, command: MovementCommand): void {

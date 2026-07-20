@@ -3,6 +3,23 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-12 — L3 judgment round 6: TIME-MATCHED receiving replaces margin-seek
+
+Human note on the margin-seek fix: a player does not run AWAY from a close
+ball to wait downfield — he moves toward it. Correct. The margin-seek
+relocated the receiver to a comfortably-early point that could sit 15 m
+down the line.
+
+- **Time-matched approach**: chaseBall attacks the NEAR meeting point at
+  the speed that arrives WITH the ball (cap = distance/meeting-time, floor
+  0.6 m/s, braking into the point, standing only when already there with
+  the ball >0.5 s out). Toward the ball always; through the line never;
+  relocating away never. Chasers racing a ball they can barely reach are
+  uncapped (need ≥ vcap) — races unchanged. Probe: the across receiver now
+  converges alongside the rolling ball at ~5 m/s and takes it in stride at
+  the natural meeting point. 45/45 on first run — the earlier margin
+  machinery deleted, not patched.
+
 ## 2026-09-12 — L3 judgment round 5: margin intercepts + the tackle/foul taxonomy decided
 
 - **The across overshoot, root-caused at last**: the intercept solver picks

@@ -140,6 +140,9 @@ export interface StepOptions {
   /** brake into the target as if it were a stop (an EARLY interceptor
    * plants at the meeting point instead of blowing through the line) */
   brakeAtTarget?: boolean;
+  /** general speed cap for this tick (a receiver TIMES his approach —
+   * arrive with the ball, not through it) */
+  speedCapMps?: number;
 }
 
 /**
@@ -206,6 +209,7 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
     cap *= KIN.carrySpeedBase + KIN.carrySpeedControlGain * (body.attributes.dribbling / 20);
     if (opts.carrySpeedCapMps !== undefined) cap = Math.min(cap, opts.carrySpeedCapMps);
   }
+  if (opts.speedCapMps !== undefined) cap = Math.min(cap, Math.max(opts.speedCapMps, 0.6));
 
   // ── desired speed: regime cap, shaved by arrival braking and by turn need ─
   let desired = cap;
