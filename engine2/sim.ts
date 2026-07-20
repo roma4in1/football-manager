@@ -133,7 +133,7 @@ export class Sim {
         // TIME-MATCHED approach (the across judgment): attack the meeting
         // point at the speed that arrives WITH the ball — toward the ball
         // always, never through the line, never relocating away to wait
-        if (body.command.type === 'chaseBall') {
+        if (body.command.type === 'chaseBall' && icept.onLine) {
           const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
           const need = d / Math.max(icept.tStar, 0.2);
           const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
@@ -584,15 +584,26 @@ export class Sim {
    * and when the ball gets there. The APPROACH is time-matched by the
    * caller: run at the ball's meeting point at the speed that arrives WITH
    * it — toward the ball always, through it never. */
-  private interceptPoint(body: BodyState): { p: Vec2; tStar: number } {
+  /** Where a chaser should run. Two-phase, like a real receiver:
+   *  1. OFF the ball's line → attack the nearest point of the path (this is
+   *     visually "moving toward the ball" — the earliest-meet target alone
+   *     produces a parallel converging drift that reads as running away);
+   *  2. ON the line → the earliest meeting point, approached at the speed
+   *     that arrives WITH the ball. */
+  private interceptPoint(body: BodyState): { p: Vec2; tStar: number; onLine: boolean } {
     const regime = body.command.type === 'chaseBall' ? body.command.regime : 'run';
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
+    let meet: { p: Vec2; tStar: number } | null = null;
+    let near: { p: Vec2; d: number } | null = null;
     for (let t = 0.2; t <= 6.0; t += 0.2) {
       const p = predictBall(this.ball, t);
-      const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
-      if (reach <= t) return { p, tStar: t };
+      const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
+      if (!near || d < near.d) near = { p, d };
+      if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
     }
-    return { p: predictBall(this.ball, 6), tStar: 6 };
+    if (near && near.d > 1.2) return { p: near.p, tStar: 0, onLine: false };
+    if (meet) return { p: meet.p, tStar: meet.tStar, onLine: true };
+    return { p: predictBall(this.ball, 6), tStar: 6, onLine: true };
   }
 
   private assign(body: BodyState, command: MovementCommand): void {

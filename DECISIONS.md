@@ -3,6 +3,18 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-12 — L3 judgment round 7: the TWO-PHASE receive (attack the line, then time the take)
+
+Third and final iteration on receive movement, human-driven each round:
+blow-through → wait-downfield → parallel-converge (still read as running
+away) → THIS. The earliest-meet target is mathematically right but
+produces a converging parallel drift; a real receiver's path has two
+phases, now implemented: OFF the ball's line → run at the nearest point
+of the path (visually attacking the ball); ON the line (≤1.2 m) → the
+earliest meeting point at arrive-with-the-ball speed, standing when set.
+Probe: the across receiver runs straight at the incoming ball's line,
+brakes as it arrives, and takes the touch AT the crossing. 45/45.
+
 ## 2026-09-12 — L3 judgment round 6: TIME-MATCHED receiving replaces margin-seek
 
 Human note on the margin-seek fix: a player does not run AWAY from a close
