@@ -3,6 +3,18 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-20 — L3 ACCEPTED (builder's judgment) + the L5e head-on guardrail
+
+L3 (individual technique) passes acceptance after 12 judgment rounds; the
+user merges feat/engine2-l3 (L2 already merged). Standing target recorded
+for L5e marking/duels, agreed with the builder: the head-on duel's
+close-control carry-through (today 16/16 — a set defender with only a
+lunge, no jockey) must DROP to roughly 55–65% for a close-control carrier
+vs an average set defender once jockeying/backpedal + the shoulder barge
+land, with heavy feet well below that and tackling-class attributes moving
+the split. duel-1v1-front-* are the guardrail drills; re-floor their test
+rates at L5e (real take-on completion: elite ~55–65%, typical ~40–50%).
+
 ## 2026-07-20 — L3 judgment round 12: the head-on duel + pressure-shortened touches
 
 The judged ask: duels only ever showed the defender arriving FROM BEHIND —
