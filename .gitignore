@@ -16,3 +16,6 @@ node_modules/
 pipeline/cache/
 server/clubs.json
 workbench/dist
+reference/
+frames/
+contact-sheet.jpg

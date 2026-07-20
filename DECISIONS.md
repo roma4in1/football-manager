@@ -3,6 +3,24 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-07 — V2 visual reference: EA FC 26 2D footage in reference/eafc/ (local, untracked)
+
+- Five phone captures of EA FC 26's 2D career-mode sim view live in
+  `reference/eafc/IMG_7241–7245.MOV` (gitignored with all of `reference/` —
+  ~500 MB of media stays out of the public repo; the folder is on the dev
+  machine, not in history).
+- **Per-layer protocol**: when building or judging a V2 layer, extract frames
+  yourself (`ffmpeg -i <file> -vf fps=3 <scratch>/frame_%04d.jpg`) and view
+  them as that layer's visual reference. This is REFERENCE for the builder's
+  eye and the workbench legibility bar (spec §4) — NEVER a per-frame fitting
+  target; §9 Bar 5 is aspirational and the gates remain the stats guardrail
+  plus the human's judgment.
+- What the footage pins for L0 legibility (checked against the shipped
+  workbench, no changes needed): desaturated dark pitch, subtle striping,
+  thin bright lines, plain high-contrast numbered dots (GK color-popped),
+  small white ball, no on-pitch text. GK distinction and the ball cue become
+  relevant at L2/L7.
+
 ## 2026-09-07 — Engine V2 session 1: L0 workbench + L1 kinematics (@fm/engine2, @fm/workbench)
 
 First build session of ENGINE-V2-BEHAVIORAL-SPEC.md. Ground-up `@fm/engine2`
@@ -251,6 +269,7 @@ evidence and the revised plan are the deliverable.
   (PID1 runs survive them — reattach, don't rerun).
 - Working tree reverted to the step-1 state: all gates hold by construction
   (agent 64/18, realism 7/7 ×4, aggregate 82/0, offsides ~2).
+
 ## 2026-08-31 — launch blockers: the forced-close 23514 + the completion floor made structural
 
 - **BUG 1 (N=2 season-boundary 23514) diagnosed and fixed — it was never the
