@@ -25,11 +25,15 @@ export type EffortRegime = 'walk' | 'jog' | 'run' | 'sprint';
 
 export const REGIMES: readonly EffortRegime[] = ['walk', 'jog', 'run', 'sprint'];
 
-/** Movement-relevant attributes, 0–20 (same scale/pool as v1's pipeline). */
+/** Movement-relevant attributes, 0–20 (same scale as v1's pipeline pool).
+ * `balance` is engine2-native (the v1 pool doesn't derive it yet — the
+ * pipeline mapping is a later session's work; scenario/bench bodies set it
+ * explicitly). */
 export interface BodyAttributes {
   pace: number; // top speed
-  acceleration: number; // how fast speed builds (and, scaled, braking)
-  agility: number; // lateral grip → turning radius as f(speed)
+  acceleration: number; // how fast speed builds, and (scaled) braking
+  agility: number; // with balance: lateral grip → turn rate and cornering speed
+  balance: number; // with agility: staying planted through direction change
   stamina: number; // reserved: the effort model reads it in the later pass
 }
 

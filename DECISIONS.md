@@ -3,6 +3,38 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-07 — L1 Bar-1 judgment: ACCEPTED with one refinement — turning is stats-only, and it found a latent orbit
+
+Human verdict on the workbench scenarios: elite-vs-mid sprinter differentiation
+good, movement accurate enough; one note — turning speed must derive from
+agility/balance/acceleration, NOT pure sprint speed. Implemented as mechanism:
+
+- **`balance` added to BodyAttributes** (engine2-native; the v1 pipeline does
+  not derive it yet — mapping is a later session). Lateral grip = f(mean(
+  agility, balance)); braking/relaunch stay acceleration's.
+- **Cornering speed is now a stats-only quantity**: v_corner = grip·τ/θ
+  (τ = turnTimeBudgetS 0.55). The old rule scaled the misalignment brake off
+  the REGIME CAP — pace leaked into corners (measured: pace 19 carried 1.74
+  m/s through a 180° vs 1.30 for pace 10). Plus **carve readiness**: above
+  v_corner×1.25 steering is mostly withheld (ω × (v_corner·1.25/v)², floor
+  0.12) — brake first, rip the turn at corner speed. Post-fix: pace 10 vs 19
+  corner within 0.15 m/s; agility/balance 18 vs 6 differ by construction.
+  Asserted (kinematics.test.ts "turning speed follows agility/balance, NOT
+  pace"). Gentle carves (mild misalignment, no corner braking) keep radius =
+  v²/grip growing with speed — that test moved to the 25° domain, where the
+  physics still owns it.
+- **Latent ORBIT limit cycle found and killed by the refinement work**: a
+  body that just missed its arrival window would circle the target forever
+  at the exact radius its grip-bounded turn rate sustains (probe: a stable
+  0.7 m ring at 2.2 m/s around the shuttle marker). Two human mechanisms fix
+  it: STEP-TURNS (below 2.6 m/s the running-gait grip bound yields to a
+  plant-and-pivot rate, 5.0 rad/s) and a PROPORTIONAL FINAL APPROACH
+  (desired ≤ residual + 1.2·d on must-stop targets — the spiral always
+  tightens). Both asserted via the arrival/shuttle scenarios.
+- 19/19 assertions; profile after refinement: 4.6 µs/tick, 0.25 s/full
+  match (~730× headroom) — carve math costs a third more per tick, and it
+  does not matter.
+
 ## 2026-09-07 — V2 visual reference: EA FC 26 2D footage in reference/eafc/ (local, untracked)
 
 - Five phone captures of EA FC 26's 2D career-mode sim view live in

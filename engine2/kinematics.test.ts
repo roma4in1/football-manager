@@ -24,7 +24,7 @@ const mkBody = (
 ): BodyState => ({
   id: 'b',
   team: 'home',
-  attributes: { pace: 12, acceleration: 12, agility: 12, stamina: 12, ...attrs },
+  attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, stamina: 12, ...attrs },
   pos: { ...pos },
   vel: { x: 0, y: 0 },
   speed: 0,
@@ -50,7 +50,7 @@ test('attribute mapping lands in real football ranges — and extremes stay huma
   assert.ok(topSpeedMps(1) > 4.5 && topSpeedMps(1) < 6, 'pace 1 still moves like a human');
   assert.ok(accelPeakMps2(20) <= 8.5, 'peak accel bounded');
   assert.ok(brakePeakMps2(20) > accelPeakMps2(20), 'braking beats accelerating');
-  assert.ok(turningRadiusM(12, 9) > turningRadiusM(12, 4), 'radius grows with speed');
+  assert.ok(turningRadiusM(12, 12, 9) > turningRadiusM(12, 12, 4), 'radius grows with speed');
 });
 
 test('a long sprint reaches and RESPECTS the top-speed cap', () => {
@@ -83,31 +83,33 @@ test('regime caps are distinct and ordered for one body', () => {
   }
 });
 
-test('turning radius scales with speed: the same 90° re-target arcs wider when faster', () => {
+test('turning radius scales with speed on GENTLE curves (sharp cuts are stat-anchored by design)', () => {
+  // a ~25° re-target stays under the corner-braking threshold at any regime,
+  // so the body carves at cruise: radius = v²/grip must grow with speed
   const measureMinRadius = (regime: 'jog' | 'sprint'): number => {
     const body = mkBody({ agility: 12 }, { x: 10, y: 20 }, { type: 'moveTo', target: { x: 95, y: 20 }, regime });
     run(body, 40); // reach cruise going +x
-    body.command = { type: 'moveTo', target: { x: body.pos.x, y: 65 }, regime }; // 90° re-target
+    body.command = { type: 'moveTo', target: { x: 95, y: 60 }, regime }; // ~25° from far downfield
     let minR = Infinity;
     let prevHeading = Math.atan2(body.vel.y, body.vel.x);
-    run(body, 30, (b) => {
-      if (b.speed < 1) return;
+    run(body, 25, (b) => {
+      if (b.speed < 2) return;
       const heading = Math.atan2(b.vel.y, b.vel.x);
       const dTheta = Math.abs(normalizeAngle(heading - prevHeading));
       prevHeading = heading;
-      if (dTheta > 1e-4) minR = Math.min(minR, (b.speed * DT) / dTheta);
+      if (dTheta > 1e-3) minR = Math.min(minR, (b.speed * DT) / dTheta);
     });
     return minR;
   };
   const rJog = measureMinRadius('jog');
   const rSprint = measureMinRadius('sprint');
-  assert.ok(rSprint > rJog * 1.5, `sprint turn radius ${rSprint.toFixed(1)}m ≫ jog ${rJog.toFixed(1)}m`);
+  assert.ok(rSprint > rJog * 1.5, `sprint carve radius ${rSprint.toFixed(1)}m ≫ jog ${rJog.toFixed(1)}m`);
 });
 
 test('no instantaneous direction change: per-tick heading delta obeys grip while moving', () => {
   const body = mkBody({}, { x: 10, y: 34 }, { type: 'moveTo', target: { x: 90, y: 34 }, regime: 'sprint' });
   run(body, 35);
-  const grip = lateralGripMps2(12);
+  const grip = lateralGripMps2(12, 12);
   body.command = { type: 'moveTo', target: { x: 10, y: 34 }, regime: 'sprint' }; // 180°
   let prev: { heading: number; speed: number } | null = { heading: Math.atan2(body.vel.y, body.vel.x), speed: body.speed };
   run(body, 60, (b) => {
@@ -118,9 +120,11 @@ test('no instantaneous direction change: per-tick heading delta obeys grip while
     const heading = Math.atan2(b.vel.y, b.vel.x);
     if (prev !== null) {
       const dTheta = Math.abs(normalizeAngle(heading - prev.heading));
-      // the integrator bounds the step by the PRE-step speed
-      const omegaCap = (grip / Math.max(prev.speed, 1.3)) * DT;
-      assert.ok(dTheta <= omegaCap + 1e-6, `heading step ${dTheta.toFixed(3)} ≤ grip bound ${omegaCap.toFixed(3)} at v=${b.speed.toFixed(1)}`);
+      // the integrator bounds the step by the PRE-step speed; below the
+      // step-turn speed a plant-and-pivot rate applies instead of pure grip
+      const omegaRun = grip / Math.max(prev.speed, 1.3);
+      const omegaCap = (prev.speed < 2.6 ? Math.max(omegaRun, 5.0) : omegaRun) * DT;
+      assert.ok(dTheta <= omegaCap + 1e-6, `heading step ${dTheta.toFixed(3)} ≤ turn bound ${omegaCap.toFixed(3)} at v=${b.speed.toFixed(1)}`);
     }
     prev = { heading, speed: b.speed };
   });
@@ -139,6 +143,27 @@ test('arrival: decelerate-to-arrive stops AT the target — no overshoot, no orb
     assert.ok(over <= 0.6, `${distM}m run overshoot ${over.toFixed(2)}m ≤ 0.6m`);
     assert.ok(Math.hypot(body.pos.x - (20 + distM), body.pos.y - 34) <= 0.5, 'rests at the marker');
   }
+});
+
+test('turning speed follows agility/balance, NOT pace (the Bar-1 judgment note)', () => {
+  // min speed carried through a 180° at sprint: same agility/balance,
+  // different pace → same cornering speed; higher agility/balance → faster
+  const minTurnSpeed = (attrs: Partial<BodyState['attributes']>): number => {
+    const body = mkBody(attrs, { x: 10, y: 34 }, { type: 'moveTo', target: { x: 90, y: 34 }, regime: 'sprint' });
+    run(body, 35);
+    body.command = { type: 'moveTo', target: { x: 10, y: 34 }, regime: 'sprint' };
+    let min = Infinity;
+    run(body, 50, (b) => {
+      min = Math.min(min, b.speed);
+    });
+    return min;
+  };
+  const slowPace = minTurnSpeed({ pace: 10, agility: 12, balance: 12 });
+  const fastPace = minTurnSpeed({ pace: 19, agility: 12, balance: 12 });
+  assert.ok(Math.abs(slowPace - fastPace) < 0.15, `pace 10 vs 19 corner alike (${slowPace.toFixed(2)} vs ${fastPace.toFixed(2)})`);
+  const planted = minTurnSpeed({ pace: 14, agility: 18, balance: 18 });
+  const stiff = minTurnSpeed({ pace: 14, agility: 6, balance: 6 });
+  assert.ok(planted > stiff + 0.2, `agility/balance 18 carries more corner speed (${planted.toFixed(2)} vs ${stiff.toFixed(2)})`);
 });
 
 test('standstill pivot is allowed (a settled body turns in place, rate-limited)', () => {
