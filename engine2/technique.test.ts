@@ -242,6 +242,28 @@ test('shield bracing: a pressed standing carrier turns his back to the presser',
   }
 });
 
+test('knock-past: the touch around the defender is a real, winnable move (rates across 16 seeds)', () => {
+  let recollected = 0;
+  let defenderWon = 0;
+  for (let s = 0; s < 16; s++) {
+    const frames = runScenario(scenarioByName('knock-past'), `kp-${s}`);
+    // success = the attacker is carrying again BEYOND the defender's park
+    const win = frames.some((f) => {
+      if (f.ball.carrierId !== 'attacker') return false;
+      const a = f.bodies.find((b) => b.id === 'attacker')!;
+      return a.x > 55;
+    });
+    if (win) recollected++;
+    else if (frames.some((f) => f.ball.carrierId === 'defender')) defenderWon++;
+  }
+  // vs a SET, reacting defender the move is honestly ~even — beating a
+  // turned/committed defender (and picking that moment) is L4 decision
+  // intelligence. The L3 claim: the move is real, winnable, and always
+  // resolves to a contest.
+  assert.ok(recollected >= 7, `the move is genuinely winnable (${recollected}/16)`);
+  assert.ok(recollected + defenderWon >= 14, `and it always resolves to a contest, never the void (${defenderWon} defender wins)`);
+});
+
 test('bodies never interpenetrate (audit fix): min pairwise separation holds everywhere', () => {
   for (const def of SCENARIOS) {
     if (def.bodies.length < 2) continue;

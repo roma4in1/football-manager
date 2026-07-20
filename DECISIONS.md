@@ -3,6 +3,31 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-12 — L3 judgment round 4: early interceptors plant; the knock-past exists
+
+- **The across/angled overshoot**: chaseBall targets never braked — an
+  EARLY interceptor blew through the meeting line at full run and the ball
+  passed behind him. interceptPoint now returns its meeting time; a chaser
+  arriving >0.4 s early brakes into the point (stepBody brakeAtTarget) and
+  STANDS to receive (≤0.5 m). Late chasers still sprint. The crossing
+  receiver now reads the path, plants, and takes it.
+- **knock-past** (the judgment ask: "take a touch around a defender into
+  space and run onto it"): new scenario — carry at run, release a low
+  knock mid-stride past the set defender's shoulder, cut the arc behind
+  him, run onto your own touch while he turns and races the re-collect.
+  Findings en route: the knock needs ~2 m of passing clearance (kick noise
+  drifts it into a parked defender's passive reach); a standing knock
+  gives up two seconds (the move needs the flying start); and vs a SET,
+  reacting defender the move is honestly ~even — beating a turned or
+  committed one, and picking that moment, is L4 decision intelligence.
+  Asserted: winnable (≥7/16 outright) and always a contest (≥14/16
+  resolve to either player, never the void).
+- **Scenario-scripting trap recorded**: afterPrevious commands live in ONE
+  queue consumed at EVERY arrival — mixing them with atTick re-targets
+  eats queued commands at earlier arrivals (a probe showed the attacker
+  frozen at his arc's end, command-less). Multi-stage single-body scripts
+  should be pure atTick. 45/45.
+
 ## 2026-09-11 — L3 judgment round 3: the DIRECTIONAL first touch
 
 Human note: a charging receiver who survived the pop roll still killed the

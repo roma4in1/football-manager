@@ -137,6 +137,9 @@ export interface StepOptions {
   /** stand this tick: decay to a stop WITHOUT completing the command (a
    * containing presser holds his ground; arrival semantics stay untouched) */
   stand?: boolean;
+  /** brake into the target as if it were a stop (an EARLY interceptor
+   * plants at the meeting point instead of blowing through the line) */
+  brakeAtTarget?: boolean;
 }
 
 /**
@@ -175,7 +178,8 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
   const d = dist(body.pos, target);
   const isFinalPoint = !steering && (c.type === 'moveTo' ||
     (c.type === 'followPath' && body.pathIndex >= c.points.length - 1));
-  const mustStopHere = isFinalPoint || (!steering && c.type === 'followPath' && c.stopAtEach === true);
+  const mustStopHere = isFinalPoint || (!steering && c.type === 'followPath' && c.stopAtEach === true) ||
+    opts.brakeAtTarget === true;
 
   // ── arrival check (never while steering, and never for chaseBall — a
   // fetched touch is re-taken by the coupling and an intercept is completed
