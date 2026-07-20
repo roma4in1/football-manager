@@ -64,8 +64,11 @@ export const firstTouchAngleScenarios: ScenarioDef[] = [
     ],
     ball: { carrier: 'feeder' },
     script: [
-      { atTick: 22, bodyId: 'receiver', command: { type: 'moveTo', target: { x: 58, y: 58 }, regime: 'run' } },
-      { atTick: 40, bodyId: 'receiver', command: { type: 'chaseBall', regime: 'run' } },
+      // a 17 m/s ball crosses x=58 ~2.3 s after the kick — the receiver
+      // needs ~3.7 s to make the line, so he departs BEFORE the feed (as
+      // real runners do off a caller's cue)
+      { atTick: 12, bodyId: 'receiver', command: { type: 'moveTo', target: { x: 58, y: 58 }, regime: 'run' } },
+      { atTick: 34, bodyId: 'receiver', command: { type: 'chaseBall', regime: 'run' } },
     ],
     kicks: [
       { atTick: 30, bodyId: 'feeder', kick: { target: { x: 58, y: 33 }, speedMps: 17, loftDeg: 0 } },

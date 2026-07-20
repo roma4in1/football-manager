@@ -3,6 +3,15 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-13 — L3 judgment round 10: the fast feed is a timing problem, not a read problem
+
+The 17 m/s crossing drill never made the line — a scenario-timing error,
+not a behavior one: the receiver departed too late to ever beat a driven
+ball across, and no read fixes an impossible run. Departure re-timed like
+a real runner's cue (leave BEFORE the feed); 16/16 takes, met mid-stride
+on the line. The reliability floor returns to 13/16 — a driven ball's
+difficulty lives in the first-touch roll, not the read. 45/45.
+
 ## 2026-09-13 — L3 judgment round 9: the receive state machine, settled
 
 - **The rapid right-left-right**: the two-phase boundary FLAPPED — hovering

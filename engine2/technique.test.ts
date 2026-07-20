@@ -177,11 +177,12 @@ test('the DIRECTIONAL first touch: a charging receiver takes the ball in stride 
 test('the receive-geometry matrix makes reliable contact: onto, across, angled all claim (relative sweep)', () => {
   // the regression for frame-relative swept claims: two fast movers crossing
   // must interact — the judged "does not reliably pick up the ball"
-  // the fast variant is allowed a lower floor: a 17 m/s driven crossing
-  // ball is legitimately missable even with a good read
+  // with departure timed like a real runner's cue, even the 17 m/s feed is
+  // read reliably — the DIFFICULTY of a driven ball lives in the touch
+  // roll, not the read
   const floors: Record<string, number> = {
     'first-touch-run-onto': 13, 'first-touch-run-across': 13,
-    'first-touch-run-angled': 13, 'first-touch-run-across-fast': 10,
+    'first-touch-run-angled': 13, 'first-touch-run-across-fast': 13,
   };
   for (const name of ['first-touch-run-onto', 'first-touch-run-across', 'first-touch-run-angled', 'first-touch-run-across-fast']) {
     let interactions = 0;
