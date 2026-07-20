@@ -5,8 +5,8 @@
   "packageManager": "pnpm@10.34.4",
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
-    "boundaries": "depcruise engine server web/src --config .dependency-cruiser.cjs",
-    "test:unit": "pnpm --filter @fm/engine test",
+    "boundaries": "depcruise engine engine2 server web/src workbench/src --config .dependency-cruiser.cjs",
+    "test:unit": "pnpm --filter @fm/engine test && pnpm --filter @fm/engine2 test",
     "test:server": "pnpm --filter @fm/server test",
     "test:web": "pnpm --filter @fm/web test && pnpm --filter @fm/web build",
     "harness": "pnpm --filter @fm/engine harness",

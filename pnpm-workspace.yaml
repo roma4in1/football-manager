@@ -1,4 +1,6 @@
 packages:
   - engine
+  - engine2
   - server
   - web
+  - workbench
