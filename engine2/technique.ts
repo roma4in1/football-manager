@@ -34,6 +34,11 @@ export const TECH = {
   popScatterRad: 0.9,
   /** a KILLED ball still sits slightly off the boot */
   killResidualMps: 0.4,
+  /** the DIRECTIONAL first touch: a moving receiver's control redirects the
+   * ball into his route at ~his own speed — heavier with poor feet. A
+   * standing receiver still kills it dead. */
+  directionalTouchBase: 1.02,
+  directionalTouchControlGain: 0.2,
 
   // ── kick execution noise (pass family; shots arrive with goals) ──────────
   /** direction sigma at passing 0, radians (~9°); passing 20 → ~1.5° */

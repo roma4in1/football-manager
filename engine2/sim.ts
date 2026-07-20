@@ -517,11 +517,35 @@ export class Sim {
       this.ball.kickerLockUntilTick = this.tick + 8;
       return;
     }
-    this.ball.vel = { x: 0, y: 0 };
     this.ball.carrierId = best.body.id;
     this.ball.phase = 'carried';
-    // the race is over: every chaseBall command completes (winner included —
-    // he now holds with the ball at his feet; losers pull their next command)
+    // chaseBall races complete NOW so the winner's NEXT command informs the
+    // directional touch below
+    this.completeChases();
+    // the DIRECTIONAL first touch: a moving receiver sets the ball into his
+    // route in stride — a dead-stop trap made him overrun his own ball and
+    // circle back for it (the judged 360). Standing receivers kill it dead.
+    const rb = best.body;
+    if (rb.speed > BALL.standingSpeedMps + 0.4) {
+      const dest = currentTarget(rb);
+      const dir = dest
+        ? Math.atan2(dest.y - this.ball.pos.y, dest.x - this.ball.pos.x)
+        : Math.atan2(rb.vel.y, rb.vel.x);
+      let push = rb.speed * (
+        TECH.directionalTouchBase +
+        TECH.directionalTouchControlGain * (1 - rb.attributes.firstTouch / 20)
+      );
+      const cap = this.dribbleArriveCap(rb);
+      if (cap !== undefined) push = Math.min(push, cap);
+      this.ball.vel = { x: Math.cos(dir) * push, y: Math.sin(dir) * push };
+    } else {
+      this.ball.vel = { x: 0, y: 0 };
+    }
+  }
+
+  /** every chaseBall command completes — the race is over (the winner now
+   * carries; losers pull their next command) */
+  private completeChases(): void {
     for (const b of this.bodies) {
       if (b.command.type === 'chaseBall') {
         b.command = { type: 'hold' };

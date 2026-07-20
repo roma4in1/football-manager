@@ -3,6 +3,22 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-11 — L3 judgment round 3: the DIRECTIONAL first touch
+
+Human note: a charging receiver who survived the pop roll still killed the
+ball DEAD at the meeting point — then overran his own trap and had to
+circle back (the judged 360). No such thing as taking it in stride.
+
+- **The directional first touch**: a MOVING receiver's successful control
+  now redirects the ball into his route (next command's target — chase
+  completions resolve first so the touch aims at where he is actually
+  going) at ~his own speed, weighted by firstTouch (poor feet push it
+  heavier), capped by dribble-to-arrive. A standing receiver still kills
+  it dead. The dead-stop trap survives only where it is true.
+- Asserted: across 16 seeds of the head-on charge, successful takes stay
+  in stride ≥70% (carrier 1s later, ball progressing along the route, the
+  receiver's speed never collapsing to a stand-and-turn). 44/44.
+
 ## 2026-09-11 — L3 judgment round 2: frame-relative sweep, gait difficulty, receive geometries
 
 - **"Doesn't reliably pick up the ball" was a second tunneling class**: the

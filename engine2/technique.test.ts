@@ -151,6 +151,29 @@ test('moving receives: cushioning in stride is easy, charging onto a drive is ha
   assert.ok(onto > withRun + 0.1, `charging onto the drive spills more (${onto.toFixed(2)} vs ${withRun.toFixed(2)})`);
 });
 
+test('the DIRECTIONAL first touch: a charging receiver takes the ball in stride — no dead-stop, no circle-back', () => {
+  let taken = 0;
+  let inStride = 0;
+  for (let s = 0; s < 16; s++) {
+    const frames = runScenario(scenarioByName('first-touch-run-onto'), `dir-${s}`);
+    const claimIdx = frames.findIndex((f) => f.ball.carrierId === 'receiver');
+    if (claimIdx < 0 || claimIdx > frames.length - 12) continue;
+    taken++;
+    // in stride = still the carrier 1s later, ball progressing along his
+    // route (−x), and his speed never collapses to a stand-and-turn
+    const later = frames[claimIdx + 10];
+    const ballProgressed = later.ball.x < frames[claimIdx].ball.x - 1.5;
+    let minSpeed = Infinity;
+    for (let i = claimIdx; i < claimIdx + 10; i++) {
+      const r = frames[i].bodies.find((b) => b.id === 'receiver')!;
+      minSpeed = Math.min(minSpeed, Math.hypot(r.vx, r.vy));
+    }
+    if (later.ball.carrierId === 'receiver' && ballProgressed && minSpeed > 2.0) inStride++;
+  }
+  assert.ok(taken >= 8, `enough successful takes to judge (${taken}/16)`);
+  assert.ok(inStride >= taken * 0.7, `takes are in stride (${inStride}/${taken})`);
+});
+
 test('the receive-geometry matrix makes reliable contact: onto, across, angled all claim (relative sweep)', () => {
   // the regression for frame-relative swept claims: two fast movers crossing
   // must interact — the judged "does not reliably pick up the ball"
