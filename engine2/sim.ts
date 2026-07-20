@@ -128,17 +128,14 @@ export class Sim {
       let standing = false;
       let early = false;
       if (body.command.type === 'chaseBall' || fetching) {
-        const icept = this.interceptPoint(body);
+        const icept = this.interceptPoint(body, body.command.type === 'chaseBall');
         live = icept.p;
         // an EARLY interceptor brakes into the meeting point and WAITS —
         // blowing through the line at full run put the ball behind him
         // (the judged across/angled overshoot)
         if (body.command.type === 'chaseBall') {
+          early = icept.early;
           const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
-          const regime = body.command.regime;
-          const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
-          const tBody = 0.3 + d / vcap;
-          early = tBody + 0.4 < icept.tStar;
           if (early && d <= 0.5) standing = true;
         }
         // CONTAIN at contact: a hunter already within lunging reach of a
@@ -574,15 +571,28 @@ export class Sim {
   /** earliest point on the ball's predicted path this body can reach — the
    * anticipation runners actually use. Coarse deterministic search: clone-
    * step the real ball physics ahead and take the first reachable horizon. */
-  private interceptPoint(body: BodyState): { p: Vec2; tStar: number } {
+  /** the earliest point on the ball's predicted path this body can meet.
+   * withMargin: prefer a point he reaches COMFORTABLY early (≥0.55 s) — a
+   * receiver sets up on the line and takes the arriving ball; the marginal
+   * meet (tStar ≈ his arrival) makes him carry his momentum THROUGH the
+   * line and stern-chase the ball he just missed. Fetching your own touch
+   * never margins (a dribbler does not stop ahead of his ball and wait). */
+  private interceptPoint(body: BodyState, withMargin: boolean): { p: Vec2; tStar: number; early: boolean } {
     const regime = body.command.type === 'chaseBall' ? body.command.regime : 'run';
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
+    if (withMargin) {
+      for (let t = 0.2; t <= 6.0; t += 0.2) {
+        const p = predictBall(this.ball, t);
+        const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
+        if (reach + 0.55 <= t) return { p, tStar: t, early: true };
+      }
+    }
     for (let t = 0.2; t <= 6.0; t += 0.2) {
       const p = predictBall(this.ball, t);
       const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
-      if (reach <= t) return { p, tStar: t };
+      if (reach <= t) return { p, tStar: t, early: false };
     }
-    return { p: predictBall(this.ball, 6), tStar: 6 };
+    return { p: predictBall(this.ball, 6), tStar: 6, early: false };
   }
 
   private assign(body: BodyState, command: MovementCommand): void {

@@ -52,7 +52,7 @@ export const TECH = {
 
   // ── tackles: physical contests for a GLUED ball ──────────────────────────
   /** the tackler must reach the ball (not just the man) */
-  tackleReachM: 1.3,
+  tackleReachM: 1.45, // a lunge is a full leg extension — the press point sits carrier-relative, the ball can rest a step beyond
   /** attempts per contest are paced — a lunge, recover, go again */
   tackleCooldownTicks: 12,
   /** logistic scale on the (tackler − carrier) composite edge */

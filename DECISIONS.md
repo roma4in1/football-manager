@@ -3,6 +3,35 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-12 — L3 judgment round 5: margin intercepts + the tackle/foul taxonomy decided
+
+- **The across overshoot, root-caused at last**: the intercept solver picks
+  the earliest MARGINALLY-reachable point — tStar ≈ the chaser's own
+  arrival by construction, so the "early" brake never fired and a matched
+  crosser carried his momentum through the line (then stern-chased the
+  ball he missed, target flipping 15 m downfield). chaseBall now MARGIN-
+  SEEKS: prefer the first path point reachable ≥0.55 s early — set up on
+  the line, brake, stand, take. Fetching your own touch never margins (a
+  dribbler doesn't stop ahead of his ball and wait). Fast feeds now get
+  taken further along the line — the honest adjustment, not a miss.
+- **Poke reach 1.45 m**: the contain press point is carrier-relative
+  (1.05 m) while the ball can rest a step beyond the carrier — 1.3 m
+  lunges stood 7 cm short forever. A lunge is a full leg extension.
+- **TACKLE/FOUL TAXONOMY (design locked, layer-homed)**:
+  (1) standing/poke tackle — BUILT (cooldown lunges at a glued ball,
+      tackling+strength vs dribbling+balance, carrier-speed-scaled);
+  (2) interception — BUILT (swept claims, pinch races, the passive reach);
+  (3) SLIDING tackle — L3-extension PR: high commitment (reach ~2.2 m,
+      stronger clean-contact win), slider DOWN ~1.2 s win or lose,
+      mistimed/through-the-man slides emit FOUL-CANDIDATE events;
+  (4) shoulder-to-shoulder barge (legal body contest nudging the carrier
+      off his line) — L5e duels, on top of the existing collision physics;
+  (5) holding/shirt-pulls/drag-backs — deliberate FOULS; the action only
+      lands WITH L9 adjudication (without a cost model, always-hold
+      dominates). Foul-candidate EMISSION can start at L3 (contact
+      geometry on failed tackles); adjudication (advantage, cards) is L9
+      per spec — fouls emerge from contests, never rolled abstractly.
+
 ## 2026-09-12 — L3 judgment round 4: early interceptors plant; the knock-past exists
 
 - **The across/angled overshoot**: chaseBall targets never braked — an
