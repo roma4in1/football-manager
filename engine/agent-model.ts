@@ -19,7 +19,14 @@ export const AGENT_CAL = {
   // ── tick loop ──────────────────────────────────────────────────────────────
   tickSeconds: 0.5, // sim step
   decisionEveryTicks: 2, // carrier re-decides at this cadence
-  frameEverySeconds: 6, // MUST match the aggregate engine's frameDt (replay contract)
+  // Replay sampling. 1s — dense enough that a pass (0.5–1.5s of flight), a
+  // carry step, and a goal→kickoff reset are all VISIBLE as frames instead of
+  // spline fiction between 6s keyframes (phase-2 verdict: the 6s replay read
+  // as elastic mass drift with unclear possession). The viewer is t-based, so
+  // cadence is a free choice per engine: the aggregate engine keeps its own
+  // 6s frameDt and its replays play unchanged. Storage: ~2700 frames/half in
+  // one JSONB blob, pruned after 4 matchweeks — fine at league scale.
+  frameEverySeconds: 1,
 
   // ── pitch control (Spearman-style, coarse grid) ───────────────────────────
   pitchControlCols: 21, // 5 m cells across 105 m
@@ -43,8 +50,41 @@ export const AGENT_CAL = {
   // pickups, press membership), so raw target-chasing reverses direction
   // tick-to-tick — the oscillation the replay made visible. Players hold
   // still inside a small deadzone and carry momentum through target changes.
+  // ── block frame (EA-sim compactness reference, phase 2 iter 2) ───────────
+  // Real teams play as ONE compact mass that travels with the ball: in the
+  // reference footage all 20 outfielders occupy about a third of the pitch,
+  // far areas empty except the GKs. Mechanism: each side's anchor shape is
+  // re-centred toward the ball (gain), compressed front-to-back (depth
+  // scale), clamped so the block never parks inside either box, and tucked
+  // toward the ball's side laterally. gain 0 = the legacy spread-out shape.
+  blockFollowGain: 0.5, // how far the shape's centre travels toward the ball
+  blockDepthScale: 0.75, // front-to-back compression of the anchor spread
+  blockCenterMinM: 24, // centre never closer than this to either goal line
+  blockTrackYGain: 0.25, // lateral tuck toward the ball's flank
+  // Zone discipline — the compact block's necessary other half. Duels fire by
+  // proximity, so compressing 20 players around the ball multiplied contact
+  // rates and open play collapsed (screen: goals 1.3–2.0, shots 7–9). Real
+  // compact blocks shepherd: only ENGAGED players (the positioning model's
+  // direct set — pressers, loose/drop chasers, keepers) attack the ball at
+  // full aggression; zone-holders react only to balls practically at their
+  // feet and rarely dive into tackles.
+  zoneReachShare: 0.45, // unengaged defenders' interception reach multiplier
+  zoneEngageShare: 0.4, // unengaged nearest-man challenge-attempt multiplier
   moveDeadzoneM: 0.7, // already this close to the target → stand, don't micro-hunt
   accelSmoothing: 0.65, // per-tick blend of velocity toward the desired vector (1 = legacy instant turn)
+  // Shape targets (anchor/marking/compactness blends) get an EMA with this
+  // time constant before the kinematics see them: a possession flip re-bases
+  // every non-engaged player's target at once (line-height toggle + phase
+  // anchor swap), and without smoothing the whole block lurches end-to-end —
+  // the "spring" the phase-2 replay verdict named. Direct chases (carrier,
+  // presser, loose/drop chaser, receiver, GK) are EXEMPT: reactions stay
+  // sharp, only the off-ball shape breathes.
+  shapeTargetTauS: 2.0, // out of possession — the defensive block is the visible sloshing mass
+  // In possession the smoothing must be light: at 2s everywhere the n=40
+  // screen showed attackers easing into the box instead of attacking it —
+  // aerial duels fell out of band (26.5–28.1 vs 30–50) and goals sagged ~0.2.
+  // Off-ball runs are the attacking mechanism; they get a fast constant.
+  shapeTargetTauAttackS: 0.8,
   fatigueSpeedPenalty: 0.45, // ×(1 − penalty·fatigue)
   lineHeightShiftM: 12, // defensive base x shift across lineHeight 0→1
   widthSpreadBase: 0.7, // y spread = base + gain×width
@@ -358,6 +398,9 @@ export interface AgentState {
   injured: boolean;
   startMinutes: number; // carried from resume state
   startFatigue: number;
+  /** EMA'd shape target (transient, per half — NOT in HalfTimeState; a fresh
+   * half re-seeds it from the player's position, deterministically) */
+  shapeTarget?: Vec2;
 }
 
 /** Read-only view handed to the sub-models each tick. */

@@ -162,6 +162,10 @@ export class AgentEngine implements SimEngine {
     const possessionTicks: Record<Side, number> = { home: 0, away: 0 };
 
     const workOf = new Map<string, number>(); // per-tick share of max sprint, feeds fatigue
+    // players the positioning model marked as DIRECT chasers this tick
+    // (pressers, loose/drop chasers, keepers, the carrier) — zone discipline
+    // reads this: only engaged players attack the ball at full aggression
+    const engaged = new Set<string>();
     let lastCarrierId: string | null = ball.carrierId; // challenge receive-grace tracking
     let carrierSinceTick = 0;
 
@@ -591,7 +595,7 @@ export class AgentEngine implements SimEngine {
           const at = lerpPoint(f.from, f.to, (f.travelledM + (step * k) / subs) / total);
           for (const s of active(states)) {
             if (s.side === f.kickerSide || f.attempted.has(s.id)) continue;
-            const reach = interceptReach(s);
+            const reach = interceptReach(s) * (engaged.has(s.id) ? 1 : AGENT_CAL.zoneReachShare);
             const d = dist(s.pos, at);
             if (d > reach) continue;
             // in reach = an ATTEMPT, not a take: full odds only on dead-center
@@ -636,12 +640,14 @@ export class AgentEngine implements SimEngine {
       const control = this.positioning.computePitchControl(homeSnaps, awaySnaps, ball);
 
       // ── position: targets per side, then move everyone one step
+      engaged.clear();
       for (const [side, snaps, opps, ctx] of [
         ['home', homeSnaps, awaySnaps, homeCtx],
         ['away', awaySnaps, homeSnaps, awayCtx],
       ] as Array<[Side, AgentSnapshot[], AgentSnapshot[], TeamContext]>) {
-        const targets = this.positioning.targetsFor({
-          phase: tracker.phaseFor(side, ball.pos.x),
+        const sidePhase = tracker.phaseFor(side, ball.pos.x);
+        const { targets, direct } = this.positioning.targetsFor({
+          phase: sidePhase,
           ball,
           possession: tracker.inPossession,
           team: ctx,
@@ -657,7 +663,8 @@ export class AgentEngine implements SimEngine {
           // the body en route), falling back to the endpoint for high balls
           let target = targets.get(s.id) ?? s.pos;
           const fl = ball.inFlight;
-          if (fl?.receiverId === s.id) {
+          const isReceiver = fl?.receiverId === s.id;
+          if (fl && isReceiver) {
             const atkSign = s.side === 'home' ? 1 : -1;
             const intoSpace = (fl.to.x - s.pos.x) * atkSign > 1; // led goalward of him
             if (!intoSpace && (fl.flightEnum === 'ground' || fl.flightEnum === 'driven')) {
@@ -670,10 +677,30 @@ export class AgentEngine implements SimEngine {
               target = fl.to;
             }
           }
+          // off-ball shape breathes: EMA the target so a possession-flip
+          // re-base (every anchor swaps at once) glides instead of lurching
+          // the whole block — the replay "spring". Direct chases stay raw;
+          // an episode of direct play resets the EMA to the player's feet.
+          // ATTACKING-THIRD runs are raw too: box-attacking movement is the
+          // goal mechanism (n=150 showed smoothing it costs ~0.25 goals and
+          // inflates the set-piece share) and reads as purposeful individual
+          // motion, not block slosh — only midfield/defensive shape breathes.
+          const inPoss = tracker.inPossession === side;
+          const rawAttack = inPoss && (sidePhase === 'finalThird' || sidePhase === 'counterAttack');
+          if (direct.has(s.id) || isReceiver || rawAttack) {
+            s.shapeTarget = undefined;
+          } else {
+            const tau = inPoss ? AGENT_CAL.shapeTargetTauAttackS : AGENT_CAL.shapeTargetTauS;
+            const k = 1 - Math.exp(-AGENT_CAL.tickSeconds / tau);
+            const from = s.shapeTarget ?? s.pos;
+            s.shapeTarget = { x: from.x + (target.x - from.x) * k, y: from.y + (target.y - from.y) * k };
+            target = s.shapeTarget;
+          }
           const moved = stepToward(s, target);
           const maxStep = AGENT_CAL.maxSpeedMps * AGENT_CAL.tickSeconds;
           workOf.set(s.id, moved / maxStep);
         }
+        for (const id of direct) engaged.add(id);
       }
 
       // ── ball in flight: travel, interception races, arrival ───────────────
@@ -715,6 +742,7 @@ export class AgentEngine implements SimEngine {
           if (challenger && dist(challenger.pos, holder.pos) <= AGENT_CAL.challengeRadiusM) {
             const trigger = (challenger.side === 'home' ? homeCtx : awayCtx).tactics.team.pressTrigger;
             const attemptP = AGENT_CAL.challengeAttemptBase *
+              (engaged.has(challenger.id) ? 1 : AGENT_CAL.zoneEngageShare) *
               (0.5 + challenger.instructions.pressingIntensity) * (0.5 + trigger);
             if (rng.chance(attemptP, tick, challenger.id, 'challenge')) {
               const duelSkill = (challenger.attributes.tackling + challenger.attributes.anticipation) / 2;

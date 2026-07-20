@@ -124,6 +124,9 @@ export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds
   const [gh, ga] = scoreAt(events, t, (id) => homeSet.has(id));
   const half = t < 2700 ? 1 : 2;
   const stats = statsByHalf[half];
+  // a goal owns the screen for a few seconds — the moment is unmissable and
+  // the kickoff reset that follows reads as "after the goal", not a glitch
+  const goalFlash = markers.find((e) => e.type === 'goal' && t >= e.t && t <= e.t + 6);
 
   return (
     <div className="replay">
@@ -136,6 +139,14 @@ export function ReplayViewer({ halves, events, statsByHalf, names, homePlayerIds
 
       <div className="replay-canvas-wrap">
         <canvas ref={canvasRef} className="replay-canvas" />
+        {goalFlash && (
+          <div className="replay-goal-flash" role="status">
+            <span className="replay-goal-word">GOAL</span>
+            <span className="replay-goal-detail">
+              {goalFlash.playerId ? names[goalFlash.playerId] ?? '' : ''} · {Math.max(1, Math.ceil(goalFlash.t / 60))}&#x2032; · {gh}–{ga}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="replay-scrub">

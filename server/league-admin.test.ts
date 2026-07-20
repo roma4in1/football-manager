@@ -134,7 +134,10 @@ test('the replay is REAL agent motion: dense frames, carrier tags, ball at the c
   }> }>;
   assert.equal(halves.length, 2);
   const frames = halves.flatMap((h) => h.frames);
-  assert.ok(frames.length >= 800, `agent emits one frame per 6s of both halves (got ${frames.length})`);
+  // 1s replay cadence (phase 2): ~2700 frames per half; the floor leaves room
+  // for stoppage-time variance while still failing loudly if the cadence
+  // silently regresses toward the old 6s sampling (~900 total)
+  assert.ok(frames.length >= 4800, `agent emits one frame per second of both halves (got ${frames.length})`);
 
   // carried-share BAND, re-specified for the ball-flight engine (DECISIONS
   // 2026-09-05). Kicked balls now TRAVEL (~0.5–1.5s per pass) and loose
@@ -172,7 +175,7 @@ test('the replay is REAL agent motion: dense frames, carrier tags, ball at the c
   // real motion, not anchor noise: a player's positions across the half form
   // a path with real displacement (fabricated frames hovered around anchors)
   const someId = Object.keys(frames[0].players)[0];
-  const xs = frames.slice(0, 200).map((f) => f.players[someId]).filter(Boolean);
+  const xs = frames.slice(0, 1200).map((f) => f.players[someId]).filter(Boolean); // 20 min at 1 fps
   const span = Math.max(...xs.map((p) => p.x)) - Math.min(...xs.map((p) => p.x));
   assert.ok(span > 5, `players actually travel (x-span ${span.toFixed(1)}m over 20 min)`);
 });

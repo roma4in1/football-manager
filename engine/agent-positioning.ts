@@ -60,8 +60,10 @@ export interface PositioningContext {
 export interface PositioningModel {
   /** The substrate both teams' decisions read — computed once per tick. */
   computePitchControl(home: AgentSnapshot[], away: AgentSnapshot[], ball: BallState): PitchControlField;
-  /** Target position per player id for this tick. */
-  targetsFor(ctx: PositioningContext): Map<string, Vec2>;
+  /** Target position per player id for this tick. `direct` marks live chases
+   * (carrier steer, loose/drop chaser, GK, pressers) — the engine must NOT
+   * shape-smooth these; smoothing is for off-ball shape only. */
+  targetsFor(ctx: PositioningContext): { targets: Map<string, Vec2>; direct: Set<string> };
 }
 
 // ── pitch-control computation ─────────────────────────────────────────────────
@@ -126,8 +128,9 @@ export class AnchorPositioningModel implements PositioningModel {
     return this.grid;
   }
 
-  targetsFor(ctx: PositioningContext): Map<string, Vec2> {
+  targetsFor(ctx: PositioningContext): { targets: Map<string, Vec2>; direct: Set<string> } {
     const targets = new Map<string, Vec2>();
+    const direct = new Set<string>();
     const side = ctx.team.side;
     const inPossession = ctx.possession === side;
     const attackSign = side === 'home' ? 1 : -1;
@@ -199,19 +202,37 @@ export class AnchorPositioningModel implements PositioningModel {
       ? [...outfield].sort((a, b) => dist(a.pos, ctx.ball.pos) - dist(b.pos, ctx.ball.pos))[0]?.id
       : undefined;
 
+    // block frame (see AGENT_CAL.blockFollowGain): the outfield anchor shape's
+    // centre for this phase, and where the ball drags it — clamped so neither
+    // block ever parks inside a box. Symmetric in absolute coords: both sides
+    // clamp to [min, PITCH − min].
+    let anchorMeanX = 0;
+    for (const p of outfield) anchorMeanX += (ctx.anchors.get(p.id)?.[ctx.phase] ?? p.pos).x;
+    anchorMeanX /= Math.max(1, outfield.length);
+    const blockCenterX = Math.min(
+      PITCH_LENGTH - AGENT_CAL.blockCenterMinM,
+      Math.max(
+        AGENT_CAL.blockCenterMinM,
+        anchorMeanX + (ctx.ball.pos.x - anchorMeanX) * AGENT_CAL.blockFollowGain,
+      ),
+    );
+
     for (const p of ctx.teammates) {
       // the carrier is steered by the decision model, not by shape
       if (p.id === ctx.ball.carrierId) {
         targets.set(p.id, p.pos);
+        direct.add(p.id);
         continue;
       }
       // direct chases override the attractor blend: run AT the point
       if (p.id === looseChaserId) {
         targets.set(p.id, clampToPitch({ ...ctx.ball.pos }));
+        direct.add(p.id);
         continue;
       }
       if (p.id === dropChaserId && dropPoint) {
         targets.set(p.id, clampToPitch({ ...dropPoint }));
+        direct.add(p.id);
         continue;
       }
       if (p.isGk) {
@@ -219,17 +240,27 @@ export class AnchorPositioningModel implements PositioningModel {
           x: side === 'home' ? AGENT_CAL.gkBoxX : PITCH_LENGTH - AGENT_CAL.gkBoxX,
           y: PITCH_WIDTH / 2 + (ctx.ball.pos.y - PITCH_WIDTH / 2) * AGENT_CAL.gkBallTrackY,
         }));
+        direct.add(p.id);
         continue;
       }
+      // pressers keep raw targets too — a press that eases into its chase on
+      // a 2s time constant is not a press
+      if (pressers.has(p.id)) direct.add(p.id);
 
       const anchor = ctx.anchors.get(p.id)?.[ctx.phase] ?? p.pos;
-      // team-instruction shaping of the base point; the score state slides
-      // the whole block up when chasing, back when seeing the game out
+      // BLOCK FRAME: the anchor keeps its place in the team's shape, but the
+      // shape itself is re-centred toward the ball and compressed — both
+      // teams travel as one compact mass (the EA-sim reference look), the
+      // far half empties, and duels happen where the ball is. Then the
+      // team-instruction shaping applies on top; the score state slides the
+      // whole block up when chasing, back when seeing the game out.
+      const blockX = blockCenterX + (anchor.x - anchorMeanX) * AGENT_CAL.blockDepthScale;
       const base: Vec2 = {
-        x: anchor.x + (inPossession ? 0 : (team.lineHeight - 0.5) * AGENT_CAL.lineHeightShiftM * attackSign) +
+        x: blockX + (inPossession ? 0 : (team.lineHeight - 0.5) * AGENT_CAL.lineHeightShiftM * attackSign) +
           ctx.scoreState * AGENT_CAL.statePushShiftM * attackSign,
         y: PITCH_WIDTH / 2 +
-          (anchor.y - PITCH_WIDTH / 2) * (AGENT_CAL.widthSpreadBase + AGENT_CAL.widthSpreadGain * team.width),
+          (anchor.y - PITCH_WIDTH / 2) * (AGENT_CAL.widthSpreadBase + AGENT_CAL.widthSpreadGain * team.width) +
+          (ctx.ball.pos.y - PITCH_WIDTH / 2) * AGENT_CAL.blockTrackYGain,
       };
 
       // weighted attractors (each pulls the target toward a point)
@@ -281,6 +312,6 @@ export class AnchorPositioningModel implements PositioningModel {
 
       targets.set(p.id, clampToPitch(target));
     }
-    return targets;
+    return { targets, direct };
   }
 }

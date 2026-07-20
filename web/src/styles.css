@@ -399,8 +399,22 @@ table.stats, table.standings { width: 100%; border-collapse: collapse; margin: 0
 .replay-team.away { color: var(--warn); }
 .replay-clock { margin-left: auto; font-weight: 700; color: var(--muted); }
 
-.replay-canvas-wrap { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--shadow-sm); }
+.replay-canvas-wrap { position: relative; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--shadow-sm); }
 .replay-canvas { display: block; width: 100%; touch-action: pan-y; }
+.replay-goal-flash {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+  padding: 0.7rem 1.6rem; border-radius: var(--radius); white-space: nowrap;
+  background: rgba(13, 17, 20, 0.88); color: #fff; pointer-events: none;
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,0.4));
+  animation: goal-flash-in 260ms ease-out;
+}
+.replay-goal-word { font-size: 1.9rem; font-weight: 900; letter-spacing: 0.14em; line-height: 1.1; }
+.replay-goal-detail { font-size: var(--fs-sm); font-weight: 600; opacity: 0.9; }
+@keyframes goal-flash-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 
 .replay-scrub { position: relative; margin: 0.7rem 0 0.2rem; }
 .replay-scrub input[type='range'] { width: 100%; accent-color: var(--accent); height: 26px; margin: 0; touch-action: none; }
