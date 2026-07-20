@@ -8,8 +8,17 @@ import curvedRun from './curved-run.ts';
 import arrival from './arrival.ts';
 import chase from './chase.ts';
 import regimes from './regimes.ts';
+import { dribbleScenarios } from './dribble.ts';
+import struckBall from './struck-ball.ts';
+import looseBallRace from './loose-ball-race.ts';
+import carryTurn from './carry-turn.ts';
 
-export const SCENARIOS: readonly ScenarioDef[] = [shuttleRuns, curvedRun, arrival, chase, regimes];
+export const SCENARIOS: readonly ScenarioDef[] = [
+  // L1 — movement (regression set)
+  shuttleRuns, curvedRun, arrival, chase, regimes,
+  // L2 — ball + possession coupling
+  ...dribbleScenarios, struckBall, looseBallRace, carryTurn,
+];
 
 export const scenarioByName = (name: string): ScenarioDef => {
   const s = SCENARIOS.find((x) => x.name === name);

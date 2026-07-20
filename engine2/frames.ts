@@ -12,6 +12,8 @@
 
 import { REGIMES, type EffortRegime, type Frame } from './engine2-types.ts';
 
+const BALL_PHASES = ['carried', 'rolling', 'airborne', 'dead'] as const;
+
 export interface DecimatedStream {
   version: 1;
   hz: number;
@@ -29,6 +31,12 @@ export interface DecimatedStream {
   deltas: number[][][];
   /** ticks of the emitted frames after the keyframe */
   ticks: number[];
+  /** ball keyframe: [x, y, z, phaseIdx, carrierIdx] (cm; carrierIdx into ids,
+   * −1 = loose) */
+  ballKey: number[];
+  /** per emitted frame: [dx, dy, dz, phaseIdx, carrierIdx] — empty row when
+   * nothing moved past quantization */
+  ballDeltas: number[][];
 }
 
 const q = (v: number): number => Math.round(v * 100);
@@ -42,8 +50,17 @@ export function decimate(frames: Frame[], everyN = 2): DecimatedStream {
   const teams = first.bodies.map((b) => b.team);
   const key = first.bodies.map((b) => [q(b.x), q(b.y), qa(b.facing), REGIMES.indexOf(b.regime)]);
 
+  const ballRow = (f: Frame): number[] => [
+    q(f.ball.x), q(f.ball.y), q(f.ball.z),
+    BALL_PHASES.indexOf(f.ball.phase),
+    f.ball.carrierId === null ? -1 : ids.indexOf(f.ball.carrierId),
+  ];
+  const ballKey = ballRow(first);
+
   const prev = key.map((row) => [...row]);
+  let prevBall = [...ballKey];
   const deltas: number[][][] = [];
+  const ballDeltas: number[][] = [];
   const ticks: number[] = [];
   for (let f = 1; f < picked.length; f++) {
     const rows: number[][] = [];
@@ -55,9 +72,16 @@ export function decimate(frames: Frame[], everyN = 2): DecimatedStream {
       prev[i] = cur;
     });
     deltas.push(rows);
+    const cb = ballRow(picked[f]);
+    ballDeltas.push(
+      cb.every((v, j) => v === prevBall[j])
+        ? []
+        : [cb[0] - prevBall[0], cb[1] - prevBall[1], cb[2] - prevBall[2], cb[3], cb[4]],
+    );
+    prevBall = cb;
     ticks.push(picked[f].tick);
   }
-  return { version: 1, hz: Math.round(1 / (everyN * 0.1)), ids, teams, key, keyTick: first.tick, deltas, ticks };
+  return { version: 1, hz: Math.round(1 / (everyN * 0.1)), ids, teams, key, keyTick: first.tick, deltas, ticks, ballKey, ballDeltas };
 }
 
 /** Decode back to (quantized) frames — the round-trip proof + the workbench's
@@ -65,6 +89,7 @@ export function decimate(frames: Frame[], everyN = 2): DecimatedStream {
  * velocities are presentation-derived from successive positions. */
 export function decode(stream: DecimatedStream): Frame[] {
   const cur = stream.key.map((row) => [...row]);
+  const curBall = [...stream.ballKey];
   const mk = (tick: number, moved: (i: number) => boolean): Frame => ({
     tick,
     t: tick / 10,
@@ -79,6 +104,13 @@ export function decode(stream: DecimatedStream): Frame[] {
       regime: REGIMES[cur[i][3]] as EffortRegime,
       stance: moved(i) ? 'moving' as const : 'settled' as const,
     })),
+    ball: {
+      x: curBall[0] / 100,
+      y: curBall[1] / 100,
+      z: curBall[2] / 100,
+      phase: BALL_PHASES[curBall[3]],
+      carrierId: curBall[4] < 0 ? null : stream.ids[curBall[4]],
+    },
   });
   const frames: Frame[] = [mk(stream.keyTick, () => false)];
   stream.deltas.forEach((rows, f) => {
@@ -89,6 +121,14 @@ export function decode(stream: DecimatedStream): Frame[] {
       cur[i][2] += df;
       cur[i][3] = r;
       if (Math.abs(dx) + Math.abs(dy) > 3) movedSet.add(i);
+    }
+    const bd = stream.ballDeltas[f];
+    if (bd.length > 0) {
+      curBall[0] += bd[0];
+      curBall[1] += bd[1];
+      curBall[2] += bd[2];
+      curBall[3] = bd[3];
+      curBall[4] = bd[4];
     }
     frames.push(mk(stream.ticks[f], (i) => movedSet.has(i)));
   });

@@ -3,6 +3,44 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-08 — Engine V2 session 2: L2 ball physics + possession coupling (@fm/engine2)
+
+One layer, one PR (feat/engine2-l2). The ball is ALWAYS a physical object;
+"carried" is a coupling loop, not an attachment.
+
+- **Free ball**: 3D state (x, y, height), phases carried/rolling/airborne/
+  dead (dead reserved for L8). Rolling friction 1.7 m/s² (a 14 m/s drive
+  rolls out ~58 m), gravity flight (no drag — deferred with spin), bounce
+  restitution 0.55 with 0.75 ground friction per contact, bounce → roll
+  handover below 1.2 m/s vertical. Asserted against projectile math (range
+  = v²·sin2θ/g ± discretization) and monotone roll-out.
+- **The dribble is touches + chasing**: in reach, a moving carrier pushes
+  the ball ahead at carrier speed × (1.06 + 0.10·speed-share + 0.25·(1 −
+  dribbling/20)); between touches the ball is just a rolling ball. Two
+  mechanisms make it read as football: DRIBBLE-TO-ARRIVE (a touch is never
+  weighted past the carrier's own destination — without it the pre-braking
+  touch rolled 8–33 m past his stop and sprint carries always ended in
+  giveaways) and the GATHER (a chaseBall carrier traps the ball dead
+  instead of touching on — without it collection was a donkey-and-carrot
+  that dribbled the probe carrier to x=185, clean off the pitch).
+  Possession breaks by physics past a 4 m gap.
+- **KICKER REFRACTORY (0.8 s)**: a kicker cannot claim his own strike —
+  without it any kick under ~9 m/s was instantly re-claimed by its own
+  kicker standing at the strike point and silently undone.
+- **Loose balls are arrival races**: claims = nearest body within 0.9 m of
+  a below-knee ball, deterministic tie-break; the chaseBall command races
+  a live ball and completes when anyone claims. Asserted: the short feed
+  goes to near-but-slow, the long feed to far-but-fast — outcomes from
+  physics, nothing scripted.
+- **Scenarios** (+7: dribble-close/heavy × jog/sprint, struck-ball,
+  loose-ball-race, carry-turn): 27/27 assertions, L1 five still green,
+  byte-identical determinism ×2 across all twelve. Workbench renders the
+  ball with a height cue (lifted dot + ground shadow) and a carrier ring;
+  the stored stream carries a delta-compressed ball track.
+- **Profile**: 4.8 µs/tick, 0.26 s per full match (~700× headroom); stream
+  2.45 MB gzipped. `dribbling` is the first L2 attribute consumer
+  (ATTRIBUTES.md updated); firstTouch/receive quality is L3's.
+
 ## 2026-09-08 — Bar 1 CLAIMED (spec §9): L1 accepted in full after the turn refinement
 
 - Human re-judged the workbench scenarios post-refinement: curved-run reads
@@ -116,6 +154,7 @@ watching them.
   duels multiply contact rates under compactness — behavioral compactness
   needs zone-disciplined engagement, which is exactly V2 L5 territory on
   continuous time, not a v1 keyframe retrofit.
+
 ## 2026-09-05 — ball-flight/arrival model: the goals floor is broken (engine arc phase 1)
 
 The #42-named structure was rebuilt: the kicked ball is a first-class moving
