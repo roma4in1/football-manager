@@ -116,6 +116,90 @@ watching them.
   duels multiply contact rates under compactness — behavioral compactness
   needs zone-disciplined engagement, which is exactly V2 L5 territory on
   continuous time, not a v1 keyframe retrofit.
+## 2026-09-05 — ball-flight/arrival model: the goals floor is broken (engine arc phase 1)
+
+The #42-named structure was rebuilt: the kicked ball is a first-class moving
+object. Goals 6.2 → **2.93–2.99** (n=600 ×3; the 5.15 floor across 40 prior
+candidates is gone), shots 12.5 ✓, xg/shot 0.104 ✓, completion 83.9 ✓,
+aerials 31.3 ✓, reds/injuries/offsides/fouls ✓. Behind SIM_ENGINE=agent;
+aggregate untouched (82/0 re-verified twice).
+
+- **The mechanism**: passes travel at family speed (ground 14 / lofted 16
+  chord, #33's straight flight kept) while the world ticks. Receivers MEET a
+  ball to feet (reception at the body en route) and RUN ONTO a ball led into
+  space. Ground interception is a spatial ATTEMPT where bodies meet the ball
+  (anticipation-widened reach, full odds only dead-center, one try per
+  defender per flight); lofted balls contest at the drop; a cross into the box
+  is ALWAYS attacked by the nearest defender (the beat-the-ball gate is for
+  open field). Execution owns only the strike (clean/shank); the old
+  pre-resolved pSafe race is deleted. Out-of-bounds exists (unclamped pass
+  endpoints, boundary clip, throw-in restart); BLOCKED RELEASES exist
+  (pressure-rated, anticipation-read); completion for balls that die in space
+  is judged at first control. carryStepM 8→4.5 landed IN-ROUND (the #42
+  interaction). Provenance A/B: unpaid flight time 9.0s→0.0s per pre-shot
+  chain, receiver warp 4.3m→0.3m per completion, attack speed at physics
+  parity (was +33% free).
+- **Two latent artifacts the teleport had hidden, fixed**: loose balls were
+  unclaimable forever (attractor blending converges BETWEEN anchor and ball —
+  the nearest man now chases loose balls/drops TO CONTACT); and frame
+  sampling was decision-tick-aligned (every 6s sample caught the just-kicked
+  carrier-null instant — frames now sample odd ticks).
+- **The joint re-fit** (search, not hand-poking): 40+ candidates over the new
+  physics surface (tiered: 24×n40 → 6×n100+sweep screens → 10 refinements →
+  full n=150×3 on three profiles). The churn axis MEASURED: high churn (c14)
+  passes 5/5 sweeps + bands but compresses quality into coin flips (real-pool
+  top-8 win share 0.475, elite STs tied); low churn (c16) holds realism 7/7
+  STRONG (r=0.853–0.864, STs 0.86–0.97 vs 0.60–0.71). Realism is not
+  tradeable → shipped c16-based + cross-contest + rate trims
+  (homePressureRelief 0.45→0.348 — the one home mechanism over-compounded
+  once pressure gained teeth; header conversion 0.62→0.41; injury base
+  2.4e-6; redPerFoul 0.0068). REFUTED en route: steeper duel slopes as a
+  quality decompressor (elite box duels favor elite CBs — STs inverted
+  0.51 vs 0.89); flat micro-blends (c14b re-rolled two sweeps for nothing).
+- **Sweeps at gate scale**: press→ppda, press→fatigue, risk→passAcc (FIRST
+  EVER pass — real flights make risky lead passes genuinely fail),
+  risk→xg/shot, lineHeight→offsides all PASS; longPassing plumbing ×2 PASS.
+  **crossBias→aerials +1.0–1.9 vs the +2 gate** — always directionally
+  positive, level in band via the cross-contest mechanism, slider margin
+  short. Documented open, not forced.
+- **Tensions reported per the stop-rule (with evidence, not forced):**
+  (1) **possession σ 12.4–12.9 vs 6–9 — immune to the entire searched space**
+  (40+ candidates incl. extreme probes on every physics dim; range observed
+  11.5–13.1). Quality now compounds through the physical race; the σ lever is
+  outside these rates. (2) **draws-vs-ordering**: the flight physics nearly
+  banded draw_share (0.183–0.23 vs the old 0.19–0.22 fail) and that
+  arithmetically compresses top-8 win share to ≈0.55 — the realism gate's
+  >0.55 now COIN-FLIPS per keyed re-roll (measured 0.475–0.625 across ~10
+  re-rolls; final state: real-plain 7/7 ✓ authoritative, fixture-sharp 7/7 ✓,
+  fixture-plain/real-sharp 6/7 on that one check). RESOLVED (user-accepted):
+  the tripwire gate re-aligned 0.55 → 0.52 (realism-harness.ts, rationale in
+  the gate comment). Worded for the future reader: the gate moved because
+  draw_share IMPROVED into band and arithmetically compresses win share —
+  ordering itself held or strengthened (r=0.86, goal ratio 1.7:0.9, ST/GK
+  checks). It is not a lowered bar; at 0.52 the check still fails any engine
+  whose top-8 stop beating the bottom-8. Same class as the 0.60 → 0.55
+  re-alignment when PR #10's tempering accepted draws over dominance.
+  (3) scoreline cluster residuals: goals 2.93–2.99 (0.03–0.09 over), away
+  0.312–0.345, sp-share 0.348–0.359, ppda 13.3–13.65, 2nd-half 0.46–0.50
+  (pre-existing structural: needs fresh-legs subs / late-desperation).
+- **Stats now emitted per player** (the season-stats layer's feed): assists
+  (goal-event assistId + tallies; set-piece deliveries count), key passes,
+  GK saves ('save' events + HalfStats.playerStats — optional field, aggregate
+  never sets it). SEASON-2-PARKING's assist item unblocks.
+- **e2e carried-share check RE-SPECIFIED** (league-admin.test.ts): the old
+  `> 0.5` carried-frame gate was written against the teleport era (~0.95
+  carried); real flights + chased loose seconds honestly sit at 0.48–0.52,
+  which straddled the gate per roll. The knockdown-to-teammate idea is NOT a
+  gate-mover (arithmetic: ~31 duels × ~2s ≈ 1% of frames — it stays Phase-2
+  motion-feel work, without the gate claim). The check is now a TWO-SIDED
+  band (0.4, 0.9) — ~0 still catches the fabricated-replay regression it was
+  built for, ~0.9+ now catches a silent flight-model regression — PLUS a new
+  positive assertion the teleport engine could never pass: sampled frames
+  must catch balls in lofted flight. Net: the guard got stronger, at the
+  physics' honest level. Ball-at-feet-when-carried ≥95% unchanged.
+- **AGENT_CAL_OVERRIDES** env hook (calibration-only, loud warning,
+  unknown-knob throw) is the search's injection point; never set in
+  production (go-live checklist rule).
 
 ## 2026-09-04 — accounts arc phase 1: email + password auth replaces magic links
 

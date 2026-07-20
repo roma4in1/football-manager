@@ -117,7 +117,11 @@ export const AGENT_CAL = {
   ambitiousOptionCount: 2, // most-advanced onside mates beyond the nearest set
   shotRangeM: 26,
   crossWideYOffsetM: 13, // |y − 34| beyond this in the final third → crossing zone
-  carryStepM: 8,
+  // the #42 carry-physics fix, applied IN-ROUND with the ball-flight model
+  // (fixing either alone reshuffles the excess into the other): 8m per 1s
+  // decision was 8 m/s WITH the ball — above the 7.5 m/s sprint cap, carriers
+  // unchaseable by construction. 4.5 m/s is a fast dribble.
+  carryStepM: 4.5,
   clearOwnRelXM: 30, // inside own-relative x AND pressured → clear is an option
   clearPressureFloor: 0.45,
   // ── the possession-value surface (EV currency: expected goals) ────────────
@@ -180,7 +184,7 @@ export const AGENT_CAL = {
   // the challenger's pressingIntensity and the team's pressTrigger. This is
   // how press↑ produces turnovers/ppda↓/fouls, through play, not a knob.
   challengeRadiusM: 2.901, // a defender this close may engage the carrier
-  challengeAttemptBase: 0.150, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
+  challengeAttemptBase: 0.079, // per tick in radius, ×(0.5+intensity)×(0.5+trigger)
   challengeDuelLogit: 0.9, // ×(tackler duel skill − carrier retention skill), sigmoid
   challengeFoulShare: 0.282, // failed challenges that clip the man — feeds the card ladder
   challengeGraceTicks: 2, // a fresh receiver can't be stripped for this many ticks (1s)
@@ -191,9 +195,44 @@ export const AGENT_CAL = {
   // forces an error sometimes — defender bite (tackling/aggression) vs
   // carrier control (firstTouch/composure), scaled by pressing intensity.
   receptionPressRadiusM: 4.340, // presser this close at the moment of reception
-  receptionErrorBase: 0.332, // ×(0.5+intensity)×(0.5+trigger) attempt rate
+  receptionErrorBase: 0.218, // ×(0.5+intensity)×(0.5+trigger) attempt rate
   receptionDuelLogit: 1.0, // duel slope, same shape as challenges
   receptionFoulShare: 0.18, // won duels that came through the man — card ladder
+
+  // ── ball flight (Phase 1: real travel, receiver runs, spatial races) ──────
+  // A kicked ball is a first-class in-flight object: it moves along its
+  // (noised) path at the family speed while the world keeps ticking —
+  // receivers RUN to arrival points, defenders converge, and interception is
+  // WHERE BODIES MEET THE BALL, not an abstract completion roll. This is the
+  // mechanism the goals floor demanded (DECISIONS 2026-09-03: instant arrival
+  // teleported receivers 10–25m per completion with zero elapsed time).
+  ballInterceptRadiusM: 1.1, // a GROUND ball passing this close to an opponent is playable
+  ballInterceptAnticipationGain: 0.4, // reach ×(1 − g/2 + g·anticipation/20): reading the game widens reach
+  // playable ≠ taken: a driven ball flashing past a boot is an ATTEMPT —
+  // full probability only on dead-center contact, one try per defender per
+  // flight (a beaten defender doesn't get a second bite at the same ball)
+  ballInterceptTakeBase: 0.384,
+  // take ×(1 − g/2 + g·anticipation/20): reading the game converts reach into
+  // takes — the attribute-expression half of interception (reach is the other).
+  // 0 = flat takes (no-op multiplier).
+  ballInterceptTakeSkillGain: 0,
+  ballReceiveRadiusM: 1.6, // arrival: a body this close to the drop can take the ball
+  // drop-chase gate slack: how late a defender may arrive and still contest.
+  // A driven ball is gone when it's gone; a HANGING ball is contestable at
+  // the bounce — high balls invite bodies (this is where aerial duels live)
+  dropChaseSlackGroundS: 0.4,
+  dropChaseSlackLoftedS: 1.6,
+  interceptControlBase: 0.454, // P(clean control | intercepted) = base + gain·firstTouch/20
+  interceptControlGain: 0.4,
+  ballDeflectScatterM: 3.0, // failed control: the ball squirts loose this far (gauss)
+  shankDirNoiseMul: 2.5, // a technically-missed pass is a REAL bad ball: extra scatter
+  shankVelNoiseMul: 2.0,
+  // BLOCKED RELEASE: a pass struck under a presser's nose can hit his legs —
+  // the loose-ball moment every crowded midfield produces. Rate rides felt
+  // pressure; the blocker's anticipation reads the release.
+  ballBlockBase: 0.17, // ×pressure ×(0.5 + anticipation/20), at kick, pressure > floor
+  ballBlockPressureFloor: 0.357,
+  ballBlockScatterM: 2.5,
 
   // ── execution ──────────────────────────────────────────────────────────────
   passDirectionNoiseRad: 0.12, // ×(20 − passing)/20 at use sites
@@ -210,12 +249,12 @@ export const AGENT_CAL = {
   gkAerialHandsBonus: 2, // keepers can catch — a reach edge in claim contests
   aerialArrivalPerSecond: 3, // duel-score points per second of arrival advantage
   aerialNoiseSigma: 2,
-  // success resolution (execution owns the truth; decision only estimates)
+  // success resolution (execution owns the strike; the FLIGHT owns the outcome)
   groundPassSpeedMps: 14,
   loftedPassSpeedMps: 16, // chord speed of the arc — hang time favors defenders
-  raceSteepness: 2.5, // logit per second of ball-vs-defender arrival margin
-  interceptOffsetS: 0.35, // defender must beat the ball by this for even odds
-  anticipationRaceS: 0.06, // seconds shaved off arrival per anticipation point over 10
+  // (raceSteepness/interceptOffsetS/anticipationRaceS: DELETED — the
+  //  pre-resolved probabilistic interception race is replaced by the real
+  //  in-flight spatial race; anticipation now widens interception REACH)
   execComposureRelief: 0.025, // pressure attenuation ×composure (execution side)
   passExecBaseLogit: 1.9, // technical completion given no interception
   passExecSkillLogit: 1.8, // ×(attr/20 − 0.5)·2
@@ -244,10 +283,10 @@ export const AGENT_CAL = {
   aggressionFoulGain: 0.4, // ×(1 + gain·(aggression/20 − 0.5))
   aerialFoulRate: 0.02, // duel loser brings the man down
   yellowPerFoul: 0.17,
-  redPerFoul: 0.006, // straight red; second yellow also sends off
+  redPerFoul: 0.0068, // straight red; second yellow also sends off
   bookedCautionFactor: 0.1, // players on a yellow tackle carefully
   boxFoulFactor: 0.18, // nobody dives in inside their own box
-  injuryPerTickBase: 0.0000019, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
+  injuryPerTickBase: 0.0000024, // ≈ 3.2%/player/match at 10800 ticks incl fatigue gain
   injuryFatigueGain: 1.0, // hazard ×(1 + gain·fatigue)
   offsideToleranceM: 0.5, // linesman: receiver this far beyond the second-last defender → flagged
   // Passers now judge STRICTLY (accept only receivers at/behind the line):
@@ -266,10 +305,10 @@ export const AGENT_CAL = {
   offsideTimingSkill: 0.5, // ×(1 − skill·(offTheBall/20 − 0.5)·2): OTB 20 halves it, OTB 0 ×1.5
   lineHoldBufferM: 2.0, // attackers hold this far INSIDE the line (onside-safe hover)
   penaltyGoalProb: 0.76,
-  cornerProb: 0.1, // P(corner | shot saved or off target)
-  setPieceHeaderXgFactor: 0.62, // headers convert worse than feet from the same spot
+  cornerProb: 0.638, // P(corner | saved/off target) — deflection/parry supply at ~11-shot volume
+  setPieceHeaderXgFactor: 0.41, // headers convert worse than feet from the same spot
   setPieceDeliveryNoiseM: 3.5, // ×(20 − setPieceDelivery)/20
-  homePressureRelief: 0.45, // crowd effect: home carrier feels less pressure
+  homePressureRelief: 0.348, // re-fit for the flight-physics pressure economy (was 0.45: pressure gained teeth — blocks/challenges/receptions — and the one home mechanism over-compounded to 0.51-0.56 home share) // crowd effect: home carrier feels less pressure
 
   // ── bookkeeping ────────────────────────────────────────────────────────────
   fatiguePerTick: 0.00007, // ~0.24/half at tick 0.5 s before stamina scaling
@@ -280,6 +319,21 @@ export const AGENT_CAL = {
   ratingAerialBonus: 0.05,
   ratingCardPenalty: 0.4,
 } as const;
+
+// ── CALIBRATION-ONLY override hook ───────────────────────────────────────────
+// AGENT_CAL_OVERRIDES='{"knob":value,...}' patches AGENT_CAL at module load —
+// the joint-search evaluator's injection point (parallel candidates without
+// per-candidate source patches). Same discipline as the league test overrides:
+// one env var, loud at load, visible in `fly config show`, and the go-live
+// checklist rule applies — it must NEVER be set on a production machine.
+if (process.env.AGENT_CAL_OVERRIDES) {
+  const overrides = JSON.parse(process.env.AGENT_CAL_OVERRIDES) as Record<string, number>;
+  for (const k of Object.keys(overrides)) {
+    if (!(k in AGENT_CAL)) throw new Error(`AGENT_CAL_OVERRIDES: unknown knob ${k}`);
+  }
+  Object.assign(AGENT_CAL, overrides);
+  console.warn(`⚠️ AGENT_CAL overridden (calibration run): ${process.env.AGENT_CAL_OVERRIDES}`);
+}
 
 // ── world state ───────────────────────────────────────────────────────────────
 
@@ -319,6 +373,32 @@ export interface AgentSnapshot {
   readonly sharpness: number;
 }
 
+/** A kicked ball travelling through the world (Phase 1 ball-flight model). */
+export interface BallFlightPath {
+  from: Vec2;
+  to: Vec2;
+  speedMps: number;
+  /** meters already travelled along from→to */
+  travelledM: number;
+  kickerId: string;
+  kickerSide: Side;
+  /** intended receiver (runs onto the ball); null for clears */
+  receiverId: string | null;
+  actionType: 'pass' | 'longPass' | 'cross' | 'clear';
+  /** the kicked trajectory; lofted/high are unplayable mid-flight and are
+   *  contested at the drop point instead */
+  flightEnum: BallFlight;
+  /** kick timestamp + a per-half sequence for keyed draws + event emission */
+  kickT: number;
+  flightId: number;
+  /** technically clean strike (a shank still flies, just somewhere worse) */
+  cleanStrike: boolean;
+  /** the raw trajectory left the pitch: dead at `to`, restart to the other side */
+  outOfBounds: boolean;
+  /** defenders who already tried (and failed) to take this flight */
+  attempted: Set<string>;
+}
+
 export interface BallState {
   pos: Vec2;
   flight: BallFlight;
@@ -326,6 +406,8 @@ export interface BallState {
   carrierId: string | null;
   /** side last in control — drives phase inference while the ball travels */
   lastTouchSide: Side;
+  /** non-null while a kicked ball is travelling (carrierId is null then) */
+  inFlight: BallFlightPath | null;
 }
 
 /** One team's static context for the half. */

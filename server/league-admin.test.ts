@@ -130,16 +130,31 @@ test('the replay is REAL agent motion: dense frames, carrier tags, ball at the c
   });
   assert.equal(replay.statusCode, 200);
   const halves = replay.json().halves as Array<{ half: number; frames: Array<{
-    t: number; ball: { x: number; y: number }; carrier?: string | null; players: Record<string, { x: number; y: number }>;
+    t: number; ball: { x: number; y: number; flight?: string }; carrier?: string | null; players: Record<string, { x: number; y: number }>;
   }> }>;
   assert.equal(halves.length, 2);
   const frames = halves.flatMap((h) => h.frames);
   assert.ok(frames.length >= 800, `agent emits one frame per 6s of both halves (got ${frames.length})`);
 
-  // every frame carries the possession tag, and a carried ball is AT the
-  // carrier (the engine pins it every tick — this is simulated, not drawn)
+  // carried-share BAND, re-specified for the ball-flight engine (DECISIONS
+  // 2026-09-05). Kicked balls now TRAVEL (~0.5–1.5s per pass) and loose
+  // seconds are chased to contact, so the honest carried share sits ~0.5
+  // (measured 0.48–0.52) — not the teleport era's ~0.95 that the old > 0.5
+  // gate was written against. The band is TWO-SIDED on purpose: ~0 = the
+  // fabricated-replay regression this test exists to catch (no carrier tags
+  // at all); ~1 = a silent flight-model regression (ball glued to players,
+  // no travel). The lofted-flight assertion below is the positive proof the
+  // flight model is live — a check the teleport engine could never pass.
   const carried = frames.filter((f) => f.carrier);
-  assert.ok(carried.length / frames.length > 0.5, 'the ball is with somebody most of the match');
+  const carriedShare = carried.length / frames.length;
+  assert.ok(
+    carriedShare > 0.4 && carriedShare < 0.9,
+    `carried share ${carriedShare.toFixed(2)} outside the flight-engine band (0.4, 0.9)`,
+  );
+  assert.ok(
+    frames.some((f) => f.ball.flight === 'lofted' || f.ball.flight === 'high'),
+    'sampled frames catch balls in lofted FLIGHT — the ball-flight model is live in the stored replay',
+  );
   // ≥95%: a frame can land exactly on a goal/kickoff RESET tick, where the
   // ball sits at the centre spot while the next kicker is already tagged —
   // the every-tick pin re-attaches it one tick later
