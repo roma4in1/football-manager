@@ -23,6 +23,9 @@ export const TECH = {
   /** an opponent within pressure range raises the difficulty */
   touchPressureRangeM: 2.5,
   touchPopPressure: 0.22,
+  /** controlling at speed is harder than standing — per m/s of the
+   * RECEIVER'S own speed (walking ~+0.03, running ~+0.13, sprint ~+0.19) */
+  touchPopPerReceiverMps: 0.025,
   /** skill relief: firstTouch 20 removes this much of the difficulty */
   touchSkillRelief: 0.75,
   /** a popped ball squirts this far, scattered around the arrival direction */
@@ -74,14 +77,16 @@ const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
  * a poor touch under pressure pops loose; a great one kills a driven ball. */
 export function touchPopProbability(
   receiver: BodyAttributes,
-  ballSpeed: number,
+  closingSpeed: number,
   ballZ: number,
   pressured: boolean,
+  receiverSpeed = 0,
 ): number {
   const difficulty =
     TECH.touchPopBase +
-    TECH.touchPopPerMps * Math.max(0, ballSpeed - TECH.touchEasySpeedMps) +
+    TECH.touchPopPerMps * Math.max(0, closingSpeed - TECH.touchEasySpeedMps) +
     TECH.touchPopPerMeterZ * ballZ +
+    TECH.touchPopPerReceiverMps * receiverSpeed +
     (pressured ? TECH.touchPopPressure : 0);
   const relief = 1 - TECH.touchSkillRelief * (receiver.firstTouch / 20);
   return clamp01(difficulty * relief);
@@ -95,11 +100,12 @@ export function resolveFirstTouch(
   bodyId: string,
   receiver: BodyAttributes,
   arrivalDir: number,
-  ballSpeed: number,
+  closingSpeed: number,
   ballZ: number,
   pressured: boolean,
+  receiverSpeed = 0,
 ): { pop: boolean; vel: Vec2 } {
-  const p = touchPopProbability(receiver, ballSpeed, ballZ, pressured);
+  const p = touchPopProbability(receiver, closingSpeed, ballZ, pressured, receiverSpeed);
   if (rng.chance(p, tick, bodyId, 'first-touch')) {
     const dir = arrivalDir + rng.gauss(0, TECH.popScatterRad, tick, bodyId, 'touch-pop-dir');
     const speed = TECH.popSpeedMinMps +

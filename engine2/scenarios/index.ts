@@ -14,7 +14,7 @@ import looseBallRace from './loose-ball-race.ts';
 import carryTurn from './carry-turn.ts';
 import { duelScenarios, weave } from './duel-1v1.ts';
 import { firstTouchScenarios } from './first-touch.ts';
-import { firstTouchRunScenarios } from './first-touch-run.ts';
+import { firstTouchRunScenarios, firstTouchAngleScenarios } from './first-touch-run.ts';
 import { tackleScenarios } from './tackle-duel.ts';
 
 export const SCENARIOS: readonly ScenarioDef[] = [
@@ -23,7 +23,7 @@ export const SCENARIOS: readonly ScenarioDef[] = [
   // L2 — ball + possession coupling
   ...dribbleScenarios, struckBall, looseBallRace, carryTurn, weave, ...duelScenarios,
   // L3 — individual technique
-  ...firstTouchScenarios, ...firstTouchRunScenarios, ...tackleScenarios,
+  ...firstTouchScenarios, ...firstTouchRunScenarios, ...firstTouchAngleScenarios, ...tackleScenarios,
 ];
 
 export const scenarioByName = (name: string): ScenarioDef => {

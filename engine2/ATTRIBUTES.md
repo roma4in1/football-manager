@@ -33,13 +33,16 @@ arrival tolerance 0.35 m, turn time budget 0.55 s.
 
 | attribute | channel | formula / effect |
 | --- | --- | --- |
-| firstTouch | trap quality | pop probability = (0.02 + 0.055·(ballSpeed−4) + 0.25·height + 0.22·pressured) × (1 − 0.75·firstTouch/20). A silk touch kills a driven ball; heavy feet under pressure spill (~2–4.5 m/s squirt, fumbler claim-locked 0.8s). |
+| firstTouch | trap quality | pop probability = (0.02 + 0.055·(closingSpeed−4) + 0.25·height + 0.025·receiverSpeed + 0.22·pressured) × (1 − 0.75·firstTouch/20). CLOSING speed = ball relative to receiver (in-stride cushions are easy, charges are hard); the receiver's own gait adds difficulty (walk +0.04, sprint +0.20). A silk touch kills a driven ball; heavy feet under pressure spill (~2–4.5 m/s squirt, fumbler claim-locked 0.8s). |
 | passing | kick fidelity | direction σ = 0.13·(0.15 + 0.85·slack) rad, power σ = 0.12·(0.2 + 0.8·slack); elite ≈ 1m lateral at 40m, poor ≈ 4m. Kicks are reach-gated (≤1.1m). |
 | tackling + strength | winning glued-ball contests | winP = clamp(0.42 + 0.055·edge), edge = (tackling+0.5·strength) − (dribbling+0.5·balance); ÷(1 + 0.2·carrierSpeed) — lunging at a sprinter is much harder. Win knocks the ball loose; loser claim-locked. Lunges cooldown 1.2s. |
 | strength + balance | shield width | shield radius 0.3 + 0.25·composite/40 (0.3–0.55m): the carrier's body blocks the stealer→ball line. Far-foot dribbling: touches bias away from a marker inside 2.4m. |
 
-Bodies are SOLID (radius 0.35m): soft pairwise separation at ≤2.5 m/s with
-inelastic closing-velocity resolution. Carriers ride their dying touch
+RECEIVE REACH: a ball is claimable within 0.9 m of the body and below knee
+height (0.5 m), tested against the ball's swept path IN THE RECEIVER'S FRAME
+(both motions subtracted — two fast movers crossing cannot tunnel through
+each other's reach). Bodies are SOLID (radius 0.35m): soft pairwise
+separation at ≤2.5 m/s with inelastic closing-velocity resolution. Carriers ride their dying touch
 (speed caps to the dribble-to-arrive profile) — a probe showed sprinters
 overrunning their own slowing ball into a trailing defender's lap.
 

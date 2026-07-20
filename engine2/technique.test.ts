@@ -16,14 +16,19 @@ const attrs = (over: Partial<BodyAttributes> = {}): BodyAttributes => ({
   firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12, ...over,
 });
 
-test('first-touch model: difficulty orders by ball speed, height, pressure; skill relieves', () => {
+test('first-touch model: difficulty orders by closing speed, height, pressure, receiver speed; skill relieves', () => {
   const silk = attrs({ firstTouch: 18 });
   const heavy = attrs({ firstTouch: 5 });
   assert.ok(touchPopProbability(silk, 13, 0, false) < touchPopProbability(heavy, 13, 0, false), 'skill relieves');
-  assert.ok(touchPopProbability(heavy, 6, 0, false) < touchPopProbability(heavy, 14, 0, false), 'faster is harder');
+  assert.ok(touchPopProbability(heavy, 6, 0, false) < touchPopProbability(heavy, 14, 0, false), 'faster closing is harder');
   assert.ok(touchPopProbability(heavy, 10, 0, false) < touchPopProbability(heavy, 10, 0.4, false), 'a bouncing ball is harder');
   assert.ok(touchPopProbability(heavy, 10, 0, false) < touchPopProbability(heavy, 10, 0, true), 'pressure bites');
   assert.ok(touchPopProbability(silk, 13, 0, false) < 0.2, 'a silk touch on a driven ball is usually dead');
+  // the receiver's own gait matters: walking < running < sprinting
+  const walk = touchPopProbability(heavy, 8, 0, false, 1.5);
+  const run = touchPopProbability(heavy, 8, 0, false, 6.3);
+  const sprint = touchPopProbability(heavy, 8, 0, false, 8.1);
+  assert.ok(walk < run && run < sprint, `receiver speed orders difficulty (${walk.toFixed(2)} < ${run.toFixed(2)} < ${sprint.toFixed(2)})`);
 });
 
 test('tackle model: the composite edge orders win probability; shield widens with strength+balance', () => {
@@ -144,6 +149,37 @@ test('moving receives: cushioning in stride is easy, charging onto a drive is ha
   assert.ok(withRun >= 0 && onto >= 0, 'both drills make contact');
   assert.ok(withRun <= 0.15, `a cushioned take in stride almost always sticks (${withRun.toFixed(2)})`);
   assert.ok(onto > withRun + 0.1, `charging onto the drive spills more (${onto.toFixed(2)} vs ${withRun.toFixed(2)})`);
+});
+
+test('the receive-geometry matrix makes reliable contact: onto, across, angled all claim (relative sweep)', () => {
+  // the regression for frame-relative swept claims: two fast movers crossing
+  // must interact — the judged "does not reliably pick up the ball"
+  for (const name of ['first-touch-run-onto', 'first-touch-run-across', 'first-touch-run-angled']) {
+    let interactions = 0;
+    const N = 16;
+    for (let s = 0; s < N; s++) {
+      const frames = runScenario(scenarioByName(name), `geo-${s}`);
+      // an interaction = the receiver claims OR the ball's velocity changes
+      // sharply near him (a pop counts; a clean fly-through does not)
+      const claimed = frames.some((f) => f.ball.carrierId === 'receiver');
+      if (claimed) {
+        interactions++;
+        continue;
+      }
+      for (let i = 2; i < frames.length - 1; i++) {
+        const r = frames[i].bodies.find((b) => b.id === 'receiver')!;
+        const near = Math.hypot(frames[i].ball.x - r.x, frames[i].ball.y - r.y) < 2.0;
+        if (!near) continue;
+        const v0 = Math.hypot(frames[i].ball.x - frames[i - 1].ball.x, frames[i].ball.y - frames[i - 1].ball.y);
+        const v1 = Math.hypot(frames[i + 1].ball.x - frames[i].ball.x, frames[i + 1].ball.y - frames[i].ball.y);
+        if (v0 > 0.2 && v1 < v0 * 0.6) {
+          interactions++;
+          break;
+        }
+      }
+    }
+    assert.ok(interactions >= 13, `${name}: the receiver reliably meets the ball (${interactions}/${N})`);
+  }
 });
 
 test('contain at contact: the hunter presses a shielding carrier, he does not orbit him (the 360 fix)', () => {

@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-11 — L3 judgment round 2: frame-relative sweep, gait difficulty, receive geometries
+
+- **"Doesn't reliably pick up the ball" was a second tunneling class**: the
+  swept claim tested the ball's path against the receiver's END position —
+  but a charging receiver moves ~0.6 m/tick himself, so RELATIVE motion hits
+  1.6 m/tick and skips the 0.9 m reach window. Claims now sweep in the
+  receiver's frame (his displacement subtracted). Regression: the full
+  receive-geometry matrix must make contact ≥13/16 seeds per drill.
+- **Receiver gait matters**: pop difficulty += 0.025 per m/s of the
+  receiver's OWN speed (walk +0.04 → sprint +0.20), on top of closing
+  speed. Ordering asserted (walk < run < sprint at fixed closing speed).
+- **Receive geometries**: new first-touch-run-across (90°) and -angled
+  (~45°) scenarios; the crossing runner ADJUSTS to the pass at the end
+  (kick noise moves the meeting point meters — nobody receives on rails;
+  the L3 script approximates what L4 perception will own). The onto-drill
+  keeps a genuine straight-line charge by shortening the feed (lateral
+  noise stays inside the charge line). Model choice recorded: reception
+  ANGLE expresses through relative-velocity magnitude + gait term — no
+  separate angle parameter until the eye demands one.
+- **Receive reach answered and pinned**: 0.9 m, below knee height (0.5 m),
+  frame-relative swept — in ATTRIBUTES.md. 43/43.
+
 ## 2026-09-10 — L3 judgment round 1: the 360°, the seed problem, bracing, moving receives
 
 Human verdict on L3: first-touch matrix reads right (silk dead / heavy

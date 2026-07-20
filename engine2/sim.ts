@@ -113,6 +113,10 @@ export class Sim {
     // carrier whose touch ran beyond reach STEERS to fetch it — the route is
     // the intent, the ball is the path
     this.liveTargets.clear();
+    this.prevPos.clear();
+    for (const body of this.bodies) {
+      this.prevPos.set(body.id, { x: body.pos.x, y: body.pos.y });
+    }
     for (const body of this.bodies) {
       const isCarrier = this.ball.carrierId === body.id;
       const gap = isCarrier
@@ -247,6 +251,10 @@ export class Sim {
   /** contain bearings anchor when a press starts — re-deriving them each
    * tick is a feedback loop that walks the presser around the carrier */
   private readonly containBearing = new Map<string, number>();
+  /** pre-movement positions this tick — claims sweep the ball's path in the
+   * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
+   * against his end position alone skips the reach window) */
+  private readonly prevPos = new Map<string, Vec2>();
 
   /** the dribble-to-arrive push cap for this carrier's current stop-leg —
    * also the speed HE should ride at (you decelerate WITH your touch; a
@@ -426,15 +434,22 @@ export class Sim {
 
   private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ) return;
-    // closest approach of a point to the ball's segment [from → pos]
-    const segNearest = (p: Vec2): { d: number; at: Vec2 } => {
-      const dx = this.ball.pos.x - from.x;
-      const dy = this.ball.pos.y - from.y;
+    // closest approach of a body to the ball's swept path — in the BODY'S
+    // frame: subtract his own displacement so two fast movers crossing
+    // cannot tunnel through each other's reach between samples
+    const segNearest = (b: BodyState): { d: number; at: Vec2 } => {
+      const prev = this.prevPos.get(b.id) ?? b.pos;
+      const bdx = b.pos.x - prev.x;
+      const bdy = b.pos.y - prev.y;
+      const fx = from.x - bdx;
+      const fy = from.y - bdy;
+      const dx = this.ball.pos.x - fx;
+      const dy = this.ball.pos.y - fy;
       const len2 = dx * dx + dy * dy;
       const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1,
-        ((p.x - from.x) * dx + (p.y - from.y) * dy) / len2));
-      const at = { x: from.x + dx * t, y: from.y + dy * t };
-      return { d: Math.hypot(p.x - at.x, p.y - at.y), at };
+        ((b.pos.x - fx) * dx + (b.pos.y - fy) * dy) / len2));
+      const at = { x: fx + dx * t, y: fy + dy * t };
+      return { d: Math.hypot(b.pos.x - at.x, b.pos.y - at.y), at };
     };
     // a coupled ball is pinchable only MID-TOUCH, and the pinch is an ARRIVAL
     // RACE for the touch: the stealer must be in reach AND meaningfully
@@ -451,7 +466,7 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
-      const { d, at } = segNearest(b.pos);
+      const { d, at } = segNearest(b);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
       // the carrier's body shields the touch: no pinch without a clear line
@@ -486,6 +501,7 @@ export class Sim {
       Math.hypot(o.pos.x - best.body.pos.x, o.pos.y - best.body.pos.y) <= TECH.touchPressureRangeM);
     const touch = resolveFirstTouch(
       this.rng, this.tick, best.body.id, best.body.attributes, arrivalDir, ballSpeed, this.ball.z, pressured,
+      best.body.speed,
     );
     this.ball.pos = { x: best.at.x, y: best.at.y };
     this.ball.vz = 0;
