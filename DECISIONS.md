@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-20 — L3 judgment round 12: the head-on duel + pressure-shortened touches
+
+The judged ask: duels only ever showed the defender arriving FROM BEHIND —
+"can we see an attacker running unto a defender?" New drills
+duel-1v1-front-close/-heavy: defender parked in the lane facing the
+carrier, stepping in to meet him; second efforts scripted both ways so the
+loser presses instead of jogging off.
+
+First cut exposed a real technique hole: carriers took full cruise-weight
+touches straight into the set defender's zone — instant pinch at a 4m gap,
+16/16, no duel at all. Fix (engine, coupleCarry): PRESSURE SHORTENS THE
+TOUCH — a defender ahead (inside 4.5m, ±60° of the touch heading) caps the
+roll-out to (0.55 − 0.15·dribbling/20)·gap, floor 0.7m. Same family as the
+pressured first touch: technique under pressure is L3's.
+
+Post: the duel actually happens (closest gap ~0.85m, 16/16 engagements) and
+touch quality decides it — close control carries through 16/16 (a set
+defender who can only lunge gets beaten; jockeying/backpedal is L5e's),
+heavy feet lose the head-on 8/16 to the pinch/tackle window. The lunge at a
+full-speed dribbler stays ~20% per attempt (the speed punishment) — honest,
+and the reason close control wins: real head-on stops come from jockeying,
+which this layer deliberately does not have. Knock-past unchanged (14/16).
+46/46.
+
 ## 2026-07-20 — L3 judgment round 11: contested chases race, losers keep hunting (the knock-past regression)
 
 The judged report: "the attacker can no longer beat the man." Probing found

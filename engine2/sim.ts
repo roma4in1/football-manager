@@ -481,6 +481,30 @@ export class Sim {
         BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * Math.max(0, distToDest),
       ));
     }
+    // pressure-shortened touches: a defender set AHEAD caps the roll-out to
+    // a control-scaled fraction of the gap — you don't push a cruise-weight
+    // ball into the man in front of you (riding the shorter dying touch
+    // also slows the carrier into the duel, which is the real approach)
+    let press: BodyState | null = null;
+    let pressD: number = BALL.pressAwareRangeM;
+    for (const o of this.bodies) {
+      if (o.team === carrier.team) continue;
+      const dx = o.pos.x - carrier.pos.x;
+      const dy = o.pos.y - carrier.pos.y;
+      const od = Math.hypot(dx, dy);
+      if (od >= pressD || od < 1e-6) continue;
+      if ((dx * Math.cos(heading) + dy * Math.sin(heading)) / od < BALL.pressAwareConeCos) continue;
+      press = o;
+      pressD = od;
+    }
+    if (press) {
+      const frac = BALL.pressRollFracBase -
+        BALL.pressRollFracControlGain * (carrier.attributes.dribbling / 20);
+      const rollMax = Math.max(BALL.pressRollMinM, pressD * frac);
+      push = Math.min(push, Math.sqrt(
+        BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * rollMax,
+      ));
+    }
     this.ball.vel = { x: Math.cos(heading) * push, y: Math.sin(heading) * push };
     this.ball.z = 0;
     this.ball.vz = 0;

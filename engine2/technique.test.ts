@@ -249,6 +249,39 @@ test('shield bracing: a pressed standing carrier turns his back to the presser',
   }
 });
 
+test('head-on duel: the set defender is met, and touch quality decides it (rates across 16 seeds)', () => {
+  const run = (name: string) => {
+    let through = 0;
+    let defWon = 0;
+    let engaged = 0;
+    for (let s = 0; s < 16; s++) {
+      const frames = runScenario(scenarioByName(name), `fd-${s}`);
+      let lost = false;
+      let minGap = 99;
+      for (const f of frames) {
+        const a = f.bodies.find((b) => b.id === 'attacker')!;
+        const d = f.bodies.find((b) => b.id === 'defender')!;
+        minGap = Math.min(minGap, Math.hypot(a.x - d.x, a.y - d.y));
+        if (!lost && f.ball.carrierId === 'defender') lost = true;
+        if (!lost && f.ball.carrierId === 'attacker' && a.x > 60) { through++; break; }
+      }
+      if (lost) defWon++;
+      if (minGap < 1.8) engaged++;
+    }
+    return { through, defWon, engaged };
+  };
+  const close = run('duel-1v1-front-close');
+  const heavy = run('duel-1v1-front-heavy');
+  // the carrier must actually MEET the defender (the drill's whole point) —
+  // pressure-shortened touches keep the ball out of the instant pinch
+  assert.equal(close.engaged, 16, `close: the duel happens (${close.engaged}/16 engagements)`);
+  assert.equal(heavy.engaged, 16, `heavy: the duel happens (${heavy.engaged}/16 engagements)`);
+  // outcome split: close control beats a lunge-only set defender (jockeying
+  // is L5e); heavy feet under pressure serve the pinch/tackle a real share
+  assert.ok(close.through >= 12, `close control carries through (${close.through}/16)`);
+  assert.ok(heavy.defWon >= 4, `heavy feet lose the head-on a real share (${heavy.defWon}/16 defender wins)`);
+});
+
 test('knock-past: the touch around the defender is a real, winnable move (rates across 16 seeds)', () => {
   let recollected = 0;
   let defenderWon = 0;

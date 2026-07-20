@@ -24,7 +24,38 @@ const duel = (name: string, dribbling: number): ScenarioDef => ({
   ],
 });
 
-export const duelScenarios: ScenarioDef[] = [duel('duel-1v1-close', 17), duel('duel-1v1-heavy', 5)];
+/** the head-on duel (the L3 judgment ask): the chase duels only ever show
+ * the defender ARRIVING FROM BEHIND, so he rarely gets a real tackle in.
+ * Here the defender is parked IN the lane, facing the carrier, and steps to
+ * meet him — contain sets the press, the tackle window is face-to-face, and
+ * a heavy touch pushed into the defender's feet is his to pinch. */
+const frontDuel = (name: string, dribbling: number): ScenarioDef => ({
+  version: 1,
+  name,
+  description: `Attacker (dribbling ${dribbling}) carries straight AT a set defender who steps to meet him. Watch the front-on contain, the face-to-face tackle window, and the touch contest at the defender's feet. No feints yet — beating the set man with a move is L4's.`,
+  durationTicks: 200, // 20 s
+  bodies: [
+    { id: 'attacker', team: 'home', pos: { x: 25, y: 34 }, attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    // facing the carrier, set in his lane
+    { id: 'defender', team: 'away', pos: { x: 48, y: 34 }, facing: Math.PI, attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+  ],
+  ball: { carrier: 'attacker' },
+  script: [
+    { atTick: 10, bodyId: 'attacker', command: { type: 'moveTo', target: { x: 95, y: 34 }, regime: 'run' } },
+    // the set defender steps IN as the carrier closes — the tackle gate
+    // (and contain) both key off an active chase
+    { atTick: 36, bodyId: 'defender', command: { type: 'chaseBall', regime: 'run' } },
+    // second effort: a dispossessed attacker presses the winner instead of
+    // jogging offscreen (if he still carries, this trades the carry for a
+    // trap-and-stand — the duel is decided either way by now)
+    { atTick: 110, bodyId: 'attacker', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+});
+
+export const duelScenarios: ScenarioDef[] = [
+  duel('duel-1v1-close', 17), duel('duel-1v1-heavy', 5),
+  frontDuel('duel-1v1-front-close', 17), frontDuel('duel-1v1-front-heavy', 5),
+];
 
 export const weave: ScenarioDef = {
   version: 1,

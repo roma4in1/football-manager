@@ -80,6 +80,16 @@ export const BALL = {
    * marker's side (the L3 duel-rate finding) */
   touchShieldRangeM: 2.4,
   touchShieldRad: 0.16,
+  /** PRESSURE shortens the touch: with a defender set AHEAD (inside the
+   * awareness range, within the front cone), the touch's roll-out is capped
+   * to a fraction of the gap — a cruise-weight push into a closing
+   * defender's zone is a gift (the instant pinch that killed the head-on
+   * duel). Better feet keep it closer; heavy feet still serve the pinch. */
+  pressAwareRangeM: 4.5,
+  pressAwareConeCos: 0.5, // ±60° of the touch heading
+  pressRollFracBase: 0.55,
+  pressRollFracControlGain: 0.15, // dribbling 20 → 0.40·gap; dribbling 0 → 0.55·gap
+  pressRollMinM: 0.7,
   /** a mid-touch ball (farther than controlRadius from its carrier) is
    * PINCHABLE: the stealer must be in claim reach AND this much closer to
    * the ball than its carrier — the touch is an arrival race. Heavy touches
