@@ -127,18 +127,27 @@ export class Sim {
       let live: Vec2 | undefined;
       let standing = false;
       let timedCap: number | undefined;
+      let brakeIntoLine = false;
       if (body.command.type === 'chaseBall' || fetching) {
         const icept = this.interceptPoint(body);
         live = icept.p;
         // TIME-MATCHED approach (the across judgment): attack the meeting
         // point at the speed that arrives WITH the ball — toward the ball
         // always, never through the line, never relocating away to wait
-        if (body.command.type === 'chaseBall' && icept.onLine) {
-          const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
-          const need = d / Math.max(icept.tStar, 0.2);
-          const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
-          if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
-          if (d <= 0.5 && icept.tStar > 0.5) standing = true;
+        if (body.command.type === 'chaseBall') {
+          if (icept.onLine) {
+            const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
+            const need = d / Math.max(icept.tStar, 0.2);
+            const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
+            if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
+            if (d <= 0.5 && icept.tStar > 0.5) standing = true;
+          } else if (icept.tStar > 0.5) {
+            // receiving posture off the line: brake INTO the line — an
+            // angled sprint otherwise overruns it on momentum and takes
+            // the ball behind himself
+            timedCap = undefined;
+            brakeIntoLine = true;
+          }
         }
         // CONTAIN at contact: a hunter already within lunging reach of a
         // GLUED ball stands his ground and works the tackle cooldown —
@@ -177,7 +186,7 @@ export class Sim {
         carrying: isCarrier,
         carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
         stand: standing,
-        brakeAtTarget: timedCap !== undefined,
+        brakeAtTarget: timedCap !== undefined || brakeIntoLine,
         speedCapMps: timedCap,
       });
       if (body.arrived) {
@@ -594,14 +603,17 @@ export class Sim {
     const regime = body.command.type === 'chaseBall' ? body.command.regime : 'run';
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
     let meet: { p: Vec2; tStar: number } | null = null;
-    let near: { p: Vec2; d: number } | null = null;
+    let near: { p: Vec2; d: number; t: number } | null = null;
     for (let t = 0.2; t <= 6.0; t += 0.2) {
       const p = predictBall(this.ball, t);
       const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
-      if (!near || d < near.d) near = { p, d };
+      if (!near || d < near.d) near = { p, d, t };
       if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
     }
-    if (near && near.d > 1.2) return { p: near.p, tStar: 0, onLine: false };
+    // tStar in the off-line phase = when the ball reaches the line point:
+    // >0.5s means he is RECEIVING (brake into the line, arrive controlled);
+    // small means the ball is already there/past — a stern chase, no brake
+    if (near && near.d > 1.2) return { p: near.p, tStar: near.t, onLine: false };
     if (meet) return { p: meet.p, tStar: meet.tStar, onLine: true };
     return { p: predictBall(this.ball, 6), tStar: 6, onLine: true };
   }

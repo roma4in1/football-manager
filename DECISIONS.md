@@ -3,6 +3,16 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-13 — L3 judgment round 8: phase-1 receives brake into the line
+
+The angled receive overran on momentum: phase 1 (attack the line) was
+uncapped, and a 45° approach carried the receiver past the meeting point
+— he took the ball behind himself. Phase 1 now BRAKES into the line when
+in receiving posture (the ball needs >0.5 s to reach his line-point);
+stern chases of a ball already past stay uncapped. Probe: the angled
+receiver decelerates 6.5 → 1.5 m/s into the line, sets facing the ball,
+takes it in front of himself. 45/45.
+
 ## 2026-09-12 — L3 judgment round 7: the TWO-PHASE receive (attack the line, then time the take)
 
 Third and final iteration on receive movement, human-driven each round:
