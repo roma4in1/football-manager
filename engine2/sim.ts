@@ -195,8 +195,15 @@ export class Sim {
               const ballV = Math.hypot(this.ball.vel.x, this.ball.vel.y);
               if (icept.tNear > 0.5 || ballV < 1.0) brakeIntoLine = true;
             } else if (icept.tMeet <= 1.2) {
-              live = { x: this.ball.pos.x, y: this.ball.pos.y };
-              timedCap = 2.4; // the final stride: step INTO the arriving ball
+              // the final stride: step INTO the arriving ball — aimed at the
+              // CROSSING point nudged up-line (aiming at the ball's current
+              // spot left a noisy pass's lateral gap unclosed: a judged
+              // 3 cm miss at closest approach)
+              const ux = this.ball.pos.x - icept.pNear.x;
+              const uy = this.ball.pos.y - icept.pNear.y;
+              const un = Math.hypot(ux, uy) || 1;
+              live = { x: icept.pNear.x + (ux / un) * 0.5, y: icept.pNear.y + (uy / un) * 0.5 };
+              timedCap = 2.4;
             } else {
               live = icept.pMeet;
               const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
@@ -305,6 +312,9 @@ export class Sim {
         const kicker = this.byId.get(k.bodyId)!;
         const reach = Math.hypot(this.ball.pos.x - kicker.pos.x, this.ball.pos.y - kicker.pos.y);
         if (this.ball.carrierId === k.bodyId && reach <= TECH.kickReachM) {
+          // scripted kicks stay facing-blind: the script IS the player's
+          // intent, body shape included — the backheel penalty is for
+          // DECIDED kicks (the chooser knows his own facing)
           const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
           kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
         }
@@ -437,7 +447,7 @@ export class Sim {
     // one contact and that contact is the pass/shot/clear
     const pending = this.pendingKicks.get(carrier.id);
     if (pending) {
-      const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps);
+      const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
       kickBall(this.ball, noisy.target, noisy.speedMps, 0, carrier.id, this.tick);
       if (pending.receiverId) this.intendedReceiverId = pending.receiverId;
       this.pendingKicks.delete(carrier.id);
@@ -753,7 +763,7 @@ export class Sim {
           const reach = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
           if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
-            const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps);
+            const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
             kickBall(this.ball, noisy.target, noisy.speedMps, 0, id, this.tick);
             if (intent.kind === 'pass') this.intendedReceiverId = intent.receiverId;
             this.intents.delete(id);

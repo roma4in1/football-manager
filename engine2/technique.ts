@@ -49,6 +49,11 @@ export const TECH = {
   kickVelSkillFloor: 0.2,
   /** a kick needs the ball at the boot — reach-gated (the audit item) */
   kickReachM: 1.1,
+  /** kicking AGAINST your facing: fine to ~90° (side-foot), degrading into
+   * the blind backheel at 180° — noise multiplies, power drains (the rondo
+   * judgment: a 180° pass is a backheel, not a free clean strike) */
+  backheelNoiseGain: 1.6, // σ × (1 + gain·(misalign/π)²) → ~2.6× at 180°
+  backheelPowerLossMax: 0.45, // power × (1 − max·(misalign−90°)/90°) beyond 90°
 
   // ── tackles: physical contests for a GLUED ball ──────────────────────────
   /** the tackler must reach the ball (not just the man) */
@@ -129,14 +134,23 @@ export function noisyKick(
   target: Vec2,
   from: Vec2,
   speedMps: number,
+  kickerFacing?: number,
 ): { target: Vec2; speedMps: number } {
   const slack = 1 - kicker.passing / 20;
-  const dirSigma = TECH.kickDirSigmaRad * (TECH.kickDirSkillFloor + (1 - TECH.kickDirSkillFloor) * slack);
-  const velSigma = TECH.kickVelSigma * (TECH.kickVelSkillFloor + (1 - TECH.kickVelSkillFloor) * slack);
   const base = Math.atan2(target.y - from.y, target.x - from.x);
+  // the backheel penalty: strike direction vs the body's facing
+  let misalign = 0;
+  if (kickerFacing !== undefined) {
+    misalign = Math.abs(((base - kickerFacing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+  }
+  const backheel = 1 + TECH.backheelNoiseGain * (misalign / Math.PI) ** 2;
+  const powerKeep = 1 - TECH.backheelPowerLossMax *
+    Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
+  const dirSigma = TECH.kickDirSigmaRad * (TECH.kickDirSkillFloor + (1 - TECH.kickDirSkillFloor) * slack) * backheel;
+  const velSigma = TECH.kickVelSigma * (TECH.kickVelSkillFloor + (1 - TECH.kickVelSkillFloor) * slack) * backheel;
   const dir = base + rng.gauss(0, dirSigma, tick, kickerId, 'kick-dir');
   const d = Math.hypot(target.x - from.x, target.y - from.y);
-  const speed = Math.max(1, speedMps * (1 + rng.gauss(0, velSigma, tick, kickerId, 'kick-vel')));
+  const speed = Math.max(1, speedMps * powerKeep * (1 + rng.gauss(0, velSigma, tick, kickerId, 'kick-vel')));
   return {
     target: { x: from.x + Math.cos(dir) * d, y: from.y + Math.sin(dir) * d },
     speedMps: speed,

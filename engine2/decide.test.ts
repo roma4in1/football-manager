@@ -81,48 +81,48 @@ test('striker-breakaway: through on goal he SHOOTS — construction, not role (1
   assert.ok(shots >= 14, `the striker shoots when he has the chance (${shots}/16)`);
 });
 
-test('risk dial: the instruction VISIBLY shifts the choice distribution (16 seeds each)', () => {
-  const earlyRelease = (name: string): number => {
-    let count = 0;
+test('risk dial: the instruction picks the TARGET — safe outlet vs through ball (16 seeds each)', () => {
+  const firstPassTarget = (name: string): { left: number; right: number } => {
+    const out = { left: 0, right: 0 };
     for (let s = 0; s < 16; s++) {
       const def = scenarioByName(name);
       const sim = new Sim(def, `l4-${s}`);
-      let prev: string | null = null;
-      let released = false;
-      for (let t = 0; t < 60 && !released; t++) {
-        sim.step();
-        const c = sim.ball.carrierId;
-        if (c && prev === 'mid' && c !== 'mid' && (c === 'left' || c === 'right')) released = true;
-        if (c) prev = c;
+      let first = '';
+      for (let t = 0; t < 220 && !first; t++) {
+        const f = sim.step();
+        const m = f.bodies.find((b) => b.id === 'mid')!;
+        if (m.action?.startsWith('pass→')) first = m.action.slice(5);
       }
-      if (released) count++;
+      if (first === 'left') out.left++;
+      else if (first === 'right') out.right++;
     }
-    return count;
+    return out;
   };
-  const high = earlyRelease('counter-3v2-risk-high');
-  const low = earlyRelease('counter-3v2-risk-low');
-  // speculative = tempo (release early); safe = keep it on the boot
-  assert.ok(high >= 12, `risk-high releases the early ball (${high}/16)`);
-  assert.ok(low <= 4, `risk-low keeps the carry (${low}/16)`);
-  assert.ok(high - low >= 10, `the dial separates the styles (${high} vs ${low})`);
+  const high = firstPassTarget('counter-3v2-risk-high');
+  const low = firstPassTarget('counter-3v2-risk-low');
+  // the judged semantics: safe = the ball to the open man; speculative =
+  // the through ball to the deep runner
+  assert.ok(low.right >= 12, `risk-low plays the safe outlet (${low.right}/16 right)`);
+  assert.ok(high.left >= 12, `risk-high hits the through ball (${high.left}/16 left)`);
 });
 
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {
+  // whole-drill circulation: a cut ball can end a seed's keep early (the
+  // passers cannot press to recover — that is L4's boundary, off-ball
+  // defending is L5's), so the floor is across seeds, not per seed
   let totalTransfers = 0;
   for (let s = 0; s < 4; s++) {
     const def = scenarioByName('rondo-4v2');
     const sim = new Sim(def, `l4-${s}`);
     let prev: string | null = null;
     let transfers = 0;
-    let lost = false;
-    for (let t = 0; t < def.durationTicks && !lost; t++) {
+    for (let t = 0; t < def.durationTicks; t++) {
       sim.step();
       const c = sim.ball.carrierId;
-      if (c?.startsWith('c')) lost = true;
       if (c && prev && c !== prev && c.startsWith('p') && prev.startsWith('p')) transfers++;
       if (c) prev = c;
     }
     totalTransfers += transfers;
   }
-  assert.ok(totalTransfers >= 12, `passes before the chasers win it, 4 seeds (${totalTransfers})`);
+  assert.ok(totalTransfers >= 16, `passer-to-passer transfers across 4 seeds (${totalTransfers})`);
 });

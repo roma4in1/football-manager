@@ -54,10 +54,10 @@ the situation and INSTRUCTIONS bias the choice; attributes govern execution
 
 | input | affects | mechanism |
 |---|---|---|
-| passing | pass/shot/clear execution fidelity | every decided kick goes through L3's noisyKick |
+| passing | pass/shot/clear execution fidelity | every decided kick goes through L3's noisyKick. BACKHEEL penalty (decided kicks only): strikes off facing multiply noise ×(1+1.6·(misalign/π)²) and lose power beyond 90° (×0.55 at 180°); the EV discounts completion to match. Scripted kicks stay facing-blind (the script IS the intent). |
 | pace + acceleration (opponents') | lane risk | passCompletion runs an accel-honest intercept model (ramp sqrt(2d/a), then cruise) against every defender, projected along his velocity to ball-arrival time |
 | pace (own) | carry urgency | heel pressure within 4m switches the carry regime to sprint |
-| instructions.risk | choice distribution | scales the turnover penalty, the completion floor a pass must clear, AND the payoff weight of progressive balls (riskProgressGain) — low keeps the carry, high releases early |
+| instructions.risk | choice distribution | scales the turnover penalty (passes AND carries near defenders), the completion floor a pass must clear, and the payoff weight of progressive balls — judged semantics: low plays the safe outlet, high hits the through ball |
 | instructions.objective | the value field | 'score' = posValue (goal-seeking); 'keep' = keepValue (space minus station-tether) — the rondo's truth |
 
 ## Decided for later layers

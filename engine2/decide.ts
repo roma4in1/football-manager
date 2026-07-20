@@ -46,7 +46,7 @@ export const DECIDE = {
   /** commitment inertia: a new intent must beat the current one by this —
    * sized to the utility scale (non-shot options live in ~[0, 0.19]; at
    * 0.05 the first carry was unswitchable and rode into every tackle) */
-  switchCost: 0.015,
+  switchCost: 0.008,
   /** possession is not a goal: every non-shot EV is scaled by this */
   possessionDiscount: 0.55,
   /** PV: the most valuable non-shot spot on the pitch is worth this */
@@ -62,8 +62,12 @@ export const DECIDE = {
    * the carry stayed attractive until the lane and the release were dead) */
   carryPressureRangeM: 7.0,
   /** pass speeds clamp (firm floor — lofted/driven variety is later) */
-  passSpeedMin: 9,
+  passSpeedMin: 8,
   passSpeedMax: 16,
+  /** pass WEIGHT: launch speed chosen so the ball ARRIVES at the receiver
+   * around this pace and dies just beyond him — the old linear formula hit
+   * every ball to arrive at full pace and roll 60 m when a receive missed */
+  passArriveMps: 5.5,
   /** the lane margin (s) an opponent needs to make the intercept — sampled
    * against ball travel time along the lane */
   laneSampleStep: 0.15, // fraction of the lane per sample
@@ -73,15 +77,22 @@ export const DECIDE = {
   turnoverRiskGain: 0.55,
   /** completion floor a pass must clear, risk-scaled */
   passFloorBase: 0.72,
-  passFloorRiskGain: 0.3,
+  passFloorRiskGain: 0.45, // speculative feet barely have a floor
   /** the speculative player's thumb on the scale: risk WEIGHTS the payoff
    * of progressive balls (a safe square ball's EV honestly beats a 55%
    * through ball — direct players choose it anyway, and that preference IS
    * the instruction) */
-  riskProgressGain: 1.2,
+  riskProgressGain: 2.0,
   /** a pass is not a lossless value teleport — receiver settle + tempo cost.
    * Without it a square ball to an equal spot edged out carrying forward */
   passFriction: 0.85,
+  /** the EV's view of the backheel: completion odds fall for strikes beyond
+   * 90° off facing (execution noise/power degrade in noisyKick to match) */
+  backheelEvLossMax: 0.5,
+  /** carrying near defenders risks the TACKLE — without this term dodging
+   * always beat releasing, and the safe pass never happened (the judged
+   * corner-dodge). Risk-scaled like the pass turnover penalty. */
+  carryTurnoverGain: 0.5,
   /** shooting */
   shootRangeM: 26,
   shotSpeedMps: 22,
@@ -166,6 +177,7 @@ export const passCompletion = (
   speedMps: number,
   opponents: readonly BodyState[],
   receiverDist: number,
+  receiver?: BodyState,
 ): number => {
   const d = Math.hypot(dest.x - from.x, dest.y - from.y);
   if (d < 0.5) return 0.2; // a pass to your own feet is not a pass
@@ -178,23 +190,39 @@ export const passCompletion = (
     const disc = speedMps * speedMps - 2 * 1.7 * seg;
     if (disc <= 0) break; // the ball dies before this sample
     const tBall = (speedMps - Math.sqrt(disc)) / 1.7;
-    for (const o of opponents) {
-      // judge the lane against where the defender WILL be when the ball
-      // passes, not where he stands — closing defenders shut lanes early,
-      // committed ones open the space behind them
-      const proj = Math.min(tBall, 0.8);
-      const ox = o.pos.x + o.vel.x * proj;
-      const oy = o.pos.y + o.vel.y * proj;
-      const dOpp = Math.max(0, Math.hypot(ox - px, oy - py) - DECIDE.interceptReachM);
-      const vOpp = Math.max(regimeCapMps(o.attributes.pace, 'sprint'), 1);
+    const runTime = (b: BodyState, tx: number, ty: number, reactS: number): number => {
+      const d = Math.max(0, Math.hypot(b.pos.x - tx, b.pos.y - ty) - DECIDE.interceptReachM);
+      const v = Math.max(regimeCapMps(b.attributes.pace, 'sprint'), 1);
       // acceleration-honest running time (the flat d/vmax model doubled the
       // interception threat and killed every rondo lane): accelerate at the
       // body's real peak, cruise at vmax beyond the ramp distance
+      const a = KIN.accelBase + KIN.accelPerPoint * b.attributes.acceleration;
+      const ramp = (v * v) / (2 * a);
+      return reactS + (d <= ramp ? Math.sqrt((2 * d) / a) : v / (2 * a) + d / v);
+    };
+    for (const o of opponents) {
+      // judge the lane against where the defender WILL be when the ball
+      // passes AND where he stands — projection alone let a chaser mid-turn
+      // be rated off the lane he then turned and cut (the rondo's death);
+      // momentum doesn't delete the man
+      const proj = Math.min(tBall, 0.8);
+      const ox = o.pos.x + o.vel.x * proj;
+      const oy = o.pos.y + o.vel.y * proj;
+      const dProj = Math.max(0, Math.hypot(ox - px, oy - py) - DECIDE.interceptReachM);
+      const dNow = Math.max(0, Math.hypot(o.pos.x - px, o.pos.y - py) - DECIDE.interceptReachM);
+      const dOpp = Math.min(dProj, dNow);
+      const vOpp = Math.max(regimeCapMps(o.attributes.pace, 'sprint'), 1);
       const a = KIN.accelBase + KIN.accelPerPoint * o.attributes.acceleration;
       const ramp = (vOpp * vOpp) / (2 * a);
       const tRun = dOpp <= ramp ? Math.sqrt((2 * dOpp) / a) : vOpp / (2 * a) + dOpp / vOpp;
       const tOpp = 0.35 + tRun;
-      worst = Math.min(worst, tOpp - tBall);
+      // the lane's TAIL belongs to the receiver: a defender the receiver
+      // beats to a late sample isn't cleanly intercepting — he's arriving
+      // into a contested receive. Soften his threat rather than void it (a
+      // marker standing ON the receiver still taxes the ball).
+      const protectedTail = receiver !== undefined && f > 0.7 &&
+        runTime(receiver, px, py, 0.1) <= tOpp;
+      worst = Math.min(worst, tOpp - tBall + (protectedTail ? 0.35 : 0));
     }
   }
   // margin → probability: a lane the defenders miss by ≥0.6 s is safe; a
@@ -202,8 +230,9 @@ export const passCompletion = (
   const p = (worst + 0.4) / 1.0;
   const lane = Math.max(0.02, Math.min(0.98, p));
   // long balls complete less even into space (execution noise grows with
-  // distance faster than the model of a clean lane admits)
-  const range = 1 / (1 + Math.max(0, receiverDist - 18) / 22);
+  // distance) — but an OPEN 35m lane is still a good ball; the old 18m soft
+  // cap taxed every through ball to death regardless of the lane
+  const range = 1 / (1 + Math.max(0, receiverDist - 26) / 30);
   return lane * range;
 };
 
@@ -245,21 +274,42 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // PASS — each teammate, at a lead point if he is moving
   for (const mate of mates) {
     const dist0 = Math.hypot(mate.pos.x - here.x, mate.pos.y - here.y);
-    const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax, 6 + dist0 * 0.45));
-    // two-iteration lead on the mate's current velocity
-    let dest = { x: mate.pos.x, y: mate.pos.y };
-    for (let i = 0; i < 2; i++) {
-      const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
-      const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55);
-      dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
+    // the WEIGHT tradeoff: a soft ball dies at the receiver's stride (easy
+    // take, but slow through tight lanes); a firm ball beats interceptors
+    // and arrives HOT (taxed — hot balls pop and sail on a miss). Evaluate
+    // both, keep the better.
+    const softArrive = DECIDE.passArriveMps + 0.5 * mate.speed;
+    let bestPass: Intent | null = null;
+    for (const arrive of [softArrive, softArrive + 4.5]) {
+      const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
+        Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
+      // two-iteration lead on the mate's current velocity
+      let dest = { x: mate.pos.x, y: mate.pos.y };
+      for (let i = 0; i < 2; i++) {
+        const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
+        const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55);
+        dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
+      }
+      let pC = passCompletion(here, dest, speed, opponents, dist0, mate);
+      // the backheel discount: strikes far off facing complete less
+      const passDir = Math.atan2(dest.y - here.y, dest.x - here.x);
+      const misalign = Math.abs(((passDir - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      pC *= 1 - DECIDE.backheelEvLossMax * Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
+      // the hot-arrival tax: what reaches the receiver above comfortable
+      // pace costs completion (pops, sails past)
+      const dd0 = Math.hypot(dest.x - here.x, dest.y - here.y);
+      const arrTrue = Math.sqrt(Math.max(1, speed * speed - 2 * 1.7 * dd0));
+      pC *= 1 - 0.04 * Math.max(0, arrTrue - 6.5);
+      if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
+      const pvThere = value(dest, mate.id);
+      const meets = pC >= passFloor ? 1 : 0.35; // sub-floor lanes are heavily taxed
+      const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
+      const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets;
+      if (!bestPass || u > bestPass.utility) {
+        bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
+      }
     }
-    const pC = passCompletion(here, dest, speed, opponents, dist0);
-    if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
-    const pvThere = value(dest, mate.id);
-    const meets = pC >= passFloor ? 1 : 0.35; // sub-floor lanes are heavily taxed
-    const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
-    const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets;
-    options.push({ kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u });
+    if (bestPass) options.push(bestPass);
   }
 
   // CARRY — sampled directions, lookahead point valued and pressure-taxed.
@@ -284,9 +334,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const dNow = Math.hypot(o.pos.x - p.x, o.pos.y - p.y);
       pressure = Math.max(pressure, Math.max(0, 1 - dNow / DECIDE.carryPressureRangeM));
     }
-    const u = DECIDE.possessionDiscount * value(p, carrier.id) * (1 - 0.8 * pressure) *
-      // carrying is slower than passing: a small friction keeps the ball moving
-      0.92;
+    const pv = value(p, carrier.id);
+    const u = DECIDE.possessionDiscount * (
+      pv * (1 - 0.8 * pressure) * 0.92 -
+      // carrying into reach risks the tackle — risk-scaled turnover, same
+      // family as the pass penalty (dodging is not free)
+      turnoverW * pv * pressure * DECIDE.carryTurnoverGain
+    );
     const runThrough = {
       x: Math.min(PITCH.length - 0.5, Math.max(0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
       y: Math.min(PITCH.width - 0.5, Math.max(0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),

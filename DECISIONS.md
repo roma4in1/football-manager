@@ -3,6 +3,43 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 1: the backheel, the corner-dodge, and the dial's true poles
+
+Four judged defects, four mechanisms:
+
+- **The backheel** (technique.ts): kicks off facing degrade — noise
+  ×(1+1.6·(misalign/π)²), power fades beyond 90° (×0.55 at a blind 180°);
+  the pass EV discounts completion to match. DECIDED kicks only — scripted
+  kicks stay facing-blind (the script is the player's intent, body shape
+  included; the first cut penalized drill feeders parked facing "wrong" and
+  killed three L1–L3 scenarios).
+- **The corner-dodge** (decide.ts): carrying near defenders now carries a
+  risk-scaled TURNOVER term — dodging was free, so the mid dribbled to the
+  corner flag instead of ever releasing. With d1 parked ON the carry line
+  (drill), the mid now faces a real man and a real choice.
+- **The dial's true poles** (judged semantics): risk-low plays the SAFE
+  OUTLET (16/16 first passes to the settled right man), risk-high hits the
+  THROUGH BALL (16/16 to the deep runner). What it took: the through lane
+  must be clear at the release moment (d1 off the lane), the outlet must be
+  SETTLED (a second runner's lead point out-valued the through ball), a
+  deeper floor for speculative feet, inertia rescaled (a 0.0007 gap blocked
+  the safe release forever), and Δpv payoff weighting (a 55% through ball
+  honestly loses to a 95% square ball on raw EV — preferring it anyway IS
+  the instruction).
+- **Pass weight is a tradeoff, not a formula** (decide.ts): each pass now
+  evaluates TWO weights — soft (dies at the receiver's stride) vs firm
+  (beats interceptors, arrives hot, taxed for it) — and keeps the better.
+  The old linear weight hit every ball to arrive at pace and roll 60 m when
+  a receive missed (the judged corner-flag sail).
+
+Supporting fixes surfaced by the probes: lane threat = min(current,
+projected) defender position (projection alone rated a mid-turn chaser off
+the lane he then cut — the rondo's death); the receive final stride aims at
+the CROSSING point nudged up-line (a noisy pass's lateral gap went unclosed
+— a judged 3 cm miss); receiver-beaten tail threats soften rather than
+vanish (a marker standing on the receiver still taxes the ball). 53/53;
+dial asserted by first-pass TARGET now.
+
 ## 2026-07-20 — L4 OPENED: on-ball decisions (continuous EV) — first cut for judgment
 
 Branch feat/engine2-l4 (stacked on l3). The carrier evaluates carry / pass /

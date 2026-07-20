@@ -50,7 +50,9 @@ const counter = (name: string, risk: number, description: string): ScenarioDef =
     // the dial needs an ASYMMETRIC choice: d1 shades the deep left lane
     // (risky ball, big payoff), the right man offers safe feet (low payoff).
     // Scripted chasers, no defending AI
-    { id: 'd1', team: 'away', pos: { x: 61, y: 27 }, attributes: chaser },
+    // d1 parks ON the carry line (a park inside the through lane meant the
+    // honest EV could never rate the deep ball at the release moment)
+    { id: 'd1', team: 'away', pos: { x: 60, y: 34 }, attributes: chaser },
     { id: 'd2', team: 'away', pos: { x: 62, y: 38 }, attributes: chaser },
   ],
   // the ball arrives LOOSE so the break develops before the first choice —
@@ -60,14 +62,20 @@ const counter = (name: string, risk: number, description: string): ScenarioDef =
     { atTick: 0, bodyId: 'mid', command: { type: 'chaseBall', regime: 'run' } },
     // left runs IN BEHIND (the speculative ball); right offers SUPPORT
     // (the safe one) — scripted routes, L5b owns real runs
-    { atTick: 4, bodyId: 'left', command: { type: 'moveTo', target: { x: 90, y: 22 }, regime: 'run' } },
-    // right DROPS as the recycle outlet (behind the ball line — a forward
-    // flank route was a free progressive ball that preempted the dial)
-    { atTick: 4, bodyId: 'right', command: { type: 'moveTo', target: { x: 54, y: 44 }, regime: 'run' } },
+    // the deep run bends IN BEHIND toward goal — a corner-flag run valued
+    // the same as the safe outlet, and the through ball never won its risk
+    { atTick: 4, bodyId: 'left', command: { type: 'moveTo', target: { x: 88, y: 26 }, regime: 'run' } },
+    // right runs FORWARD into open space — the judged dial semantics: the
+    // SAFE choice is the ball to the open man, not keeping the dribble
+    // right settles EARLY as the standing outlet — a second deep runner's
+    // lead point valued like the through ball and the dial had no safe pole
+    { atTick: 4, bodyId: 'right', command: { type: 'moveTo', target: { x: 64, y: 46 }, regime: 'run' } },
     // the lane defender COMMITS to the carrier at 3s — the safe man slips
     // his pass now; the speculative man has already hit it
     { atTick: 30, bodyId: 'd1', command: { type: 'chaseBall', regime: 'sprint' } },
-    { atTick: 8, bodyId: 'd2', command: { type: 'moveTo', target: { x: 84, y: 36 }, regime: 'sprint' } },
+    // d2 recovers INTO the in-behind zone — an unmarked man standing in
+    // the box made the "risky" ball free for everyone by t=50
+    { atTick: 8, bodyId: 'd2', command: { type: 'moveTo', target: { x: 85, y: 29 }, regime: 'sprint' } },
     { atTick: 70, bodyId: 'd2', command: { type: 'chaseBall', regime: 'sprint' } },
   ],
 });
