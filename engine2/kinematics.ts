@@ -55,6 +55,9 @@ export const KIN = {
   walkCapMps: 1.6,
   /** arrival: inside this of the target with speed below settle = arrived */
   arriveTolM: 0.35,
+  /** intermediate followPath waypoints are passed LOOSELY (a slalom gate is
+   * rounded, not stood on) — momentum carries through */
+  waypointTolM: 1.2,
   settleSpeedMps: 0.25,
   /** deceleration profile aims to hit the target at this residual speed —
    * a real stop is a firm plant, not an asymptote */
@@ -75,6 +78,11 @@ export const KIN = {
   facingTurnRate: 7.0,
   /** stance: 'turning' when the commanded heading is off by more than this */
   turningStanceRad: 0.35,
+  /** carrying the ball is SLOWER than running free (the L2 judgment note):
+   * regime caps × (base + gain·dribbling/20) while coupled — elite control
+   * loses ~10%, heavy feet ~15% */
+  carrySpeedBase: 0.84,
+  carrySpeedControlGain: 0.04,
 } as const;
 
 export const topSpeedMps = (pace: number): number => KIN.topSpeedBase + KIN.topSpeedPerPoint * pace;
@@ -112,14 +120,27 @@ export function currentTarget(body: BodyState, external?: Vec2 | null): Vec2 | n
   return null;
 }
 
+export interface StepOptions {
+  /** chaseBall's live target (the intercept point) */
+  external?: Vec2 | null;
+  /** steering override: pursue THIS point while keeping the command intact —
+   * no arrival semantics, no command completion. The sim uses it to make a
+   * carrier fetch his own running touch (a dribbler runs where the ball
+   * went; the route is the intent, the ball is the path). */
+  steer?: Vec2 | null;
+  /** coupled to the ball this tick → regime caps take the carry penalty */
+  carrying?: boolean;
+}
+
 /**
  * Advance one body one tick. Mutates in place (the sim owns its states;
  * frames snapshot). Returns nothing — arrival is body.arrived.
- * `externalTarget` feeds chaseBall (the ball's live position).
  */
-export function stepBody(body: BodyState, tick: number, externalTarget?: Vec2 | null): void {
+export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}): void {
   const c = body.command;
-  const target = currentTarget(body, externalTarget);
+  const steering = opts.steer ?? null;
+  const target = steering ?? currentTarget(body, opts.external);
+  const carrying = opts.carrying ?? false;
   const vmax = topSpeedMps(body.attributes.pace);
   const accel = accelPeakMps2(body.attributes.acceleration);
   const brake = brakePeakMps2(body.attributes.acceleration);
@@ -140,12 +161,15 @@ export function stepBody(body: BodyState, tick: number, externalTarget?: Vec2 | 
   }
 
   const d = dist(body.pos, target);
-  const isFinalPoint = c.type === 'moveTo' ||
-    (c.type === 'followPath' && body.pathIndex >= c.points.length - 1);
-  const mustStopHere = isFinalPoint || (c.type === 'followPath' && c.stopAtEach === true);
+  const isFinalPoint = !steering && (c.type === 'moveTo' ||
+    (c.type === 'followPath' && body.pathIndex >= c.points.length - 1));
+  const mustStopHere = isFinalPoint || (!steering && c.type === 'followPath' && c.stopAtEach === true);
 
-  // ── arrival check ─────────────────────────────────────────────────────────
-  if (d <= KIN.arriveTolM && (!mustStopHere || body.speed <= KIN.settleSpeedMps + 0.15)) {
+  // ── arrival check (never while steering, and never for chaseBall — a
+  // fetched touch is re-taken by the coupling and an intercept is completed
+  // by CLAIMING the ball, not by standing on a predicted point) ────────────
+  const tol = mustStopHere ? KIN.arriveTolM : KIN.waypointTolM;
+  if (!steering && c.type !== 'chaseBall' && d <= tol && (!mustStopHere || body.speed <= KIN.settleSpeedMps + 0.15)) {
     if (c.type === 'followPath' && body.pathIndex < c.points.length - 1) {
       body.pathIndex++; // next waypoint, momentum carries through
     } else {
@@ -161,7 +185,8 @@ export function stepBody(body: BodyState, tick: number, externalTarget?: Vec2 | 
   }
 
   const regime = c.type === 'hold' ? 'walk' : c.regime;
-  const cap = regimeCapMps(body.attributes.pace, regime);
+  let cap = regimeCapMps(body.attributes.pace, regime);
+  if (carrying) cap *= KIN.carrySpeedBase + KIN.carrySpeedControlGain * (body.attributes.dribbling / 20);
 
   // ── desired speed: regime cap, shaved by arrival braking and by turn need ─
   let desired = cap;

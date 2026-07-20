@@ -3,6 +3,43 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-09 — L2 judgment round 1: four notes, five mechanisms, three probe-caught bugs
+
+Human notes on the first L2 build (anticipation, carry cost, speed-dominant
+touches, direction-change + 1v1 scenarios) — all landed as mechanisms:
+
+- **Intercept anticipation**: chaseBall runs to the earliest reachable point
+  on the ball's PREDICTED path (clone-stepping the real physics, bounces
+  included) — never the ball's tail. The debug overlay shows the live
+  intercept. Corollary bug fixed: an intercept is completed by CLAIMING the
+  ball — a chaser who "arrived" at his predicted point used to quit the
+  chase and watch the ball roll past 1.2 m away.
+- **Carrying is slower than running free**: regime caps × (0.84 +
+  0.04·dribbling/20) while coupled (~12–16%). Recovery defenders of equal
+  pace now catch dribblers — as they should.
+- **Touch balance re-fit**: speed is the DOMINANT touch-length driver
+  (speedGain 0.18 vs controlGain 0.22 acting on the carry-slowed speed;
+  measured ordering close-jog < heavy-jog < close-sprint < heavy-sprint).
+  Note: the carry speed penalty partly cancels the control gain at equal
+  regime — the honest margin is thinner than intuition says.
+- **Touches are AIMED AT THE ROUTE and alternate feet** (±0.12 rad): a
+  probe caught fetch-steering + velocity-aligned touches forming a
+  straight-line donkey-and-carrot that dribbled a carrier to x=185; aiming
+  the touch at the intent (current waypoint) self-corrects lateral drift
+  and threads gates. The BALL clears the carrier's gates (near-or-passed
+  test, checked every tick) — otherwise the next touch aims backward at a
+  gate the ball already flew past. Intermediate waypoints are passed
+  loosely (1.2 m) — a slalom gate is rounded, not stood on.
+- **The pinch**: a mid-touch ball (beyond control radius from its carrier)
+  is stealable by anyone in claim reach who is NEARER THE BALL than the
+  carrier — the touch is itself an arrival race. A glued ball cannot be
+  claimed (that dispossession is L3's tackle). Duel geometry scanned
+  empirically: a flank-recovering pace-13 defender separates the variants
+  (close control escapes the full route; heavy feet pinched mid-route).
+- **Scenarios +3** (dribble-weave slalom, duel-1v1-close/heavy): 31/31
+  assertions, L1 + L2 regression green, determinism ×2 across all fifteen.
+  Profile 5.6 µs/tick, 0.30 s/match (~600× headroom).
+
 ## 2026-09-08 — Engine V2 session 2: L2 ball physics + possession coupling (@fm/engine2)
 
 One layer, one PR (feat/engine2-l2). The ball is ALWAYS a physical object;

@@ -12,12 +12,13 @@ import { dribbleScenarios } from './dribble.ts';
 import struckBall from './struck-ball.ts';
 import looseBallRace from './loose-ball-race.ts';
 import carryTurn from './carry-turn.ts';
+import { duelScenarios, weave } from './duel-1v1.ts';
 
 export const SCENARIOS: readonly ScenarioDef[] = [
   // L1 — movement (regression set)
   shuttleRuns, curvedRun, arrival, chase, regimes,
   // L2 — ball + possession coupling
-  ...dribbleScenarios, struckBall, looseBallRace, carryTurn,
+  ...dribbleScenarios, struckBall, looseBallRace, carryTurn, weave, ...duelScenarios,
 ];
 
 export const scenarioByName = (name: string): ScenarioDef => {

@@ -33,6 +33,8 @@ export interface BallState {
    * own kicker standing at the strike point */
   kickerId: string | null;
   kickerLockUntilTick: number;
+  /** alternating-foot texture: flips each touch */
+  touchParity: boolean;
 }
 
 export const BALL = {
@@ -53,11 +55,12 @@ export const BALL = {
   claimMaxZ: 0.5,
   /** touch push: ball speed = carrier speed × (base + speedGain·(v/vmax) +
    * controlGain·(1 − dribbling/20)) — the ball leaves the boot only slightly
-   * faster than the runner. Elite close control at a jog ≈ glued; heavy feet
-   * at full sprint ≈ 3 m touches begging to be pinched. */
-  touchPushBase: 1.06,
-  touchPushSpeedGain: 0.10,
-  touchPushControlGain: 0.25,
+   * faster than the runner. SPEED is the dominant trend (the L2 judgment
+   * note): how fast you run moves touch length more than how good your feet
+   * are; control tightens it within a speed. */
+  touchPushBase: 1.04,
+  touchPushSpeedGain: 0.18,
+  touchPushControlGain: 0.22,
   /** dribble-to-arrive: a touch is never weighted to outrun the carrier's own
    * destination — push ≤ √(residual² + 2·roll·distToTarget). This is the
    * dribbler's craft (touch weight anticipates the stop); how WELL it is
@@ -69,7 +72,28 @@ export const BALL = {
   maxDribbleGapM: 4.0,
   /** ticks after a kick during which the kicker cannot claim his own ball */
   kickerLockTicks: 8,
+  /** touches alternate feet: lateral push offset per touch (radians, ~7°) —
+   * the left-right texture of a real dribble */
+  touchAlternateRad: 0.12,
+  /** a mid-touch ball (farther than controlRadius from its carrier) is
+   * PINCHABLE: the stealer must be in claim reach AND this much closer to
+   * the ball than its carrier — the touch is an arrival race. Heavy touches
+   * at speed get stolen; a glued ball cannot be pinched (L3's tackle). */
+  pinchMarginM: 0.1,
 } as const;
+
+/** Predict the free ball's position `seconds` ahead by cloning and stepping
+ * the real physics (bounces included) — the anticipation chasers run to. */
+export function predictBall(ball: BallState, seconds: number): Vec2 {
+  const clone: BallState = {
+    pos: { ...ball.pos }, z: ball.z, vel: { ...ball.vel }, vz: ball.vz,
+    phase: ball.phase === 'carried' ? 'rolling' : ball.phase,
+    carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  const steps = Math.round(seconds / DT);
+  for (let i = 0; i < steps; i++) stepBall(clone);
+  return clone.pos;
+}
 
 /** One physics tick for the free ball (rolling or airborne). Carried-ball
  * coupling lives in the sim loop (it needs the carrier's body). */

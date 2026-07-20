@@ -27,8 +27,8 @@ const scenario: ScenarioDef = {
     { atTick: 12, bodyId: 'near-slow', command: { type: 'chaseBall', regime: 'sprint' } },
     { atTick: 12, bodyId: 'far-fast', command: { type: 'chaseBall', regime: 'sprint' } },
     // reset for race 2: both retreat to marks while the feeder collects
-    { atTick: 120, bodyId: 'near-slow', command: { type: 'moveTo', target: { x: 47, y: 24 }, regime: 'run' } },
-    { atTick: 120, bodyId: 'far-fast', command: { type: 'moveTo', target: { x: 60, y: 24 }, regime: 'run' } },
+    { atTick: 120, bodyId: 'near-slow', command: { type: 'moveTo', target: { x: 47, y: 18 }, regime: 'run' } },
+    { atTick: 120, bodyId: 'far-fast', command: { type: 'moveTo', target: { x: 60, y: 26 }, regime: 'run' } },
     { atTick: 120, bodyId: 'feeder', command: { type: 'chaseBall', regime: 'run' } },
     { afterPrevious: true, bodyId: 'feeder', command: { type: 'moveTo', target: { x: 15, y: 34 }, regime: 'jog' } },
     // race 2: a much longer feed — raw pace closes the 13m spot gap

@@ -25,8 +25,8 @@ import {
   type ScenarioDef,
   type Vec2,
 } from './engine2-types.ts';
-import { BALL, kickBall, stepBall, type BallState } from './ball.ts';
-import { currentTarget, stepBody, topSpeedMps } from './kinematics.ts';
+import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
+import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -38,6 +38,9 @@ export class Sim {
   private readonly atTick = new Map<number, Array<{ bodyId: string; command: MovementCommand }>>();
   private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: { target: Vec2; speedMps: number; loftDeg: number } }>>();
   private readonly queues = new Map<string, MovementCommand[]>();
+  /** per-tick live steering targets (intercepts/fetches) — the frame's debug
+   * overlay shows what the body is ACTUALLY running to */
+  private readonly liveTargets = new Map<string, Vec2>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -92,6 +95,7 @@ export class Sim {
       carrierId: carrier ? carrier.id : null,
       kickerId: null,
       kickerLockUntilTick: 0,
+      touchParity: false,
     };
   }
 
@@ -103,9 +107,28 @@ export class Sim {
       for (const ev of events) this.assign(this.byId.get(ev.bodyId)!, ev.command);
     }
 
-    // 2. bodies move; chaseBall reads the ball's current position
+    // 2. bodies move; chaseBall runs to the INTERCEPT point (players
+    // anticipate where a ball is going, they don't chase its tail), and a
+    // carrier whose touch ran beyond reach STEERS to fetch it — the route is
+    // the intent, the ball is the path
+    this.liveTargets.clear();
     for (const body of this.bodies) {
-      stepBody(body, this.tick, body.command.type === 'chaseBall' ? this.ball.pos : undefined);
+      const isCarrier = this.ball.carrierId === body.id;
+      const gap = isCarrier
+        ? Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y)
+        : 0;
+      const fetching = isCarrier && gap > BALL.controlRadiusM &&
+        body.command.type !== 'chaseBall' && body.command.type !== 'hold';
+      let live: Vec2 | undefined;
+      if (body.command.type === 'chaseBall' || fetching) {
+        live = this.interceptPoint(body);
+        this.liveTargets.set(body.id, live);
+      }
+      stepBody(body, this.tick, {
+        external: body.command.type === 'chaseBall' ? live : undefined,
+        steer: fetching ? live : undefined,
+        carrying: isCarrier,
+      });
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
         if (next) this.assign(body, next);
@@ -146,6 +169,21 @@ export class Sim {
       this.ball.phase = 'rolling';
       return;
     }
+    // the BALL clears the carrier's gates (checked every tick, in reach or
+    // not): a touch leads the body through a waypoint, and a gate is served
+    // when the ball reaches it OR has passed it relative to the onward route
+    // — otherwise the next touch aims backward at a gate already behind
+    const ccGate = carrier.command;
+    if (ccGate.type === 'followPath') {
+      while (carrier.pathIndex < ccGate.points.length - 1) {
+        const wp = ccGate.points[carrier.pathIndex];
+        const nxt = ccGate.points[carrier.pathIndex + 1];
+        const near = Math.hypot(this.ball.pos.x - wp.x, this.ball.pos.y - wp.y) <= KIN.waypointTolM;
+        const passed = (wp.x - this.ball.pos.x) * (nxt.x - wp.x) + (wp.y - this.ball.pos.y) * (nxt.y - wp.y) < 0;
+        if (near || passed) carrier.pathIndex++;
+        else break;
+      }
+    }
     if (this.ball.z > BALL.claimMaxZ || d > BALL.controlRadiusM) return; // chasing his own touch
     // a GATHERING carrier (chaseBall) traps the ball dead instead of touching
     // it on — without this the coupling is a donkey-and-carrot: every close
@@ -169,7 +207,16 @@ export class Sim {
       this.ball.phase = 'carried';
       return;
     }
-    const heading = Math.atan2(carrier.vel.y, carrier.vel.x);
+    // a touch is AIMED AT THE ROUTE (you push the ball toward where you are
+    // going, not along your momentary velocity — otherwise a fetch-steering
+    // carrier and his own touch run in a straight line forever), with the
+    // alternating-feet nudge for the left-right texture of a real dribble
+    const routeTarget = currentTarget(carrier);
+    const baseHeading = routeTarget
+      ? Math.atan2(routeTarget.y - this.ball.pos.y, routeTarget.x - this.ball.pos.x)
+      : Math.atan2(carrier.vel.y, carrier.vel.x);
+    const heading = baseHeading + (this.ball.touchParity ? 1 : -1) * BALL.touchAlternateRad;
+    this.ball.touchParity = !this.ball.touchParity;
     const vmax = topSpeedMps(carrier.attributes.pace);
     let push = carrier.speed * (
       BALL.touchPushBase +
@@ -178,8 +225,12 @@ export class Sim {
     );
     // dribble-to-arrive: the touch is weighted for the carrier's own route —
     // a ball pushed at cruise weight into his braking zone would roll meters
-    // past the stop he is about to make
-    const dest = currentTarget(carrier);
+    // past the stop he is about to make. Only legs that END IN A STOP are
+    // weighted; a slalom gate is dribbled THROUGH, not braked at.
+    const cc = carrier.command;
+    const legStops = cc.type === 'moveTo' ||
+      (cc.type === 'followPath' && (cc.stopAtEach === true || carrier.pathIndex >= cc.points.length - 1));
+    const dest = legStops ? currentTarget(carrier) : null;
     if (dest) {
       const distToDest = Math.hypot(dest.x - this.ball.pos.x, dest.y - this.ball.pos.y);
       push = Math.min(push, Math.sqrt(
@@ -193,13 +244,25 @@ export class Sim {
   }
 
   private resolveClaims(): void {
-    if (this.ball.carrierId !== null) return;
     if (this.ball.z > BALL.claimMaxZ) return;
+    // a coupled ball is pinchable only MID-TOUCH, and the pinch is an ARRIVAL
+    // RACE for the touch: the stealer must be in reach AND meaningfully
+    // closer to the ball than its carrier (a tight touch is protected by
+    // proximity; body-shielding arrives at L3). A glued ball cannot be
+    // claimed — dispossessing it is an L3 tackle.
+    const carrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+    let carrierGap = Infinity;
+    if (carrier) {
+      carrierGap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
+      if (carrierGap <= BALL.controlRadiusM) return;
+    }
     let best: { body: BodyState; d: number } | null = null;
     for (const b of this.bodies) {
+      if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
       const d = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
       if (d > BALL.controlRadiusM) continue;
+      if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
       if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && b.id < best.body.id)) {
         best = { body: b, d };
       }
@@ -220,6 +283,20 @@ export class Sim {
     }
   }
 
+  /** earliest point on the ball's predicted path this body can reach — the
+   * anticipation runners actually use. Coarse deterministic search: clone-
+   * step the real ball physics ahead and take the first reachable horizon. */
+  private interceptPoint(body: BodyState): Vec2 {
+    const regime = body.command.type === 'chaseBall' ? body.command.regime : 'run';
+    const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
+    for (let t = 0.2; t <= 6.0; t += 0.2) {
+      const p = predictBall(this.ball, t);
+      const reach = 0.3 + Math.hypot(p.x - body.pos.x, p.y - body.pos.y) / vcap;
+      if (reach <= t) return p;
+    }
+    return predictBall(this.ball, 6);
+  }
+
   private assign(body: BodyState, command: MovementCommand): void {
     body.command = command;
     body.pathIndex = 0;
@@ -229,7 +306,7 @@ export class Sim {
 
   private snapshot(): Frame {
     const bodies: FrameBody[] = this.bodies.map((b) => {
-      const target = currentTarget(b, b.command.type === 'chaseBall' ? this.ball.pos : undefined);
+      const target = this.liveTargets.get(b.id) ?? currentTarget(b);
       const fb: FrameBody = {
         id: b.id,
         team: b.team,
