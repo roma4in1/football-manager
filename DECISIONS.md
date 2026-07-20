@@ -3,6 +3,41 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-09 — L2 physics audit: known holes, ranked, with owning layers
+
+Post-tunneling sweep of L1/L2 for more holes of the same families. Nothing
+blocks L2 acceptance; each item is recorded with the layer that owns it so
+none rots into a surprise.
+
+- **Bodies interpenetrate** (no body-body collision at all — duellists ghost
+  through each other). Most visible remaining hole. OWNER: L3 opening item
+  (soft repulsion ~0.6 m; shielding/tackles build on it).
+- **Kicks are not reach-gated**: a scripted kick fires with the ball
+  mid-touch meters from the boot — a remote-control strike. Scenario
+  footgun today, wrong once L4 kicks under pressure. OWNER: L3 kick
+  execution.
+- **Sub-tick bounce contact**: bounces resolve at tick boundaries — up to
+  1.6 m of pre-scrub horizontal travel per bounce at 16 m/s. Invisible at
+  5 Hz; flight tests absorb it. OWNER: comment now, exact-contact solve
+  only if L7 keeper timing ever needs it.
+- **predictBall ignores other bodies** — chasers anticipate free physics,
+  not rivals' traps. Fine at drill scale. OWNER: L5 (reading opponents).
+- **No pitch boundaries** — ball and bodies can leave the world; scenarios
+  self-police via the sanity assertion. OWNER: L8 (dead ball/restarts).
+- **Perfect instantaneous trap + per-tick touch re-fire**: the L2
+  simplifications that L3's first-touch model (quality vs ball speed/
+  height/pressure; touch EPISODES) explicitly replaces.
+- **Stamina costs nothing** — deferred by spec §5-L1 phasing.
+- **Constant rolling friction**: hard passes roll far (16 m/s → ~75 m).
+  Plausible-but-long; if L3 passing drills read as balls running forever,
+  the lever is a speed-proportional drag term — the EYE rules, not a
+  pre-tune.
+- **Cross-JS-engine float determinism**: byte-identical within one engine;
+  Math.cos/atan2 are not spec-exact across engines (Safari vs V8 may
+  diverge by ulps over 54k ticks). Stored streams are the replay truth, so
+  this only matters if live browser sims are ever compared against Node
+  assertions — do not chase it as a "nondeterminism bug".
+
 ## 2026-09-09 — L2 judgment round 2: the tunneling ball + the body shield
 
 Human note: pickups sometimes MISS — the ball passes through a player with
