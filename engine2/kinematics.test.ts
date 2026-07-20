@@ -24,7 +24,7 @@ const mkBody = (
 ): BodyState => ({
   id: 'b',
   team: 'home',
-  attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, stamina: 12, ...attrs },
+  attributes: { pace: 12, acceleration: 12, agility: 12, balance: 12, dribbling: 12, stamina: 12, ...attrs },
   pos: { ...pos },
   vel: { x: 0, y: 0 },
   speed: 0,

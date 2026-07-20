@@ -6,8 +6,8 @@
  */
 import type { ScenarioDef } from '../engine2-types.ts';
 
-const speedster = { pace: 18, acceleration: 10, agility: 12, balance: 12, stamina: 12 };
-const igniter = { pace: 12, acceleration: 18, agility: 12, balance: 12, stamina: 12 };
+const speedster = { pace: 18, acceleration: 10, agility: 12, balance: 12, dribbling: 12, stamina: 12 };
+const igniter = { pace: 12, acceleration: 18, agility: 12, balance: 12, dribbling: 12, stamina: 12 };
 
 const scenario: ScenarioDef = {
   version: 1,

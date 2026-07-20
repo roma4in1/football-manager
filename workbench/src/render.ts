@@ -36,6 +36,9 @@ const COLORS = {
   target: 'rgba(255,255,255,0.65)',
   label: 'rgba(255,255,255,0.85)',
   hud: 'rgba(255,255,255,0.75)',
+  ball: '#ffffff',
+  ballShadow: 'rgba(0,0,0,0.35)',
+  carrierRing: '#ffffff',
 } as const;
 
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
@@ -172,13 +175,46 @@ export function draw(canvas: HTMLCanvasElement, view: ViewState): void {
     }
   }
 
+  // ── the ball: shadow at ground truth, dot lifted+scaled by height (the
+  // spec's height cue); a carrier gets a ring so possession is obvious ─────
+  {
+    const bp = view.prev.ball;
+    const bn = view.next.ball;
+    const bx = lerp(bp.x, bn.x, view.k);
+    const by = lerp(bp.y, bn.y, view.k);
+    const bz = lerp(bp.z, bn.z, view.k);
+    const br = Math.max(3, r * 0.38) * (1 + Math.min(bz, 8) * 0.10);
+    if (bz > 0.15) {
+      ctx.beginPath();
+      ctx.ellipse(X(bx), Y(by), br * 0.9, br * 0.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.ballShadow;
+      ctx.fill();
+    }
+    const carrier = bn.carrierId ? bodies.find((b) => b.id === bn.carrierId) : undefined;
+    if (carrier) {
+      ctx.beginPath();
+      ctx.arc(X(carrier.bx), Y(carrier.by), r + 2.5, 0, Math.PI * 2);
+      ctx.strokeStyle = COLORS.carrierRing;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(X(bx), Y(by) - bz * S * 0.35, br, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.ball;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   // ── HUD ──────────────────────────────────────────────────────────────────
   if (view.overlays.hud) {
     ctx.font = '600 12px ui-monospace, monospace';
     ctx.textAlign = 'left';
     ctx.fillStyle = COLORS.hud;
+    const b = view.next.ball;
     ctx.fillText(
-      `tick ${view.tick}   t ${view.clockT.toFixed(1)}s   ${view.sourceLabel}`,
+      `tick ${view.tick}   t ${view.clockT.toFixed(1)}s   ball ${b.phase}${b.carrierId ? `·${b.carrierId}` : ''}   ${view.sourceLabel}`,
       8,
       16,
     );

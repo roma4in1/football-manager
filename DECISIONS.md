@@ -3,6 +3,138 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-09 — L2 physics audit: known holes, ranked, with owning layers
+
+Post-tunneling sweep of L1/L2 for more holes of the same families. Nothing
+blocks L2 acceptance; each item is recorded with the layer that owns it so
+none rots into a surprise.
+
+- **Bodies interpenetrate** (no body-body collision at all — duellists ghost
+  through each other). Most visible remaining hole. OWNER: L3 opening item
+  (soft repulsion ~0.6 m; shielding/tackles build on it).
+- **Kicks are not reach-gated**: a scripted kick fires with the ball
+  mid-touch meters from the boot — a remote-control strike. Scenario
+  footgun today, wrong once L4 kicks under pressure. OWNER: L3 kick
+  execution.
+- **Sub-tick bounce contact**: bounces resolve at tick boundaries — up to
+  1.6 m of pre-scrub horizontal travel per bounce at 16 m/s. Invisible at
+  5 Hz; flight tests absorb it. OWNER: comment now, exact-contact solve
+  only if L7 keeper timing ever needs it.
+- **predictBall ignores other bodies** — chasers anticipate free physics,
+  not rivals' traps. Fine at drill scale. OWNER: L5 (reading opponents).
+- **No pitch boundaries** — ball and bodies can leave the world; scenarios
+  self-police via the sanity assertion. OWNER: L8 (dead ball/restarts).
+- **Perfect instantaneous trap + per-tick touch re-fire**: the L2
+  simplifications that L3's first-touch model (quality vs ball speed/
+  height/pressure; touch EPISODES) explicitly replaces.
+- **Stamina costs nothing** — deferred by spec §5-L1 phasing.
+- **Constant rolling friction**: hard passes roll far (16 m/s → ~75 m).
+  Plausible-but-long; if L3 passing drills read as balls running forever,
+  the lever is a speed-proportional drag term — the EYE rules, not a
+  pre-tune.
+- **Cross-JS-engine float determinism**: byte-identical within one engine;
+  Math.cos/atan2 are not spec-exact across engines (Safari vs V8 may
+  diverge by ulps over 54k ticks). Stored streams are the replay truth, so
+  this only matters if live browser sims are ever compared against Node
+  assertions — do not chase it as a "nondeterminism bug".
+
+## 2026-09-09 — L2 judgment round 2: the tunneling ball + the body shield
+
+Human note: pickups sometimes MISS — the ball passes through a player with
+its direction unchanged. Diagnosis: discrete-sample claims. A 16 m/s ball
+moves 1.6 m/tick, wider than the whole 0.9 m control disc — it crossed the
+claimant BETWEEN ticks and never interacted.
+
+- **Swept-path claims**: claiming now tests the ball's movement SEGMENT
+  this tick (closest approach per body), so nothing tunnels; a claim is a
+  controlling TRAP at the meeting point (ball stops at the man — perfect
+  at L2, first-touch quality arrives with L3). Regression test drives a
+  16 m/s ball through a standing body.
+- **The body SHIELD** (the fix exposed it): with tunneling gone, every
+  duel config pinched close control — defenders were reaching THROUGH the
+  attacker, because L2 had no bodies. Minimal body-blocking: a pinch needs
+  a clear stealer→ball line; if the carrier stands within 0.5 m of that
+  line, the touch is shielded. A heavy touch running meters ahead escapes
+  the shield's shadow — the L2 bridge to L3's full shielding contests.
+- Duel re-scanned under the corrected physics: the locked geometry (flank
+  recovery, pace 13) still separates — close control escapes the route,
+  heavy feet pinched mid-route. 32/32; 5.2 µs/tick.
+
+## 2026-09-09 — L2 judgment round 1: four notes, five mechanisms, three probe-caught bugs
+
+Human notes on the first L2 build (anticipation, carry cost, speed-dominant
+touches, direction-change + 1v1 scenarios) — all landed as mechanisms:
+
+- **Intercept anticipation**: chaseBall runs to the earliest reachable point
+  on the ball's PREDICTED path (clone-stepping the real physics, bounces
+  included) — never the ball's tail. The debug overlay shows the live
+  intercept. Corollary bug fixed: an intercept is completed by CLAIMING the
+  ball — a chaser who "arrived" at his predicted point used to quit the
+  chase and watch the ball roll past 1.2 m away.
+- **Carrying is slower than running free**: regime caps × (0.84 +
+  0.04·dribbling/20) while coupled (~12–16%). Recovery defenders of equal
+  pace now catch dribblers — as they should.
+- **Touch balance re-fit**: speed is the DOMINANT touch-length driver
+  (speedGain 0.18 vs controlGain 0.22 acting on the carry-slowed speed;
+  measured ordering close-jog < heavy-jog < close-sprint < heavy-sprint).
+  Note: the carry speed penalty partly cancels the control gain at equal
+  regime — the honest margin is thinner than intuition says.
+- **Touches are AIMED AT THE ROUTE and alternate feet** (±0.12 rad): a
+  probe caught fetch-steering + velocity-aligned touches forming a
+  straight-line donkey-and-carrot that dribbled a carrier to x=185; aiming
+  the touch at the intent (current waypoint) self-corrects lateral drift
+  and threads gates. The BALL clears the carrier's gates (near-or-passed
+  test, checked every tick) — otherwise the next touch aims backward at a
+  gate the ball already flew past. Intermediate waypoints are passed
+  loosely (1.2 m) — a slalom gate is rounded, not stood on.
+- **The pinch**: a mid-touch ball (beyond control radius from its carrier)
+  is stealable by anyone in claim reach who is NEARER THE BALL than the
+  carrier — the touch is itself an arrival race. A glued ball cannot be
+  claimed (that dispossession is L3's tackle). Duel geometry scanned
+  empirically: a flank-recovering pace-13 defender separates the variants
+  (close control escapes the full route; heavy feet pinched mid-route).
+- **Scenarios +3** (dribble-weave slalom, duel-1v1-close/heavy): 31/31
+  assertions, L1 + L2 regression green, determinism ×2 across all fifteen.
+  Profile 5.6 µs/tick, 0.30 s/match (~600× headroom).
+
+## 2026-09-08 — Engine V2 session 2: L2 ball physics + possession coupling (@fm/engine2)
+
+One layer, one PR (feat/engine2-l2). The ball is ALWAYS a physical object;
+"carried" is a coupling loop, not an attachment.
+
+- **Free ball**: 3D state (x, y, height), phases carried/rolling/airborne/
+  dead (dead reserved for L8). Rolling friction 1.7 m/s² (a 14 m/s drive
+  rolls out ~58 m), gravity flight (no drag — deferred with spin), bounce
+  restitution 0.55 with 0.75 ground friction per contact, bounce → roll
+  handover below 1.2 m/s vertical. Asserted against projectile math (range
+  = v²·sin2θ/g ± discretization) and monotone roll-out.
+- **The dribble is touches + chasing**: in reach, a moving carrier pushes
+  the ball ahead at carrier speed × (1.06 + 0.10·speed-share + 0.25·(1 −
+  dribbling/20)); between touches the ball is just a rolling ball. Two
+  mechanisms make it read as football: DRIBBLE-TO-ARRIVE (a touch is never
+  weighted past the carrier's own destination — without it the pre-braking
+  touch rolled 8–33 m past his stop and sprint carries always ended in
+  giveaways) and the GATHER (a chaseBall carrier traps the ball dead
+  instead of touching on — without it collection was a donkey-and-carrot
+  that dribbled the probe carrier to x=185, clean off the pitch).
+  Possession breaks by physics past a 4 m gap.
+- **KICKER REFRACTORY (0.8 s)**: a kicker cannot claim his own strike —
+  without it any kick under ~9 m/s was instantly re-claimed by its own
+  kicker standing at the strike point and silently undone.
+- **Loose balls are arrival races**: claims = nearest body within 0.9 m of
+  a below-knee ball, deterministic tie-break; the chaseBall command races
+  a live ball and completes when anyone claims. Asserted: the short feed
+  goes to near-but-slow, the long feed to far-but-fast — outcomes from
+  physics, nothing scripted.
+- **Scenarios** (+7: dribble-close/heavy × jog/sprint, struck-ball,
+  loose-ball-race, carry-turn): 27/27 assertions, L1 five still green,
+  byte-identical determinism ×2 across all twelve. Workbench renders the
+  ball with a height cue (lifted dot + ground shadow) and a carrier ring;
+  the stored stream carries a delta-compressed ball track.
+- **Profile**: 4.8 µs/tick, 0.26 s per full match (~700× headroom); stream
+  2.45 MB gzipped. `dribbling` is the first L2 attribute consumer
+  (ATTRIBUTES.md updated); firstTouch/receive quality is L3's.
+
 ## 2026-09-08 — Bar 1 CLAIMED (spec §9): L1 accepted in full after the turn refinement
 
 - Human re-judged the workbench scenarios post-refinement: curved-run reads
@@ -116,6 +248,7 @@ watching them.
   duels multiply contact rates under compactness — behavioral compactness
   needs zone-disciplined engagement, which is exactly V2 L5 territory on
   continuous time, not a v1 keyframe retrofit.
+
 ## 2026-09-05 — ball-flight/arrival model: the goals floor is broken (engine arc phase 1)
 
 The #42-named structure was rebuilt: the kicked ball is a first-class moving

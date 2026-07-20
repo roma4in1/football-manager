@@ -34,6 +34,7 @@ export interface BodyAttributes {
   acceleration: number; // how fast speed builds, and (scaled) braking
   agility: number; // with balance: lateral grip → turn rate and cornering speed
   balance: number; // with agility: staying planted through direction change
+  dribbling: number; // L2: touch length while carrying (close control)
   stamina: number; // reserved: the effort model reads it in the later pass
 }
 
@@ -49,12 +50,21 @@ export interface BodyInit {
   attributes: BodyAttributes;
 }
 
-/** Movement commands — the whole L1 action vocabulary (scenario scripts
- * issue these; later layers' decisions will). */
+/** Movement commands — the L1/L2 action vocabulary (scenario scripts issue
+ * these; later layers' decisions will). chaseBall targets the ball's live
+ * position and completes when ANY body claims it (the race resolves). */
 export type MovementCommand =
   | { type: 'moveTo'; target: Vec2; regime: EffortRegime }
   | { type: 'followPath'; points: Vec2[]; regime: EffortRegime; stopAtEach?: boolean }
+  | { type: 'chaseBall'; regime: EffortRegime }
   | { type: 'hold'; facing?: number };
+
+/** Script-only ball actions (L2): an exact strike — noise arrives with L3. */
+export interface KickEvent {
+  atTick: number;
+  bodyId: string; // must be the carrier at that tick, else the kick is a no-op
+  kick: { target: Vec2; speedMps: number; loftDeg: number };
+}
 
 export interface BodyState {
   readonly id: string;
@@ -83,6 +93,15 @@ export interface Frame {
   /** sim seconds */
   t: number;
   bodies: FrameBody[];
+  ball: FrameBall;
+}
+
+export interface FrameBall {
+  x: number;
+  y: number;
+  z: number;
+  phase: 'carried' | 'rolling' | 'airborne' | 'dead';
+  carrierId: string | null;
 }
 
 export interface FrameBody {
@@ -110,6 +129,11 @@ export interface ScenarioDef {
   durationTicks: number;
   bodies: BodyInit[];
   script: ScriptEvent[];
+  /** initial ball placement (default: at rest on the centre spot). `carrier`
+   * starts the ball at that body's feet, coupled. */
+  ball?: { pos?: Vec2; carrier?: string };
+  /** scripted strikes (L2) */
+  kicks?: KickEvent[];
 }
 
 /** Script events either fire at an absolute tick (clearing the body's queue —
