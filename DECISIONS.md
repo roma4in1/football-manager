@@ -3,6 +3,33 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-10 — L3 judgment round 1: the 360°, the seed problem, bracing, moving receives
+
+Human verdict on L3: first-touch matrix reads right (silk dead / heavy
+popped), tackle duels work; four notes, all landed:
+
+- **The 360° orbit → CONTAIN**: a chaseBall presser at a glued ball now
+  holds a press point (carrier-relative, outside the collision disc,
+  BEARING ANCHORED on entry, hysteresis on exit, STANDS at the point via a
+  new kinematics stand-mode that stops without completing the command).
+  The failure was three stacked loops, each probe-caught: drive-into-body
+  converts to tangential slide (orbit); single-threshold engagement flaps
+  (charge → bounce → re-anchor → thrash); and a presser who cannot stand
+  loops through his point, bumping the carrier off his own ball — which
+  was silently stealing every hold. Asserted: total bearing sweep < 1.5π.
+- **The workbench gained a SEED control**: stochastic drills differ per
+  roll by design (heavy-pressed kills ~60% of touches) — a fixed seed was
+  presenting one outcome as THE outcome. Judging stochastic behavior means
+  re-rolling; the instrument now does.
+- **Shield BRACING**: a pressed standing carrier rotates back-on to the
+  presser (~side-on through the turn) — the visible truth of the shield;
+  physics unchanged at L3.
+- **Moving receives + the CLOSING-SPEED model**: first-touch difficulty now
+  rides |ball − receiver| velocity, not raw ball speed — cushioning a ball
+  you run WITH is easy, charging ONTO a drive is hard. Two new scenarios
+  (first-touch-run-with / -onto) assert the split (in-stride ≤ 0.15 pop,
+  onto > with + 0.1). 42/42.
+
 ## 2026-09-10 — Engine V2 session 3: L3 individual technique (@fm/engine2)
 
 First touch, kick execution noise, tackles, shielding — plus the two audit

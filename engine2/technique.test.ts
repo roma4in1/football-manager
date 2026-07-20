@@ -120,6 +120,69 @@ test('kicks are reach-gated: a kick scheduled while the ball is mid-touch away i
   }
 });
 
+test('moving receives: cushioning in stride is easy, charging onto a drive is hard (closing-speed model)', () => {
+  // the detection window matches each drill's closing speed: a slow cushion
+  // chase needs a tight window (a wide one fires ~2s before the take); the
+  // head-on charge needs a wide one (per-frame sampling steps ~1.6m)
+  const rate = (name: string, seeds: number, windowM: number): number => {
+    let pops = 0;
+    let contacts = 0;
+    for (let s = 0; s < seeds; s++) {
+      const frames = runScenario(scenarioByName(name), `run-${s}`);
+      const contact = frames.findIndex((f) => f.tick > 14 &&
+        Math.hypot(f.ball.x - f.bodies.find((b) => b.id === 'receiver')!.x,
+          f.ball.y - f.bodies.find((b) => b.id === 'receiver')!.y) < windowM);
+      if (contact < 0) continue;
+      contacts++;
+      const soon = frames.slice(contact, contact + 6).some((f) => f.ball.carrierId === 'receiver');
+      if (!soon) pops++;
+    }
+    return contacts === 0 ? -1 : pops / contacts;
+  };
+  const withRun = rate('first-touch-run-with', 20, 1.0);
+  const onto = rate('first-touch-run-onto', 20, 2.0);
+  assert.ok(withRun >= 0 && onto >= 0, 'both drills make contact');
+  assert.ok(withRun <= 0.15, `a cushioned take in stride almost always sticks (${withRun.toFixed(2)})`);
+  assert.ok(onto > withRun + 0.1, `charging onto the drive spills more (${onto.toFixed(2)} vs ${withRun.toFixed(2)})`);
+});
+
+test('contain at contact: the hunter presses a shielding carrier, he does not orbit him (the 360 fix)', () => {
+  const frames = runScenario(scenarioByName('tackle-duel-hold'), 'tk-1');
+  // once in contact, track the hunter's bearing around the carrier — the
+  // total sweep must stay well under a full orbit
+  let sweep = 0;
+  let prevBearing: number | null = null;
+  for (const f of frames) {
+    const c = f.bodies.find((b) => b.id === 'carrier')!;
+    const h = f.bodies.find((b) => b.id === 'hunter')!;
+    const d = Math.hypot(h.x - c.x, h.y - c.y);
+    if (d > 1.6) { prevBearing = null; continue; }
+    const bearing = Math.atan2(h.y - c.y, h.x - c.x);
+    if (prevBearing !== null) {
+      let db = bearing - prevBearing;
+      if (db > Math.PI) db -= 2 * Math.PI;
+      if (db < -Math.PI) db += 2 * Math.PI;
+      sweep += Math.abs(db);
+    }
+    prevBearing = bearing;
+  }
+  assert.ok(sweep < Math.PI * 1.5, `no 360s around the carrier (total sweep ${(sweep / Math.PI).toFixed(2)}π)`);
+});
+
+test('shield bracing: a pressed standing carrier turns his back to the presser', () => {
+  const frames = runScenario(scenarioByName('tackle-duel-hold'), 'tk-2');
+  // late in the contest, the carrier's facing should point away from the hunter
+  const f = frames[200];
+  const c = f.bodies.find((b) => b.id === 'carrier')!;
+  const h = f.bodies.find((b) => b.id === 'hunter')!;
+  if (Math.hypot(h.x - c.x, h.y - c.y) < 1.6 && f.ball.carrierId === 'carrier') {
+    const away = Math.atan2(c.y - h.y, c.x - h.x);
+    let diff = Math.abs(c.facing - away) % (2 * Math.PI);
+    if (diff > Math.PI) diff = 2 * Math.PI - diff;
+    assert.ok(diff < 0.6, `back-on to the presser (off by ${(diff * 180 / Math.PI).toFixed(0)}°)`);
+  }
+});
+
 test('bodies never interpenetrate (audit fix): min pairwise separation holds everywhere', () => {
   for (const def of SCENARIOS) {
     if (def.bodies.length < 2) continue;

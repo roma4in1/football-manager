@@ -134,6 +134,9 @@ export interface StepOptions {
    * down long before the body needs to brake — the carrier rides just
    * behind it instead of sprinting over it */
   carrySpeedCapMps?: number;
+  /** stand this tick: decay to a stop WITHOUT completing the command (a
+   * containing presser holds his ground; arrival semantics stay untouched) */
+  stand?: boolean;
 }
 
 /**
@@ -142,6 +145,11 @@ export interface StepOptions {
  */
 export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}): void {
   const c = body.command;
+  if (opts.stand) {
+    decayToStop(body, brakePeakMps2(body.attributes.acceleration));
+    body.stance = body.speed > KIN.settleSpeedMps ? 'moving' : 'settled';
+    return;
+  }
   const steering = opts.steer ?? null;
   const target = steering ?? currentTarget(body, opts.external);
   const carrying = opts.carrying ?? false;

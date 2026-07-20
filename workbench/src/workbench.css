@@ -29,3 +29,4 @@ button:hover { border-color: #3d4754; }
 .wb-transport input[type='range'] { flex: 1; accent-color: #8f86ff; }
 .wb-play { min-width: 44px; }
 .wb-clock { font: 12px ui-monospace, monospace; color: #8b95a3; white-space: nowrap; }
+.wb-seed { align-self: center; font: 13px ui-monospace, monospace; color: #b7b1ff; min-width: 3ch; text-align: center; }

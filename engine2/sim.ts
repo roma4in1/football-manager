@@ -121,8 +121,38 @@ export class Sim {
       const fetching = isCarrier && gap > BALL.controlRadiusM &&
         body.command.type !== 'chaseBall' && body.command.type !== 'hold';
       let live: Vec2 | undefined;
+      let standing = false;
       if (body.command.type === 'chaseBall' || fetching) {
         live = this.interceptPoint(body);
+        // CONTAIN at contact: a hunter already within lunging reach of a
+        // GLUED ball stands his ground and works the tackle cooldown —
+        // driving on converts to tangential slide around the carrier's
+        // collision disc (the judged 360° orbit)
+        if (body.command.type === 'chaseBall' && this.ball.carrierId !== null && !isCarrier) {
+          const carrierB = this.byId.get(this.ball.carrierId)!;
+          const gapBC = Math.hypot(this.ball.pos.x - carrierB.pos.x, this.ball.pos.y - carrierB.pos.y);
+          const dToCar = Math.hypot(body.pos.x - carrierB.pos.x, body.pos.y - carrierB.pos.y);
+          const containing = this.containBearing.has(body.id);
+          // hysteresis: enter the press close-in, leave only when knocked
+          // well out — a single threshold FLAPS (charge → bounce → charge),
+          // thrashing a rotating bearing (the judged 360°)
+          const engage = gapBC <= BALL.controlRadiusM && (dToCar <= 1.9 || (containing && dToCar <= 2.6));
+          if (engage) {
+            let bearing = this.containBearing.get(body.id);
+            if (bearing === undefined) {
+              bearing = Math.atan2(body.pos.y - carrierB.pos.y, body.pos.x - carrierB.pos.x);
+              this.containBearing.set(body.id, bearing);
+            }
+            // press point relative to the CARRIER, clear of his collision
+            // disc — clipping it creeps the presser around tangentially
+            const hold = TECH.bodyRadiusM * 2 + 0.35;
+            live = { x: carrierB.pos.x + Math.cos(bearing) * hold, y: carrierB.pos.y + Math.sin(bearing) * hold };
+            // at the press point: STAND (stop without completing the chase)
+            if (Math.hypot(body.pos.x - live.x, body.pos.y - live.y) <= 0.45) standing = true;
+          } else {
+            this.containBearing.delete(body.id);
+          }
+        }
         this.liveTargets.set(body.id, live);
       }
       stepBody(body, this.tick, {
@@ -130,6 +160,7 @@ export class Sim {
         steer: fetching ? live : undefined,
         carrying: isCarrier,
         carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
+        stand: standing,
       });
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
@@ -213,6 +244,9 @@ export class Sim {
   }
 
   private readonly tackleCooldown = new Map<string, number>();
+  /** contain bearings anchor when a press starts — re-deriving them each
+   * tick is a feedback loop that walks the presser around the carrier */
+  private readonly containBearing = new Map<string, number>();
 
   /** the dribble-to-arrive push cap for this carrier's current stop-leg —
    * also the speed HE should ride at (you decelerate WITH your touch; a
@@ -313,6 +347,23 @@ export class Sim {
       this.ball.vz = 0;
       this.ball.z = 0;
       this.ball.phase = 'carried';
+      // shield bracing: rotate to put the body between ball and the nearest
+      // presser (back-on) — the visible truth of a shield
+      let brace: BodyState | null = null;
+      let braceD = 2.2;
+      for (const o of this.bodies) {
+        if (o.team === carrier.team) continue;
+        const od = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+        if (od < braceD) {
+          braceD = od;
+          brace = o;
+        }
+      }
+      if (brace) {
+        const away = Math.atan2(carrier.pos.y - brace.pos.y, carrier.pos.x - brace.pos.x);
+        const delta = ((away - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        carrier.facing += Math.sign(delta) * Math.min(Math.abs(delta), 3.5 * DT);
+      }
       return;
     }
     // a touch is AIMED AT THE ROUTE (you push the ball toward where you are
@@ -422,8 +473,14 @@ export class Sim {
     // the claim is a FIRST TOUCH at the meeting point (L3): control quality
     // vs ball speed/height/pressure — a great touch kills a driven ball
     // dead; a poor one under pressure pops loose, still contested
-    const ballSpeed = Math.hypot(this.ball.vel.x, this.ball.vel.y);
-    const arrivalDir = ballSpeed > 0.1 ? Math.atan2(this.ball.vel.y, this.ball.vel.x) : best.body.facing;
+    // difficulty rides the CLOSING speed: a ball cushioned while running
+    // with it is easy; charging into a drive is hard (the moving-receive
+    // judgment note)
+    const relVx = this.ball.vel.x - best.body.vel.x;
+    const relVy = this.ball.vel.y - best.body.vel.y;
+    const ballSpeed = Math.hypot(relVx, relVy);
+    const rawSpeed = Math.hypot(this.ball.vel.x, this.ball.vel.y);
+    const arrivalDir = rawSpeed > 0.1 ? Math.atan2(this.ball.vel.y, this.ball.vel.x) : best.body.facing;
     const pressured = this.bodies.some((o) =>
       o.team !== best.body.team &&
       Math.hypot(o.pos.x - best.body.pos.x, o.pos.y - best.body.pos.y) <= TECH.touchPressureRangeM);
