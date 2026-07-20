@@ -3,6 +3,22 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-09-08 — Bar 1 CLAIMED (spec §9): L1 accepted in full after the turn refinement
+
+- Human re-judged the workbench scenarios post-refinement: curved-run reads
+  right (brake → plant → rip → relaunch), and all other scenarios pass the
+  eye. With the earlier session's differentiation verdict this completes
+  Bar 1 — motion reads as bodies with momentum; no teleports, no yoyo, no
+  gliding. Evidence: the five-scenario library at 19/19 assertions plus the
+  recorded judgments. L2 (ball physics + possession coupling) is next.
+- **Positioning-split design locked (implemented at L5, not now)**: the pool
+  already encodes attacking-vs-defensive positioning as `offTheBall`
+  (pen-area touches + progressive receptions) vs `positioning`
+  (interceptions/blocks/clearances). No pool rename; engine2's L5 layer maps
+  them to `attackingPositioning`/`defensivePositioning` at its boundary —
+  the `balance` pattern. Recorded in engine2/ATTRIBUTES.md (the standing
+  attribute → behavior reference, maintained per layer).
+
 ## 2026-09-07 — L1 Bar-1 judgment: ACCEPTED with one refinement — turning is stats-only, and it found a latent orbit
 
 Human verdict on the workbench scenarios: elite-vs-mid sprinter differentiation
