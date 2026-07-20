@@ -3,6 +3,27 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Forward note: delayed releases and defender-baiting (builder ask)
+
+Asked during L4 judgment: can tactics later DELAY a pass to time a run, or
+attract defenders to open space in behind? Yes — recorded so those layers
+inherit the intent:
+
+- **Delayed release (L4-extension, gated on L5b)**: a `delay` intent — the
+  carrier holds a beat when the through ball's EV is RISING (runner
+  clearing the line). Same machinery as the lane model, projected onto the
+  teammate; needs L5b's real run triggers to have something to wait for.
+  Offside-timed delays additionally need the L5c/L9 continuous line.
+- **Baiting (gated on L5c/L5d)**: carrying at a defender to trigger his
+  commit, then releasing into the vacated space — needs REACTIVE defenders
+  (shape + press triggers) and then a shallow one-ply opponent-response
+  term in the carry/pass EV. The lane model already exploits committed
+  defenders (projection opens the space behind them); baiting is choosing
+  to CAUSE the commit.
+- **Surface at L6**: "patient buildup" / "draw the press" / "tempo" become
+  instruction parameters shaping these EV terms — the risk dial is the
+  prototype of that surface.
+
 ## 2026-07-21 — L4 judgment round 2: turn-then-strike, wider caution, line-breakers
 
 Three judged asks, three mechanisms:
