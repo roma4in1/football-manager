@@ -3,6 +3,43 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-20 — L3 judgment round 11: contested chases race, losers keep hunting (the knock-past regression)
+
+The judged report: "the attacker can no longer beat the man." Probing found
+FOUR stacked causes, two engine, two drill:
+
+- **Contested vs uncontested chases** (engine, sim.ts): the receive state
+  machine (rounds 6–10) applied to EVERY chaseBall — including races. A
+  chaser timing his meet and stepping politely into the ball loses any
+  contested ball. Now: an opponent carrying the ball, or an opposing chaser,
+  makes the chase a RACE — flat-out to the earliest meet point, no timed
+  caps. Uncontested chases keep the judged receive machine untouched.
+- **Losing chasers keep hunting** (engine, sim.ts): completeChases ended
+  ALL chases on any claim — the attacker whose sweep was stabbed by the
+  defender stood down for seven seconds (the judged give-up). Chases now
+  complete only for the CLAIMANT'S TEAM; an opponent's claim converts your
+  chase into the press. loose-ball-race's reset re-timed for this (far-fast
+  stands down by script — that drill is about races, not duels).
+- **The braking arc** (drill, knock-past.ts): the attacker's followPath
+  ENDED at (54,33), so he braked to a stop mid-move — the "flying start"
+  the scenario promised never existed. A tail waypoint keeps him at sprint
+  until the chase takes over (pattern: never end a followPath where the
+  next command needs momentum).
+- **The tight knock** (drill, knock-past.ts): the knock passed 0.75 m from
+  the parked defender — inside his 0.9 m claim reach, swept deterministically
+  in 14/16 seeds, at EVERY commit back to the round the user judged "fine"
+  (the watched seed was the lucky one). Widened (y 28.5→26) and firmed
+  (8→9 m/s), defender reaction humanized (0.6 s→1.0 s flat-footed).
+
+Post: attacker takes the first claim 14/16, carries beyond the park 16/16;
+the 2 defender stabs are the move's honest risk. The test now asserts the
+FIRST claim after the knock (≥11/16) — the old floor (recollect-anywhere
+≥7/16) passed on tackle-backs while the watched race was lost every time.
+Audit note for L5e: prolonged shoulder contact acts as a TOW (the inelastic
+closing-cancel equalizes pair speed — a pace-15 man cannot pull past a
+pace-11 man he's touching); the barge layer owns real shoulder contests.
+45/45.
+
 ## 2026-09-13 — L3 judgment round 10: the fast feed is a timing problem, not a read problem
 
 The 17 m/s crossing drill never made the line — a scenario-timing error,

@@ -25,19 +25,23 @@ const scenario: ScenarioDef = {
     { atTick: 8, bodyId: 'attacker', command: { type: 'moveTo', target: { x: 43, y: 34 }, regime: 'run' } },
     // NOTE: pure atTick script — afterPrevious queues are consumed at EVERY
     // arrival, so an early moveTo arrival would eat the queued chases
-    { atTick: 46, bodyId: 'attacker', command: { type: 'followPath', points: [{ x: 49, y: 35 }, { x: 54, y: 33 }], regime: 'sprint' } },
+    // the arc runs THROUGH (54,33) — a terminal waypoint made the attacker
+    // brake to a stop mid-move (the judged dead race); the tail point keeps
+    // him at sprint until the chase takes over
+    { atTick: 46, bodyId: 'attacker', command: { type: 'followPath', points: [{ x: 49, y: 35 }, { x: 54, y: 33 }, { x: 60, y: 30 }], regime: 'sprint' } },
     { atTick: 66, bodyId: 'attacker', command: { type: 'chaseBall', regime: 'sprint' } },
     { atTick: 140, bodyId: 'attacker', command: { type: 'chaseBall', regime: 'sprint' } },
-    // the flat-footed defender turns and reacts
-    { atTick: 64, bodyId: 'defender', command: { type: 'chaseBall', regime: 'sprint' } },
+    // the flat-footed defender perceives, turns, and goes — a whole second
+    // (tick-64 reaction was an elite read that stabbed every knock)
+    { atTick: 68, bodyId: 'defender', command: { type: 'chaseBall', regime: 'sprint' } },
   ],
   kicks: [
     // the knock, released mid-sprint — a carrier's ball is only in kicking
     // reach at touch instants, so three attempts cover the timing (a fired
     // kick releases the ball; later attempts no-op)
-    { atTick: 58, bodyId: 'attacker', kick: { target: { x: 64, y: 28.5 }, speedMps: 8, loftDeg: 0 } },
-    { atTick: 64, bodyId: 'attacker', kick: { target: { x: 64, y: 28.5 }, speedMps: 8, loftDeg: 0 } },
-    { atTick: 70, bodyId: 'attacker', kick: { target: { x: 64, y: 28.5 }, speedMps: 8, loftDeg: 0 } },
+    { atTick: 58, bodyId: 'attacker', kick: { target: { x: 64, y: 26 }, speedMps: 9, loftDeg: 0 } },
+    { atTick: 64, bodyId: 'attacker', kick: { target: { x: 64, y: 26 }, speedMps: 9, loftDeg: 0 } },
+    { atTick: 70, bodyId: 'attacker', kick: { target: { x: 64, y: 26 }, speedMps: 9, loftDeg: 0 } },
   ],
 };
 

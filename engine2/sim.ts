@@ -140,23 +140,37 @@ export class Sim {
         //    (standing a meter off, waiting, is not how touches are taken);
         //  on the line, ball still far → time the meet, set, watch it in.
         if (body.command.type === 'chaseBall') {
-          let onLine = this.receiveOnLine.get(body.id) ?? false;
-          if (!onLine && icept.lineDist <= 1.2) onLine = true;
-          else if (onLine && icept.lineDist > 1.8) onLine = false;
-          this.receiveOnLine.set(body.id, onLine);
-          const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
-          if (!onLine) {
-            live = icept.pNear;
-            if (icept.tNear > 0.5) brakeIntoLine = true;
-          } else if (icept.tMeet <= 1.2) {
-            live = { x: this.ball.pos.x, y: this.ball.pos.y };
-            timedCap = 2.4; // the final stride: step INTO the arriving ball
-          } else {
+          // CONTESTED chases are RACES: an opponent carries the ball or is
+          // hunting it too — sprint to be first, no timing, no final-stride
+          // politeness (the receive machine cost the knock-past attacker
+          // his race). Uncontested chases RECEIVE.
+          const contested =
+            (this.ball.carrierId !== null && this.byId.get(this.ball.carrierId)!.team !== body.team) ||
+            this.bodies.some((o) => o.id !== body.id && o.team !== body.team && o.command.type === 'chaseBall');
+          if (contested) {
+            // race mode: run flat-out at the meet point (contain below still
+            // takes over at contact range against a glued carrier)
+            this.receiveOnLine.delete(body.id);
             live = icept.pMeet;
-            const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
-            const need = d / Math.max(icept.tMeet, 0.2);
-            if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
-            if (d <= 0.5) standing = true;
+          } else {
+            let onLine = this.receiveOnLine.get(body.id) ?? false;
+            if (!onLine && icept.lineDist <= 1.2) onLine = true;
+            else if (onLine && icept.lineDist > 1.8) onLine = false;
+            this.receiveOnLine.set(body.id, onLine);
+            const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
+            if (!onLine) {
+              live = icept.pNear;
+              if (icept.tNear > 0.5) brakeIntoLine = true;
+            } else if (icept.tMeet <= 1.2) {
+              live = { x: this.ball.pos.x, y: this.ball.pos.y };
+              timedCap = 2.4; // the final stride: step INTO the arriving ball
+            } else {
+              live = icept.pMeet;
+              const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
+              const need = d / Math.max(icept.tMeet, 0.2);
+              if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
+              if (d <= 0.5) standing = true;
+            }
           }
         }
         // CONTAIN at contact: a hunter already within lunging reach of a
@@ -561,8 +575,11 @@ export class Sim {
     this.ball.carrierId = best.body.id;
     this.ball.phase = 'carried';
     // chaseBall races complete NOW so the winner's NEXT command informs the
-    // directional touch below
-    this.completeChases();
+    // directional touch below — but only for the WINNING side. A chaser whose
+    // OPPONENT came up with the ball is not done: his chase becomes the press
+    // (standing down for seven seconds after a defender's sweep was the
+    // judged give-up)
+    this.completeChases(best.body.team);
     // the DIRECTIONAL first touch: a moving receiver sets the ball into his
     // route in stride — a dead-stop trap made him overrun his own ball and
     // circle back for it (the judged 360). Standing receivers kill it dead.
@@ -586,9 +603,9 @@ export class Sim {
 
   /** every chaseBall command completes — the race is over (the winner now
    * carries; losers pull their next command) */
-  private completeChases(): void {
+  private completeChases(winningTeam: 'home' | 'away'): void {
     for (const b of this.bodies) {
-      if (b.command.type === 'chaseBall') {
+      if (b.command.type === 'chaseBall' && b.team === winningTeam) {
         b.command = { type: 'hold' };
         b.arrived = true;
         b.arrivedAtTick = this.tick;

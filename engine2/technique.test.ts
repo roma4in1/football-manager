@@ -252,6 +252,7 @@ test('shield bracing: a pressed standing carrier turns his back to the presser',
 test('knock-past: the touch around the defender is a real, winnable move (rates across 16 seeds)', () => {
   let recollected = 0;
   let defenderWon = 0;
+  let firstClaim = 0;
   for (let s = 0; s < 16; s++) {
     const frames = runScenario(scenarioByName('knock-past'), `kp-${s}`);
     // success = the attacker is carrying again BEYOND the defender's park
@@ -262,12 +263,23 @@ test('knock-past: the touch around the defender is a real, winnable move (rates 
     });
     if (win) recollected++;
     else if (frames.some((f) => f.ball.carrierId === 'defender')) defenderWon++;
+    // the FIRST claim after the knock is the race itself — winning the ball
+    // back later by tackle is a contest, not a beaten man (the old floor
+    // passed on tackle-backs while the watched race was lost every time)
+    let released = false;
+    for (const f of frames) {
+      if (!released && f.ball.carrierId === null) released = true;
+      else if (released && f.ball.carrierId !== null) {
+        if (f.ball.carrierId === 'attacker') firstClaim++;
+        break;
+      }
+    }
   }
-  // vs a SET, reacting defender the move is honestly ~even — beating a
-  // turned/committed defender (and picking that moment) is L4 decision
-  // intelligence. The L3 claim: the move is real, winnable, and always
-  // resolves to a contest.
-  assert.ok(recollected >= 7, `the move is genuinely winnable (${recollected}/16)`);
+  // pace 15 with a flying start vs a flat-footed pace-11 defender: the
+  // attacker wins the race to his own knock most times; the defender's
+  // occasional stab of a tight knock is the move's honest risk
+  assert.ok(firstClaim >= 11, `the attacker beats the man to his own knock (${firstClaim}/16 first claims)`);
+  assert.ok(recollected >= 13, `and ends up carrying beyond the park (${recollected}/16)`);
   assert.ok(recollected + defenderWon >= 14, `and it always resolves to a contest, never the void (${defenderWon} defender wins)`);
 });
 
