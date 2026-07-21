@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { keepValue, passCompletion, posValue, xG } from './decide.ts';
+import { keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
 import type { BodyState, Frame } from './engine2-types.ts';
 
 const mkBody = (id: string, team: 'home' | 'away', x: number, y: number, vx = 0, vy = 0): BodyState => ({
@@ -104,6 +104,41 @@ test('risk dial: the instruction picks the TARGET — safe outlet vs through bal
   // the through ball to the deep runner
   assert.ok(low.right >= 12, `risk-low plays the safe outlet (${low.right}/16 right)`);
   assert.ok(high.left >= 12, `risk-high hits the through ball (${high.left}/16 left)`);
+});
+
+test('supportSpot (L5a): moves off a blocked lane, spaces off teammates, deforms toward the ball', () => {
+  const carrier = mkBody('c', 'home', 40, 34);
+  const mate = mkBody('m', 'home', 54, 34);
+  const blocker = mkBody('o', 'away', 47, 34.2); // parked ON the home lane
+  const spot = supportSpot(mate, carrier, [carrier, mate, blocker], { x: 54, y: 34 }, 'keep');
+  const laneAtHome = passCompletion(carrier.pos, { x: 54, y: 34 }, 10, [blocker], 14, mate);
+  const laneAtSpot = passCompletion(carrier.pos, spot, 10, [blocker], 14, mate);
+  assert.ok(laneAtSpot > laneAtHome + 0.15, `the spot opens the lane (${laneAtHome.toFixed(2)} → ${laneAtSpot.toFixed(2)})`);
+  // spacing: a crowding teammate pushes the spot away
+  const crowd = mkBody('m2', 'home', 54, 35);
+  const spaced = supportSpot(mate, carrier, [carrier, mate, blocker, crowd], { x: 54, y: 34 }, 'keep');
+  assert.ok(Math.hypot(spaced.x - crowd.pos.x, spaced.y - crowd.pos.y) > 2.5, 'spaced off the crowder');
+});
+
+test('rondo-4v2 with support (L5a): passers reposition and the ball still circulates (4 seeds)', () => {
+  let moved = 0;
+  let checked = 0;
+  for (let s = 0; s < 4; s++) {
+    const def = scenarioByName('rondo-4v2');
+    const sim = new Sim(def, `l4-${s}`);
+    const start = new Map(sim.bodies.map((b) => [b.id, { ...b.pos }]));
+    const disp = new Map<string, number>();
+    for (let t = 0; t < def.durationTicks; t++) {
+      sim.step();
+      for (const b of sim.bodies) {
+        if (!b.id.startsWith('p')) continue;
+        const s0 = start.get(b.id)!;
+        disp.set(b.id, Math.max(disp.get(b.id) ?? 0, Math.hypot(b.pos.x - s0.x, b.pos.y - s0.y)));
+      }
+    }
+    for (const [, d] of disp) { checked++; if (d > 2) moved++; }
+  }
+  assert.ok(moved >= checked * 0.5, `support repositions the passers (${moved}/${checked} moved >2m)`);
 });
 
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {

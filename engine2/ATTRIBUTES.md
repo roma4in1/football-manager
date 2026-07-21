@@ -66,6 +66,15 @@ the situation and INSTRUCTIONS bias the choice; attributes govern execution
 | instructions.risk | choice distribution | scales the turnover penalty (passes AND carries near defenders), the completion floor a pass must clear, the payoff weight of progressive balls, AND the carry-pressure horizon (a cautious player's danger radius is wider — he releases before engaging the 1v1) — judged semantics: low plays the safe outlet early, high hits the through ball |
 | instructions.objective | the value field | 'score' = posValue (goal-seeking); 'keep' = keepValue (space minus station-tether) — the rondo's truth |
 
+## L5a — support & structure (opened)
+
+Off-ball brains whose team has the ball move to OFFER AN ANGLE: the same
+lane model the carrier uses, pointed the other way — spot utility =
+lane-openness ×0.6 + value ×1.2 − crowding, tethered to a home that
+deforms toward the ball (30% of the distance, capped 3 m keep / 8 m
+score). Engages only for IDLE bodies past their last scripted cue (the
+script is the run until L5b); defensive off-ball stays L5c/L5d.
+
 ## Decided for later layers
 
 - **Positioning split (decided 2026-09-07, implemented at L5)**: the pool
