@@ -3,6 +3,27 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Curve (Magnus): sidespin bends the flight (the last physical pass)
+
+Builder ask: add curve after headers. The ball gained a SIDESPIN state (rad/s
+about the vertical axis); applyMagnus() bends the horizontal velocity each
+tick, perpendicular to travel, with a = MAGNUS_K·spin·v_h — MAGNUS_K derived
+from physics.md (½·ρ·A·Cmag·r/m ≈ 0.0011). Spin bleeds 8%/s (physics.md).
+Applied to BOTH the airborne flight and a rolling ball (the ground trivela).
+kickBall gained a spin argument (default 0); scenario kicks and the pass Intent
+can carry it.
+
+Magnitudes: spin ±40 bends ~1.5 m over 34 m, spin 70 ~2.7 m, a ground trivela
+(spin 60) curls ~4 m over its roll — believable. curled-pass scenario: the
+kicker aims WIDE of a defender on the direct line and curls the ball (spin
+120) back to a receiver — bends off the aim 2.5 m (8/8), stays 2.2 m clear of
+the defender (8/8), receiver collects it (8/8).
+
+spin defaults to 0 everywhere, so every existing ball flies exactly as before
+— all ground rates pinned; 65/65. Topspin/backspin (dip/float) and the
+DECISION to bend (auto trivela / inswinger around a defender, curled shot) are
+the next pieces — this lands the PHYSICS + a scripted curl.
+
 ## 2026-07-21 — Aerial contest: the HEADER (lofts over defenders are now honest)
 
 Builder ask: add headers / the aerial contest. Until now a ball above knee

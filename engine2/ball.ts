@@ -27,6 +27,10 @@ export interface BallState {
   vel: Vec2;
   vz: number;
   phase: BallPhase;
+  /** SIDESPIN about the vertical axis (rad/s, signed): a moving ball curves
+   * perpendicular to its travel via the Magnus force. + bends to the right of
+   * travel, − to the left. Topspin/backspin (dip/float) deferred. */
+  spin: number;
   carrierId: string | null;
   /** a kicker cannot claim his own strike for a beat — a kicked ball has
    * LEFT him; without this a sub-9 m/s kick is instantly re-claimed by its
@@ -45,6 +49,8 @@ export const BALL = {
   radiusM: 0.11,
   airDensity: 1.225, // kg/m³ at sea level
   dragCoefficient: 0.22, // sphere in the football Reynolds regime
+  magnusCoefficient: 0.18, // physics.md — sidespin lift for curved flight
+  spinDecayPerS: 0.08, // spin bleeds ~8%/s (physics.md: smooth decay)
   /** rolling-resistance coefficient of the surface; the constant rolling
    * decel is μ·g. physics.md lists 0.018 (that is an ARTIFICIAL-TURF / smooth
    * value — it makes a soft pass trickle ~70 m, contradicting a real pitch),
@@ -142,12 +148,29 @@ export const DRAG_K = 0.5 * BALL.airDensity * BALL.dragCoefficient *
   (Math.PI * BALL.radiusM * BALL.radiusM) / BALL.massKg;
 /** constant rolling-resistance decel of a free ball: μ·g ≈ 0.177 m/s². */
 export const ROLL_FRICTION_MPS2 = BALL.rollingFrictionCoeff * BALL.gravity;
+/** Magnus lateral accel per (spin·v): a = ½·ρ·A·Cmag·r/m · spin · v_h ≈
+ * 0.0011 — so a spin of ~60 rad/s at 25 m/s bends the ball ~1–2 m. Applied
+ * perpendicular to the horizontal velocity (the curve). */
+export const MAGNUS_K = 0.5 * BALL.airDensity * (Math.PI * BALL.radiusM * BALL.radiusM) *
+  BALL.magnusCoefficient * BALL.radiusM / BALL.massKg;
+
+/** apply the sidespin Magnus curve to a moving ball's horizontal velocity and
+ * bleed the spin — shared by the airborne and rolling steps. */
+function applyMagnus(ball: BallState): void {
+  if (Math.abs(ball.spin) < 0.5) return;
+  const vh = Math.hypot(ball.vel.x, ball.vel.y);
+  if (vh < 0.5) return;
+  // force ∝ ω × v: for +spin (about +z) the ball curves to the LEFT of travel
+  const a = MAGNUS_K * ball.spin; // × (−vy, vx) below (magnitude a·vh)
+  ball.vel = { x: ball.vel.x - a * ball.vel.y * DT, y: ball.vel.y + a * ball.vel.x * DT };
+  ball.spin *= 1 - BALL.spinDecayPerS * DT;
+}
 
 /** Predict the free ball's position `seconds` ahead by cloning and stepping
  * the real physics (bounces included) — the anticipation chasers run to. */
 export function predictBall(ball: BallState, seconds: number): Vec2 {
   const clone: BallState = {
-    pos: { ...ball.pos }, z: ball.z, vel: { ...ball.vel }, vz: ball.vz,
+    pos: { ...ball.pos }, z: ball.z, vel: { ...ball.vel }, vz: ball.vz, spin: ball.spin,
     // PRESERVE the phase so the roll friction matches reality: a carried
     // ball is predicted on the dribble constant (the carrier fetching his
     // own touch, a chaser reading a dribble), a free ball on the realistic
@@ -166,7 +189,7 @@ export function predictBall(ball: BallState, seconds: number): Vec2 {
  * runs to the DROP, not to a point where it is still over his head. */
 export function predictBallState(ball: BallState, seconds: number): { pos: Vec2; z: number; vz: number } {
   const clone: BallState = {
-    pos: { ...ball.pos }, z: ball.z, vel: { ...ball.vel }, vz: ball.vz,
+    pos: { ...ball.pos }, z: ball.z, vel: { ...ball.vel }, vz: ball.vz, spin: ball.spin,
     phase: ball.phase === 'dead' ? 'rolling' : ball.phase,
     carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
   };
@@ -179,6 +202,7 @@ export function predictBallState(ball: BallState, seconds: number): { pos: Vec2;
  * coupling lives in the sim loop (it needs the carrier's body). */
 export function stepBall(ball: BallState): void {
   if (ball.phase === 'airborne') {
+    applyMagnus(ball); // the curve — sidespin bends the horizontal path
     // gravity + aerodynamic drag on the FULL 3-D velocity (physics.md flight
     // model): drag opposes the velocity vector, magnitude DRAG_K·|v|² — long
     // shots and crosses lose pace in the air, not only on the ground
@@ -202,6 +226,7 @@ export function stepBall(ball: BallState): void {
     return;
   }
   if (ball.phase === 'rolling' || ball.phase === 'carried') {
+    if (ball.phase === 'rolling') applyMagnus(ball); // a curving ground ball (trivela)
     const speed = Math.hypot(ball.vel.x, ball.vel.y);
     if (speed <= BALL.stopSpeedMps) {
       ball.vel = { x: 0, y: 0 };
@@ -265,7 +290,7 @@ export function solveLoftSpeed(dist: number, loftDeg: number): number {
   const cos = Math.cos(loft), sin = Math.sin(loft);
   const landsAt = (speed: number): number => {
     const b: BallState = {
-      pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * cos, y: 0 }, vz: speed * sin,
+      pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * cos, y: 0 }, vz: speed * sin, spin: 0,
       phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
     };
     for (let i = 0; i < 600 && b.phase === 'airborne'; i++) stepBall(b);
@@ -284,7 +309,7 @@ export function loftApex(dist: number, loftDeg: number): number {
   const speed = solveLoftSpeed(dist, loftDeg);
   const loft = (loftDeg * Math.PI) / 180;
   const b: BallState = {
-    pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * Math.cos(loft), y: 0 }, vz: speed * Math.sin(loft),
+    pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * Math.cos(loft), y: 0 }, vz: speed * Math.sin(loft), spin: 0,
     phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
   };
   let apex = 0;
@@ -295,7 +320,7 @@ export function loftApex(dist: number, loftDeg: number): number {
 /** Strike the ball: direction toward `target`, `speedMps` along the flight
  * chord, lofted by `loftDeg`. Releases any carry. Scenario-exact at L2 —
  * execution noise is L3's. */
-export function kickBall(ball: BallState, target: Vec2, speedMps: number, loftDeg: number, kickerId: string, tick: number): void {
+export function kickBall(ball: BallState, target: Vec2, speedMps: number, loftDeg: number, kickerId: string, tick: number, spin = 0): void {
   const dx = target.x - ball.pos.x;
   const dy = target.y - ball.pos.y;
   const d = Math.max(Math.hypot(dx, dy), 1e-6);
@@ -308,4 +333,5 @@ export function kickBall(ball: BallState, target: Vec2, speedMps: number, loftDe
   ball.carrierId = null;
   ball.kickerId = kickerId;
   ball.kickerLockUntilTick = tick + BALL.kickerLockTicks;
+  ball.spin = spin;
 }

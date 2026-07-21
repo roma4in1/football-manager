@@ -38,7 +38,7 @@ export class Sim {
   tick = 0;
   private readonly byId = new Map<string, BodyState>();
   private readonly atTick = new Map<number, Array<{ bodyId: string; command: MovementCommand }>>();
-  private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: { target: Vec2; speedMps: number; loftDeg: number } }>>();
+  private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: { target: Vec2; speedMps: number; loftDeg: number; spin?: number } }>>();
   private readonly queues = new Map<string, MovementCommand[]>();
   /** per-tick live steering targets (intercepts/fetches) — the frame's debug
    * overlay shows what the body is ACTUALLY running to */
@@ -146,6 +146,7 @@ export class Sim {
       z: 0,
       vel: { x: 0, y: 0 },
       vz: 0,
+      spin: 0,
       phase: carrier ? 'carried' : 'rolling',
       carrierId: carrier ? carrier.id : null,
       kickerId: null,
@@ -408,7 +409,7 @@ export class Sim {
           // intent, body shape included — the backheel penalty is for
           // DECIDED kicks (the chooser knows his own facing)
           const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
-          kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
+          kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick, k.kick.spin ?? 0);
         }
       }
     }
