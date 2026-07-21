@@ -38,6 +38,12 @@ arrival tolerance 0.35 m, turn time budget 0.55 s.
 | tackling + strength | winning glued-ball contests | winP = clamp(0.42 + 0.055·edge), edge = (tackling+0.5·strength) − (dribbling+0.5·balance); ÷(1 + 0.2·carrierSpeed) — lunging at a sprinter is much harder. Win knocks the ball loose; loser claim-locked. Lunges cooldown 1.2s. |
 | strength + balance | shield width | shield radius 0.3 + 0.25·composite/40 (0.3–0.55m): the carrier's body blocks the stealer→ball line. Far-foot dribbling: touches bias away from a marker inside 2.4m. |
 
+IN-STRIDE RECEIVES: a RUNNER (>3.5 m/s) whose continued run meets a
+flighted pass (>4 m/s) takes it at full pace — no timed brake (checking the
+run left through balls rolling on behind the receiver). Static and dying
+balls are still braked into; crossing receives that need timing still get
+the receive machine (self-selecting by geometry).
+
 RECEIVE REACH: a ball is claimable within 0.9 m of the body and below knee
 height (0.5 m), tested against the ball's swept path IN THE RECEIVER'S FRAME
 (both motions subtracted — two fast movers crossing cannot tunnel through

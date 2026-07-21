@@ -183,6 +183,15 @@ export class Sim {
             this.receiveOnLine.delete(body.id);
             const dBall = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
             live = dBall <= 2.5 ? { x: this.ball.pos.x, y: this.ball.pos.y } : icept.pMeet;
+          } else if (this.inStrideMeet(body)) {
+            // the RUNNER'S receive: his continued run meets the ball — take
+            // it in stride, no timing, no brake (the judged check-and-wait:
+            // the receiver anticipated at the meet point and the through
+            // ball ran on behind him). Self-selecting: if full pace along
+            // the current run does NOT meet the ball, the machine below
+            // times it as before.
+            live = this.inStrideMeet(body)!;
+            this.receiveOnLine.delete(body.id);
           } else {
             let onLine = this.receiveOnLine.get(body.id) ?? false;
             if (!onLine && icept.lineDist <= 1.2) onLine = true;
@@ -864,6 +873,31 @@ export class Sim {
    *     produces a parallel converging drift that reads as running away);
    *  2. ON the line → the earliest meeting point, approached at the speed
    *     that arrives WITH the ball. */
+  /** the in-stride meet: where the ball's predicted path comes onto the
+   * body's CONTINUED run (current velocity held) — or null if running
+   * through does not meet the ball and the receive must be timed */
+  private inStrideMeet(body: BodyState): Vec2 | null {
+    if (body.speed < 3.5) return null;
+    // a PASS in flight only — a slow or sitting ball must be braked into
+    // (the collect), not charged at full stride (the original overrun bug)
+    if (Math.hypot(this.ball.vel.x, this.ball.vel.y) < 4) return null;
+    const ux = body.vel.x / body.speed;
+    const uy = body.vel.y / body.speed;
+    let bestGap = Infinity;
+    let bestT = 0;
+    for (let t = 0.2; t <= 3.0; t += 0.2) {
+      const bp = predictBall(this.ball, t);
+      const g = Math.hypot(bp.x - (body.pos.x + ux * body.speed * t), bp.y - (body.pos.y + uy * body.speed * t));
+      if (g < bestGap) {
+        bestGap = g;
+        bestT = t;
+      }
+    }
+    if (bestGap > 1.0) return null;
+    const bp = predictBall(this.ball, bestT);
+    return { x: bp.x, y: bp.y };
+  }
+
   private interceptPoint(body: BodyState): {
     pNear: Vec2; tNear: number; lineDist: number; pMeet: Vec2; tMeet: number;
   } {

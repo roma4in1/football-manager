@@ -3,6 +3,25 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 5: the run is not checked
+
+The judged defect (sharpest on the counter-high long ball): receivers
+slowed to ANTICIPATE at the meet point — the receive machine's timed
+approach is right for a station receiver and wrong for a runner — so the
+firm through ball rolled on behind the checked run.
+
+- **In-stride receives** (sim.ts): a runner (>3.5 m/s) whose CONTINUED run
+  at current pace comes within 1 m of a flighted pass's predicted path
+  takes the ball at that meet, flat out — no timed cap, no brake-into-line.
+  Self-selecting by geometry: if running through does not meet the ball
+  (true crossing receives, early arrivals), the timed machine handles it as
+  before. Flight-only (>4 m/s ball): a sitting or dying ball must still be
+  braked into — the first cut hijacked static collects and resurrected the
+  charge-and-overrun bug (three tests caught it immediately).
+- Post: the counter-high runner holds 4.1→6.2 m/s through the whole flight
+  and takes the ball moving at his feet. 53/53; dial 16/16 both poles;
+  rondo unchanged (10.6 m/s, half-turn one-touch).
+
 ## 2026-07-21 — L4 judgment round 4: pace is routine, body shape is the skill
 
 The judged rondo truth: pros don't struggle with a 10 m/s ball over 12 m —
