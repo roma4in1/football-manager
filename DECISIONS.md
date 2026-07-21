@@ -3,6 +3,14 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — KDB completion DEFERRED to curve + aerials (builder decision)
+
+The elite-passer decision terms are in (precision margin, lines broken,
+uncuttable pace); the full across-the-defence ball waits for BALL CURVE
+and AERIAL play — the flat 40 m diagonal is honestly dead on the ground.
+Finish the De Bruyne kit when those physical passes land. L5c judgment
+continues in parallel; next sub-phase: L5d pressing.
+
 ## 2026-07-21 — The elite passer (builder ask: replicating De Bruyne/Messi)
 
 The design finding: in a true-state engine everyone already SEES
