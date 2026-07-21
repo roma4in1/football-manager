@@ -117,4 +117,26 @@ export const crossHeader: ScenarioDef = {
   ],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader];
+/** the 3-D BLOCK: a driven ball at BODY height is blocked by a defender in the
+ * path (interception is xyz) — the same ball flighted OVER his reach clears.
+ * The `loftDeg` here keeps it at ~1.3 m through the defender; raise it and the
+ * ball sails over him untouched. */
+export const drivenBlock: ScenarioDef = {
+  version: 1,
+  name: 'driven-block',
+  description: 'A driven ball at body height is BLOCKED by a defender standing in its path (xyz interception); a ball flighted over his reach would clear. Judge the 3-D block.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'shooter', team: 'home', pos: { x: 66, y: 34 }, attributes: passer },
+    // a defender square in the path — the ball at body height hits him
+    { id: 'defender', team: 'away', pos: { x: 76, y: 34 }, attributes: passer },
+  ],
+  ball: { carrier: 'shooter' },
+  kicks: [
+    // a hard, near-flat drive that is ~1.3 m high as it reaches the defender
+    { atTick: 8, bodyId: 'shooter', kick: { target: { x: 100, y: 34 }, speedMps: 24, loftDeg: 10 } },
+  ],
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock];

@@ -444,6 +444,7 @@ export class Sim {
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
     this.resolveHeaders();
+    this.resolveBlocks(ballFrom);
     this.resolveClaims(ballFrom);
 
     // L5d bookkeeping: possession flips arm the counterpress window; a
@@ -745,6 +746,51 @@ export class Sim {
       ball.kickerId = null;
       ball.vel = { x: sign * incoming * BALL.headKnockCushion, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
     }
+  }
+
+  /** the 3-D BLOCK — interception in xyz, not xy: a DRIVEN airborne ball
+   * (a shot, a cross, a driven pass) that passes through a body's reach (feet
+   * to arms-up, bodyBlockReachZ) is DEFLECTED off him; one flighted OVER his
+   * reach clears. A slow ball is controlled/headed, not blocked. Runs after the
+   * deliberate header, before the ground claim. (The keeper — a higher reach
+   * and a catch — is L7 on this same footing.) */
+  private resolveBlocks(from: Vec2): void {
+    const ball = this.ball;
+    if (ball.phase !== 'airborne' || ball.z > BALL.bodyBlockReachZ) return;
+    const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    if (speed < BALL.blockMinSpeedMps) return;
+    let best: { body: BodyState; d: number; at: Vec2 } | null = null;
+    for (const body of this.bodies) {
+      if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      // horizontal closest approach of the body to the ball's swept path, in
+      // the body's frame (so a fast ball cannot tunnel past his reach)
+      const prev = this.prevPos.get(body.id) ?? body.pos;
+      const fx = from.x - (body.pos.x - prev.x);
+      const fy = from.y - (body.pos.y - prev.y);
+      const dx = ball.pos.x - fx;
+      const dy = ball.pos.y - fy;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((body.pos.x - fx) * dx + (body.pos.y - fy) * dy) / len2));
+      const at = { x: fx + dx * t, y: fy + dy * t };
+      const d = Math.hypot(body.pos.x - at.x, body.pos.y - at.y);
+      if (d > BALL.controlRadiusM) continue;
+      if (!best || d < best.d) best = { body, d, at };
+    }
+    if (!best) return;
+    // DEFLECT — scrub most of the pace and scatter it off his body, a loose
+    // pop; he cannot instantly re-claim his own block (brief refractory)
+    const ang = Math.atan2(ball.vel.y, ball.vel.x) + Math.PI +
+      this.rng.gauss(0, 0.8, this.tick, best.body.id, 'block');
+    const sp = speed * BALL.blockDeflectKeep;
+    ball.pos = { x: best.at.x, y: best.at.y };
+    ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
+    ball.vz = sp * 0.3;
+    ball.phase = 'airborne';
+    ball.carrierId = null;
+    ball.kickerId = best.body.id;
+    ball.kickerLockUntilTick = this.tick + 4;
+    ball.spin = 0;
+    this.actionLabels.set(best.body.id, 'block');
   }
 
   private resolveClaims(from: Vec2): void {

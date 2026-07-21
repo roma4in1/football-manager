@@ -7,7 +7,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { solveLoftSpeed } from './ball.ts';
+import { solveLoftSpeed, kickBall, stepBall, type BallState } from './ball.ts';
+
+const mkBallOver = (): BallState => ({
+  pos: { x: 66, y: 34 }, z: 0, vel: { x: 0, y: 0 }, vz: 0, spin: 0,
+  phase: 'carried', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+});
 
 test('a lofted ball flies over head height and a runner controls it on the drop (the aerial through ball)', () => {
   let controlled = 0;
@@ -97,6 +102,38 @@ test('the CROSS + attacking header: a striker attacks the drop and heads it at g
   }
   assert.ok(headedAtGoal >= 7, `the striker heads the hard cross AT GOAL (${headedAtGoal}/10)`);
   assert.ok(onTarget >= 6, `the header is goalward and roughly on target (${onTarget}/10)`);
+});
+
+test('the 3-D BLOCK: a driven ball at body height is blocked by a defender in the path (xyz, not xy)', () => {
+  let blocked = 0;
+  let bodyHeight = 0;
+  for (let s = 0; s < 8; s++) {
+    const sim = new Sim(scenarioByName('driven-block'), `blk-${s}`);
+    let didBlock = false;
+    let zAtDef = 0;
+    for (let t = 0; t < 60; t++) {
+      const f = sim.step();
+      if (Math.abs(sim.ball.pos.x - 76) < 1.5) zAtDef = Math.max(zAtDef, sim.ball.z);
+      if (f.bodies.find((b) => b.id === 'defender' && b.action === 'block')) { didBlock = true; break; }
+      if (sim.ball.pos.x > 90) break; // sailed past untouched
+    }
+    if (didBlock) blocked++;
+    // the block happens above the ground-claim ceiling (0.5 m) — a genuinely
+    // aerial ball the xy claim would have let through
+    if (zAtDef > 0.5) bodyHeight++;
+  }
+  assert.ok(blocked >= 7, `the defender blocks the driven ball in his path (${blocked}/8)`);
+  assert.ok(bodyHeight >= 7, `the block is at body height, above the ground-claim ceiling (${bodyHeight}/8)`);
+});
+
+test('a ball flighted OVER the defender\'s reach clears him — the block is height-aware', () => {
+  // the same 24 m/s strike, but lofted: it sails over the 2 m reach untouched
+  const b = mkBallOver();
+  kickBall(b, { x: 100, y: 34 }, 24, 30, 'k', 0);
+  let zAtDef = 0;
+  let t = 0;
+  while (b.phase === 'airborne' && t < 200) { stepBall(b); t++; if (Math.abs(b.pos.x - 76) < 1) zAtDef = b.z; }
+  assert.ok(zAtDef > 2.0, `the lofted ball clears the defender's reach (${zAtDef.toFixed(1)} m > 2 m)`);
 });
 
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
