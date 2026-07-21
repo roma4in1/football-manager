@@ -164,15 +164,20 @@ export const xG = (from: Vec2, team: 'home' | 'away', others: readonly BodyState
     if (t <= 0 || t >= 0.95) continue;
     const px = from.x + t * (g.x - from.x);
     const py = from.y + t * (g.y - from.y);
-    if (Math.hypot(o.pos.x - px, o.pos.y - py) < 0.9) {
+    const along = t * d;
+    // the block corridor TAPERS: a nearby defender must be square on the
+    // line to block; a distant one shadows more of the mouth (the flat
+    // 0.9 m corridor made any loitering body a shot veto — the judged
+    // never-shoots-near-anyone)
+    const corridor = 0.45 + 0.055 * along;
+    if (Math.hypot(o.pos.x - px, o.pos.y - py) < corridor) {
       blockers++;
-      // a boot ON the shot line within a stride blocks it outright — the
-      // judged pinball: shooting into the man on your toes, forever
-      if (t * d < 2.0) pointBlank = true;
+      if (along < 2.0) pointBlank = true;
     }
   }
   const raw = distFactor * angleFactor * DECIDE.xgBlockerFactor ** blockers;
-  return Math.min(0.95, pointBlank ? raw * 0.15 : raw);
+  // point-blank is a heavy discount, not a veto — shots go through legs
+  return Math.min(0.95, pointBlank ? raw * 0.35 : raw);
 };
 
 /** completion probability of a pass along carrier→dest at speedMps, judged
@@ -523,7 +528,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       riderBehind = { x: rLineX + rsign * 4.5, y: mate.pos.y };
     }
     const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
-    if (riderBehind) allCandidates.push({ arrive: softArrive + 1, leadExtraS: 0, destOverride: riderBehind });
+    if (riderBehind) {
+      allCandidates.push({ arrive: softArrive + 1, leadExtraS: 0, destOverride: riderBehind });
+      // the DRIVEN thread (passing.md #9/#13): a faster ball through the
+      // same gap — less flight time beats closing defenders; the receiver
+      // pays the hot-arrival tax instead
+      allCandidates.push({ arrive: softArrive + 4, leadExtraS: 0, destOverride: riderBehind });
+    }
     for (const { arrive, leadExtraS, destOverride } of allCandidates) {
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
@@ -557,7 +568,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       pC *= 1 - 0.04 * Math.max(0, arrTrue - comfy);
       if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
       const pvThere = value(dest, mate.id);
-      const meets = pC >= passFloor ? 1 : 0.35; // sub-floor lanes are heavily taxed
+      // sub-floor lanes are taxed, but the tax RIDES RISK — "the best pass
+      // is not always the safest" (passing.md): a speculative player keeps
+      // the threaded splitting ball live; a safe one buries it
+      const meets = pC >= passFloor ? 1 : 0.25 + 0.45 * risk;
       const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
       // the ball to a RIDING runner waits for his movement — you play the
       // through ball when the dart goes, not while he stands on the line.
@@ -605,7 +619,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       if (gd < DECIDE.shootRangeM * 1.3) pv += 0.8 * xG(p, team, opponents);
     }
     const u = DECIDE.possessionDiscount * (
-      pv * (1 - 0.8 * pressure) * 0.92 -
+      // pressure taxes the spot, but momentum and control mean a defender
+      // meters away is a problem, not half your value (the judged
+      // dribble-away-from-everyone)
+      pv * (1 - 0.55 * pressure) * 0.92 -
       // carrying into reach risks the tackle — risk-scaled turnover, same
       // family as the pass penalty (dodging is not free)
       turnoverW * pv * pressure * DECIDE.carryTurnoverGain

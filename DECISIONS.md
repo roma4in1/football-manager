@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5c round 2: the splitting ball, carry courage, shots through legs
+
+Three judged over-conservatism knobs (line-vs-runs) + passing.md mapped:
+
+- **The splitting ball**: the sub-floor lane tax (×0.35 flat) crushed the
+  threaded ball's payoff along with its risk — a speculative player never
+  split a tight CB pair. The tax now rides risk (0.25 + 0.45·risk), and
+  runners get a DRIVEN thread variant (passing.md #9/#13: less flight
+  time beats closing defenders; the receiver pays the hot-arrival tax).
+  Post: 8/16 line-vs-runs seeds thread the CB gap (was ~never).
+- **Carry courage**: the pressure tax weight 0.8 → 0.55 — momentum and
+  control mean a defender meters away is a problem, not half the spot's
+  value (the judged dribble-away-from-everyone).
+- **Shots are discounted, not vetoed**: the block corridor TAPERS with
+  distance (0.45 m at the boot → wider downrange; the flat 0.9 m made any
+  loitering body a veto) and point-blank costs ×0.35 instead of ×0.15 —
+  shots go past close defenders and through legs. Striker-breakaway
+  shots ROSE 13 → 15/16; line-vs-runs 16/16 shots, 3 under a defender
+  within 3.5 m. The xG unit test re-pinned to discount-not-veto.
+
+59/59; dial and wall-pass rates intact.
+
 ## 2026-07-21 — L5c round 1: the step-up, the line-height knob, and the no-offside cap
 
 From the builder's defensive.md/defender.md (mapped in REFERENCES.md):

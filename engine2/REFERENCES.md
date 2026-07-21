@@ -71,3 +71,14 @@ risk − miss risk) as the engage/wait decision. Attacker deceptions
 defenders. NEW GAP flagged: AERIAL play (jump/heading/flick-ons) is
 wholly absent — needed by L8 crosses; record as its own physical pass
 (ball z exists; bodies cannot contest it).
+
+## `passing.md` — pass-type taxonomy
+Live already: through/threaded/driven balls (the weight-candidate set),
+one-touch/two-touch (release paths), wall pass, third man, bounce,
+backheel (facing model), back-pass-as-reset (recycle outlet), receiver
+body orientation (the half-turn), passing profiles (the risk instruction).
+Landed with this round: the risk-scaled sub-floor tax ("the best pass is
+not always the safest") and the DRIVEN thread variant for runners.
+Gated: lofted/chip/lob/float + every cross type (the aerial gap + L8),
+cutbacks (L8 box play), disguised/dummy/no-look (reacting defenders +
+perception), switches of play (L6 shape awareness makes them meaningful).

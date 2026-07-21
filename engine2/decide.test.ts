@@ -47,7 +47,12 @@ test('xG: real geometry — distance, angle, blockers, the point-blank boot', ()
   const blocked = [mkBody('b', 'away', 99, 34)];
   assert.ok(xG({ x: 94, y: 34 }, 'home', blocked) < xG({ x: 94, y: 34 }, 'home', none), 'a body on the line costs');
   const pointBlank = [mkBody('b', 'away', 95.2, 34)];
-  assert.ok(xG({ x: 94, y: 34 }, 'home', pointBlank) < 0.1, 'a boot on your toes blocks the shot outright');
+  const pb = xG({ x: 94, y: 34 }, 'home', pointBlank);
+  const free = xG({ x: 94, y: 34 }, 'home', none);
+  // heavy discount, NOT a veto — shots go past close defenders and
+  // through legs (the judged never-shoots-near-anyone)
+  assert.ok(pb < free * 0.4, `a square point-blank boot costs most of the shot (${pb.toFixed(2)} vs ${free.toFixed(2)})`);
+  assert.ok(pb > 0.05, `but the shot stays a live option (${pb.toFixed(2)})`);
 });
 
 test('passCompletion: open lanes carry, occupied lanes die, motion counts', () => {
