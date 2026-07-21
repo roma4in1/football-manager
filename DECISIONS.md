@@ -3,6 +3,61 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Through on goal: thread only to a runner AHEAD (kill the wide giveaway)
+
+Builder judgment (counter-3v2-risk-high): left is through from the first
+pass but plays a long ball to the right that reaches the touchline — we want
+him to drive at goal and shoot.
+
+Diagnosed: at the reception left chose `pass→right` (u0.139) over the best
+goalward carry (u0.067). The pass was the RIDER-BEHIND through ball, aimed at
+the breach point in right's lane (~81,45) — but right was at (64,45), BEHIND
+the carrier and doing 3.3 m/s, 17 m short of a point he could never reach, so
+the ball sailed to the touchline. A through ball is for a runner AHEAD of the
+ball, not a wide man trailing it.
+
+Fix: gate the rider-behind candidate on `attackSign·(mate.x − carrier.x) >
+−2` — the runner must be goal-side of the carrier (small tolerance for a
+level diagonal). Now left holds and drives at goal from the reception and
+shoots (counter-3v2-risk-high 10/16 shoot, avg 11.3 m).
+
+Rejected first: a symmetric risk-progressive DRIVE reward on the carry — it
+fixed left but regressed line-vs-runs (the playmaker stopped threading and
+forced contested shots: splits 11→1, central shots →0). The playmaker
+correctly threads; the defect was the OVERVALUED wide pass, not an
+undervalued carry. Reverted per the stop-rule.
+
+Dial holds 16/16 both poles (the gate leaves goal-side runners — the dial's
+premise — untouched). line-vs-runs healthy (11 split, 16 central shots),
+runs 15/15, front 16/16·14/16, wall 15/16. 59/59.
+
+## 2026-07-21 — L5e piece 2: pass-in-flight protection kills the corner flap
+
+The residual from piece 1 (two stacked teammates trading a ball meant for a
+third) — root-caused and fixed. Diagnosis: after a loose-ball scramble the
+counterpress double-chase (`nearestCp || ballDist<6`) stacks two teammates
+~0.7 m apart; the separation solver only nudges 0.1 m/tick, far slower than
+the 1–2-tick flap. The carrier passes to a THIRD mate (mid) but the stacked
+twin sits in the lane and CLAIMS it — resolveClaims never checked the
+intended receiver.
+
+Fix: **a pass in flight is protected** — while it is fresh (the kicker's lock
+window, 8 ticks) a teammate who is NOT the intended receiver stands off and
+lets the ball reach its target. Opponents still intercept freely; past the
+window an unmet ball is collectable (no permanent lock). The decision side
+already respected the pass (chase gated on intendedReceiverId===null); this
+extends the same respect to the physical claim.
+
+Measured: counter-3v2 and rondo corner flaps GONE (now: left passes to mid,
+the ball reaches mid, left/right peel off to support). Direct teammate
+carrier→carrier flips 26 (pre) → 13 (piece 1) → **5** (piece 2). All
+guardrails pinned (front 16/16·14/16, dial 16/16, runs 15/15, wall 16/16,
+grid double-press 7%, counterpress 6/8 regained ≤7 s). 59/59.
+
+Residual: grid-5v4 still shows a few defender↔defender trades on a loose
+ball in the tight 32×32 box — a milder contested scramble (no third-man
+pass, so this fix doesn't apply), left as acceptable for now.
+
 ## 2026-07-21 — L5e piece 1: possession-contest hardening (pinch lock + teammate can't pinch)
 
 Builder ask: start with the pinch lock + arbitration (the safe entry). Two
