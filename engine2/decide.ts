@@ -325,15 +325,18 @@ export const runPlan = (
     .map((o) => o.pos.y).sort((a, b) => a - b);
   const seams: number[] = [];
   if (lineDefs.length) {
-    seams.push(Math.max(8, lineDefs[0] - 8));
+    // shoulder seams hug the defender (±4 — a channel run goes just off
+    // the shoulder; ±8 dragged runners to the touchline, the judged
+    // way-too-wide)
+    seams.push(Math.max(8, lineDefs[0] - 4));
     for (let i = 0; i + 1 < lineDefs.length; i++) seams.push((lineDefs[i] + lineDefs[i + 1]) / 2);
-    seams.push(Math.min(PITCH.width - 8, lineDefs[lineDefs.length - 1] + 8));
+    seams.push(Math.min(PITCH.width - 8, lineDefs[lineDefs.length - 1] + 4));
   } else seams.push(mate.pos.y);
   let chanY = mate.pos.y;
   let bestScore = -Infinity;
   for (const y of seams) {
     const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
-    const score = clear - 0.15 * Math.abs(y - GOAL.centerY) - 0.1 * Math.abs(y - mate.pos.y);
+    const score = clear - 0.15 * Math.abs(y - GOAL.centerY) - 0.22 * Math.abs(y - mate.pos.y);
     if (score > bestScore) {
       bestScore = score;
       chanY = y;
@@ -421,13 +424,18 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       { arrive: softArrive + 4.5, leadExtraS: 0 },
     ];
     if (mate.speed > 2.5) candidates.push({ arrive: softArrive + 4.5, leadExtraS: 0.7 });
-    // the RIDER'S ball: a runner holding the line gets his candidate IN
-    // BEHIND — he is jogging now, but the burst is the whole point
-    const riderBehind = runners?.has(mate.id)
-      ? { x: mate.pos.x + attackSign(mate.team) * 7, y: mate.pos.y }
-      : null;
+    // the RIDER'S ball THREADS just behind the LINE in his lane — the
+    // judged too-deep balls came from projecting 7 m past the runner
+    // himself; the breach point is line-relative, not runner-relative
+    let riderBehind: Vec2 | null = null;
+    if (runners?.has(mate.id)) {
+      const rsign = attackSign(mate.team);
+      const oppXs = opponents.map((o) => o.pos.x);
+      const rLineX = oppXs.length ? (rsign > 0 ? Math.max(...oppXs) : Math.min(...oppXs)) : mate.pos.x;
+      riderBehind = { x: rLineX + rsign * 4.5, y: mate.pos.y };
+    }
     const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
-    if (riderBehind) allCandidates.push({ arrive: softArrive + 5, leadExtraS: 0, destOverride: riderBehind });
+    if (riderBehind) allCandidates.push({ arrive: softArrive + 1, leadExtraS: 0, destOverride: riderBehind });
     for (const { arrive, leadExtraS, destOverride } of allCandidates) {
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
@@ -441,10 +449,17 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         }
       }
       let pC = passCompletion(here, dest, speed, opponents, dist0, mate);
-      // the backheel discount: strikes far off facing complete less
+      // the backheel discount — but ONLY under pressure: an unpressured
+      // carrier TURNS before striking (turn-then-strike executes it), so
+      // discounting his EV for a blind ball he will never hit double-counts
+      // (it killed the wall's thread: open lane, wrong hips, no time
+      // pressure). Unpressured misalignment costs only the small turn tax.
       const passDir = Math.atan2(dest.y - here.y, dest.x - here.x);
       const misalign = Math.abs(((passDir - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-      pC *= 1 - DECIDE.backheelEvLossMax * Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
+      const bhLoss = DECIDE.backheelEvLossMax * Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
+      const pressed = opponents.some((o) =>
+        Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 2.5);
+      pC *= 1 - (pressed ? bhLoss : Math.min(bhLoss, 0.1));
       // the hot-arrival tax is RECEIVER-AWARE: good feet justify firm
       // balls (a rondo between silk receivers zips; the flat tax floated
       // every pass at 9 m/s — the judged sluggishness)
@@ -460,7 +475,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // through ball when the dart goes, not while he stands on the line.
       // EXCEPT the ball into his run's PATH (destOverride): the first-time
       // one-two return is played early precisely BECAUSE the run is coming
-      const ridingWait = waitingRunners?.has(mate.id) && !destOverride ? 0.45 : 1;
+      const ridingWait = waitingRunners?.has(mate.id) && !destOverride ? 0.25 : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };

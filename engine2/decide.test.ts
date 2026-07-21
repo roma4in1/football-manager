@@ -180,14 +180,14 @@ test('wall-pass (L5b): the one-two rhythm — give, dart in flight, return met m
       if (c === 'wall') wallHad = true;
       if (wallHad && c === 'playmaker') {
         const pm = sim.bodies.find((b) => b.id === 'playmaker')!;
-        if (pm.speed > 2.5) movingReturns++;
+        if (pm.speed > 2.5 && pm.pos.x > 62) movingReturns++;
         done = true;
       }
     }
   }
-  // the give-and-go rhythm: the return meets a MOVING man (return depth —
-  // beyond the wall — is the open judgment knob, deliberately unpinned)
-  assert.ok(movingReturns >= 8, `returns met on the move (${movingReturns}/16)`);
+  // the give-and-go: the thread meets a MOVING man BEYOND the wall (the
+  // judged one-two spec: give → dart → thread at the breach)
+  assert.ok(movingReturns >= 12, `threads met moving beyond the wall (${movingReturns}/16)`);
 });
 
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {

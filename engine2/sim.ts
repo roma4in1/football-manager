@@ -62,7 +62,7 @@ export class Sim {
   /** the run's phase per runner: RIDE (reload at a jog, level with the
    * line) or DART (sprint diagonally across a defender's blind side into
    * the next seam — the ball is released while the runner is AT PACE) */
-  private readonly runPhase = new Map<string, { phase: 'ride' | 'dart'; since: number; dartY: number }>();
+  private readonly runPhase = new Map<string, { phase: 'ride' | 'dart'; since: number; dartY: number; lineX: number }>();
   /** tick each brain last RELEASED a pass — the one-two: a giver near the
    * line bursts immediately (the give IS his trigger; no patient ride) */
   private readonly lastGiveTick = new Map<string, number>();
@@ -851,38 +851,52 @@ export class Sim {
               // the release meets the dart, not the other way around) →
               // if no ball comes, drop back to ride and go again
               const sign = body.team === 'home' ? 1 : -1;
-              const cappedX = sign > 0
-                ? Math.min(plan.target.x, plan.lineX - 0.4)
-                : Math.max(plan.target.x, plan.lineX + 0.4);
-              const atLine = sign > 0 ? body.pos.x >= cappedX - 0.8 : body.pos.x <= cappedX + 0.8;
+              // the runner HOVERS a few meters OFF the line and attacks it
+              // in bursts — riding glued to the line left a straight dart
+              // nowhere to go (instant termination, zero pace, no breach:
+              // the judged stall). The reload depth is what makes pace at
+              // the breach possible.
+              const hoverX = sign > 0
+                ? Math.min(plan.target.x, plan.lineX - 5)
+                : Math.max(plan.target.x, plan.lineX + 5);
+              // the dart aims THROUGH the line (a target AT it arrive-brakes
+              // the runner to a walk at the breach moment — the knock-past
+              // lesson's third appearance); the phase ends as he reaches it
+              const dartX = sign > 0 ? plan.lineX + 2 : plan.lineX - 2;
+              const atHover = Math.abs(body.pos.x - hoverX) < 1.6;
               let st = this.runPhase.get(id);
               if (!st) {
                 const gave = this.lastGiveTick.get(id);
                 const oneTwo = gave !== undefined && this.tick - gave <= 12;
-                st = { phase: oneTwo ? 'dart' : 'ride', since: this.tick, dartY: plan.dartY };
+                st = { phase: oneTwo ? 'dart' : 'ride', since: this.tick, dartY: plan.dartY, lineX: plan.lineX };
                 this.runPhase.set(id, st);
               }
-              if (st.phase === 'ride' && atLine && this.tick - st.since >= 9) {
+              st.lineX = plan.lineX;
+              const straight = Math.abs(st.dartY - body.pos.y) < 2;
+              const atDartEnd = straight
+                ? (sign > 0 ? body.pos.x >= plan.lineX - 0.2 : body.pos.x <= plan.lineX + 0.2)
+                : Math.abs(body.pos.y - st.dartY) < 1.2;
+              if (st.phase === 'ride' && atHover && this.tick - st.since >= 7) {
                 st.phase = 'dart';
                 st.since = this.tick;
                 st.dartY = plan.dartY;
               } else if (st.phase === 'dart' &&
-                (this.tick - st.since >= 16 || Math.abs(body.pos.y - st.dartY) < 1.2)) {
+                (this.tick - st.since >= 26 || atDartEnd)) {
                 st.phase = 'ride';
                 st.since = this.tick;
               }
               if (st.phase === 'dart') {
                 this.assign(body, {
                   type: 'moveTo',
-                  target: { x: sign > 0 ? plan.lineX - 0.25 : plan.lineX + 0.25, y: st.dartY },
+                  target: { x: dartX, y: st.dartY },
                   regime: 'sprint',
                 });
                 this.actionLabels.set(id, 'dart');
               } else {
                 this.assign(body, {
                   type: 'moveTo',
-                  target: { x: cappedX, y: plan.target.y },
-                  regime: atLine ? 'jog' : 'run',
+                  target: { x: hoverX, y: plan.target.y },
+                  regime: atHover ? 'jog' : 'run',
                 });
                 this.actionLabels.set(id, 'run');
               }
@@ -938,9 +952,13 @@ export class Sim {
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
             const rp = this.runPhase.get(rid);
             const rb = this.byId.get(rid)!;
-            // waiting until the dart is GOING — a dart at speed zero is
-            // still a standing man; the return must meet a moving run
-            return rp?.phase !== 'dart' || rb.speed < 3;
+            if (!rp) return true;
+            // the thread goes when the runner is ABOUT TO BREACH: darting,
+            // at pace, and within a stride of the line (the judged one-two
+            // spec — not merely "moving somewhere")
+            const rsign = rb.team === 'home' ? 1 : -1;
+            const dLine = rsign > 0 ? rp.lineX - rb.pos.x : rb.pos.x - rp.lineX;
+            return rp.phase !== 'dart' || rb.speed < 3 || dLine > 4.5;
           })),
         });
         this.intents.set(id, intent);

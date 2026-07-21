@@ -3,6 +3,38 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5b round 3: the breach — hover, burst, thread
+
+The judged defects: runs dragged way wide of the defenders; no run UP TO
+the breach; the one-two either ping-ponged or threaded way too deep. The
+judged spec: give → the wall WAITS → the thread goes as the runner is
+ABOUT TO BREACH the line. Five mechanisms:
+
+- **Seams hug the line** (runPlan): shoulder seams at defender ±4 m (±8 m
+  dragged runners to the touchline) with stronger locality weighting.
+- **Hover-and-burst**: riding GLUED to the line left a straight dart
+  nowhere to go (instant termination, zero pace — the judged stall).
+  Runners now hover ~5 m off the line and attack it in bursts; the reload
+  depth is what makes pace at the breach possible.
+- **Darts aim THROUGH the line** (the knock-past lesson's third
+  appearance): a dart target AT the line arrive-braked the runner to a
+  walk at exactly the breach moment.
+- **The breach gate**: the release tax lifts only when the runner is
+  darting, at pace (≥3 m/s), AND within a stride of the line (≤4.5 m) —
+  "about to breach," per the spec. The thread's destination is
+  LINE-relative (line +4.5 m in the runner's lane), at a softer weight —
+  the old runner-relative +7 m at firm pace was the judged too-deep ball.
+- **The backheel EV discount is pressure-gated**: an unpressured carrier
+  TURNS before striking (turn-then-strike already executes it), so
+  discounting his EV for a blind ball he will never hit double-counted —
+  it killed the wall's thread with an open lane and no time pressure
+  (pC 0.98 raw → 0.65 → under the floor, by facing alone).
+
+Rates: wall-pass 16/16 threads met moving BEYOND the wall (was 11 moving,
+2 advanced); runs-in-behind 16/16 received (the striker hits ~7 m/s
+through the CB gap, collected between d1 and d2); dial 16/16 both poles;
+57/57.
+
 ## 2026-07-21 — Run taxonomies extended: midfield + defensive references
 
 The builder added midfield support runs (20) and defensive runs (26) —
