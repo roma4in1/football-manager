@@ -149,6 +149,31 @@ test('a ball flighted OVER the defender\'s reach clears him — the block is hei
   assert.ok(zAtDef > 2.0, `the lofted ball clears the defender's reach (${zAtDef.toFixed(1)} m > 2 m)`);
 });
 
+test('CHEST control: a fast ball crossing chest height is cushioned down OR bounces off (a failed touch)', () => {
+  let cushioned = 0;
+  let bounced = 0;
+  for (let s = 0; s < 16; s++) {
+    const sim = new Sim(scenarioByName('chest-control'), `cc-${s}`);
+    for (let t = 0; t < 70; t++) {
+      const f = sim.step();
+      const a = f.bodies.find((b) => b.id === 'receiver' && (b.action === 'chest' || b.action === 'chest-miss'));
+      if (a) {
+        if (a.action === 'chest') {
+          cushioned++;
+          assert.equal(sim.ball.carrierId, 'receiver', 'a cushioned chest touch is controlled');
+        } else {
+          bounced++;
+          assert.equal(sim.ball.carrierId, null, 'a bounced chest touch is loose');
+        }
+        break;
+      }
+    }
+  }
+  // the swept-z crossing catches the ball a plain height gate misses at 10 Hz
+  assert.ok(cushioned + bounced >= 12, `the chest touch engages the fast ball (${cushioned + bounced}/16)`);
+  assert.ok(cushioned >= 1 && bounced >= 1, `both a clean control and a bounce-off occur (${cushioned} cushion, ${bounced} off)`);
+});
+
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
   // driven lofts (low angle) are the accurate, fast aerial ball
   for (const [dist, loft] of [[25, 22], [34, 22], [40, 25]] as const) {

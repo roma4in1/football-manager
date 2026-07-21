@@ -160,4 +160,29 @@ export const teammateCollision: ScenarioDef = {
   script: [],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision];
+/** CHEST control: a fast ball drops onto a receiver at CHEST height (~0.8 m,
+ * the gap between the ground first touch and the header). Going for it, he
+ * either cushions it down to his feet (control) or it BOUNCES OFF him loose (a
+ * failed control) — the first touch judged at chest height, a hard ball popping
+ * more. A receiver with a moderate touch shows both. */
+export const chestControl: ScenarioDef = {
+  version: 1,
+  name: 'chest-control',
+  description: 'A fast ball drops onto a receiver at chest height; going for it he cushions it down or it bounces off him loose. Judge the chest touch — control vs a failed touch that caroms.',
+  durationTicks: 70,
+  bodies: [
+    { id: 'passer', team: 'home', pos: { x: 40, y: 34 }, attributes: passer },
+    // a moderate first touch (11) so a hard chest ball sometimes pops
+    { id: 'receiver', team: 'home', pos: { x: 56, y: 34 }, attributes: { ...passer, firstTouch: 11 }, brain: 'onBall' },
+  ],
+  ball: { carrier: 'passer' },
+  kicks: [
+    // a hard clipped ball dropping through chest height at the receiver
+    { atTick: 2, bodyId: 'passer', kick: { target: { x: 80, y: 34 }, speedMps: 18, loftDeg: 20 } },
+  ],
+  script: [
+    { atTick: 3, bodyId: 'receiver', command: { type: 'chaseBall', regime: 'run' } },
+  ],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl];

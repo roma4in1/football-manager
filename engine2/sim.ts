@@ -426,6 +426,7 @@ export class Sim {
     // 4. carry coupling, then free-ball physics
     this.coupleCarry();
     const ballFrom = { x: this.ball.pos.x, y: this.ball.pos.y };
+    const zFrom = this.ball.z; // pre-step height — the chest touch is a SWEPT z crossing
     stepBall(this.ball);
     // a ball over any boundary is DEAD where it crossed (restarts are L8's;
     // until then it must not roll to infinity — the L4 shot exposed this).
@@ -447,6 +448,7 @@ export class Sim {
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
     this.resolveHeaders(ballFrom);
+    this.resolveChestControl(ballFrom, zFrom);
     this.resolveBlocks(ballFrom);
     this.resolveClaims(ballFrom);
 
@@ -772,6 +774,72 @@ export class Sim {
       ball.kickerId = null;
       ball.vel = { x: sign * incoming * BALL.headKnockCushion, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
     }
+  }
+
+  /** CHEST / THIGH control — the 0.5–0.9 m gap between the ground first touch
+   * and the header. A receiver GOING FOR a fast airborne ball takes it on the
+   * chest: a good touch cushions it down to his feet (control), a poor one
+   * (fast / high / pressured) BOUNCES OFF him loose. This is the receive's
+   * middle band — distinct from the header (a deliberate leap, ≥0.9 m), the
+   * collision (a PASSIVE obstacle caroming it), and the ground first touch
+   * (≤0.5 m). Only a man attacking the ball — the intended man or a chaser —
+   * reaches to control it; a passer merely in the way still caroms (collision).
+   * Runs after the header, before the collision, so the receiver's touch beats
+   * an obstacle's carom on the same ball. */
+  private resolveChestControl(from: Vec2, zFrom: number): void {
+    const ball = this.ball;
+    if (ball.phase === 'dead' || ball.phase === 'carried') return;
+    // the ball's z-path this tick CROSSED the chest band — at 10 Hz a fast ball
+    // spans it in one tick (rising or falling through), so an instantaneous-z
+    // gate never catches it; the swept crossing does. Only a FAST ball is a
+    // chest challenge — a slow drop is let fall and controlled on the ground.
+    const zLo = Math.min(zFrom, ball.z);
+    const zHi = Math.max(zFrom, ball.z);
+    const crossedChest = zLo < BALL.headMinZ && zHi > BALL.claimMaxZ;
+    const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    if (!crossedChest || speed < BALL.blockMinSpeedMps) return;
+    let best: { body: BodyState; d: number; at: Vec2 } | null = null;
+    for (const body of this.bodies) {
+      if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      // only a man ATTACKING the ball chests it — the intended man or a chaser
+      if (body.id !== this.intendedReceiverId && body.command.type !== 'chaseBall') continue;
+      const { d, at } = this.sweptApproach(body, from);
+      if (d > BALL.controlRadiusM) continue;
+      if (!best || d < best.d) best = { body, d, at };
+    }
+    if (!best) return;
+    const w = best.body;
+    const ballSpeed = Math.hypot(ball.vel.x - w.vel.x, ball.vel.y - w.vel.y);
+    const rawSpeed = Math.hypot(ball.vel.x, ball.vel.y);
+    const arrivalDir = rawSpeed > 0.1 ? Math.atan2(ball.vel.y, ball.vel.x) : w.facing;
+    const pressured = this.bodies.some((o) => o.team !== w.team &&
+      Math.hypot(o.pos.x - w.pos.x, o.pos.y - w.pos.y) <= TECH.touchPressureRangeM);
+    // the first touch, judged at CHEST height (the band midpoint — the ball
+    // swept through it this tick even if it ended at his feet). resolveFirstTouch
+    // makes a higher, faster ball harder, so a driven pass to the chest pops more
+    const chestZ = (BALL.claimMaxZ + BALL.headMinZ) / 2;
+    const touch = resolveFirstTouch(
+      this.rng, this.tick, w.id, w.attributes, arrivalDir, ballSpeed, chestZ, pressured, w.speed,
+    );
+    ball.pos = { x: best.at.x, y: best.at.y };
+    ball.vz = 0;
+    ball.z = 0;
+    if (touch.pop) {
+      // it BOUNCES OFF his chest — a failed control, loose and low; he cannot
+      // instantly re-claim his own miss (the same refractory the ground pop uses)
+      ball.carrierId = null;
+      ball.phase = 'rolling';
+      ball.vel = touch.vel;
+      ball.kickerId = w.id;
+      ball.kickerLockUntilTick = this.tick + 8;
+      this.actionLabels.set(w.id, 'chest-miss');
+      return;
+    }
+    // CUSHIONED down to his feet — controlled
+    ball.carrierId = w.id;
+    ball.phase = 'carried';
+    this.completeChases(w.team);
+    this.actionLabels.set(w.id, 'chest');
   }
 
   /** the 3-D COLLISION — interception in xyz, not xy: a DRIVEN airborne ball
