@@ -49,7 +49,8 @@ export const BALL = {
   radiusM: 0.11,
   airDensity: 1.225, // kg/m³ at sea level
   dragCoefficient: 0.22, // sphere in the football Reynolds regime
-  magnusCoefficient: 0.18, // physics.md — sidespin lift for curved flight
+  magnusCoefficient: 0.42, // physics.md baseline 0.18; raised for VISIBLE
+  // gameplay curl (a stylised bend, as the pitch friction was raised too)
   spinDecayPerS: 0.08, // spin bleeds ~8%/s (physics.md: smooth decay)
   /** rolling-resistance coefficient of the surface; the constant rolling
    * decel is μ·g. physics.md lists 0.018 (that is an ARTIFICIAL-TURF / smooth

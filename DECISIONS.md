@@ -3,6 +3,25 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — More curl + the curling ground through ball to the winger
+
+Builder: more visible curl, and an example of a curling GROUND through ball
+between two centre backs to a winger.
+
+- **More curl:** magnusCoefficient 0.18 (physics.md baseline) → 0.42, a
+  stylised gameplay bend (as the pitch friction was raised over the doc too).
+  Now spin ±40 bends ~3.5 m over 34 m (was 1.5), spin 70 ~6 m, a ground
+  trivela (spin 60) ~9 m over its roll.
+- **curled-through scenario:** the playmaker slides a GROUND ball (loft 0,
+  spin 85) through the gap between two centre backs and bends it out to a
+  winger sprinting the channel. Measured: splits the CBs at y≈34.9 (3.7 m
+  clear of each, 8/8), stays on the deck (maxZ 0.00, 8/8), curls out ~5 m to
+  the winger who runs onto it (8/8). Also re-tuned the curled-pass spin 120→52
+  for the stronger coefficient.
+
+spin still defaults to 0 everywhere, so every existing ball is unchanged;
+ground rates pinned. 66/66.
+
 ## 2026-07-21 — Curve (Magnus): sidespin bends the flight (the last physical pass)
 
 Builder ask: add curve after headers. The ball gained a SIDESPIN state (rad/s

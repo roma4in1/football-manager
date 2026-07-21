@@ -30,7 +30,7 @@ test('sidespin curves the ball perpendicular to travel, sign-correct, magnitude 
   // +spin and −spin bend opposite ways, by a believable amount over ~34 m
   assert.ok(up.y - 34 > 1.5, `+spin curves one way (Δy ${(up.y - 34).toFixed(1)})`);
   assert.ok(34 - down.y > 1.5, `−spin curves the other (Δy ${(down.y - 34).toFixed(1)})`);
-  assert.ok(Math.abs(up.y - 34) < 6, `the bend is a curve, not a hook (Δy ${(up.y - 34).toFixed(1)})`);
+  assert.ok(Math.abs(up.y - 34) < 9, `the bend is a strong curve, not a hook (Δy ${(up.y - 34).toFixed(1)})`);
 });
 
 test('a curled pass bends AROUND a defender on the direct line to the receiver', () => {
@@ -58,4 +58,42 @@ test('a curled pass bends AROUND a defender on the direct line to the receiver',
   assert.ok(curved >= 7, `the ball visibly curls off the straight aim (${curved}/8)`);
   assert.ok(cleared >= 7, `the curl bends clear of the defender on the line (${cleared}/8)`);
   assert.ok(received >= 7, `the receiver collects the bent ball (${received}/8)`);
+});
+
+test('a curling GROUND through ball splits the centre backs and bends to the winger', () => {
+  let split = 0;
+  let curledOut = 0;
+  let onGround = 0;
+  let received = 0;
+  for (let s = 0; s < 8; s++) {
+    const sim = new Sim(scenarioByName('curled-through'), `ct-${s}`);
+    let cbClear = 99;
+    let maxZ = 0;
+    let maxY = 34;
+    let launched = false;
+    for (let t = 0; t < 100; t++) {
+      sim.step();
+      if (sim.ball.phase !== 'carried') launched = true;
+      if (launched) {
+        maxZ = Math.max(maxZ, sim.ball.z);
+        maxY = Math.max(maxY, sim.ball.pos.y);
+        if (Math.abs(sim.ball.pos.x - 66) < 0.8) {
+          const c1 = sim.bodies.find((b) => b.id === 'cb1')!;
+          const c2 = sim.bodies.find((b) => b.id === 'cb2')!;
+          cbClear = Math.min(
+            Math.hypot(sim.ball.pos.x - c1.pos.x, sim.ball.pos.y - c1.pos.y),
+            Math.hypot(sim.ball.pos.x - c2.pos.x, sim.ball.pos.y - c2.pos.y),
+          );
+        }
+      }
+      if (sim.ball.carrierId === 'winger') { received++; break; }
+    }
+    if (cbClear > 1.8) split++; // passed between both CBs
+    if (maxY - 34 > 4) curledOut++; // bent out into the channel
+    if (maxZ < 0.3) onGround++; // a rolling ball, not a loft
+  }
+  assert.ok(split >= 7, `the ball splits the two centre backs cleanly (${split}/8)`);
+  assert.ok(curledOut >= 7, `it curls out into the winger's channel (${curledOut}/8)`);
+  assert.equal(onGround, 8, `it is a GROUND ball throughout (${onGround}/8)`);
+  assert.ok(received >= 7, `the winger runs onto it (${received}/8)`);
 });

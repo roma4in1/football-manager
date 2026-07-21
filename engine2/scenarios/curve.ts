@@ -29,9 +29,36 @@ export const curledPass: ScenarioDef = {
     { atTick: 12, bodyId: 'receiver', command: { type: 'chaseBall', regime: 'run' } },
   ],
   kicks: [
-    // aim WIDE (down the line at y34), curl +120 back up to the receiver
-    { atTick: 10, bodyId: 'kicker', kick: { target: { x: 74, y: 34 }, speedMps: 20, loftDeg: 8, spin: 120 } },
+    // aim WIDE (down the line at y34), curl back up to the receiver
+    { atTick: 10, bodyId: 'kicker', kick: { target: { x: 74, y: 34 }, speedMps: 20, loftDeg: 8, spin: 52 } },
   ],
 };
 
-export const curveScenarios: ScenarioDef[] = [curledPass];
+/** the curling GROUND through ball: a playmaker threads a rolling ball
+ * between the two centre backs and BENDS it out to a winger's run — a
+ * trivela-style ball the straight thread could not curve into the channel. */
+export const curledThrough: ScenarioDef = {
+  version: 1,
+  name: 'curled-through',
+  description: 'A playmaker slides a curling GROUND ball between the two centre backs and bends it out to the winger running the channel. Judge the ball splitting the line and curving to the run.',
+  durationTicks: 100,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 50, y: 34 }, attributes: { ...passer, passing: 19 }, brain: 'onBall' },
+    // the winger starts wide and runs the channel onto the bending ball
+    { id: 'winger', team: 'home', pos: { x: 64, y: 44 }, attributes: { ...passer, pace: 16, acceleration: 15 }, brain: 'onBall' },
+    // the two centre backs — a gap between them at y≈34
+    { id: 'cb1', team: 'away', pos: { x: 66, y: 29.5 }, attributes: passer },
+    { id: 'cb2', team: 'away', pos: { x: 66, y: 38.5 }, attributes: passer },
+  ],
+  ball: { carrier: 'playmaker' },
+  script: [
+    { atTick: 12, bodyId: 'winger', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+  kicks: [
+    // a driven GROUND ball (loft 0) through the gap, curling out (+spin) to
+    // the winger's channel — splits the CBs at ~y36 then bends to ~y42
+    { atTick: 10, bodyId: 'playmaker', kick: { target: { x: 78, y: 33 }, speedMps: 16, loftDeg: 0, spin: 85 } },
+  ],
+};
+
+export const curveScenarios: ScenarioDef[] = [curledPass, curledThrough];
