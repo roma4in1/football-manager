@@ -315,7 +315,9 @@ export class Sim {
 
     // 2b. bodies are SOLID (soft): pairwise separation — nobody ghosts
     // through an opponent. Accumulate displacements, then apply (order-free).
-    {
+    // iterated (a single pass cannot resolve three-body chains: a crowder
+    // pushing the middle man INTO a third body squeezed past the floor)
+    for (let sepIter = 0; sepIter < 3; sepIter++) {
       const minSep = TECH.bodyRadiusM * 2;
       const push = new Map<string, Vec2>();
       for (let i = 0; i < this.bodies.length; i++) {
@@ -496,7 +498,7 @@ export class Sim {
     const pending = this.pendingKicks.get(carrier.id);
     const pendingAligned = pending !== undefined && (() => {
       const d = Math.atan2(pending.dest.y - carrier.pos.y, pending.dest.x - carrier.pos.x);
-      return Math.abs(((d - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI) <= Math.PI / 3;
+      return Math.abs(((d - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI) <= DECIDE.strikeTurnThresholdRad;
     })();
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
@@ -881,7 +883,7 @@ export class Sim {
           const reach = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
           const strikeDir = Math.atan2(intent.dest.y - body.pos.y, intent.dest.x - body.pos.x);
           const strikeMis = Math.abs(((strikeDir - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-          if (reach <= TECH.kickReachM && strikeMis > Math.PI / 3) {
+          if (reach <= TECH.kickReachM && strikeMis > DECIDE.strikeTurnThresholdRad) {
             // TURN, then strike — a misaligned kick is a backheel; the real
             // action is rotate-and-play, and the turn's delay is its honest
             // cost (defenders keep closing while the body comes around)

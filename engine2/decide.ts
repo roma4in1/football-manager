@@ -90,6 +90,9 @@ export const DECIDE = {
   /** the EV's view of the backheel: completion odds fall for strikes beyond
    * 90° off facing (execution noise/power degrade in noisyKick to match) */
   backheelEvLossMax: 0.5,
+  /** turn-before-strike only for balls genuinely BEHIND the body — a
+   * 45–90° side-foot is standard play, struck without turning (judged) */
+  strikeTurnThresholdRad: 1.75,
   /** carrying near defenders risks the TACKLE — without this term dodging
    * always beat releasing, and the safe pass never happened (the judged
    * corner-dodge). Risk-scaled like the pass turnover penalty. */

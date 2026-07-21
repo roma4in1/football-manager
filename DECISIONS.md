@@ -3,6 +3,22 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5a round 1: the side-foot range + the three-body squeeze
+
+- **Side-foot passes** (judged): turn-before-strike now only fires for
+  balls genuinely BEHIND the body (>100°, was >60°) — a 45–90° ball is
+  standard play, struck without turning. Rondo circulation jumped 62 → 94
+  transfers per 8 seeds. The angle-noise growth stays (a 90° side-foot is
+  slightly noisier than a straight ball).
+- **The defender's pause** (judged question): d1 standing ~1 s after the
+  through ball passes him is his SCRIPTED reaction cue — normal until
+  L5c/L5d give defenders real triggers (recorded boundary).
+- **Three-body squeeze** (surfaced by the interpenetration test): a
+  crowder pushing the middle man into a third body breached the floor —
+  single-pass pairwise separation cannot resolve chains; the solver now
+  iterates ×3.
+55/55; dial 16/16 both poles.
+
 ## 2026-07-21 — L5a OPENED: support & structure — first cut for judgment
 
 Branch feat/engine2-l5a (stacked on l4). The first L5 sub-phase: off-ball
