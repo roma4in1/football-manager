@@ -3,6 +3,32 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Carry commitment is by DIRECTION (the kinked carry)
+
+Judged in line-vs-runs: the striker receives, drives at goal, then does a
+sharp unmotivated turn a beat before playing centre.
+
+Root cause: commitment inertia matched a carry to the current intent by
+KIND alone. Every one of the 8 carry directions is `kind: 'carry'`, so
+`same` bound to whichever carry sat first in the option list (the 0° bin),
+never the heading actually being run. Carries therefore had NO directional
+commitment — each reconsider tick was a fresh argmax, and the winning bin
+hopped between adjacent (or wide) directions as pressure shifted. The
+visible artifact: a transient flip to a wide bin in the two or three beats
+before the pass fired — the sharp turn.
+
+Fix: tag each carry option with its `dir`; when a carry is changing to
+another carry, `same` is the bin NEAREST the current heading, so a new
+direction must clearly beat continuing. Scoped to carry→carry only —
+carry↔pass release keeps its original inertia (an earlier unscoped version
+strengthened carry-vs-pass suppression and lifted rondo losses 35→42;
+scoping restored circulation, l4-6 21 transfers).
+
+Effect: striker now holds its cut-inside line (−17° locked t66→shot at
+92.8,45.3) instead of kinking into a pass-back. 59/59; dial/front/runs/
+wall pinned; line-vs-runs 11 thread + 5 drive-and-shoot (was 16 thread /
+0 shot — the smoother carry lets the shot win).
+
 ## 2026-07-21 — Round: lead a runner, play feet to a stepper; attack the lone man; shoot
 
 Three judgments, each landed in ISOLATION (the night's lesson) with the
