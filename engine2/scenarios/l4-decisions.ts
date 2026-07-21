@@ -25,14 +25,14 @@ export const rondo4v2: ScenarioDef = {
     { id: 'p2', team: 'home', pos: { x: 54, y: 27 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
     { id: 'p3', team: 'home', pos: { x: 54, y: 41 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
     { id: 'p4', team: 'home', pos: { x: 40, y: 41 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
-    { id: 'c1', team: 'away', pos: { x: 45, y: 33 }, attributes: chaser },
-    { id: 'c2', team: 'away', pos: { x: 49, y: 35 }, attributes: chaser },
+    // L5d: the chasers are PRESS BRAINS — one presses the carrier, the
+    // other shadows the escape lane (the real rondo dynamic, replacing
+    // two blind scripted hounds)
+    { id: 'c1', team: 'away', pos: { x: 45, y: 33 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
+    { id: 'c2', team: 'away', pos: { x: 49, y: 35 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
   ],
   ball: { carrier: 'p1' },
-  script: [
-    { atTick: 14, bodyId: 'c1', command: { type: 'chaseBall', regime: 'run' } },
-    { atTick: 22, bodyId: 'c2', command: { type: 'chaseBall', regime: 'run' } },
-  ],
+  script: [],
 };
 
 /** counter 3v2 — the break: carrier + two lanes vs two retreating defenders.
@@ -212,6 +212,32 @@ export const lineVsRuns: ScenarioDef = {
   script: [],
 };
 
+/** L5d — the positional grid (builder ask): 5v4 keep-away in a bounded
+ * 32×32 box hugging the bottom sideline, so the sideline-trap trigger is
+ * live. COLLECTIVE pressing on show: the elected first defender's curved
+ * press, the shadow on the escape lane, delay stances, hand-off waves,
+ * and both teams' counterpress cycles. Nothing scripted. */
+export const grid5v4: ScenarioDef = {
+  version: 1,
+  name: 'grid-5v4',
+  description: '5 keepers vs 4 pressers in a bounded grid on the sideline. Judge the collective press: curved first press, lane shadows, delays, hand-offs, traps against the boundary, counterpress both ways.',
+  durationTicks: 500,
+  bounds: { x0: 34, y0: 4, x1: 66, y1: 36 },
+  bodies: [
+    { id: 'k1', team: 'home', pos: { x: 36, y: 6 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'k2', team: 'home', pos: { x: 64, y: 6 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'k3', team: 'home', pos: { x: 36, y: 34 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'k4', team: 'home', pos: { x: 64, y: 34 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'k5', team: 'home', pos: { x: 50, y: 20 }, attributes: { ...passer, firstTouch: 16, passing: 17 }, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'd1', team: 'away', pos: { x: 44, y: 14 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
+    { id: 'd2', team: 'away', pos: { x: 56, y: 14 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
+    { id: 'd3', team: 'away', pos: { x: 44, y: 26 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
+    { id: 'd4', team: 'away', pos: { x: 56, y: 26 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
+  ],
+  ball: { carrier: 'k5' },
+  script: [],
+};
+
 export const l4Scenarios: ScenarioDef[] = [
-  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind, wallPass, backLineShift, lineVsRuns,
+  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind, wallPass, backLineShift, lineVsRuns, grid5v4,
 ];

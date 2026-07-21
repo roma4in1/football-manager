@@ -3,6 +3,182 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d starvation redesign DEFERRED (builder decision); L5e opens
+
+The support-angle starvation (round 6's stop-rule finding) waits for its
+coherent redesign pass; the grid stands judgeable at 62:33 with zero
+freezes meanwhile. Next sub-phase: L5e marking & duels — the jockey
+guardrail (head-on close-control must fall to ~55–65%) comes due.
+
+## 2026-07-21 — L5d round 6: pressure lowers the floor + an honest stop-rule report
+
+The judged complaint (simple passes skipped; forced balls and dribbles
+preferred) split three ways under measurement (49 pressed-carrier
+decisions classified): 16 healthy, 12 DECISION FAULTS (a ≥0.55 ball
+existed but the calm-conditions floor buried it), 21 STARVED (no
+completable pass existed — a support-creation failure).
+
+SHIPPED: the decision-fault fix — under a live press (opponent ≤3.5 m)
+the pass floor drops ×0.8: you take the 60% ball rather than dying with
+it. Faults 12 → 9, grid stable (62 transfers / 20 long / 0 freezes),
+all rates and floors intact.
+
+STOP-RULE REPORT (spec §10: a proven tension is a finding): the
+STARVATION half resisted three local retunes, each verified harmful in
+isolation — (a) untethered keep pass-value → far-corner attraction;
+(b) wider support rings under tethered value → balls to roaming
+supports devalued, grid collapse; (c) distance-damped untethered value
+→ circulation collapse + a slide-test flip. The support-positioning ↔
+pass-valuation ↔ floor system is INTERLOCKED and needs a coherent
+redesign (one designed pass over supportSpot + keepValue + the pass
+term together), not knob turns. Recorded as the open L5d item; the
+grid remains judgeable (62:33 with zero freezes) meanwhile. 59/59.
+
+## 2026-07-21 — L5d round 5: the switch lives and nobody freezes
+
+The judged pair (grid-5v4, post-coverage): keepers refused long passes
+and froze under the press. Two mechanisms:
+
+- **The catch absorbs pace**: the grid arrive-cap computed roll-room
+  beyond the destination with a hard floor — a boundary-line switch had
+  ~2 m of room, so every long ball became a 3.4 s float that the press
+  converged on (long = uncompletable = never chosen). The cap now
+  credits the receiver's trap (cap = 4 + √(2·decel·room)): only the
+  MISSED ball rolls out, and that risk is priced by pC, not banned.
+- **The shield collapses under a live press**: with every lane covered
+  and every carry taxed, shield won repeatedly — a pressed statue. With
+  an opponent inside 3 m, shield's utility drops ×0.45: standing still
+  under a closing press is the worst real option, so the best move wins.
+
+Post: 64 transfers (19 LONG >16 m — switches live), 0 freezes, 35
+losses (64:35 — competitive, press still strong), 5 dead balls. All
+rates intact (wall-pass wait unaffected — the path-ball exemption
+dominates its EV). Rondo circulation up again (128 transfers/8 seeds).
+59/59.
+
+## 2026-07-21 — L5d round 4: press-unit coverage — no line in a grid
+
+The judged defect: the grid's four pressers overlapped and covered
+useless space. Structural cause: non-engaged pressers fell back to
+shapeSpot — a GOAL-PROTECTING LINE — which in a boundary grid stacked
+all four at one shared depth.
+
+- **pressCoverSpots** (decide.ts): a pressing unit's non-engaged members
+  take DISTINCT assignments over the carrier's ranked passing options
+  (lane k → nearest free defender, greedy, deterministic; leftovers
+  compact onto the ball–centroid axis). Applies when pressing > 0.3 and
+  the first defender is engaged; LINE units (pressing ≤ 0.3) keep L5c
+  shape untouched.
+
+Measured: min presser-pair distance now averages 4.6 m (was stacked),
+2.3 of 4 lanes covered at any moment, and the grid flipped from 73
+transfers / 25 losses to 33 / 69 — four ORGANIZED pressers in a tight
+box genuinely suffocate five keepers. Balance knobs if the eye wants
+the keepers favored: pressing intensity, cover depth (0.45), keeper
+attributes. 59/59; rondo (2-man unit → lane-1 cover ≈ the old shadow)
+and all rates intact.
+
+## 2026-07-21 — L5d round 3: the positional grid (builder ask) — bounded 5v4
+
+Scenario format gains BOUNDS (drill grids: a loose ball crossing them
+goes dead, like the pitch edge) and the EV became bounds-aware — the
+first sessions ended in seconds because keepers aimed and weighted
+passes with full-pitch semantics and every miss rolled out dead:
+
+- pass destinations outside the grid are skipped ("you do not pass to
+  out"), arrival pace is capped so the roll-out DIES INSIDE (the thread
+  room-cap, generalized), carry directions leaving the grid are not
+  plans, run-through targets clamp to the box.
+
+grid-5v4: five keepers (keep objective, pentagon homes) vs four pressers
+(pressing 0.85) in a 32×32 box hugging the sideline (live trap trigger).
+Nothing scripted. Across 8×50 s seeds: 73 transfers, 25 losses, 21
+counterpressed back within 7 s, 6 dead balls, double-press 2%; label
+distribution press 419 / shadow 345 / delay+shape 1755 / counterpress
+373 — the whole collective-pressing vocabulary in one judgeable drill.
+59/59.
+
+## 2026-07-21 — L5d round 2: the curved press and the delay stance (pressing.md)
+
+pressing.md's failure-case list named our residual defect exactly:
+"wrong angle — player runs directly at ball → passing lane remains
+open." Two mechanisms landed:
+
+- **The curved press approach**: beyond 3 m, the first defender closes
+  FROM the side of the lane being denied (pressApproach: carrier +
+  1.4 m toward the most-open dangerous lane) — his body cover-shadows
+  the escape as he arrives, forcing play the other way; the last 3 m
+  hand over to the L3 hunt (contain + tackles need the chase command).
+- **The delay stance** (the passive band): below the trigger threshold
+  with the carrier within 11 m, the first defender holds off goal-side
+  at ~4.5 m — slow the attack, wait for the trigger (also the seed of
+  L5e's jockey).
+
+Effect: rondo turnovers 10 → 19 per 8 seeds (the press became effective
+through DENIAL, not swarming — double-press still ~1%), 15/19 regained
+within 7 s. pressing.md mapped in REFERENCES.md; false press, waves,
+man-orientation, trap direction recorded for L5e/L6. 59/59; dial and
+all rates intact.
+
+## 2026-07-21 — L5d round 1: coordination is real — election, demotion, controlled duels
+
+Two judged defects:
+
+- **Duel launches**: a sprinting duel winner's claim got the runner's
+  stride-weight touch (~8 m/s, an 18 m roll). A CONTESTED scramble claim
+  (opponent within 3 m) is now a CONTROL touch (≤3 m/s — keep it in the
+  duel). Post-tackle loose-ball speed caps ~5.3 m/s (≈8 m roll).
+- **Both defenders chased the ball**: three compounding causes fixed —
+  the first-defender election FLAPPED as the ball moved (now sticky: the
+  engaged presser keeps the job unless clearly beaten); the shadow's
+  lane choice used raw advancement (now OPENNESS-weighted completion —
+  shadow the lane my teammates don't already close); and counterpress
+  was a swarm with no election AND left demoted hunters with stale
+  chase commands the defensive chain couldn't reclaim (counterpress now
+  elects the nearest man, registers as a pressing state, and demotes
+  cleanly into shadow/shape).
+
+Post: double-press 0% (was ~100% pre-L5d, 9% mid-fix), shadow active,
+presser hand-offs orderly. HONEST EQUILIBRIUM SHIFT: coordinated
+pressing turns the ball over LESS (10 losses/8 seeds vs the swarm's 41)
+— one press + one lane-shadow against four keepers is genuinely hard,
+which is why the 4v2 rondo is a possession drill. The passers' EV
+visibly avoids shadowed lanes (press-resistance emerging free). If the
+eye wants more turnovers, the knobs are pressing aggression and trigger
+thresholds — not more chasers. 59/59.
+
+## 2026-07-21 — L5d OPENED: pressing — counterpress, the elected press, the shadow
+
+Branch feat/engine2-l5d. The defensive chain (counterpress > press >
+shadow > shape), from the defensive.md/defender_runs pre-specs:
+
+- **Counterpress is INNATE** (transition instinct, not organization): the
+  5–8 s window after losing the ball; chases loose or opponent-carried
+  balls within 15 m; overrides stale attack commands; applies even to
+  'keep' brains — the immediate hunt is literally the rondo's rule. The
+  rondo transformed: 41 losses / 39 REGAINED within 7 s across 8 seeds
+  (the chasers-keep-it-forever era ends).
+- **Organized pressing is a KNOB** (instructions.pressing, default 0 —
+  zero regression surface): trigger-scored per defensive.md (the receive
+  moment, sideline traps, isolation, proximity), with exactly ONE
+  first defender (nearest-elected). The rondo chasers upgraded from two
+  blind scripted hounds to press brains: one presses, one shadows —
+  double-press share fell from ~100% to 3%, circulation stayed healthy
+  (94 transfers/8 seeds).
+- **The shadow** (second defender): sits on the pressed carrier's best
+  escape lane at 40% from the carrier (defender_runs' shadow press /
+  passing-lane block).
+- Contact unchanged: L3's contain/tackle machinery owns engagement.
+
+Fallout: the continuity invariant allowed exactly vmax·DT — a collision
+nudge while sprinting in a press scrum read as a teleport; the cap now
+allows movement + the (newly capped, 0.5 m/tick) separation
+displacement. 59/59; dial 16/16 both poles, runs/wall/threads intact.
+Known-and-deliberate: line-vs-runs' shape-holding line (pressing 0)
+still never engages — give it a pressing instruction to judge the full
+chain; press-resistance interplay emerges free via the carrier's
+existing pressure EV.
+
 ## 2026-07-21 — KDB completion DEFERRED to curve + aerials (builder decision)
 
 The elite-passer decision terms are in (precision margin, lines broken,

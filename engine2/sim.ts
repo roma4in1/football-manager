@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, runPlan, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -53,6 +53,8 @@ export class Sim {
   private intendedReceiverId: string | null = null;
   /** initial positions — the 'keep' objective's drill stations */
   private readonly homes = new Map<string, Vec2>();
+  /** drill boundaries, when the scenario defines a positional grid */
+  private bounds?: { x0: number; y0: number; x1: number; y1: number };
   /** last scripted atTick per body — a body with a FUTURE scripted command
    * is waiting for his cue, not idle: support must not pre-move him */
   private readonly scriptedUntil = new Map<string, number>();
@@ -69,6 +71,13 @@ export class Sim {
   /** brains currently holding defensive shape (their moveTo is the line's,
    * re-planned at cadence — not a script) */
   private readonly shapeHolding = new Set<string>();
+  /** L5d: when each team LOST possession (the counterpress window) and
+   * when the current carrier claimed (the press-the-touch trigger) */
+  private readonly lostPossessionAt = new Map<'home' | 'away', number>();
+  private carrierSince = -1;
+  private prevCarrierTeam: 'home' | 'away' | null = null;
+  /** brains currently pressing (the first-defender election's memory) */
+  private readonly pressingIds = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -129,6 +138,7 @@ export class Sim {
       list.push({ bodyId: k.bodyId, kick: k.kick });
       this.kicksAt.set(k.atTick, list);
     }
+    this.bounds = def.bounds;
     const carrier = def.ball?.carrier ? this.byId.get(def.ball.carrier) : undefined;
     if (def.ball?.carrier && !carrier) throw new Error(`ball.carrier references unknown body ${def.ball.carrier}`);
     this.ball = {
@@ -339,7 +349,10 @@ export class Sim {
     // 2b. bodies are SOLID (soft): pairwise separation — nobody ghosts
     // through an opponent. Accumulate displacements, then apply (order-free).
     // iterated (a single pass cannot resolve three-body chains: a crowder
-    // pushing the middle man INTO a third body squeezed past the floor)
+    // pushing the middle man INTO a third body squeezed past the floor);
+    // total displacement per body per tick is CAPPED — iterations could
+    // accumulate a 0.84 m teleport in dense press scrums
+    const sepTotal = new Map<string, number>();
     for (let sepIter = 0; sepIter < 3; sepIter++) {
       const minSep = TECH.bodyRadiusM * 2;
       const push = new Map<string, Vec2>();
@@ -371,7 +384,13 @@ export class Sim {
       }
       for (const b of this.bodies) {
         const p = push.get(b.id);
-        if (p) b.pos = { x: b.pos.x + p.x, y: b.pos.y + p.y };
+        if (!p) continue;
+        const used = sepTotal.get(b.id) ?? 0;
+        const mag = Math.hypot(p.x, p.y);
+        const allowed = Math.max(0, 0.5 - used);
+        const k = mag > allowed ? allowed / (mag || 1) : 1;
+        b.pos = { x: b.pos.x + p.x * k, y: b.pos.y + p.y * k };
+        sepTotal.set(b.id, used + mag * k);
       }
     }
 
@@ -405,10 +424,14 @@ export class Sim {
     const ballFrom = { x: this.ball.pos.x, y: this.ball.pos.y };
     stepBall(this.ball);
     // a ball over any boundary is DEAD where it crossed (restarts are L8's;
-    // until then it must not roll to infinity — the L4 shot exposed this)
+    // until then it must not roll to infinity — the L4 shot exposed this).
+    // Drill BOUNDS count as boundaries too (positional grids).
+    const ob = this.bounds;
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
       (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length ||
-        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width)) {
+        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width ||
+        (ob !== undefined && (this.ball.pos.x < ob.x0 || this.ball.pos.x > ob.x1 ||
+          this.ball.pos.y < ob.y0 || this.ball.pos.y > ob.y1)))) {
       this.ball.phase = 'dead';
       this.ball.vel = { x: 0, y: 0 };
       this.ball.vz = 0;
@@ -420,6 +443,19 @@ export class Sim {
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
     this.resolveClaims(ballFrom);
+
+    // L5d bookkeeping: possession flips arm the counterpress window; a
+    // fresh carrier arms the press-the-touch trigger
+    {
+      const cb2 = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+      if (cb2) {
+        if (this.prevCarrierTeam !== null && cb2.team !== this.prevCarrierTeam) {
+          this.lostPossessionAt.set(this.prevCarrierTeam, this.tick);
+        }
+        if (this.prevCarrierTeam !== cb2.team || this.carrierSince < 0) this.carrierSince = this.tick;
+        this.prevCarrierTeam = cb2.team;
+      }
+    }
 
     const frame = this.snapshot();
     this.tick++;
@@ -772,11 +808,16 @@ export class Sim {
       const dir = dest
         ? Math.atan2(dest.y - this.ball.pos.y, dest.x - this.ball.pos.x)
         : Math.atan2(rb.vel.y, rb.vel.x);
+      // a CONTESTED scramble claim (opponent in duel range) is a CONTROL
+      // touch, never a stride-weight knock — a sprinting duel winner was
+      // launching the ball 15–20 m (the judged duel launches)
+      const scrapped = this.bodies.some((o) =>
+        o.team !== rb.team && Math.hypot(o.pos.x - rb.pos.x, o.pos.y - rb.pos.y) < 3);
       // weight rides the gait: a RUNNER'S continuation touch is a CARRY
       // touch (a proper stride ahead — the cushion weight died at his feet
       // and checked the run); a stepping receiver still cushions
       let push: number;
-      if (rb.speed > 3.5) {
+      if (!scrapped && rb.speed > 3.5) {
         const vmax = topSpeedMps(rb.attributes.pace);
         push = rb.speed * (
           BALL.touchPushBase +
@@ -791,6 +832,7 @@ export class Sim {
       }
       const cap = this.dribbleArriveCap(rb);
       if (cap !== undefined) push = Math.min(push, cap);
+      if (scrapped) push = Math.min(push, 3.0); // keep it in the duel
       this.ball.vel = { x: Math.cos(dir) * push, y: Math.sin(dir) * push };
     } else {
       this.ball.vel = { x: 0, y: 0 };
@@ -830,6 +872,7 @@ export class Sim {
               instructions: this.instructions.get(id) ?? {},
               current: null,
               homes: this.homes,
+              bounds: this.bounds,
             });
             const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear'
               ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
@@ -930,29 +973,149 @@ export class Sim {
               }
             }
           }
-          // L5c SHAPE: an idle brain whose OPPONENT has the ball (carried
-          // or in flight to one) joins his line — shared depth, ball-side
-          // shift, cover shadows. The line slides; pressing is L5d's.
+          // L5d COUNTERPRESS (before everything): the 5–8 s transition
+          // instinct — chase the ball you just lost (loose OR opponent-
+          // carried), overriding stale attack commands; organized defense
+          // below still requires idleness
+          {
+            const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
+            const oppHasIt = carrierBody !== undefined && carrierBody.team !== body.team;
+            const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null;
+            // counterpress is INNATE — even 'keep' brains hunt the ball
+            // they just lost (it is literally the rondo's rule); the keep
+            // gate below only blocks ORGANIZED defense
+            const myBallDist = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+            if (this.tick - lostAt <= 60 && (oppHasIt || looseBall) &&
+              this.tick % DECIDE.reconsiderTicks === 0 &&
+              this.tick > (this.scriptedUntil.get(id) ?? -1) &&
+              myBallDist < 15) {
+              // counterpress is ELECTED too: the nearest man (or anyone
+              // right on the ball) hunts; the rest keep balance — the
+              // swarm re-created the double-chase the shadow exists to fix
+              const teamBrains = [...this.brains].filter((bid) => {
+                const b2 = this.byId.get(bid)!;
+                return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1);
+              });
+              const nearestCp = teamBrains.reduce((best, bid) => {
+                const b2 = this.byId.get(bid)!;
+                const d2 = Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y);
+                return d2 < best.d ? { id: bid, d: d2 } : best;
+              }, { id: '', d: Infinity });
+              if (nearestCp.id === id || myBallDist < 6) {
+                if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+                this.pressingIds.add(id); // a pressing state — demotable
+                this.actionLabels.set(id, 'counterpress');
+                continue;
+              }
+            }
+          }
+          // L5c/L5d DEFENDING: an idle brain whose OPPONENT has the ball
+          // runs the defensive chain — COUNTERPRESS (innate, the 5–8 s
+          // transition window) > elected PRESS (instructed, one first
+          // defender) > SHADOW (the second man sits on the escape lane) >
+          // SHAPE (the line). Contact stays L3's contain/tackle machinery.
           if (carrierBody && carrierBody.team !== body.team &&
             (this.instructions.get(id)?.objective) !== 'keep' &&
-            (body.command.type === 'hold' || this.shapeHolding.has(id)) &&
+            (body.command.type === 'hold' || this.shapeHolding.has(id) || this.pressingIds.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
-            const unit = [...this.brains].filter((bid) =>
-              this.byId.get(bid)!.team === body.team &&
-              this.tick > (this.scriptedUntil.get(bid) ?? -1));
-            const spot = shapeSpot(body, this.bodies, this.ball, this.homes, unit,
-              this.instructions.get(id)?.lineHeight ?? 0.5);
-            const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
-            if (d > 1.2) {
-              this.assign(body, { type: 'moveTo', target: spot, regime: d > 8 ? 'run' : 'jog' });
-              this.shapeHolding.add(id);
-              this.actionLabels.set(id, 'shape');
-            } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
-              this.assign(body, { type: 'hold' });
+            const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
+            const inCounterpress = this.tick - lostAt <= 60 &&
+              Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15;
+            const pressing = this.instructions.get(id)?.pressing ?? 0;
+            const justReceived = this.tick - this.carrierSince <= 8;
+            // first-defender election: the nearest eligible defending brain
+            const defBrains = [...this.brains].filter((bid) => {
+              const b2 = this.byId.get(bid)!;
+              return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
+                (this.instructions.get(bid)?.objective) !== 'keep';
+            });
+            let nearest = defBrains.reduce((best, bid) => {
+              const b2 = this.byId.get(bid)!;
+              const d2 = Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y);
+              return d2 < best.d ? { id: bid, d: d2 } : best;
+            }, { id: '', d: Infinity });
+            // STICKY election: the engaged presser keeps the job unless he
+            // is clearly beaten (flapping first/second made both look like
+            // ball-chasers — the judged no-coordination)
+            const incumbent = defBrains.find((bid) => this.pressingIds.has(bid));
+            if (incumbent && incumbent !== nearest.id) {
+              const bi = this.byId.get(incumbent)!;
+              const di = Math.hypot(carrierBody.pos.x - bi.pos.x, carrierBody.pos.y - bi.pos.y);
+              if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent, d: di };
+            }
+            const iAmFirst = nearest.id === id;
+            const score = pressScore(body, carrierBody, this.bodies, justReceived, pressing);
+            const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
+            const firstIsEngaged = this.pressingIds.has(nearest.id) || (iAmFirst && pressNow);
+            if (pressNow) {
+              // the CURVED approach: close from the denied lane's side
+              // (pressing.md: a straight chase leaves the lane open); the
+              // last 3 m are the L3 hunt (contain + tackles need the chase)
+              const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
+              if (dCar > 3 && !inCounterpress) {
+                const ap = pressApproach(body, carrierBody, this.bodies);
+                this.assign(body, { type: 'moveTo', target: ap, regime: 'sprint' });
+              } else if (body.command.type !== 'chaseBall') {
+                this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+              }
+              this.pressingIds.add(id);
+              this.shapeHolding.delete(id);
+              this.actionLabels.set(id, inCounterpress ? 'counterpress' : 'press');
+            } else if (iAmFirst && pressing > 0 &&
+              Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 11) {
+              // the DELAY stance (pressing.md's passive band): hold off
+              // goal-side ~4.5 m — slow the attack, wait for the trigger
+              this.pressingIds.delete(id);
+              const gSign = body.team === 'home' ? 1 : -1;
+              const gx = gSign > 0 ? 0 : PITCH.length;
+              const dx = gx - carrierBody.pos.x;
+              const dy = 34 - carrierBody.pos.y;
+              const dn = Math.hypot(dx, dy) || 1;
+              const hold = { x: carrierBody.pos.x + (dx / dn) * 4.5, y: carrierBody.pos.y + (dy / dn) * 4.5 };
+              const dh = Math.hypot(hold.x - body.pos.x, hold.y - body.pos.y);
+              if (dh > 1.2) {
+                this.assign(body, { type: 'moveTo', target: hold, regime: dh > 7 ? 'run' : 'jog' });
+                this.shapeHolding.add(id);
+              } else if (body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
+              this.actionLabels.set(id, 'delay');
+            } else {
+              this.pressingIds.delete(id);
+              // a PRESSING UNIT's non-engaged members take distinct
+              // assignments over the carrier's ranked options (a line-shape
+              // fallback stacked all four at one depth — the judged
+              // overlaps); LINE units (pressing ≤ 0.3) keep L5c shape
+              let target: Vec2 | null = null;
+              let label = 'shape';
+              if (pressing > 0.3 && firstIsEngaged) {
+                const coverIds = defBrains.filter((bid) => bid !== nearest.id && bid !== id)
+                  .concat([id]).filter((bid) => bid !== nearest.id);
+                const spots = pressCoverSpots(carrierBody, this.bodies, coverIds);
+                target = spots.get(id) ?? null;
+                label = 'cover';
+              } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
+                target = shadowSpot(body, carrierBody, this.bodies);
+                label = 'shadow';
+              }
+              if (!target) {
+                target = shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
+                  this.instructions.get(id)?.lineHeight ?? 0.5);
+                label = 'shape';
+              }
+              const d = Math.hypot(target.x - body.pos.x, target.y - body.pos.y);
+              if (d > 1.2) {
+                this.assign(body, { type: 'moveTo', target, regime: d > 8 ? 'run' : 'jog' });
+                this.shapeHolding.add(id);
+                this.actionLabels.set(id, label);
+              } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
             }
           } else if (carrierBody && carrierBody.team === body.team) {
             this.shapeHolding.delete(id);
+            this.pressingIds.delete(id);
           }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
           // collected by the nearest idle brain — deflected passes died
@@ -987,6 +1150,7 @@ export class Sim {
           instructions: this.instructions.get(id) ?? {},
           current: intent,
           homes: this.homes,
+          bounds: this.bounds,
           runners: this.runningLine,
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
             const rp = this.runPhase.get(rid);

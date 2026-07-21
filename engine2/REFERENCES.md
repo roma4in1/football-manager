@@ -82,3 +82,16 @@ not always the safest") and the DRIVEN thread variant for runners.
 Gated: lofted/chip/lob/float + every cross type (the aerial gap + L8),
 cutbacks (L8 box play), disguised/dummy/no-look (reacting defenders +
 perception), switches of play (L6 shape awareness makes them meaningful).
+
+## `pressing.md` — L5d validation + the curved press
+Validates the built chain (first/second/third defender, counterpress
+window, trigger table, sideline traps, press-resistance methods — all
+live or emergent). Landed from it: the CURVED PRESS APPROACH (its
+"wrong angle" failure case named our defect exactly — a straight chase
+leaves the lane open; the presser now closes from the denied lane's
+side, cover-shadowing as he arrives) and the DELAY STANCE (the passive
+band: hold off goal-side ~4.5 m below the trigger threshold — slow the
+attack, wait). Gated/future: false press, pressing waves, man-oriented
+and hybrid marking (L5e), central/sideline trap DIRECTION as a team
+instruction (L6), pressing-shape formations (L6), stamina/aggression/
+anticipation attribute wiring (the attribute pass).

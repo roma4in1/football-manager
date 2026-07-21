@@ -35,6 +35,10 @@ export interface PlayInstructions {
    * 1 = high line (squeeze up with the ball). Default 0.5 — a mid block.
    * The first tactics knob: L6 will set these per role/team. */
   lineHeight?: number;
+  /** L5d organized pressing appetite, 0..1. DEFAULT 0 — shape-holders
+   * never step out unless instructed (counterpress is separate and
+   * innate: transition instinct, not organization). */
+  pressing?: number;
 }
 
 export type Intent =
@@ -468,6 +472,143 @@ export const shapeSpot = (
   return { x: lineX, y: Math.max(2, Math.min(PITCH.width - 2, y)) };
 };
 
+/** L5d — should THIS defender press the carrier now? Trigger-scored
+ * (defensive.md): receive moments, sideline traps, isolation, plus raw
+ * proximity — gated by the pressing instruction and first-defender
+ * election (exactly one presser; the sim elects the nearest). Contact
+ * itself is L3's contain/tackle machinery — pressing is the decision to
+ * LEAVE SHAPE and close. */
+export const pressScore = (
+  defender: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+  justReceived: boolean,
+  pressing: number,
+): number => {
+  const d = Math.hypot(carrier.pos.x - defender.pos.x, carrier.pos.y - defender.pos.y);
+  const range = 12 + pressing * 10;
+  if (d > range) return 0;
+  let score = 0.3 + pressing * 0.4 + (1 - d / range) * 0.3;
+  if (justReceived) score += 0.35; // press the touch (defensive.md: high)
+  if (carrier.pos.y < 11 || carrier.pos.y > PITCH.width - 11) score += 0.25; // sideline trap
+  const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
+  if (!mates.some((m) => Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y) < 12)) score += 0.2; // isolated
+  return score;
+};
+
+/** L5d — the SECOND defender's shadow spot: stand on the pressed
+ * carrier's best escape lane (defender_runs' shadow press / passing lane
+ * block): pick his most dangerous open mate and sit on that lane. */
+export const shadowSpot = (
+  defender: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+): Vec2 | null => {
+  const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
+  if (!mates.length) return null;
+  // the lane worth shadowing is the most OPEN dangerous one — judged by
+  // completion odds WITHOUT me (the lanes my teammates already close
+  // don't need me; the judged defect: posValue always picked the most
+  // advanced man even when that lane was already dead)
+  const others = bodies.filter((b) => b.team === defender.team && b.id !== defender.id);
+  let best: BodyState | null = null;
+  let bestVal = -Infinity;
+  for (const m of mates) {
+    const dist0 = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
+    if (dist0 < 3) continue;
+    const open = passCompletion(carrier.pos, m.pos, 11, others, dist0, m);
+    const v = open * (0.4 + posValue(m.pos, carrier.team));
+    if (v > bestVal) {
+      bestVal = v;
+      best = m;
+    }
+  }
+  if (!best) return null;
+  const t = 0.4; // on the lane, nearer the carrier (cuts early)
+  return {
+    x: carrier.pos.x + (best.pos.x - carrier.pos.x) * t,
+    y: carrier.pos.y + (best.pos.y - carrier.pos.y) * t,
+  };
+};
+
+/** L5d — press-unit COVERAGE: while the first defender presses, every
+ * other member takes a DISTINCT assignment over the carrier's ranked
+ * passing options (lane k → nearest free defender), leftovers compact
+ * onto the unit's centroid-ball axis. Replaces the line-shape fallback
+ * for pressing units — a goal-protecting LINE in a boundary grid put
+ * all four pressers at one shared depth (the judged overlap and
+ * useless coverage). */
+export const pressCoverSpots = (
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+  coverIds: readonly string[],
+): Map<string, Vec2> => {
+  const out = new Map<string, Vec2>();
+  if (!coverIds.length) return out;
+  const defTeam = bodies.find((b) => b.id === coverIds[0])!.team;
+  const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
+  const others = bodies.filter((b) => b.team === defTeam);
+  // rank the carrier's options: openness × danger
+  const lanes = mates.map((m) => {
+    const dist0 = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
+    const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, m.pos, 11, others, dist0, m);
+    return { m, score: open * (0.4 + posValue(m.pos, carrier.team)) };
+  }).sort((a, b) => b.score - a.score);
+  const free = new Set(coverIds);
+  for (const lane of lanes) {
+    if (!free.size) break;
+    const spot = {
+      x: carrier.pos.x + (lane.m.pos.x - carrier.pos.x) * 0.45,
+      y: carrier.pos.y + (lane.m.pos.y - carrier.pos.y) * 0.45,
+    };
+    let best = '';
+    let bestD = Infinity;
+    for (const id of free) {
+      const b = bodies.find((x) => x.id === id)!;
+      const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    out.set(best, spot);
+    free.delete(best);
+  }
+  // leftovers: compact between the ball and the unit's centroid
+  if (free.size) {
+    let cx = 0;
+    let cy = 0;
+    for (const id of coverIds) {
+      const b = bodies.find((x) => x.id === id)!;
+      cx += b.pos.x;
+      cy += b.pos.y;
+    }
+    cx /= coverIds.length;
+    cy /= coverIds.length;
+    for (const id of free) {
+      out.set(id, { x: (carrier.pos.x + cx) / 2, y: (carrier.pos.y + cy) / 2 });
+    }
+  }
+  return out;
+};
+
+/** L5d — the CURVED press approach (pressing.md's "wrong angle" failure
+ * case: running straight at the ball leaves the lane open): close down
+ * FROM the side of the lane being denied, so the presser's body shadows
+ * the escape as he arrives — forcing play the other way. */
+export const pressApproach = (
+  defender: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+): Vec2 => {
+  const lane = shadowSpot(defender, carrier, bodies);
+  if (!lane) return { x: carrier.pos.x, y: carrier.pos.y };
+  const lx = lane.x - carrier.pos.x;
+  const ly = lane.y - carrier.pos.y;
+  const ln = Math.hypot(lx, ly) || 1;
+  return { x: carrier.pos.x + (lx / ln) * 1.4, y: carrier.pos.y + (ly / ln) * 1.4 };
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];
@@ -476,6 +617,9 @@ export interface DecideInput {
   current: Intent | null;
   /** drill stations (initial positions) — the 'keep' objective's anchors */
   homes?: ReadonlyMap<string, Vec2>;
+  /** drill boundaries (positional grids): the EV never aims outside them
+   * and weights balls to die inside */
+  bounds?: { x0: number; y0: number; x1: number; y1: number };
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
@@ -487,7 +631,21 @@ export interface DecideInput {
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes, runners, waitingRunners } = input;
+  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds } = input;
+  const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
+    (p.x >= bounds.x0 + m && p.x <= bounds.x1 - m && p.y >= bounds.y0 + m && p.y <= bounds.y1 - m);
+  const roomToBound = (from2: Vec2, dir: { x: number; y: number }): number => {
+    if (!bounds) return 99;
+    const n = Math.hypot(dir.x, dir.y) || 1;
+    const ux = dir.x / n;
+    const uy = dir.y / n;
+    let r = 99;
+    if (ux > 1e-6) r = Math.min(r, (bounds.x1 - from2.x) / ux);
+    if (ux < -1e-6) r = Math.min(r, (bounds.x0 - from2.x) / ux);
+    if (uy > 1e-6) r = Math.min(r, (bounds.y1 - from2.y) / uy);
+    if (uy < -1e-6) r = Math.min(r, (bounds.y0 - from2.y) / uy);
+    return Math.max(0, r);
+  };
   const risk = instructions.risk ?? 0.5;
   const keep = instructions.objective === 'keep';
   const team = carrier.team;
@@ -498,7 +656,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     (keep ? keepValue(p, opponents, homes?.get(anchorId)) : posValue(p, team));
   const pvHere = value(here, carrier.id);
   const turnoverW = DECIDE.turnoverBase - DECIDE.turnoverRiskGain * risk;
-  const passFloor = DECIDE.passFloorBase - DECIDE.passFloorRiskGain * risk;
+  // under a LIVE press, standards drop — you take the 60% ball rather
+  // than dying with it (measured: good-enough passes existed at 12/49
+  // pressed moments but the calm-conditions floor buried them)
+  const pressedNow = opponents.some((o) =>
+    Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 3.5);
+  const passFloor = (DECIDE.passFloorBase - DECIDE.passFloorRiskGain * risk) * (pressedNow ? 0.8 : 1);
   const options: Intent[] = [];
 
   // SHOOT — xG on the value scale directly (1.0 ≡ goal)
@@ -556,7 +719,19 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // pays the hot-arrival tax instead
       allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
     }
-    for (const { arrive, leadExtraS, destOverride } of allCandidates) {
+    for (const { arrive: arrive0, leadExtraS, destOverride } of allCandidates) {
+      // in a bounded grid, weight the ball to DIE INSIDE (the grid's first
+      // sessions ended in seconds — every miss rolled out dead)
+      let arrive = arrive0;
+      if (bounds) {
+        const dirB = { x: (destOverride ?? mate.pos).x - here.x, y: (destOverride ?? mate.pos).y - here.y };
+        const room = roomToBound(destOverride ?? mate.pos, dirB);
+        // the receiver's trap ABSORBS pace — only the missed ball rolls
+        // out, so the cap credits the catch (a hard floor of 4 made every
+        // boundary-line switch a 3.4 s float and the judged freeze:
+        // nobody passes long when long is uncompletable)
+        arrive = Math.min(arrive, 4 + Math.sqrt(2 * 1.7 * Math.max(0.5, room - 0.5)));
+      }
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
       // two-iteration lead on the mate's current velocity
@@ -568,6 +743,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
         }
       }
+      if (!inBounds(dest, 0.8)) continue; // you do not pass to out
       let pC = passCompletion(here, dest, speed, opponents, dist0, mate, carrier.attributes.passing);
       // the backheel discount — but ONLY under pressure: an unpressured
       // carrier TURNS before striking (turn-then-strike executes it), so
@@ -643,6 +819,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       y: here.y + Math.sin(ang) * DECIDE.carryLookaheadM,
     };
     if (p.x < 0.5 || p.x > PITCH.length - 0.5 || p.y < 0.5 || p.y > PITCH.width - 0.5) continue;
+    if (!inBounds(p, 0.8)) continue; // carrying out of the grid is not a plan
     let pressure = 0;
     for (const o of opponents) {
       const dNow = Math.hypot(o.pos.x - p.x, o.pos.y - p.y);
@@ -668,14 +845,21 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       turnoverW * pv * pressure * DECIDE.carryTurnoverGain
     );
     const runThrough = {
-      x: Math.min(PITCH.length - 0.5, Math.max(0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
-      y: Math.min(PITCH.width - 0.5, Math.max(0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
+      x: Math.min(bounds ? bounds.x1 - 1 : PITCH.length - 0.5, Math.max(bounds ? bounds.x0 + 1 : 0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
+      y: Math.min(bounds ? bounds.y1 - 1 : PITCH.width - 0.5, Math.max(bounds ? bounds.y0 + 1 : 0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
     };
     options.push({ kind: 'carry', target: runThrough, regime: carryRegime, utility: u });
   }
 
-  // SHIELD — the floor: keep what you have
-  options.push({ kind: 'shield', utility: DECIDE.shieldUtility + DECIDE.possessionDiscount * pvHere * 0.2 });
+  // SHIELD — the floor: keep what you have. Under a LIVE closing press,
+  // standing still is the worst real option (the judged freeze) — the
+  // shield's appeal collapses and the best move wins instead
+  const livePress = opponents.some((o) =>
+    Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 3);
+  options.push({
+    kind: 'shield',
+    utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * pvHere * 0.2) * (livePress ? 0.45 : 1),
+  });
 
   // CLEAR — deep and pressured only: escape beats a forced turnover
   const ownProgress = attackSign(team) > 0 ? here.x / PITCH.length : 1 - here.x / PITCH.length;

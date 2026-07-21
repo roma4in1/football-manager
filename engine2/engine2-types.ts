@@ -56,7 +56,7 @@ export interface BodyInit {
    * the ball. Bodies without a brain follow their script only. */
   brain?: 'onBall';
   /** L4 instruction surface (spec: instructions bias the choice) */
-  instructions?: { risk?: number; objective?: 'keep' | 'score'; lineHeight?: number };
+  instructions?: { risk?: number; objective?: 'keep' | 'score'; lineHeight?: number; pressing?: number };
 }
 
 /** Movement commands — the L1/L2 action vocabulary (scenario scripts issue
@@ -146,6 +146,9 @@ export interface ScenarioDef {
   ball?: { pos?: Vec2; carrier?: string };
   /** scripted strikes (L2) */
   kicks?: KickEvent[];
+  /** optional drill BOUNDARIES (positional grids): a loose ball crossing
+   * them goes dead, exactly like the pitch edge (restarts are L8's) */
+  bounds?: { x0: number; y0: number; x1: number; y1: number };
 }
 
 /** Script events either fire at an absolute tick (clearing the body's queue —
