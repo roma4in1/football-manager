@@ -45,8 +45,10 @@ test('a lofted kick flies ballistically: range ≈ v²·sin(2θ)/g before the fi
     if (ball.z === 0 && ball.vz >= 0 && ticks > 2) break; // first ground contact handled
   }
   const range = ball.pos.x - 30;
-  const expected = (20 ** 2 * Math.sin((2 * 40 * Math.PI) / 180)) / BALL.gravity; // ≈ 40.2 m
-  assert.ok(Math.abs(range - expected) < 3, `first-bounce range ${range.toFixed(1)}m ≈ ${expected.toFixed(1)}m`);
+  // WITH air drag (physics.md) the flight is a real projectile but shorter
+  // than the vacuum range v²·sin(2θ)/g — drag bleeds pace through the arc
+  const vacuum = (20 ** 2 * Math.sin((2 * 40 * Math.PI) / 180)) / BALL.gravity; // ≈ 40.2 m
+  assert.ok(range > 22 && range < vacuum, `first-bounce range ${range.toFixed(1)}m: a real arc, drag-shortened below the ${vacuum.toFixed(1)}m vacuum range`);
 });
 
 test('bounces decay by restitution and hand over to rolling', () => {

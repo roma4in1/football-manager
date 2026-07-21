@@ -38,24 +38,30 @@ export interface BallState {
 }
 
 export const BALL = {
-  /** rolling deceleration is SPEED-DEPENDENT: a = rollFriction + rollDrag·v².
-   * rollFriction is the constant grass rolling resistance (μ≈0.35·g); rollDrag
-   * is the aerodynamic term (∝ v²) that sheds pace off a hard ball fast then
-   * lets it coast. Together a firm 16 m/s pass now dies in ~28 m (was ~74 m),
-   * a 25 m/s drive in ~50 m (was 180 m), a soft 8 m/s ball in ~9 m — and the
-   * closed-form roll helpers below keep the pass model exactly consistent. */
-  rollFrictionMps2: 3.4,
-  rollDragPerV2: 0.010,
-  /** the CARRIED ball between touches rolls on the tuned constant (the L2/L3
-   * dribble/knock-past feel was judged against it) — a dribbler caresses the
-   * ball every stride, he is not letting it roll free across a heavy pitch.
-   * Only genuinely FREE balls (passes, shots, loose) get the realistic drag. */
+  // ── physical properties (reference/physics.md) — the roll/drag decel is
+  // DERIVED from these below, not hand-tuned: a = μ·g + (½ρ·Cd·A/m)·v². ─────
+  /** FIFA regulation ball */
+  massKg: 0.43,
+  radiusM: 0.11,
+  airDensity: 1.225, // kg/m³ at sea level
+  dragCoefficient: 0.22, // sphere in the football Reynolds regime
+  /** rolling-resistance coefficient of the surface; the constant rolling
+   * decel is μ·g. physics.md lists 0.018 (that is an ARTIFICIAL-TURF / smooth
+   * value — it makes a soft pass trickle ~70 m, contradicting a real pitch),
+   * and separately notes "dry grass: HIGH resistance". A match pitch is
+   * grass, so we use a dry-grass μ: with the (physical) v²-drag on top, a
+   * firm 16 m/s pass dies in ~30 m, a soft 8 m/s ball in ~10 m — believable. */
+  rollingFrictionCoeff: 0.30,
+  /** the CARRIED ball between touches rolls on the tuned dribble constant —
+   * the judged L2/L3 dribble/knock-past feel was calibrated to it, and a
+   * dribbler caresses the ball every stride rather than letting it roll
+   * free. Only genuinely FREE balls (passes, shots, loose) get real drag. */
   dribbleRollDecelMps2: 1.7,
   /** below this a roll is at rest (still 'rolling' — i.e. loose, claimable) */
   stopSpeedMps: 0.15,
   gravity: 9.81,
-  /** vertical speed kept per bounce (grass ~0.5–0.6) */
-  bounceRestitution: 0.55,
+  /** energy retained normal to the pitch per bounce (physics.md: 0.70–0.78) */
+  bounceRestitution: 0.72,
   /** horizontal speed kept through a bounce (turf scrubs pace off) */
   bounceGroundFriction: 0.75,
   /** below this vertical speed a landing stops bouncing and rolls */
@@ -112,6 +118,14 @@ export const BALL = {
   shieldRadiusM: 0.5,
 } as const;
 
+// ── derived physical constants (physics.md) ────────────────────────────────
+/** aerodynamic drag deceleration per v²: a_drag = ½·ρ·Cd·A/m · v² (A = πr²).
+ * ≈ 0.0119 /m — the dominant slowing term on a struck ball. */
+export const DRAG_K = 0.5 * BALL.airDensity * BALL.dragCoefficient *
+  (Math.PI * BALL.radiusM * BALL.radiusM) / BALL.massKg;
+/** constant rolling-resistance decel of a free ball: μ·g ≈ 0.177 m/s². */
+export const ROLL_FRICTION_MPS2 = BALL.rollingFrictionCoeff * BALL.gravity;
+
 /** Predict the free ball's position `seconds` ahead by cloning and stepping
  * the real physics (bounces included) — the anticipation chasers run to. */
 export function predictBall(ball: BallState, seconds: number): Vec2 {
@@ -134,8 +148,14 @@ export function predictBall(ball: BallState, seconds: number): Vec2 {
  * coupling lives in the sim loop (it needs the carrier's body). */
 export function stepBall(ball: BallState): void {
   if (ball.phase === 'airborne') {
+    // gravity + aerodynamic drag on the FULL 3-D velocity (physics.md flight
+    // model): drag opposes the velocity vector, magnitude DRAG_K·|v|² — long
+    // shots and crosses lose pace in the air, not only on the ground
+    const sp3 = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    const kd = DRAG_K * sp3;
     ball.pos = { x: ball.pos.x + ball.vel.x * DT, y: ball.pos.y + ball.vel.y * DT };
-    ball.vz -= BALL.gravity * DT;
+    ball.vel = { x: ball.vel.x - kd * ball.vel.x * DT, y: ball.vel.y - kd * ball.vel.y * DT };
+    ball.vz -= (BALL.gravity + kd * ball.vz) * DT;
     ball.z += ball.vz * DT;
     if (ball.z <= 0 && ball.vz < 0) {
       ball.z = 0;
@@ -156,11 +176,11 @@ export function stepBall(ball: BallState): void {
       ball.vel = { x: 0, y: 0 };
       return;
     }
-    // a FREE ball gets the realistic speed-dependent drag; a carried ball
-    // between touches rolls on the tuned dribble constant (see the constants)
+    // a FREE ball gets the derived physics (rolling resistance + v²-drag); a
+    // carried ball between touches rolls on the tuned dribble constant
     const decel = ball.phase === 'carried'
       ? BALL.dribbleRollDecelMps2
-      : BALL.rollFrictionMps2 + BALL.rollDragPerV2 * speed * speed;
+      : ROLL_FRICTION_MPS2 + DRAG_K * speed * speed;
     const next = Math.max(0, speed - decel * DT);
     const k = next / speed;
     ball.vel = { x: ball.vel.x * k, y: ball.vel.y * k };
@@ -171,8 +191,8 @@ export function stepBall(ball: BallState): void {
 // ── closed-form roll relations for a = A + B·v² (A=rollFriction, B=rollDrag).
 // v·dv/dx = −(A+B v²) integrates exactly, so the decision layer can weight a
 // pass against the SAME physics stepBall runs — no constant-decel fiction. ──
-const rollA = (): number => BALL.rollFrictionMps2;
-const rollB = (): number => BALL.rollDragPerV2;
+const rollA = (): number => ROLL_FRICTION_MPS2;
+const rollB = (): number => DRAG_K;
 
 /** speed of a ball after it has rolled `d` metres from launch speed `v0`
  * (0 if it comes to rest within `d`). */

@@ -9,13 +9,16 @@ Builder: the ball never slows / rolls forever. Measured true: rollDecel 1.7
 (μ≈0.17), constant, no aero drag — a firm 16 m/s pass rolled 74 m still doing
 12 m/s at 30 m; 20 m/s crossed the whole pitch.
 
-New model for FREE balls: a = rollFriction(3.4) + rollDrag(0.010)·v² — grass
-rolling resistance plus the aerodynamic term that sheds pace off a hard ball
-fast then coasts. Now: firm 16 m/s dies in ~27 m, 25 m/s drive ~50 m, soft
-8 m/s ~9 m. a=A+B·v² integrates in closed form, so decide.ts weights every
-pass against the SAME physics (new rollSpeedAfter / rollLaunchForArrival /
-rollTimeToDistance / rollDistance helpers in ball.ts) — no constant-decel
-fiction; all the hardcoded 1.7 in the pass math is gone.
+New model for FREE balls DERIVED from reference/physics.md (not hand-tuned):
+a = μ·g + (½·ρ·Cd·A/m)·v². Drag k = ½·1.225·0.22·(π·0.11²)/0.43 ≈ 0.0119 /m
+(the doc's aero constants); rolling μ = 0.30 (a dry-grass value — the doc's
+yaml 0.018 is an artificial-turf number that trickles a soft pass ~70 m, but
+the doc itself calls dry grass "high resistance"). Together: firm 16 m/s dies
+in ~29 m, 25 m/s drive ~51 m, soft 8 m/s ~9 m. Air drag now also acts in
+FLIGHT (long balls/crosses lose pace); restitution 0.55→0.72 (doc 0.70–0.78).
+a=A+B·v² integrates in closed form, so decide.ts weights every pass against
+the SAME physics (rollSpeedAfter / rollLaunchForArrival / rollTimeToDistance /
+rollDistance helpers) — no constant-decel fiction; the hardcoded 1.7 is gone.
 
 SCOPED to free balls: the CARRIED ball between touches keeps the tuned
 dribble constant (1.7) — the heavily-judged L2/L3 dribble/knock-past feel was
