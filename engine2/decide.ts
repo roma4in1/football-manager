@@ -102,7 +102,7 @@ export const DECIDE = {
    * corner-dodge). Risk-scaled like the pass turnover penalty. */
   carryTurnoverGain: 0.5,
   /** shooting */
-  shootRangeM: 26,
+  shootRangeM: 30, // considered from range — the EV decides if it's worth it
   shotSpeedMps: 22,
   xgDistHalfM: 13, // xG halves around this distance
   xgDistScaleM: 5,
@@ -567,7 +567,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const comfy = 5.5 + 0.35 * mate.attributes.firstTouch;
       pC *= 1 - 0.04 * Math.max(0, arrTrue - comfy);
       if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
-      const pvThere = value(dest, mate.id);
+      let pvThere = value(dest, mate.id);
+      // CHANCE CREATION (passing.md's pass score): a ball to a teammate in
+      // a shooting position carries his shot's value — the square/cutback
+      // into the centre was invisible to the EV without it
+      if (!keep) pvThere += 0.6 * xG(dest, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
       // sub-floor lanes are taxed, but the tax RIDES RISK — "the best pass
       // is not always the safest" (passing.md): a speculative player keeps
       // the threaded splitting ball live; a safe one buries it
@@ -616,7 +620,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // let a chased striker drift to the corner flag, where the angle dies
     if (!keep) {
       const gd = Math.hypot(g.x - p.x, g.y - p.y);
-      if (gd < DECIDE.shootRangeM * 1.3) pv += 0.8 * xG(p, team, opponents);
+      // 0.5, not 0.8: the carry's future-xG is NOT certain (you can lose
+      // the ball en route) — at 0.8 carrying closer always beat shooting
+      // NOW and the range shot never fired (the judged shyness)
+      if (gd < DECIDE.shootRangeM * 1.3) pv += 0.5 * xG(p, team, opponents);
     }
     const u = DECIDE.possessionDiscount * (
       // pressure taxes the spot, but momentum and control mean a defender

@@ -3,6 +3,25 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5c round 4: the shot economy — no infinite deferral
+
+The judged shyness: attackers too scared of defenders, range shots
+near-absent, and no square ball into the centre for a better look.
+Structural cause: the carry's xG-gradient bonus (0.8·xG at the sample)
+made "carry closer" ALWAYS out-value "shoot now" — infinite deferral —
+while the pass EV had NO chance-creation term (passing.md lists it in
+the pass score explicitly), so the square/cutback was invisible value.
+
+- Carry future-xG discounted (0.8 → 0.5): the ball can be lost en route;
+  shooting NOW is certain to at least be an attempt.
+- Passes credit the RECEIVER'S shot (+0.6·xG at the destination, score
+  objective) — the centre square ball now carries its true value.
+- Shots considered from 30 m (was 26) — the EV decides if range is
+  worth it.
+
+Post: line-vs-runs 14/16 seeds shoot with 3 from range (>17 m, was 0)
+and 4 central squares (was 0); runs/wall/dial/splits all intact. 59/59.
+
 ## 2026-07-21 — L5c round 3: the bend-receive — a runner never turns back for his ball
 
 The judged wrongness (runs-in-behind): the runner stopped, turned, and
