@@ -77,7 +77,10 @@ test('the AERIAL CONTEST: a defender under a lofted ball heads it clear (lofts a
     }
   }
   assert.ok(headed >= 13, `the aerial ball is contested with a header (${headed}/16)`);
-  assert.ok(defenderCleared >= 12, `the defender wins the leap and clears (${defenderCleared}/16)`);
+  // the stronger (str 16 vs 12) deeper defender wins the MAJORITY; with both
+  // now converging on the TRUE drop (the receiver-accuracy fix) and a noisy
+  // contest, the attacker fairly nicks a few — a clear win, not a lock
+  assert.ok(defenderCleared >= 10, `the defender wins the leap and clears (${defenderCleared}/16)`);
   assert.equal(clearedUpfield, defenderCleared, `every clearance goes upfield, away from goal`);
 });
 

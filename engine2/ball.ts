@@ -310,8 +310,17 @@ export function solveLoftSpeed(dist: number, loftDeg: number): number {
       pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * cos, y: 0 }, vz: speed * sin, spin: 0,
       phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
     };
-    for (let i = 0; i < 600 && b.phase === 'airborne'; i++) stepBall(b);
-    return b.pos.x; // first-bounce (landing) distance
+    // the FIRST ground contact — where the ball DROPS onto the receiver, not
+    // where it comes to rest after bouncing on. A loft/cross/switch is aimed to
+    // land ON its man; solving for the post-bounce roll made every one undershoot
+    let wasUp = false;
+    for (let i = 0; i < 600; i++) {
+      stepBall(b);
+      if (b.z > 0.1) wasUp = true;
+      if (wasUp && b.z <= 0.02) break; // first descent back to the turf
+      if (b.phase !== 'airborne') break;
+    }
+    return b.pos.x;
   };
   let lo = 8, hi = 42;
   for (let i = 0; i < 26; i++) {
@@ -319,6 +328,24 @@ export function solveLoftSpeed(dist: number, loftDeg: number): number {
     if (landsAt(mid) < dist) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
+}
+
+/** seconds to the FIRST ground contact (the HANG TIME) for a loft of `speed`
+ * at `loftDeg` — so a moving receiver can be led by where he'll be on the
+ * drop, not where he stood when it was struck (a long float hangs ~3 s). */
+export function loftFlightTimeS(speed: number, loftDeg: number): number {
+  const loft = (loftDeg * Math.PI) / 180;
+  const b: BallState = {
+    pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * Math.cos(loft), y: 0 }, vz: speed * Math.sin(loft), spin: 0,
+    phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  let wasUp = false;
+  for (let i = 0; i < 600; i++) {
+    stepBall(b);
+    if (b.z > 0.1) wasUp = true;
+    if ((wasUp && b.z <= 0.02) || b.phase !== 'airborne') return (i + 1) * DT;
+  }
+  return 600 * DT;
 }
 
 /** apex height of a lofted flight (for the decision's "does it clear him?"). */

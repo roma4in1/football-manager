@@ -15,7 +15,7 @@
  */
 
 import { PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
-import { rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
+import { loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
@@ -914,16 +914,28 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // for a mate attacking it — DRIVEN (fast, flat) or FLOATED (hang-time),
     // both solved to land on his run. No blocked lane required — the cross IS
     // the ball into the danger zone; the EV picks the delivery that completes. ─
+    // lead a receiver by the DELIVERY'S hang time — a long float hangs while he
+    // runs on, so aim where he'll BE on the drop, not where he stood when struck
+    const leadByHang = (loftDeg: number): Vec2 => {
+      let t: Vec2 = { x: mate.pos.x + mate.vel.x * 0.3, y: mate.pos.y + mate.vel.y * 0.3 };
+      for (let it = 0; it < 2; it++) {
+        const d = Math.hypot(t.x - here.x, t.y - here.y);
+        const tF = loftFlightTimeS(solveLoftSpeed(d, loftDeg), loftDeg);
+        t = { x: mate.pos.x + mate.vel.x * tF, y: mate.pos.y + mate.vel.y * tF };
+      }
+      return t;
+    };
     if (!keep) {
       const sign = attackSign(carrier.team);
       const wide = Math.abs(here.y - PITCH.width / 2) >= DECIDE.crossWideM;
       const advanced = (sign > 0 ? PITCH.length - here.x : here.x) <= DECIDE.crossAdvanceM;
-      const cross = { x: mate.pos.x + mate.vel.x * 0.5, y: mate.pos.y + mate.vel.y * 0.5 };
-      const intoBox = (sign > 0 ? PITCH.length - cross.x : cross.x) <= DECIDE.crossBoxM &&
-        Math.abs(cross.y - PITCH.width / 2) < 20;
-      const dCross = Math.hypot(cross.x - here.x, cross.y - here.y);
-      if (wide && advanced && intoBox && dCross >= 8 && inBounds(cross, 0.8)) {
+      if (wide && advanced) {
         for (const loftDeg of [DECIDE.crossDrivenLoftDeg, DECIDE.crossFloatLoftDeg]) {
+          const cross = leadByHang(loftDeg);
+          const intoBox = (sign > 0 ? PITCH.length - cross.x : cross.x) <= DECIDE.crossBoxM &&
+            Math.abs(cross.y - PITCH.width / 2) < 20;
+          const dCross = Math.hypot(cross.x - here.x, cross.y - here.y);
+          if (!intoBox || dCross < 8 || !inBounds(cross, 0.8)) continue;
           const speedC = solveLoftSpeed(dCross, loftDeg);
           const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
           const pCc = aerialCompletion(cross, mate, opponents) * ctrl;
@@ -943,12 +955,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     if (!keep) {
       const cy = PITCH.width / 2;
       const carrierSide = Math.sign(here.y - cy);
-      const land = { x: mate.pos.x + mate.vel.x * 0.5, y: mate.pos.y + mate.vel.y * 0.5 };
+      const loftDeg = DECIDE.switchFloatLoftDeg;
+      const land = leadByHang(loftDeg);
       const farWide = carrierSide !== 0 && Math.sign(mate.pos.y - cy) === -carrierSide &&
         Math.abs(mate.pos.y - cy) >= DECIDE.switchWideM && Math.abs(here.y - cy) >= DECIDE.switchWideM;
       const dSwitch = Math.hypot(land.x - here.x, land.y - here.y);
       if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
-        const loftDeg = DECIDE.switchFloatLoftDeg;
         const speedS = solveLoftSpeed(dSwitch, loftDeg);
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
         const pCs = aerialCompletion(land, mate, opponents) * ctrl;

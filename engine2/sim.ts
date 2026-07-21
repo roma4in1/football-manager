@@ -1544,16 +1544,35 @@ export class Sim {
     // on a "receive" point is the header band near a goal, knee height else.
     const nearGoal = Math.min(body.pos.x, PITCH.length - body.pos.x) < 20;
     const zCap = nearGoal ? BALL.headMaxZ : BALL.claimMaxZ;
-    for (let t = 0.2; t <= 6.0; t += 0.2) {
-      const s = predictBallState(this.ball, t);
-      const p = s.pos;
-      // an AIRBORNE ball is only a receive point where it is DESCENDING and
-      // within reach height — a higher mid-flight point is over his head;
-      // running to it lets the ball sail past and land behind him
-      if (airborne && (s.z > zCap || s.vz > 0.2)) continue;
-      const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
-      if (!near || d < near.d) near = { p, d, t };
-      if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
+    if (airborne) {
+      // the FIRST point at catchable height and DESCENDING — the drop for a
+      // loft, immediately for a flat cross that never climbs above zCap. Scanned
+      // FINE and taken EARLIEST: a fast descent crosses the 0.5 m window between
+      // coarse samples and by the low sample it has already bounced (vz>0), so
+      // the old coarse+nearest scan skipped the real drop and targeted the
+      // post-bounce ROLL — walking the receiver clean past it to the sideline.
+      let prevZ = this.ball.z;
+      for (let t = 0.05; t <= 6.0; t += 0.05) {
+        const s = predictBallState(this.ball, t);
+        // catchable height AND coming down to him: descending (flat cross that
+        // never climbs above zCap) OR just crossed DOWN through zCap (a steep
+        // drop the sample catches only after it has bounced, vz>0)
+        if (s.z <= zCap && (s.vz <= 0.2 || prevZ > zCap)) {
+          const d = Math.hypot(s.pos.x - body.pos.x, s.pos.y - body.pos.y);
+          near = { p: s.pos, d, t };
+          meet = { p: s.pos, tStar: t }; // he runs to the drop whether or not he'll beat it
+          break;
+        }
+        prevZ = s.z;
+      }
+    } else {
+      for (let t = 0.2; t <= 6.0; t += 0.2) {
+        const s = predictBallState(this.ball, t);
+        const p = s.pos;
+        const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
+        if (!near || d < near.d) near = { p, d, t };
+        if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
+      }
     }
     const far = predictBall(this.ball, 6);
     return {
