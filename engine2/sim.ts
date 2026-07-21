@@ -789,10 +789,15 @@ export class Sim {
     if (ball.phase !== 'airborne' || ball.z > BALL.headMaxZ) return; // above any reach → clears
     const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
     if (speed < BALL.blockMinSpeedMps) return; // slow enough to be controlled/headed
+    const kicker = ball.kickerId ? this.byId.get(ball.kickerId) : undefined;
+    const kickerTeam = kicker?.team;
     let best: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const body of this.bodies) {
       if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
       if (body.id === this.intendedReceiverId) continue; // the intended man controls it
+      // a teammate ATTACKING the ball (chasing it — a striker onto a cross) is
+      // RECEIVING it, not an obstacle; he heads/controls it, he doesn't carom
+      if (body.team === kickerTeam && body.command.type === 'chaseBall') continue;
       // PER-PLAYER vertical reach — the same leap the header gates on; a ball
       // above his head passes over (only an arm would reach it — a handball,
       // which is the Fouls layer's call, not here)
@@ -804,8 +809,7 @@ export class Sim {
     if (!best) return;
     // a BLOCK (opponent, deliberate) or a COLLISION (teammate, accidental) —
     // both deflect loose, but a body not trying to block scrubs less pace off
-    const kicker = ball.kickerId ? this.byId.get(ball.kickerId) : undefined;
-    const isCollision = kicker !== undefined && best.body.team === kicker.team;
+    const isCollision = kickerTeam !== undefined && best.body.team === kickerTeam;
     const keep = isCollision ? BALL.collisionDeflectKeep : BALL.blockDeflectKeep;
     const ang = Math.atan2(ball.vel.y, ball.vel.x) + Math.PI +
       this.rng.gauss(0, 0.8, this.tick, best.body.id, 'block');
