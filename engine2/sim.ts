@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -53,6 +53,9 @@ export class Sim {
   private intendedReceiverId: string | null = null;
   /** initial positions — the 'keep' objective's drill stations */
   private readonly homes = new Map<string, Vec2>();
+  /** last scripted atTick per body — a body with a FUTURE scripted command
+   * is waiting for his cue, not idle: support must not pre-move him */
+  private readonly scriptedUntil = new Map<string, number>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -98,6 +101,7 @@ export class Sim {
         const list = this.atTick.get(ev.atTick) ?? [];
         list.push({ bodyId: ev.bodyId, command: ev.command });
         this.atTick.set(ev.atTick, list);
+        this.scriptedUntil.set(ev.bodyId, Math.max(this.scriptedUntil.get(ev.bodyId) ?? -1, ev.atTick));
       } else {
         this.queues.get(ev.bodyId)!.push(ev.command);
       }
@@ -805,6 +809,23 @@ export class Sim {
           }
         } else {
           this.receiveOpenDir.delete(id);
+          // L5a SUPPORT: an IDLE brain whose team has the ball moves to
+          // offer an angle — never overriding a scripted route (runs in
+          // behind are L5b's; the script is the run until then)
+          const carrierBody = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+          if (carrierBody && carrierBody.team === body.team && carrierBody.id !== id &&
+            body.command.type === 'hold' && this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            const spot = supportSpot(
+              body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos,
+              (this.instructions.get(id)?.objective) ?? 'score',
+            );
+            const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
+            if (d > 1.4) {
+              this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
+              this.actionLabels.set(id, 'support');
+            }
+          }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
           // collected by the nearest idle brain — deflected passes died
           // untouched with players standing over them (the audit)

@@ -237,6 +237,51 @@ export const passCompletion = (
   return lane * range;
 };
 
+/** L5a — the support spot: where an off-ball teammate should stand so the
+ * carrier HAS a ball to play. The same lane model the carrier uses,
+ * pointed the other way: value × lane-openness, tethered to a home that
+ * deforms toward the ball, spaced off teammates. */
+export const supportSpot = (
+  mate: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+  home: Vec2,
+  objective: 'keep' | 'score',
+): Vec2 => {
+  const opponents = bodies.filter((b) => b.team !== mate.team);
+  const mates = bodies.filter((b) => b.team === mate.team && b.id !== mate.id);
+  // the home DEFORMS toward the ball (structure follows play)
+  const dx = carrier.pos.x - home.x;
+  const dy = carrier.pos.y - home.y;
+  const dd = Math.hypot(dx, dy) || 1;
+  const shift = Math.min(dd * 0.3, objective === 'keep' ? 3 : 8);
+  const base = { x: home.x + (dx / dd) * shift, y: home.y + (dy / dd) * shift };
+  let best: Vec2 = base;
+  let bestU = -Infinity;
+  for (let i = -1; i < 8; i++) {
+    const cand = i < 0 ? base : {
+      x: base.x + Math.cos((i / 8) * Math.PI * 2) * 3.5,
+      y: base.y + Math.sin((i / 8) * Math.PI * 2) * 3.5,
+    };
+    if (cand.x < 1 || cand.x > PITCH.length - 1 || cand.y < 1 || cand.y > PITCH.width - 1) continue;
+    const dist = Math.hypot(cand.x - carrier.pos.x, cand.y - carrier.pos.y);
+    if (dist < 4) continue; // an outlet is not a crowd around the carrier
+    const lane = passCompletion(carrier.pos, cand, Math.sqrt(6 ** 2 + 2 * 1.7 * dist), opponents, dist, mate);
+    const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
+    let crowd = 0;
+    for (const m of mates) {
+      const md = Math.hypot(m.pos.x - cand.x, m.pos.y - cand.y);
+      if (md < 6) crowd += (6 - md) / 6;
+    }
+    const u = lane * 0.6 + val * 1.2 - crowd * 0.12;
+    if (u > bestU) {
+      bestU = u;
+      best = cand;
+    }
+  }
+  return best;
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];

@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5a OPENED: support & structure — first cut for judgment
+
+Branch feat/engine2-l5a (stacked on l4). The first L5 sub-phase: off-ball
+brains whose team has the ball move to OFFER AN ANGLE — supportSpot() is
+the carrier's lane model pointed the other way (lane-openness × value −
+crowding, tethered to a home that deforms toward the ball). Engagement
+rules earned by immediate breakage:
+
+- **Idle bodies only, past their last scripted cue**: the first cut
+  pre-moved the striker before his scripted run and broke the breakaway
+  2/16 — a body with a FUTURE atTick command is waiting for his cue, not
+  idle (scriptedUntil map). The script is the run until L5b.
+- **Attacking support only**: brains without possession stay put —
+  defensive shape and pressing are L5c/L5d.
+
+Post: rondo passers reposition (28/32 across 8 seeds) and circulation
+ROSE to 62 transfers/8 seeds; the counter mid trails the play as a real
+outlet after releasing (the statue-passer gap from the audit, now
+closed). 55/55; dial 16/16 both poles; striker/knock-past unchanged.
+Judge in the workbench: rondo (passers sliding along their edges to open
+lanes), counters (the trailing outlet).
+
 ## 2026-07-21 — L4 ACCEPTED + BAR 2 (TECHNICAL) CLAIMED
 
 L4 (on-ball decisions) passes the builder's acceptance after 7 judgment
