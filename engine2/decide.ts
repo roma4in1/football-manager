@@ -721,7 +721,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       if (bounds) {
         const dirB = { x: (destOverride ?? mate.pos).x - here.x, y: (destOverride ?? mate.pos).y - here.y };
         const room = roomToBound(destOverride ?? mate.pos, dirB);
-        arrive = Math.min(arrive, Math.max(4, Math.sqrt(2 * 1.7 * Math.max(1, room - 1))));
+        // the receiver's trap ABSORBS pace — only the missed ball rolls
+        // out, so the cap credits the catch (a hard floor of 4 made every
+        // boundary-line switch a 3.4 s float and the judged freeze:
+        // nobody passes long when long is uncompletable)
+        arrive = Math.min(arrive, 4 + Math.sqrt(2 * 1.7 * Math.max(0.5, room - 0.5)));
       }
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
@@ -842,8 +846,15 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     options.push({ kind: 'carry', target: runThrough, regime: carryRegime, utility: u });
   }
 
-  // SHIELD — the floor: keep what you have
-  options.push({ kind: 'shield', utility: DECIDE.shieldUtility + DECIDE.possessionDiscount * pvHere * 0.2 });
+  // SHIELD — the floor: keep what you have. Under a LIVE closing press,
+  // standing still is the worst real option (the judged freeze) — the
+  // shield's appeal collapses and the best move wins instead
+  const livePress = opponents.some((o) =>
+    Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 3);
+  options.push({
+    kind: 'shield',
+    utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * pvHere * 0.2) * (livePress ? 0.45 : 1),
+  });
 
   // CLEAR — deep and pressured only: escape beats a forced turnover
   const ownProgress = attackSign(team) > 0 ? here.x / PITCH.length : 1 - here.x / PITCH.length;

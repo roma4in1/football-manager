@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d round 5: the switch lives and nobody freezes
+
+The judged pair (grid-5v4, post-coverage): keepers refused long passes
+and froze under the press. Two mechanisms:
+
+- **The catch absorbs pace**: the grid arrive-cap computed roll-room
+  beyond the destination with a hard floor — a boundary-line switch had
+  ~2 m of room, so every long ball became a 3.4 s float that the press
+  converged on (long = uncompletable = never chosen). The cap now
+  credits the receiver's trap (cap = 4 + √(2·decel·room)): only the
+  MISSED ball rolls out, and that risk is priced by pC, not banned.
+- **The shield collapses under a live press**: with every lane covered
+  and every carry taxed, shield won repeatedly — a pressed statue. With
+  an opponent inside 3 m, shield's utility drops ×0.45: standing still
+  under a closing press is the worst real option, so the best move wins.
+
+Post: 64 transfers (19 LONG >16 m — switches live), 0 freezes, 35
+losses (64:35 — competitive, press still strong), 5 dead balls. All
+rates intact (wall-pass wait unaffected — the path-ball exemption
+dominates its EV). Rondo circulation up again (128 transfers/8 seeds).
+59/59.
+
 ## 2026-07-21 — L5d round 4: press-unit coverage — no line in a grid
 
 The judged defect: the grid's four pressers overlapped and covered
