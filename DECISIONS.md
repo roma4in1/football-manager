@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 3: zip the passes, trust the feet
+
+The judged sluggishness ("passes not fast enough, or the touches are
+lacking") measured true: rondo passes averaged 9.0 m/s at launch — the
+hot-arrival tax was receiver-blind, so the EV floated every ball soft.
+
+- **Receiver-aware weight** (decide.ts): the comfortable arrival pace rides
+  the RECEIVER'S firstTouch (≈ 5.5 + 0.35·ft m/s) — silk feet get the ball
+  zipped (rondo now ~10.5 m/s and quicker circulation), heavy feet get it
+  soft. The attribute now shapes how teammates PLAY TO you, not only how
+  you control.
+- **Deeper skill relief** (technique.ts): touchSkillRelief 0.75 → 0.85 —
+  silk feet fumbled ~16% of firm balls (judged "touches lacking"); elite
+  touches now kill pace reliably (~11% at 10.5 closing for ft 15) while
+  heavy feet barely change (the pinned heavy-pressed spill floor holds).
+- **Cautious floor re-seated** (passFloorBase 0.72 → 0.78): untaxing firm
+  balls to good receivers pushed the through ball's pC over the LOW-risk
+  floor and flipped the dial — a safety-first player does not hit a
+  2-in-3 ball. Dial re-verified 16/16 both poles. 53/53.
+
 ## 2026-07-21 — Forward note: delayed releases and defender-baiting (builder ask)
 
 Asked during L4 judgment: can tactics later DELAY a pass to time a run, or

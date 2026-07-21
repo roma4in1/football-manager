@@ -27,7 +27,7 @@ export const TECH = {
    * RECEIVER'S own speed (walking ~+0.03, running ~+0.13, sprint ~+0.19) */
   touchPopPerReceiverMps: 0.025,
   /** skill relief: firstTouch 20 removes this much of the difficulty */
-  touchSkillRelief: 0.75,
+  touchSkillRelief: 0.85, // deepened (judged: silk feet fumbled ~16% at pace — elite touches kill firm balls)
   /** a popped ball squirts this far, scattered around the arrival direction */
   popSpeedMinMps: 2.2,
   popSpeedMaxMps: 4.5,

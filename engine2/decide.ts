@@ -77,7 +77,7 @@ export const DECIDE = {
   turnoverBase: 0.9,
   turnoverRiskGain: 0.55,
   /** completion floor a pass must clear, risk-scaled */
-  passFloorBase: 0.72,
+  passFloorBase: 0.78, // a safety-first player does not hit a ~2-in-3 ball
   passFloorRiskGain: 0.45, // speculative feet barely have a floor
   /** the speculative player's thumb on the scale: risk WEIGHTS the payoff
    * of progressive balls (a safe square ball's EV honestly beats a 55%
@@ -304,11 +304,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const passDir = Math.atan2(dest.y - here.y, dest.x - here.x);
       const misalign = Math.abs(((passDir - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
       pC *= 1 - DECIDE.backheelEvLossMax * Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
-      // the hot-arrival tax: what reaches the receiver above comfortable
-      // pace costs completion (pops, sails past)
+      // the hot-arrival tax is RECEIVER-AWARE: good feet justify firm
+      // balls (a rondo between silk receivers zips; the flat tax floated
+      // every pass at 9 m/s — the judged sluggishness)
       const dd0 = Math.hypot(dest.x - here.x, dest.y - here.y);
       const arrTrue = Math.sqrt(Math.max(1, speed * speed - 2 * 1.7 * dd0));
-      pC *= 1 - 0.04 * Math.max(0, arrTrue - 6.5);
+      const comfy = 5.5 + 0.35 * mate.attributes.firstTouch;
+      pC *= 1 - 0.04 * Math.max(0, arrTrue - comfy);
       if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
       const pvThere = value(dest, mate.id);
       const meets = pC >= passFloor ? 1 : 0.35; // sub-floor lanes are heavily taxed
