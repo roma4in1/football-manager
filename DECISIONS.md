@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5b scenarios APPROVED + reference index (roles / spatial / communication)
+
+Builder approval: runs-in-behind and wall-pass both pass the eye (the
+hover-burst-thread round). Floors stand as pinned (threads met moving
+beyond the wall ≥12/16; run triggered/received/finished ≥15/12/10).
+
+Three new references mapped in engine2/REFERENCES.md:
+- **roles.md → the L6 pre-spec**: roles as parameter bundles over L5
+  behaviors; the risk/objective instruction surface is the embryo; target
+  man ≈ the wall-pass pivot, advanced forward ≈ runPlan's bias, regista ≈
+  deep support + delay-release.
+- **spatial.md → the perception-pass pre-spec** (spec §3's deliberate
+  "imperfect later"): vision cones, scan cadence, reaction delay,
+  confidence, memory. True-state analogues already live (posValue/
+  keepValue, passCompletion, predictBall). Gate: after L5 stabilizes.
+- **communication.md → gated WITH perception**: today runningLine/
+  waitingRunners/intendedReceiver ARE the messages, delivered losslessly;
+  explicit messaging + chemistry + miscommunication only mean something
+  between imperfect perceivers. Build the two together.
+
 ## 2026-07-21 — L5b round 3: the breach — hover, burst, thread
 
 The judged defects: runs dragged way wide of the defenders; no run UP TO
