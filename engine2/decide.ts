@@ -123,6 +123,13 @@ export const DECIDE = {
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
   drivePressureCeil: 0.2,
+  /** within this of goal, a toward-goal carry drives even under pressure —
+   * a striker takes on the last line for a shot rather than drifting wide */
+  driveAtGoalM: 28,
+  /** ...and only when the carrier is off-centre by more than this: a WIDE
+   * striker drives in toward the goal line; a central one already has his
+   * angle and shoots (the breakaway property). He stops driving once central. */
+  driveWideM: 6,
 } as const;
 
 export const attackSign = (team: 'home' | 'away'): 1 | -1 => (team === 'home' ? 1 : -1);
@@ -674,9 +681,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // SHOOT — xG on the value scale directly (1.0 ≡ goal)
   const g = goalCenter(team);
   const dGoal = Math.hypot(g.x - here.x, g.y - here.y);
+  // the shot's quality from HERE — also gates the drive-at-goal below: a
+  // clear chance is shot, not driven past (the breakaway property)
+  const xGHere = !keep && dGoal <= DECIDE.shootRangeM ? xG(here, team, bodies.filter((b) => b.id !== carrier.id)) : 0;
   if (!keep && dGoal <= DECIDE.shootRangeM) {
-    const quality = xG(here, team, bodies.filter((b) => b.id !== carrier.id));
-    options.push({ kind: 'shoot', dest: g, speedMps: DECIDE.shotSpeedMps, utility: quality });
+    options.push({ kind: 'shoot', dest: g, speedMps: DECIDE.shotSpeedMps, utility: xGHere });
   }
 
   // PASS — each teammate, at a lead point if he is moving
@@ -885,9 +894,17 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // a release under a real defender (and never overpowers a true thread,
     // whose destination outvalues the drive). No risk term: an open drive is
     // not a gamble.
-    if (!keep && pressure < DECIDE.drivePressureCeil) {
+    const gdT = Math.hypot(g.x - runThrough.x, g.y - runThrough.y);
+    // NEAR GOAL, a carry that heads AT the goal earns the drive credit even
+    // UNDER pressure: a striker in and around the box drives at the CBs for a
+    // shooting position (the credit's pvDrive carries the xG of where he is
+    // driving, so it favours the CENTRAL line at goal over drifting wide to
+    // the box edge — the judged drift-left-of-box). Elsewhere the drive is a
+    // no-pressure privilege as before.
+    const driveAtGoal = dGoal < DECIDE.driveAtGoalM && gdT < dGoal - 2 &&
+      Math.abs(here.y - GOAL.centerY) > DECIDE.driveWideM;
+    if (!keep && (pressure < DECIDE.drivePressureCeil || driveAtGoal)) {
       let pvDrive = value(runThrough, carrier.id);
-      const gdT = Math.hypot(g.x - runThrough.x, g.y - runThrough.y);
       if (gdT < DECIDE.shootRangeM * 1.3) pvDrive += 0.38 * xG(runThrough, team, opponents);
       u += DECIDE.possessionDiscount * DECIDE.driveGain * Math.max(0, pvDrive - pvHere);
     }

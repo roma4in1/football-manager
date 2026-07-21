@@ -3,6 +3,32 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Drive at goal from wide, and shoot THROUGH the last line (line-vs-runs)
+
+Builder: in line-vs-runs the carrier drifts to the edge of the box instead of
+driving at goal, and neither player will shoot through defenders.
+
+Root: one problem. The CBs shepherd the striker WIDE — the central carry is
+pressure-discounted, so he drives to the box edge (88,52), and from that angle
+xG is ~0.04 so he never shoots (endless square passing ~20 m out). Fix him
+central and the shot follows.
+
+Fix: the DRIVE credit now also fires NEAR GOAL (within driveAtGoalM=28) under
+pressure — a striker takes on the last line for a shooting position — but ONLY
+while he is more than driveWideM(6) off-centre. So a WIDE striker drives IN
+toward the goal line (its pvDrive carries the xG of where he is driving, which
+favours the central line over the box edge), and stops once central; a CENTRAL
+striker already has his angle and SHOOTS (the breakaway property — the width
+gate is what separates "drive to improve the angle" from "shoot the chance you
+have"; an xG-floor gate could not, since a clear range shot and a wide blocked
+one score alike). The xG blocker was already a discount not a veto (0.6/blocker,
+point-blank ×0.35 "through the legs"), so once central he shoots THROUGH the CBs.
+
+line-vs-runs: 7 → 15 shots, 11 of them through a defender within 3.5 m; the
+striker cuts central (y47→40, dGoal 24→18) instead of drifting to the edge.
+Breakaway still 16/16 shoots; dial holds; front/runs/wall/rondo/grid pinned.
+59/59.
+
 ## 2026-07-21 — The thread waits for the DART, not the ride (through-ball timing)
 
 Builder (after the friction change): in runs-in-behind the ball is played too
