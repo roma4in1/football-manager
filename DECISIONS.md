@@ -3,6 +3,42 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Delivery decisions: the AI crosses, switches, cuts back (+ accuracy)
+
+The aerial mechanics were inert — decide.ts chose only a ground pass and one
+chip-over-a-block. Now the delivery STYLE emerges from the geometry, each
+candidate scored by the shared aerialCompletion×value − risk EV (passing.md).
+
+- **Cross** — a WIDE, ADVANCED carrier with a mate attacking the box generates a
+  driven/floated aerial into it (no blocked lane needed — the cross IS the ball
+  into the danger zone). 12/12.
+- **Switch** — a WALLED-IN wide carrier floats a long ball to a far-flank mate
+  over the congested middle; when the flank is OPEN he still carries. 12/12.
+- **Cutback** — emergent, no new candidate: the ground pass + the chance-creation
+  (xG) term already values a ball to the penalty spot over a tight-angle shot.
+  Pinned as a regression floor.
+- **Spin** threaded end-to-end (pass Intent → kickBall), inert until the curl.
+
+**Accuracy (the builder's key note — "reach their intended locations").** Three
+linked bugs, all confusing the FIRST drop with the post-BOUNCE settle:
+(1) solveLoftSpeed solved for the roll distance, so every loft first-landed SHORT
+and bounced the rest (a 44 m switch dropped at 27 m) — now solves first contact;
+(2) no flight-time lead — a long float hangs ~3 s while the receiver runs on, so
+leadByHang() leads by the delivery's hang time (loftFlightTimeS); (3) the
+receiver's interceptPoint scanned coarse and filtered vz>0.2, so a fast descent
+crossed the catch window between samples (already bounced, vz>0) and it chased
+the post-bounce ROLL to the sideline — now fine-scans for the first descending
+catch point OR a downward zCap crossing. Cross lands 0.5 m from the striker,
+switch 0.6 m from the far mate (was 8.9 m).
+
+**Curl DEFERRED.** solveCurl (the 2-D Magnus aim solver — aim off, bend back)
+is built and validated (arrives ~1 m; bends around a blocker and reaches the man
+12/12 in isolation). But wired in, a fully-controllable ground curl OUT-COMPETES
+the loft and the cross into the box wherever a lane is blocked — whether
+curl-to-feet should beat cross-to-head / loft-over is a real EV-calibration +
+scenario-isolation question, not a constant to force. Solver kept as the
+foundation. On feat/engine2-delivery-decisions; 75/75.
+
 ## 2026-07-21 — Chest control: the receive's middle band (a swept-z crossing)
 
 Builder question: when is a teammate COLLISION used vs a teammate trying to
