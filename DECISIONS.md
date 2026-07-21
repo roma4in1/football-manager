@@ -3,6 +3,13 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d starvation redesign DEFERRED (builder decision); L5e opens
+
+The support-angle starvation (round 6's stop-rule finding) waits for its
+coherent redesign pass; the grid stands judgeable at 62:33 with zero
+freezes meanwhile. Next sub-phase: L5e marking & duels — the jockey
+guardrail (head-on close-control must fall to ~55–65%) comes due.
+
 ## 2026-07-21 — L5d round 6: pressure lowers the floor + an honest stop-rule report
 
 The judged complaint (simple passes skipped; forced balls and dribbles
