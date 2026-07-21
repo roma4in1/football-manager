@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — The cross + attacking header (near a goal you ATTACK the ball in the air)
+
+Builder ask: a crossing scenario for attacking headers. This exercised the
+header-goal branch the defensive contest never reached — and surfaced the real
+fix for aerial receives near goal.
+
+The problem: a striker chasing a cross targeted the ground DROP (predictBallState
+picks the claimable point), so he arrived AS the ball landed and the header
+window (the band, 1–2 ticks earlier) was already gone — 3/10 headers, mistimed.
+
+Fix: near EITHER goal (within 20 m) an aerial chaser ATTACKS the ball at head
+height — interceptPoint's receive-ceiling becomes the header band (headMaxZ)
+instead of knee height, so he meets a descending ball while it is still up and
+heads it. In open play the ceiling stays knee height (he lets it drop and
+controls it), so the aerial-through/contest (midfield) and every ground receive
+are unchanged.
+
+cross-header scenario: a wide player floats a steep cross into the six-yard box
+and the striker attacks the drop — heads it AT GOAL 10/10, goalward and on
+target. 67/67; all ground rates pinned.
+
+Remaining aerial/curve: the DECISION to cross/curve (the EV choosing to whip a
+ball in / bend one), a keeper to save the header, and topspin/backspin dip.
+
 ## 2026-07-21 — More curl + the curling ground through ball to the winger
 
 Builder: more visible curl, and an example of a curling GROUND through ball

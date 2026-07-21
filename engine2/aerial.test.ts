@@ -76,6 +76,29 @@ test('the AERIAL CONTEST: a defender under a lofted ball heads it clear (lofts a
   assert.equal(clearedUpfield, defenderCleared, `every clearance goes upfield, away from goal`);
 });
 
+test('the CROSS + attacking header: a striker attacks the drop and heads it at goal, on target', () => {
+  let headedAtGoal = 0;
+  let onTarget = 0;
+  for (let s = 0; s < 10; s++) {
+    const sim = new Sim(scenarioByName('cross-header'), `cr-${s}`);
+    for (let t = 0; t < 90; t++) {
+      const f = sim.step();
+      const h = f.bodies.find((b) => b.id === 'striker' && b.action === 'header-goal');
+      if (h) {
+        headedAtGoal++;
+        // the headed ball drives toward the goal (x105), between the posts
+        const b = sim.ball;
+        const tToGoal = b.vel.x > 1 ? (105 - b.pos.x) / b.vel.x : 99;
+        const yAtGoal = b.pos.y + b.vel.y * tToGoal;
+        if (b.vel.x > 3 && Math.abs(yAtGoal - 34) < 5) onTarget++;
+        break;
+      }
+    }
+  }
+  assert.ok(headedAtGoal >= 8, `the striker heads the cross AT GOAL (${headedAtGoal}/10)`);
+  assert.ok(onTarget >= 7, `the header is goalward and roughly on target (${onTarget}/10)`);
+});
+
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
   // driven lofts (low angle) are the accurate, fast aerial ball
   for (const [dist, loft] of [[25, 22], [34, 22], [40, 25]] as const) {

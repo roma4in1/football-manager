@@ -1384,13 +1384,19 @@ export class Sim {
     let meet: { p: Vec2; tStar: number } | null = null;
     let near: { p: Vec2; d: number; t: number } | null = null;
     const airborne = this.ball.phase === 'airborne';
+    // near EITHER goal a body ATTACKS an aerial ball at head height (a header —
+    // a cross to a striker, a defender under a lob) rather than waiting for the
+    // ground drop; in open play he lets it drop and controls it. So the ceiling
+    // on a "receive" point is the header band near a goal, knee height else.
+    const nearGoal = Math.min(body.pos.x, PITCH.length - body.pos.x) < 20;
+    const zCap = nearGoal ? BALL.headMaxZ : BALL.claimMaxZ;
     for (let t = 0.2; t <= 6.0; t += 0.2) {
       const s = predictBallState(this.ball, t);
       const p = s.pos;
-      // an AIRBORNE ball is only a receive point where it is CLAIMABLE and
-      // DESCENDING (the drop) — a mid-flight point is over the receiver's
-      // head; running to it lets the ball sail past and land behind him
-      if (airborne && (s.z > BALL.claimMaxZ || s.vz > 0.2)) continue;
+      // an AIRBORNE ball is only a receive point where it is DESCENDING and
+      // within reach height — a higher mid-flight point is over his head;
+      // running to it lets the ball sail past and land behind him
+      if (airborne && (s.z > zCap || s.vz > 0.2)) continue;
       const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
       if (!near || d < near.d) near = { p, d, t };
       if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };

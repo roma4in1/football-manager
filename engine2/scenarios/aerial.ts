@@ -90,4 +90,30 @@ export const aerialContest: ScenarioDef = {
   ],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest];
+/** the CROSS + attacking header: a wide player floats a ball into the box and
+ * a striker attacks it, heading it AT GOAL (the attacking-header branch — the
+ * winner near the opponent goal heads toward it, not a clearance). */
+const crossDist = 16;
+const crossLoft = 54;
+export const crossHeader: ScenarioDef = {
+  version: 1,
+  name: 'cross-header',
+  description: 'A wide player crosses into the box; a striker attacks the drop and heads it AT GOAL. Judge the delivery, the attacking header, and its direction on target.',
+  durationTicks: 90,
+  bodies: [
+    // a crosser near the right by-line (home attacks +x, goal at 105)
+    { id: 'crosser', team: 'home', pos: { x: 89, y: 47 }, attributes: { ...passer, passing: 18 } },
+    // the striker attacks the near-central drop, ~7 m from goal
+    { id: 'striker', team: 'home', pos: { x: 96, y: 35.5 }, attributes: { ...passer, strength: 15, pace: 15 }, brain: 'onBall' },
+  ],
+  ball: { carrier: 'crosser' },
+  kicks: [
+    // a floated cross that drops steeply into the six-yard area (~x99, y33)
+    { atTick: 10, bodyId: 'crosser', kick: { target: { x: 98.5, y: 34 }, speedMps: solveLoftSpeed(crossDist, crossLoft), loftDeg: crossLoft } },
+  ],
+  script: [
+    { atTick: 11, bodyId: 'striker', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader];
