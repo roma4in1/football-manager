@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d round 6: pressure lowers the floor + an honest stop-rule report
+
+The judged complaint (simple passes skipped; forced balls and dribbles
+preferred) split three ways under measurement (49 pressed-carrier
+decisions classified): 16 healthy, 12 DECISION FAULTS (a ≥0.55 ball
+existed but the calm-conditions floor buried it), 21 STARVED (no
+completable pass existed — a support-creation failure).
+
+SHIPPED: the decision-fault fix — under a live press (opponent ≤3.5 m)
+the pass floor drops ×0.8: you take the 60% ball rather than dying with
+it. Faults 12 → 9, grid stable (62 transfers / 20 long / 0 freezes),
+all rates and floors intact.
+
+STOP-RULE REPORT (spec §10: a proven tension is a finding): the
+STARVATION half resisted three local retunes, each verified harmful in
+isolation — (a) untethered keep pass-value → far-corner attraction;
+(b) wider support rings under tethered value → balls to roaming
+supports devalued, grid collapse; (c) distance-damped untethered value
+→ circulation collapse + a slide-test flip. The support-positioning ↔
+pass-valuation ↔ floor system is INTERLOCKED and needs a coherent
+redesign (one designed pass over supportSpot + keepValue + the pass
+term together), not knob turns. Recorded as the open L5d item; the
+grid remains judgeable (62:33 with zero freezes) meanwhile. 59/59.
+
 ## 2026-07-21 — L5d round 5: the switch lives and nobody freezes
 
 The judged pair (grid-5v4, post-coverage): keepers refused long passes

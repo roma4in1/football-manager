@@ -656,7 +656,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     (keep ? keepValue(p, opponents, homes?.get(anchorId)) : posValue(p, team));
   const pvHere = value(here, carrier.id);
   const turnoverW = DECIDE.turnoverBase - DECIDE.turnoverRiskGain * risk;
-  const passFloor = DECIDE.passFloorBase - DECIDE.passFloorRiskGain * risk;
+  // under a LIVE press, standards drop — you take the 60% ball rather
+  // than dying with it (measured: good-enough passes existed at 12/49
+  // pressed moments but the calm-conditions floor buried them)
+  const pressedNow = opponents.some((o) =>
+    Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 3.5);
+  const passFloor = (DECIDE.passFloorBase - DECIDE.passFloorRiskGain * risk) * (pressedNow ? 0.8 : 1);
   const options: Intent[] = [];
 
   // SHOOT — xG on the value scale directly (1.0 ≡ goal)
