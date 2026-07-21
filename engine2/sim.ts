@@ -726,6 +726,12 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
+      // you never steal the ball off your OWN teammate's feet: only an
+      // opponent pinches a carrier's live touch. Without this two stacked
+      // teammates trade the carrier's popped touch back and forth every tick
+      // — the possession ping-pong the level audit measured (a genuinely
+      // loose ball, carrierId null, is unaffected: teammates DO collect it).
+      if (carrier && b.team === carrier.team) continue;
       const { d, at } = segNearest(b);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
@@ -777,8 +783,19 @@ export class Sim {
       this.ball.kickerLockUntilTick = this.tick + 8;
       return;
     }
+    // a PINCH that steals from a live carrier arms the same refractory lock
+    // the won tackle and the fumbled pop use: without it the just-
+    // dispossessed man (still standing on the ball) re-pinches next tick and
+    // the steal is undone — level touch duels oscillated carrier↔pincher
+    // every 1–2 ticks (the level-audit finding). Loose-ball claims (no prior
+    // carrier) and re-claims by the same body do not lock.
+    const stolenFrom = carrier && carrier.id !== best.body.id ? carrier.id : null;
     this.ball.carrierId = best.body.id;
     this.ball.phase = 'carried';
+    if (stolenFrom) {
+      this.ball.kickerId = stolenFrom;
+      this.ball.kickerLockUntilTick = this.tick + BALL.kickerLockTicks;
+    }
     // chaseBall races complete NOW so the winner's NEXT command informs the
     // directional touch below — but only for the WINNING side. A chaser whose
     // OPPONENT came up with the ball is not done: his chase becomes the press

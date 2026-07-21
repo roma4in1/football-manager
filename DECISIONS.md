@@ -3,6 +3,37 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5e piece 1: possession-contest hardening (pinch lock + teammate can't pinch)
+
+Builder ask: start with the pinch lock + arbitration (the safe entry). Two
+possession invariants landed in sim.ts, one change at a time, measured:
+
+- **The pinch arms a refractory lock** (audit finding #1): a pinch that
+  steals from a live carrier now sets kickerLock on the DISPOSSESSED man,
+  exactly as the won tackle and the fumbled pop already do — the pinch was
+  the only transfer path missing it (a code-confirmed asymmetry; the
+  tackle-win comment already warns of this bug class). Currently unexercised
+  by the scenario set (opponent pinches are geometry-rare here: 113 vs 112
+  steals, 19 vs 19 reversals) — kept as correctness hardening that completes
+  the lock trio, to be stress-pinned when the L5e duel scenarios land.
+- **A teammate never pinches his teammate's live touch** (audit finding #2,
+  the direct half): the claim loop skipped opponent-vs-carrier but let a
+  teammate 0.1 m closer steal the carrier's popped dribble touch. MEASURED:
+  direct teammate carrier→carrier flips HALVED, 26 → 13 across all scenarios.
+
+**What these do NOT fix — the residual, now precisely characterized.** The
+counter-3v2 corner flap survives: it is NOT a pinch and NOT a pass-to-feet.
+Two teammates end up STACKED ~0.7 m apart (both ran the same loose ball; the
+separation solver never split them), and each then passes to a THIRD mate
+(mid) — but being stacked, each sits in the other's lane and CLAIMS the ball
+meant for mid, so the carrier flips left↔right via intra-tick kick→reclaim.
+This is the loose-ball PURSUIT ARBITRATION + SEPARATION problem: one claimant
++ one supporter on a loose ball, and stacked teammates must break apart. It
+is the real L5e contest work, not a one-liner (three one-liners bounced off
+it — the stop-rule signal). Recorded in the brief.
+
+59/59; front/dial/runs/wall/rondo/grid all pinned.
+
 ## 2026-07-21 — Level audit (physics + mechanics) + the through-ball is a TIMING problem
 
 Builder ask: check this level for mechanics problems / physics
@@ -148,14 +179,16 @@ survive as the design brief:
 - Both duel sides must be brains, and the shield floor must not exceed
   deep-field carry EV (0.03 froze carriers at kickoff; now-known, to
   re-apply in the session: shieldUtility ≈ 0.014).
-- **The pinch needs its own refractory lock** (from the level audit): mirror
-  the tackle-win kickerLock on a successful pinch, or level touch duels
-  oscillate and a steal reverses next tick. One-liner, but it belongs with
-  the contest machine.
-- **Loose-ball arbitration** (from the audit): two teammates converging on a
-  loose ball must resolve to one claimant + one supporter, and the separation
-  solver must split stacked bodies — else they ping-pong the ball via the
-  kicker-lock (measured ~1.3 s tug-of-war).
+- **The pinch needs its own refractory lock** — ✅ LANDED (piece 1): mirrors
+  the tackle-win kickerLock. Still wants a level-pinch scenario to stress-pin.
+- **A teammate never pinches his teammate's live touch** — ✅ LANDED (piece 1):
+  direct teammate carrier→carrier flips halved (26→13). The RESIDUAL is
+  harder: **loose-ball PURSUIT ARBITRATION + SEPARATION** — two teammates run
+  the same loose ball, end up stacked ~0.7 m (the separation solver never
+  splits them), and each then intercepts the other's pass to a THIRD mate
+  because both sit in the lane. Needs: one claimant + one supporter on a
+  loose ball, and stacked bodies breaking apart. This IS the contest machine,
+  not a one-liner (three one-liners bounced off it).
 - **Carried-ball bounds + body bounds** (from the audit): a carried ball
   dribbled over a grid/pitch line should go dead; bodies should clamp to the
   playing area. Decide with the contest rules.
