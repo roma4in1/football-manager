@@ -3,6 +3,33 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d round 1: coordination is real — election, demotion, controlled duels
+
+Two judged defects:
+
+- **Duel launches**: a sprinting duel winner's claim got the runner's
+  stride-weight touch (~8 m/s, an 18 m roll). A CONTESTED scramble claim
+  (opponent within 3 m) is now a CONTROL touch (≤3 m/s — keep it in the
+  duel). Post-tackle loose-ball speed caps ~5.3 m/s (≈8 m roll).
+- **Both defenders chased the ball**: three compounding causes fixed —
+  the first-defender election FLAPPED as the ball moved (now sticky: the
+  engaged presser keeps the job unless clearly beaten); the shadow's
+  lane choice used raw advancement (now OPENNESS-weighted completion —
+  shadow the lane my teammates don't already close); and counterpress
+  was a swarm with no election AND left demoted hunters with stale
+  chase commands the defensive chain couldn't reclaim (counterpress now
+  elects the nearest man, registers as a pressing state, and demotes
+  cleanly into shadow/shape).
+
+Post: double-press 0% (was ~100% pre-L5d, 9% mid-fix), shadow active,
+presser hand-offs orderly. HONEST EQUILIBRIUM SHIFT: coordinated
+pressing turns the ball over LESS (10 losses/8 seeds vs the swarm's 41)
+— one press + one lane-shadow against four keepers is genuinely hard,
+which is why the 4v2 rondo is a possession drill. The passers' EV
+visibly avoids shadowed lanes (press-resistance emerging free). If the
+eye wants more turnovers, the knobs are pressing aggression and trigger
+thresholds — not more chasers. 59/59.
+
 ## 2026-07-21 — L5d OPENED: pressing — counterpress, the elected press, the shadow
 
 Branch feat/engine2-l5d. The defensive chain (counterpress > press >

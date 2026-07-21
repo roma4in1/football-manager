@@ -801,11 +801,16 @@ export class Sim {
       const dir = dest
         ? Math.atan2(dest.y - this.ball.pos.y, dest.x - this.ball.pos.x)
         : Math.atan2(rb.vel.y, rb.vel.x);
+      // a CONTESTED scramble claim (opponent in duel range) is a CONTROL
+      // touch, never a stride-weight knock — a sprinting duel winner was
+      // launching the ball 15–20 m (the judged duel launches)
+      const scrapped = this.bodies.some((o) =>
+        o.team !== rb.team && Math.hypot(o.pos.x - rb.pos.x, o.pos.y - rb.pos.y) < 3);
       // weight rides the gait: a RUNNER'S continuation touch is a CARRY
       // touch (a proper stride ahead — the cushion weight died at his feet
       // and checked the run); a stepping receiver still cushions
       let push: number;
-      if (rb.speed > 3.5) {
+      if (!scrapped && rb.speed > 3.5) {
         const vmax = topSpeedMps(rb.attributes.pace);
         push = rb.speed * (
           BALL.touchPushBase +
@@ -820,6 +825,7 @@ export class Sim {
       }
       const cap = this.dribbleArriveCap(rb);
       if (cap !== undefined) push = Math.min(push, cap);
+      if (scrapped) push = Math.min(push, 3.0); // keep it in the duel
       this.ball.vel = { x: Math.cos(dir) * push, y: Math.sin(dir) * push };
     } else {
       this.ball.vel = { x: 0, y: 0 };
@@ -970,13 +976,29 @@ export class Sim {
             // counterpress is INNATE — even 'keep' brains hunt the ball
             // they just lost (it is literally the rondo's rule); the keep
             // gate below only blocks ORGANIZED defense
+            const myBallDist = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
             if (this.tick - lostAt <= 60 && (oppHasIt || looseBall) &&
               this.tick % DECIDE.reconsiderTicks === 0 &&
               this.tick > (this.scriptedUntil.get(id) ?? -1) &&
-              Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15) {
-              if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
-              this.actionLabels.set(id, 'counterpress');
-              continue;
+              myBallDist < 15) {
+              // counterpress is ELECTED too: the nearest man (or anyone
+              // right on the ball) hunts; the rest keep balance — the
+              // swarm re-created the double-chase the shadow exists to fix
+              const teamBrains = [...this.brains].filter((bid) => {
+                const b2 = this.byId.get(bid)!;
+                return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1);
+              });
+              const nearestCp = teamBrains.reduce((best, bid) => {
+                const b2 = this.byId.get(bid)!;
+                const d2 = Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y);
+                return d2 < best.d ? { id: bid, d: d2 } : best;
+              }, { id: '', d: Infinity });
+              if (nearestCp.id === id || myBallDist < 6) {
+                if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+                this.pressingIds.add(id); // a pressing state — demotable
+                this.actionLabels.set(id, 'counterpress');
+                continue;
+              }
             }
           }
           // L5c/L5d DEFENDING: an idle brain whose OPPONENT has the ball
@@ -986,7 +1008,7 @@ export class Sim {
           // SHAPE (the line). Contact stays L3's contain/tackle machinery.
           if (carrierBody && carrierBody.team !== body.team &&
             (this.instructions.get(id)?.objective) !== 'keep' &&
-            (body.command.type === 'hold' || this.shapeHolding.has(id)) &&
+            (body.command.type === 'hold' || this.shapeHolding.has(id) || this.pressingIds.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
@@ -1000,11 +1022,20 @@ export class Sim {
               return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
                 (this.instructions.get(bid)?.objective) !== 'keep';
             });
-            const nearest = defBrains.reduce((best, bid) => {
+            let nearest = defBrains.reduce((best, bid) => {
               const b2 = this.byId.get(bid)!;
               const d2 = Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y);
               return d2 < best.d ? { id: bid, d: d2 } : best;
             }, { id: '', d: Infinity });
+            // STICKY election: the engaged presser keeps the job unless he
+            // is clearly beaten (flapping first/second made both look like
+            // ball-chasers — the judged no-coordination)
+            const incumbent = defBrains.find((bid) => this.pressingIds.has(bid));
+            if (incumbent && incumbent !== nearest.id) {
+              const bi = this.byId.get(incumbent)!;
+              const di = Math.hypot(carrierBody.pos.x - bi.pos.x, carrierBody.pos.y - bi.pos.y);
+              if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent, d: di };
+            }
             const iAmFirst = nearest.id === id;
             const score = pressScore(body, carrierBody, this.bodies, justReceived, pressing);
             const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);

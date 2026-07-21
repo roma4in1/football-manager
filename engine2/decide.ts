@@ -506,10 +506,18 @@ export const shadowSpot = (
 ): Vec2 | null => {
   const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
   if (!mates.length) return null;
+  // the lane worth shadowing is the most OPEN dangerous one — judged by
+  // completion odds WITHOUT me (the lanes my teammates already close
+  // don't need me; the judged defect: posValue always picked the most
+  // advanced man even when that lane was already dead)
+  const others = bodies.filter((b) => b.team === defender.team && b.id !== defender.id);
   let best: BodyState | null = null;
   let bestVal = -Infinity;
   for (const m of mates) {
-    const v = posValue(m.pos, carrier.team) - Math.hypot(m.pos.x - defender.pos.x, m.pos.y - defender.pos.y) * 0.004;
+    const dist0 = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
+    if (dist0 < 3) continue;
+    const open = passCompletion(carrier.pos, m.pos, 11, others, dist0, m);
+    const v = open * (0.4 + posValue(m.pos, carrier.team));
     if (v > bestVal) {
       bestVal = v;
       best = m;
