@@ -72,7 +72,7 @@ export type MovementCommand =
 export interface KickEvent {
   atTick: number;
   bodyId: string; // must be the carrier at that tick, else the kick is a no-op
-  kick: { target: Vec2; speedMps: number; loftDeg: number };
+  kick: { target: Vec2; speedMps: number; loftDeg: number; spin?: number };
 }
 
 export interface BodyState {

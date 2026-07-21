@@ -12,7 +12,7 @@ import { scenarioByName } from './scenarios/index.ts';
 import type { Frame } from './engine2-types.ts';
 
 const mkBall = (): BallState => ({
-  pos: { x: 30, y: 34 }, z: 0, vel: { x: 0, y: 0 }, vz: 0, phase: 'rolling', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  pos: { x: 30, y: 34 }, z: 0, vel: { x: 0, y: 0 }, vz: 0, spin: 0, phase: 'rolling', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
 });
 
 test('a ground kick decelerates monotonically to rest — no gliding, no reversal', () => {

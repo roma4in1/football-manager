@@ -25,10 +25,10 @@ import {
   type ScenarioDef,
   type Vec2,
 } from './engine2-types.ts';
-import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, predictBall, predictBallState, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { attackSign, decide, DECIDE, goalCenter, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -38,7 +38,7 @@ export class Sim {
   tick = 0;
   private readonly byId = new Map<string, BodyState>();
   private readonly atTick = new Map<number, Array<{ bodyId: string; command: MovementCommand }>>();
-  private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: { target: Vec2; speedMps: number; loftDeg: number } }>>();
+  private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: { target: Vec2; speedMps: number; loftDeg: number; spin?: number } }>>();
   private readonly queues = new Map<string, MovementCommand[]>();
   /** per-tick live steering targets (intercepts/fetches) — the frame's debug
    * overlay shows what the body is ACTUALLY running to */
@@ -88,7 +88,7 @@ export class Sim {
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
-  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string }>();
+  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number }>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -146,6 +146,7 @@ export class Sim {
       z: 0,
       vel: { x: 0, y: 0 },
       vz: 0,
+      spin: 0,
       phase: carrier ? 'carried' : 'rolling',
       carrierId: carrier ? carrier.id : null,
       kickerId: null,
@@ -408,7 +409,7 @@ export class Sim {
           // intent, body shape included — the backheel penalty is for
           // DECIDED kicks (the chooser knows his own facing)
           const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
-          kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
+          kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick, k.kick.spin ?? 0);
         }
       }
     }
@@ -442,6 +443,7 @@ export class Sim {
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
+    this.resolveHeaders();
     this.resolveClaims(ballFrom);
 
     // L5d bookkeeping: possession flips arm the counterpress window; a
@@ -561,7 +563,7 @@ export class Sim {
     })();
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
-      kickBall(this.ball, noisy.target, noisy.speedMps, 0, carrier.id, this.tick);
+      kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick);
       if (pending.receiverId) {
         this.intendedReceiverId = pending.receiverId;
         this.lastGiveTick.set(carrier.id, this.tick);
@@ -690,6 +692,59 @@ export class Sim {
     this.ball.z = 0;
     this.ball.vz = 0;
     this.ball.phase = 'carried';
+  }
+
+  /** the AERIAL CONTEST — a ball in the header band is challenged in the AIR:
+   * bodies within a leap contest it (closer + stronger + a little agility,
+   * with a coin-flip of noise), the winner heads it. A DEFENDER near his own
+   * goal clears it upfield; an ATTACKER near the opponent goal heads at goal;
+   * otherwise a knock-DOWN drops it at his feet to control. This is what makes
+   * a loft OVER a defender honest — one standing under it heads it away. */
+  private resolveHeaders(): void {
+    const ball = this.ball;
+    if (ball.phase !== 'airborne' || ball.z < BALL.headMinZ || ball.z > BALL.headMaxZ) return;
+    let best: { body: BodyState; score: number } | null = null;
+    for (const body of this.bodies) {
+      if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      const d = Math.hypot(body.pos.x - ball.pos.x, body.pos.y - ball.pos.y);
+      if (d > BALL.headReachM) continue;
+      if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue; // can't leap to it
+      const score = -d + 0.08 * body.attributes.strength + 0.05 * body.attributes.agility +
+        this.rng.gauss(0, BALL.headContestNoise, this.tick, body.id, 'header');
+      if (!best || score > best.score) best = { body, score };
+    }
+    if (!best) return;
+    const w = best.body;
+    // the header REDIRECTS the ball's pace — power from the BALL, a small
+    // strength term from the neck. A fast cross → a powerful header.
+    const incoming = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    const headed = incoming * BALL.headRedirect + BALL.headPlayerPower * (w.attributes.strength / 20);
+    const sign = attackSign(w.team);
+    const ownGoal = { x: sign > 0 ? 0 : PITCH.length, y: PITCH.width / 2 };
+    const oppGoal = goalCenter(w.team);
+    const dOwn = Math.hypot(ownGoal.x - w.pos.x, ownGoal.y - w.pos.y);
+    const dOpp = Math.hypot(oppGoal.x - w.pos.x, oppGoal.y - w.pos.y);
+    if (dOwn < 35) {
+      // DEFENSIVE clearance — lofted, far, upfield, with wide direction noise
+      const ang = (sign > 0 ? 0 : Math.PI) + this.rng.gauss(0, BALL.headClearScatterRad, this.tick, w.id, 'head-clear');
+      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 30, y: w.pos.y + Math.sin(ang) * 30 }, headed, BALL.headClearLoftDeg, w.id, this.tick);
+      this.actionLabels.set(w.id, 'header-clear');
+    } else if (dOpp < 14) {
+      // ATTACKING header at goal — a driven strike, slight noise, low
+      const ang = Math.atan2(oppGoal.y - w.pos.y, oppGoal.x - w.pos.x) + this.rng.gauss(0, 0.12, this.tick, w.id, 'head-goal');
+      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 20, y: w.pos.y + Math.sin(ang) * 20 }, headed, 8, w.id, this.tick);
+      this.actionLabels.set(w.id, 'header-goal');
+    } else {
+      this.actionLabels.set(w.id, 'header-down');
+      // KNOCK-DOWN — cushion the pace OUT (a controlled header down to feet:
+      // no kicker lock, he plays it next tick; an opponent may still contest)
+      ball.z = 0;
+      ball.vz = 0;
+      ball.phase = 'rolling';
+      ball.carrierId = null;
+      ball.kickerId = null;
+      ball.vel = { x: sign * incoming * BALL.headKnockCushion, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
+    }
   }
 
   private resolveClaims(from: Vec2): void {
@@ -1223,7 +1278,7 @@ export class Sim {
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
-            kickBall(this.ball, noisy.target, noisy.speedMps, 0, id, this.tick);
+            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' ? (intent.loftDeg ?? 0) : 0, id, this.tick);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
@@ -1237,6 +1292,7 @@ export class Sim {
             this.pendingKicks.set(id, {
               dest: intent.dest,
               speedMps: intent.speedMps,
+              ...(intent.kind === 'pass' && intent.loftDeg ? { loftDeg: intent.loftDeg } : {}),
               ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
             });
             if (body.command.type !== 'chaseBall') {
@@ -1331,8 +1387,20 @@ export class Sim {
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
     let meet: { p: Vec2; tStar: number } | null = null;
     let near: { p: Vec2; d: number; t: number } | null = null;
+    const airborne = this.ball.phase === 'airborne';
+    // near EITHER goal a body ATTACKS an aerial ball at head height (a header —
+    // a cross to a striker, a defender under a lob) rather than waiting for the
+    // ground drop; in open play he lets it drop and controls it. So the ceiling
+    // on a "receive" point is the header band near a goal, knee height else.
+    const nearGoal = Math.min(body.pos.x, PITCH.length - body.pos.x) < 20;
+    const zCap = nearGoal ? BALL.headMaxZ : BALL.claimMaxZ;
     for (let t = 0.2; t <= 6.0; t += 0.2) {
-      const p = predictBall(this.ball, t);
+      const s = predictBallState(this.ball, t);
+      const p = s.pos;
+      // an AIRBORNE ball is only a receive point where it is DESCENDING and
+      // within reach height — a higher mid-flight point is over his head;
+      // running to it lets the ball sail past and land behind him
+      if (airborne && (s.z > zCap || s.vz > 0.2)) continue;
       const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
       if (!near || d < near.d) near = { p, d, t };
       if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };

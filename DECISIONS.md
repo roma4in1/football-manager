@@ -3,6 +3,174 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Header power comes from the BALL; the cross is whipped from the by-line
+
+Builder judgment: a crosser works from closer to the touchline with faster
+crosses (low-driven / lofty / inverted / hard), and most of a header's power
+is the BALL's, not the player's.
+
+- **Header power from the ball:** the header outcomes used fixed speeds; now
+  headed = incoming·headRedirect(0.7) + headPlayerPower(5)·(str/20). A header
+  REDIRECTS the ball's pace with only a small neck contribution — a header off
+  a fast cross flies (18→16 m/s here), one off a floated lob is weak. The
+  knock-down cushions the pace OUT (keeps 0.2). Clearance/at-goal derive their
+  power the same way.
+- **By-line + hard cross:** the crosser moved to the by-line (101,58 — 10 m off
+  the touchline) and now whips a HARD DRIVEN cross (24 m/s, low 18° loft) that
+  arrives fast and flat (~1.5 m, ~18 m/s) at the striker. cross-header: heads
+  it at goal 8/10, avg header 16 m/s (a real strike). Cross VARIETY (low
+  driven / lofty / inswinger) is just loft + speed + spin on the same
+  kickBall — the physics already carries all of them.
+
+Defensive clearance power now scales with the incoming lob too (aerial-contest
+still 15/16, upfield). 67/67; all ground rates pinned.
+
+## 2026-07-21 — The cross + attacking header (near a goal you ATTACK the ball in the air)
+
+Builder ask: a crossing scenario for attacking headers. This exercised the
+header-goal branch the defensive contest never reached — and surfaced the real
+fix for aerial receives near goal.
+
+The problem: a striker chasing a cross targeted the ground DROP (predictBallState
+picks the claimable point), so he arrived AS the ball landed and the header
+window (the band, 1–2 ticks earlier) was already gone — 3/10 headers, mistimed.
+
+Fix: near EITHER goal (within 20 m) an aerial chaser ATTACKS the ball at head
+height — interceptPoint's receive-ceiling becomes the header band (headMaxZ)
+instead of knee height, so he meets a descending ball while it is still up and
+heads it. In open play the ceiling stays knee height (he lets it drop and
+controls it), so the aerial-through/contest (midfield) and every ground receive
+are unchanged.
+
+cross-header scenario: a wide player floats a steep cross into the six-yard box
+and the striker attacks the drop — heads it AT GOAL 10/10, goalward and on
+target. 67/67; all ground rates pinned.
+
+Remaining aerial/curve: the DECISION to cross/curve (the EV choosing to whip a
+ball in / bend one), a keeper to save the header, and topspin/backspin dip.
+
+## 2026-07-21 — More curl + the curling ground through ball to the winger
+
+Builder: more visible curl, and an example of a curling GROUND through ball
+between two centre backs to a winger.
+
+- **More curl:** magnusCoefficient 0.18 (physics.md baseline) → 0.42, a
+  stylised gameplay bend (as the pitch friction was raised over the doc too).
+  Now spin ±40 bends ~3.5 m over 34 m (was 1.5), spin 70 ~6 m, a ground
+  trivela (spin 60) ~9 m over its roll.
+- **curled-through scenario:** the playmaker slides a GROUND ball (loft 0,
+  spin 85) through the gap between two centre backs and bends it out to a
+  winger sprinting the channel. Measured: splits the CBs at y≈34.9 (3.7 m
+  clear of each, 8/8), stays on the deck (maxZ 0.00, 8/8), curls out ~5 m to
+  the winger who runs onto it (8/8). Also re-tuned the curled-pass spin 120→52
+  for the stronger coefficient.
+
+spin still defaults to 0 everywhere, so every existing ball is unchanged;
+ground rates pinned. 66/66.
+
+## 2026-07-21 — Curve (Magnus): sidespin bends the flight (the last physical pass)
+
+Builder ask: add curve after headers. The ball gained a SIDESPIN state (rad/s
+about the vertical axis); applyMagnus() bends the horizontal velocity each
+tick, perpendicular to travel, with a = MAGNUS_K·spin·v_h — MAGNUS_K derived
+from physics.md (½·ρ·A·Cmag·r/m ≈ 0.0011). Spin bleeds 8%/s (physics.md).
+Applied to BOTH the airborne flight and a rolling ball (the ground trivela).
+kickBall gained a spin argument (default 0); scenario kicks and the pass Intent
+can carry it.
+
+Magnitudes: spin ±40 bends ~1.5 m over 34 m, spin 70 ~2.7 m, a ground trivela
+(spin 60) curls ~4 m over its roll — believable. curled-pass scenario: the
+kicker aims WIDE of a defender on the direct line and curls the ball (spin
+120) back to a receiver — bends off the aim 2.5 m (8/8), stays 2.2 m clear of
+the defender (8/8), receiver collects it (8/8).
+
+spin defaults to 0 everywhere, so every existing ball flies exactly as before
+— all ground rates pinned; 65/65. Topspin/backspin (dip/float) and the
+DECISION to bend (auto trivela / inswinger around a defender, curled shot) are
+the next pieces — this lands the PHYSICS + a scripted curl.
+
+## 2026-07-21 — Aerial contest: the HEADER (lofts over defenders are now honest)
+
+Builder ask: add headers / the aerial contest. Until now a ball above knee
+height (claimMaxZ 0.5) was uncontestable — lofts sailed over defenders who
+should challenge them.
+
+resolveHeaders() (a phase before resolveClaims): a ball in the header BAND
+(z 0.9–2.5 m, airborne) is challenged in the air. Bodies within a leap
+(headReach 1.5 m, and z ≤ standing head 1.9 + a strength-scaled jump) contest
+it — score = −distance + strength + a little agility + a coin-flip of noise,
+so the STRONGER/closer man wins the duel. The winner heads it by ROLE:
+- a DEFENDER near his own goal (<35 m) CLEARS — lofted, far, UPFIELD, wide
+  direction noise;
+- an ATTACKER near the opponent goal (<14 m) heads AT GOAL (a driven strike);
+- otherwise a KNOCK-DOWN drops it at his feet to control (no kicker lock — he
+  plays his own knockdown; an opponent may still nick it).
+
+Verified (aerial-contest scenario): the header is contested 15/16, the
+stronger defender wins the leap and clears 15/15, every clearance goes upfield
+away from his goal. Design notes learned: a header contest needs a STEEP drop
+(a flat loft is high mid-flight, low at the landing — the band never meets a
+body at the landing) and the loft's v²-scatter makes long contests unreliable,
+so the drill uses a short steep lob. Ground receives/claims are unchanged
+(the header band is airborne-only). 63/63; all ground rates pinned.
+
+Next: curve (Magnus) — spin state + bending flight, the last physical-pass
+piece (unlocks the KDB cross-field ball and swerving crosses).
+
+## 2026-07-21 — Aerial fixes: read the DROP, and weight the loft to settle (not skip)
+
+Builder judgment on the aerial pieces: (1) the receiver reads the landing
+badly, (2) the aerial through ball is over-hit — it bounces on to the penalty
+spot.
+
+- **Read the drop:** interceptPoint used predictBall (position only), so a
+  receiver targeted the earliest reachable point on the ball's PATH — a
+  mid-flight point where the ball is still over his head. He ran to meet it
+  there, it sailed past, and landed BEHIND him (mate over-ran to x62 for a
+  ball that dropped at x69). Fix: predictBallState() adds height+vz; for an
+  AIRBORNE ball interceptPoint now only accepts a CLAIMABLE, DESCENDING point
+  (z ≤ knee, vz ≤ 0) — the drop. The mate now comes to the landing and
+  collects it early (t30 vs t49). Ground receives are unchanged (the filter
+  is airborne-only); all rates pinned.
+- **Weight the loft to settle:** a driven loft lands flat and SKIPS forward
+  (restitution 0.72 keeps 75% of pace through the bounce), carrying a 38 m
+  through ball on to x86. The geometry is the constraint: clearing a defender
+  needs the ball high AT him, which for a far line means a long loft that
+  lands deep. So the aerial-through scenario now clears the line while the
+  ball is RISING (blocker at 12 m, 32° peaks ~2.7 m by there) and drops behind
+  it — settling ~x75 for the runner, not the penalty spot.
+
+62/62; all ground rates pinned.
+
+## 2026-07-21 — Aerial (L-aerial): the lofted ball — foundation + the decision to loft
+
+Next step after the ball-friction merge: settle foundational aerial PHYSICS
+before more behavior layers (the friction change showed how physics ripples
+upward). physics.md's flight model (gravity + drag + bounce) existed but was
+INERT — every decided kick was ground-only, and the KDB across-the-defence
+ball was explicitly deferred here waiting for the aerial pass.
+
+- **a1 (foundation):** solveLoftSpeed(dist, loftDeg) — numeric ballistic solve
+  (drag has no closed form) for the launch speed that lands a loft at a
+  distance; loftApex() for clearance. Driven lofts (20-25°) land accurately at
+  25-40 m. The aerial RECEIVE already works via the existing machinery: a
+  runner reads the drag+bounce flight (predictBall) and controls the drop.
+- **a2 (the decision):** a LOFTED pass candidate — the Intent gained loftDeg,
+  threaded through pendingKicks → kickBall. It fires ONLY when a ground
+  defender sits in the DIRECT lane (t 0.12-0.92, within 2.2 m); over him the
+  air ball is clean. aerialCompletion() judges the DROP (an arrival race at
+  the landing — mid-flight ground defenders are irrelevant, the ball is over
+  them). Aerial control is TAXED (a dropping ball is harder — first-touch
+  scaled). The loft ANGLE is adaptive: a near blocker (t<0.5) gets a steeper
+  CHIP (42°) so the ball clears his head early; a far line the flatter DRIVEN
+  loft (24°). Verified: clears the blocker's head 8/8, open mate collects 8/8.
+
+Crucially the loft does NOT disrupt open-lane play — all existing rates pinned
+(dial, line-vs-runs, runs, wall, front, rondo). 62/62.
+
+Next: aerial receive refinement (control-on-the-drop / headers — a defender
+can't yet challenge a mid-height ball), then curve (Magnus).
+
 ## 2026-07-21 — Drive at goal from wide, and shoot THROUGH the last line (line-vs-runs)
 
 Builder: in line-vs-runs the carrier drifts to the edge of the box instead of

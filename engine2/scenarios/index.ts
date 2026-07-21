@@ -18,6 +18,8 @@ import { firstTouchRunScenarios, firstTouchAngleScenarios } from './first-touch-
 import { tackleScenarios } from './tackle-duel.ts';
 import knockPast from './knock-past.ts';
 import { l4Scenarios } from './l4-decisions.ts';
+import { aerialScenarios } from './aerial.ts';
+import { curveScenarios } from './curve.ts';
 
 export const SCENARIOS: readonly ScenarioDef[] = [
   // L1 — movement (regression set)
@@ -28,6 +30,10 @@ export const SCENARIOS: readonly ScenarioDef[] = [
   ...firstTouchScenarios, ...firstTouchRunScenarios, ...firstTouchAngleScenarios, ...tackleScenarios, knockPast,
   // L4 — on-ball decisions
   ...l4Scenarios,
+  // L-aerial — the lofted ball
+  ...aerialScenarios,
+  // L-curve — the Magnus bend
+  ...curveScenarios,
 ];
 
 export const scenarioByName = (name: string): ScenarioDef => {
