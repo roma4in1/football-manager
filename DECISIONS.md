@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5c round 1: the step-up, the line-height knob, and the no-offside cap
+
+From the builder's defensive.md/defender.md (mapped in REFERENCES.md):
+
+- **The STEP-UP**: the line only dropped — the missing half of
+  step/drop/hold. A high line now squeezes toward a distant ball;
+  `instructions.lineHeight` (0 low block … 1 high line, default 0.5
+  mid-block) is the FIRST TACTICS KNOB (L6 will set it per team/role).
+- **The no-offside cap**: stepping past the deepest attacker without an
+  offside law doesn't trap him — it abandons him (goal-side collapsed to
+  26% the moment the step-up landed). The line never steps beyond the
+  deepest attacker +1.2 m until L9 arms the trap.
+- **Metric honesty**: line-vs-runs' goal-side ratio now counts LIVE play
+  only — a scored striker standing next to the goal poisoned 160
+  dead-ball ticks against the line's floor.
+
+defender.md validates the L3 duel inventory and pre-specs L5e's engage
+model (tackle-score); NEW gap recorded: AERIAL play (jump/heading) is
+wholly absent — needed before L8 crosses. 59/59; dial and runs intact.
+
 ## 2026-07-21 — L5c OPENED: defensive shape — the line as a unit
 
 Branch feat/engine2-l5c (chain l3→l4→l5a→l5b merged to main; PR #53).

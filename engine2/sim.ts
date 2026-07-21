@@ -930,7 +930,8 @@ export class Sim {
             const unit = [...this.brains].filter((bid) =>
               this.byId.get(bid)!.team === body.team &&
               this.tick > (this.scriptedUntil.get(bid) ?? -1));
-            const spot = shapeSpot(body, this.bodies, this.ball, this.homes, unit);
+            const spot = shapeSpot(body, this.bodies, this.ball, this.homes, unit,
+              this.instructions.get(id)?.lineHeight ?? 0.5);
             const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
             if (d > 1.2) {
               this.assign(body, { type: 'moveTo', target: spot, regime: d > 8 ? 'run' : 'jog' });

@@ -225,8 +225,12 @@ test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (4
     for (let t = 0; t < def.durationTicks; t++) {
       sim.step();
       if (sim.tick < 30) continue;
+      // live play only — after a goal/dead ball the striker stands in the
+      // zone the line's floor never enters, poisoning the ratio
+      if (sim.ball.phase === 'dead') break;
       const cbs = sim.bodies.filter((b) => b.id.startsWith('cb'));
       const st = sim.bodies.find((b) => b.id === 'striker')!;
+      if (st.pos.x > 93) continue; // inside the line's floor region
       total++;
       if (Math.max(...cbs.map((b) => b.pos.x)) >= st.pos.x - 2.5) goalSide++;
     }

@@ -182,9 +182,11 @@ export const backLineShift: ScenarioDef = {
     { id: 'p1', team: 'home', pos: { x: 52, y: 14 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
     { id: 'p2', team: 'home', pos: { x: 48, y: 34 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
     { id: 'p3', team: 'home', pos: { x: 52, y: 54 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
-    { id: 'cb1', team: 'away', pos: { x: 72, y: 22 }, attributes: chaser, brain: 'onBall' },
-    { id: 'cb2', team: 'away', pos: { x: 72, y: 34 }, attributes: chaser, brain: 'onBall' },
-    { id: 'cb3', team: 'away', pos: { x: 72, y: 46 }, attributes: chaser, brain: 'onBall' },
+    // a HIGH line (0.8): judge the STEP UP toward the distant circulation
+    // as well as the drop — the first tactics knob (defensive.md)
+    { id: 'cb1', team: 'away', pos: { x: 72, y: 22 }, attributes: chaser, brain: 'onBall', instructions: { lineHeight: 0.8 } },
+    { id: 'cb2', team: 'away', pos: { x: 72, y: 34 }, attributes: chaser, brain: 'onBall', instructions: { lineHeight: 0.8 } },
+    { id: 'cb3', team: 'away', pos: { x: 72, y: 46 }, attributes: chaser, brain: 'onBall', instructions: { lineHeight: 0.8 } },
   ],
   ball: { carrier: 'p2' },
   script: [],

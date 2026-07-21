@@ -31,6 +31,10 @@ export interface PlayInstructions {
   /** 'score' (default) values progress toward goal; 'keep' is the rondo's
    * truth — value SPACE and retention, never shoot or clear */
   objective?: 'keep' | 'score';
+  /** L5c line height, 0..1 (defensive.md): 0 = low block (sit at home),
+   * 1 = high line (squeeze up with the ball). Default 0.5 — a mid block.
+   * The first tactics knob: L6 will set these per role/team. */
+  lineHeight?: number;
 }
 
 export type Intent =
@@ -378,6 +382,7 @@ export const shapeSpot = (
   ball: { pos: Vec2 },
   homes: ReadonlyMap<string, Vec2> | undefined,
   unit: readonly string[],
+  lineHeight = 0.5,
 ): Vec2 => {
   const home = homes?.get(defender.id) ?? defender.pos;
   const dSign = attackSign(defender.team); // own goal = the END we attack FROM
@@ -392,6 +397,22 @@ export const shapeSpot = (
     : Math.max(...unitHomes.map((h) => h.x));
   const ballBuffer = ball.pos.x - dSign * 12;
   let lineX = dSign > 0 ? Math.min(homeLineX, ballBuffer) : Math.max(homeLineX, ballBuffer);
+  // STEP UP (defensive.md — the missing half of step/drop/hold): when the
+  // ball is far, a high line squeezes toward it; a low block sits at home
+  const stepped = dSign > 0
+    ? Math.max(homeLineX, Math.min(ballBuffer, PITCH.length / 2))
+    : Math.min(homeLineX, Math.max(ballBuffer, PITCH.length / 2));
+  if ((dSign > 0 && ballBuffer > homeLineX) || (dSign < 0 && ballBuffer < homeLineX)) {
+    lineX = homeLineX + (stepped - homeLineX) * lineHeight;
+  }
+  // NEVER step beyond the deepest attacker (no offside law until L9 — a
+  // line past the striker doesn't trap him, it abandons him; the high
+  // line's real teeth arrive with offside adjudication)
+  const oppXs = opponents.map((o) => o.pos.x);
+  if (oppXs.length) {
+    const deepest = dSign > 0 ? Math.min(...oppXs) : Math.max(...oppXs);
+    lineX = dSign > 0 ? Math.min(lineX, deepest - 1.2) : Math.max(lineX, deepest + 1.2);
+  }
   // floor: do not retreat into the goal
   lineX = dSign > 0 ? Math.max(lineX, ownGoalX + 10) : Math.min(lineX, ownGoalX - 10);
   // ball-side shift, capped — the unit slides toward the ball together
