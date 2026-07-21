@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 7: the touch goes in FRONT; idle bodies watch the play
+
+Two judged defects and the knock-ons of fixing them:
+
+- **The continuation touch** (sim.ts): the directional first touch controlled
+  the ball to the boot but weighted it as a CUSHION (speed×1.07) — at
+  running pace the ball died at the receiver's feet, read as "controlled
+  behind him." A runner's (>3.5 m/s) first touch is now weighted like a
+  carry touch (a proper stride ahead) and the contact always snaps just in
+  FRONT of the boot (lateral contacts read as behind too). Post: the
+  counter-high runner's ball rides 0.4→1.5 m ahead through the claim.
+- **Idle ball-watching** (sim.ts): a hold body with no facing target froze
+  wherever it last pointed (the judged mannequin body shapes) — idle
+  non-carriers now lazily track the ball (3 rad/s).
+- **Racers set at the line** (sim.ts): an early racer to a LOOSE ball blew
+  through the meet point with momentum (the ball rolled past behind his
+  overshoot — loose-ball-race caught it). Race mode now brakes into the
+  meet when early. Gated to loose balls only: braking chasers of a CARRIED
+  ball accidentally invented proto-jockeying (set-defender pinch, front
+  duel collapsed 0/16 — the L5e boundary defended by a test).
+- **Separation capacity** (technique.ts, 2.5 → 3.5 m/s): a beaten man
+  lunging back at 2.6 m/s squeezed a one-tick 0.45 m overlap past the old
+  clamp. 53/53; dial 16/16 both poles; rondo texture unchanged.
+
 ## 2026-07-21 — L4 judgment round 6: clean pace is automatic; pressure is a skill
 
 The judged rondo mistouches measured at ~1-in-9 receives — and the probe

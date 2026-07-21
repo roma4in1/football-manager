@@ -82,7 +82,7 @@ export const TECH = {
   // ── bodies are solid (the audit item): soft pairwise separation ──────────
   bodyRadiusM: 0.35,
   /** overlap resolves at a bounded speed — solid but soft, never a snap */
-  separationSpeedMps: 2.5,
+  separationSpeedMps: 3.5, // raised: a beaten man lunging back at 2.6 m/s squeezed a one-tick 0.45m overlap
 } as const;
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));

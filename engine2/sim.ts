@@ -182,7 +182,16 @@ export class Sim {
             // carving the racer off the line as the ball arrives at his feet
             this.receiveOnLine.delete(body.id);
             const dBall = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
-            live = dBall <= 2.5 ? { x: this.ball.pos.x, y: this.ball.pos.y } : icept.pMeet;
+            if (dBall <= 2.5) {
+              live = { x: this.ball.pos.x, y: this.ball.pos.y };
+            } else {
+              live = icept.pMeet;
+              // racing a LOOSE ball to the meet point: SET at it if early
+              // (momentum blew an early racer straight through the line).
+              // Chasers of a CARRIED ball keep flying — braking in gave
+              // them a set-defender's pinch and broke the judged duel
+              if (this.ball.carrierId === null) brakeIntoLine = true;
+            }
           } else if (this.inStrideMeet(body)) {
             // the RUNNER'S receive: his continued run meets the ball — take
             // it in stride, no timing, no brake (the judged check-and-wait:
@@ -283,6 +292,14 @@ export class Sim {
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
         if (next) this.assign(body, next);
+      }
+      // idle bodies WATCH THE PLAY: a hold with no facing target lazily
+      // tracks the ball (a frozen post-pass facing reads as a mannequin)
+      if (body.command.type === 'hold' && body.command.facing === undefined &&
+        this.ball.carrierId !== body.id && body.speed < 1.0) {
+        const toBall = Math.atan2(this.ball.pos.y - body.pos.y, this.ball.pos.x - body.pos.x);
+        const d = ((toBall - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        body.facing += Math.sign(d) * Math.min(Math.abs(d), 3.0 * DT);
       }
     }
 
@@ -707,25 +724,33 @@ export class Sim {
       // sweep carried him past it) — an in-stride touch must OVERTAKE him,
       // not trail him like a shadow he can never reach: aim at a lead point
       // ahead of the RUNNER and weight the push to get there
-      const behind = (this.ball.pos.x - rb.pos.x) * Math.cos(travel) +
-        (this.ball.pos.y - rb.pos.y) * Math.sin(travel) < 0;
-      if (behind) {
-        // hook it forward to the boot: the ball is controlled AT the runner
-        // (within the claim's own reach), then the touch plays from there —
-        // any push from a trailing spot loses a footrace to an accelerating
-        // runner and shadows him forever (the fetch-steer spiral)
-        this.ball.pos = {
-          x: rb.pos.x + Math.cos(travel) * 0.35,
-          y: rb.pos.y + Math.sin(travel) * 0.35,
-        };
-      }
+      // control TO THE BOOT, ahead: the contact point can be at the heels
+      // or beside mid-stride — the touch always originates just in front
+      // (a trailing or lateral origin reads as "controlled behind him")
+      this.ball.pos = {
+        x: rb.pos.x + Math.cos(travel) * 0.35,
+        y: rb.pos.y + Math.sin(travel) * 0.35,
+      };
       const dir = dest
         ? Math.atan2(dest.y - this.ball.pos.y, dest.x - this.ball.pos.x)
         : Math.atan2(rb.vel.y, rb.vel.x);
-      let push = rb.speed * (
-        TECH.directionalTouchBase +
-        TECH.directionalTouchControlGain * (1 - rb.attributes.firstTouch / 20)
-      );
+      // weight rides the gait: a RUNNER'S continuation touch is a CARRY
+      // touch (a proper stride ahead — the cushion weight died at his feet
+      // and checked the run); a stepping receiver still cushions
+      let push: number;
+      if (rb.speed > 3.5) {
+        const vmax = topSpeedMps(rb.attributes.pace);
+        push = rb.speed * (
+          BALL.touchPushBase +
+          BALL.touchPushSpeedGain * (rb.speed / vmax) +
+          BALL.touchPushControlGain * (1 - rb.attributes.dribbling / 20)
+        );
+      } else {
+        push = rb.speed * (
+          TECH.directionalTouchBase +
+          TECH.directionalTouchControlGain * (1 - rb.attributes.firstTouch / 20)
+        );
+      }
       const cap = this.dribbleArriveCap(rb);
       if (cap !== undefined) push = Math.min(push, cap);
       this.ball.vel = { x: Math.cos(dir) * push, y: Math.sin(dir) * push };
