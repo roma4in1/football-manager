@@ -44,7 +44,10 @@ const scenario: ScenarioDef = {
     // the winner lays it back for the reset (no-ops if the race went the
     // other way — a drill, not an outcome script)
     { atTick: 110, bodyId: 'near-slow', kick: { target: { x: 17, y: 34 }, speedMps: 9, loftDeg: 0 } },
-    { atTick: 208, bodyId: 'feeder', kick: { target: { x: 88, y: 34 }, speedMps: 16, loftDeg: 0 } },
+    // 13.5 m/s: far-fast INTERCEPTS mid-line (the anticipation racing this
+    // drill is about) with a controllable closing speed — a 16 m/s drive
+    // popped off his boot and turned the race into a scramble lottery
+    { atTick: 208, bodyId: 'feeder', kick: { target: { x: 88, y: 34 }, speedMps: 13.5, loftDeg: 0 } },
   ],
 };
 

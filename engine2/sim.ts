@@ -28,6 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
+import { decide, DECIDE, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -42,6 +43,23 @@ export class Sim {
   /** per-tick live steering targets (intercepts/fetches) — the frame's debug
    * overlay shows what the body is ACTUALLY running to */
   private readonly liveTargets = new Map<string, Vec2>();
+  /** L4: bodies that run the on-ball decision loop, their instructions,
+   * their current intent, and the action label shown in the workbench */
+  private readonly brains = new Set<string>();
+  private readonly instructions = new Map<string, PlayInstructions>();
+  private readonly intents = new Map<string, Intent>();
+  private readonly actionLabels = new Map<string, string>();
+  /** the teammate a decided pass is flighted to — gets the receive reflex */
+  private intendedReceiverId: string | null = null;
+  /** initial positions — the 'keep' objective's drill stations */
+  private readonly homes = new Map<string, Vec2>();
+  /** the half-turn: the intended receiver's anticipated NEXT-play direction,
+   * refreshed during the flight — his receive facing opens toward it */
+  private readonly receiveOpenDir = new Map<string, number>();
+  /** a decided kick waiting for the ball to come back into touch reach —
+   * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
+   * latency closed every lane the decision had correctly picked) */
+  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string }>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -67,6 +85,11 @@ export class Sim {
       if (this.byId.has(b.id)) throw new Error(`duplicate body id ${b.id}`);
       this.byId.set(b.id, b);
       this.queues.set(b.id, []);
+    }
+    for (const b of def.bodies) {
+      if (b.brain === 'onBall') this.brains.add(b.id);
+      if (b.instructions) this.instructions.set(b.id, { ...b.instructions });
+      this.homes.set(b.id, { ...b.pos });
     }
     for (const ev of def.script) {
       const body = this.byId.get(ev.bodyId);
@@ -107,6 +130,10 @@ export class Sim {
     if (events) {
       for (const ev of events) this.assign(this.byId.get(ev.bodyId)!, ev.command);
     }
+
+    // 1b. L4 — the on-ball decision loop (after scripts: a scripted re-target
+    // on a brainless body stands; the carrier's OWN command is decision-owned)
+    this.decidePhase();
 
     // 2. bodies move; chaseBall runs to the INTERCEPT point (players
     // anticipate where a ball is going, they don't chase its tail), and a
@@ -149,9 +176,37 @@ export class Sim {
             this.bodies.some((o) => o.id !== body.id && o.team !== body.team && o.command.type === 'chaseBall');
           if (contested) {
             // race mode: run flat-out at the meet point (contain below still
-            // takes over at contact range against a glued carrier)
+            // takes over at contact range against a glued carrier). With the
+            // ball ON TOP of him, step AT it — the 0.3 s reaction margin
+            // makes imminent meets "unreachable" and pMeet jumps deep,
+            // carving the racer off the line as the ball arrives at his feet
             this.receiveOnLine.delete(body.id);
-            live = icept.pMeet;
+            const dBall = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+            if (dBall <= 2.5) {
+              live = { x: this.ball.pos.x, y: this.ball.pos.y };
+            } else {
+              live = icept.pMeet;
+              // racing a LOOSE ball to the meet point: SET at it only when
+              // COMFORTABLY early (momentum blew an early racer through the
+              // line; but braking on marginal meets made lane-chasers
+              // stutter under passes that beat them anyway). Chasers of a
+              // CARRIED ball keep flying — braking gave them a
+              // set-defender's pinch and broke the judged duel.
+              if (this.ball.carrierId === null) {
+                const dMeet = Math.hypot(icept.pMeet.x - body.pos.x, icept.pMeet.y - body.pos.y);
+                const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
+                if (dMeet / vcap < icept.tMeet - 0.35) brakeIntoLine = true;
+              }
+            }
+          } else if (this.inStrideMeet(body)) {
+            // the RUNNER'S receive: his continued run meets the ball — take
+            // it in stride, no timing, no brake (the judged check-and-wait:
+            // the receiver anticipated at the meet point and the through
+            // ball ran on behind him). Self-selecting: if full pace along
+            // the current run does NOT meet the ball, the machine below
+            // times it as before.
+            live = this.inStrideMeet(body)!;
+            this.receiveOnLine.delete(body.id);
           } else {
             let onLine = this.receiveOnLine.get(body.id) ?? false;
             if (!onLine && icept.lineDist <= 1.2) onLine = true;
@@ -160,10 +215,22 @@ export class Sim {
             const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
             if (!onLine) {
               live = icept.pNear;
-              if (icept.tNear > 0.5) brakeIntoLine = true;
+              // brake in when the meet is still ahead in TIME — or when the
+              // ball is (near-)static: tNear is meaningless for a waiting
+              // ball (first scan sample), and charging a sitting ball at
+              // full speed was the judged 2.75 m overrun-and-return
+              const ballV = Math.hypot(this.ball.vel.x, this.ball.vel.y);
+              if (icept.tNear > 0.5 || ballV < 1.0) brakeIntoLine = true;
             } else if (icept.tMeet <= 1.2) {
-              live = { x: this.ball.pos.x, y: this.ball.pos.y };
-              timedCap = 2.4; // the final stride: step INTO the arriving ball
+              // the final stride: step INTO the arriving ball — aimed at the
+              // CROSSING point nudged up-line (aiming at the ball's current
+              // spot left a noisy pass's lateral gap unclosed: a judged
+              // 3 cm miss at closest approach)
+              const ux = this.ball.pos.x - icept.pNear.x;
+              const uy = this.ball.pos.y - icept.pNear.y;
+              const un = Math.hypot(ux, uy) || 1;
+              live = { x: icept.pNear.x + (ux / un) * 0.5, y: icept.pNear.y + (uy / un) * 0.5 };
+              timedCap = 2.4;
             } else {
               live = icept.pMeet;
               const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
@@ -214,14 +281,31 @@ export class Sim {
         speedCapMps: timedCap,
       });
       if (standing) {
-        // a set receiver watches the ball in
+        // a set receiver watches the ball in — a BRAIN receiver takes it on
+        // the HALF-TURN: body opened between the incoming ball and his
+        // anticipated next play, so the aligned first-time ball needs no
+        // turn (the judged rondo truth: the skill is body shape, not trap)
         const toBall = Math.atan2(this.ball.pos.y - body.pos.y, this.ball.pos.x - body.pos.x);
-        const delta = ((toBall - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        let want = toBall;
+        const open = this.receiveOpenDir.get(body.id);
+        if (open !== undefined) {
+          const half = ((open - toBall + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+          want = toBall + half * 0.5;
+        }
+        const delta = ((want - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
         body.facing += Math.sign(delta) * Math.min(Math.abs(delta), 4.0 * DT);
       }
       if (body.arrived) {
         const next = this.queues.get(body.id)!.shift();
         if (next) this.assign(body, next);
+      }
+      // idle bodies WATCH THE PLAY: a hold with no facing target lazily
+      // tracks the ball (a frozen post-pass facing reads as a mannequin)
+      if (body.command.type === 'hold' && body.command.facing === undefined &&
+        this.ball.carrierId !== body.id && body.speed < 1.0) {
+        const toBall = Math.atan2(this.ball.pos.y - body.pos.y, this.ball.pos.x - body.pos.x);
+        const d = ((toBall - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        body.facing += Math.sign(d) * Math.min(Math.abs(d), 3.0 * DT);
       }
     }
 
@@ -272,6 +356,9 @@ export class Sim {
         const kicker = this.byId.get(k.bodyId)!;
         const reach = Math.hypot(this.ball.pos.x - kicker.pos.x, this.ball.pos.y - kicker.pos.y);
         if (this.ball.carrierId === k.bodyId && reach <= TECH.kickReachM) {
+          // scripted kicks stay facing-blind: the script IS the player's
+          // intent, body shape included — the backheel penalty is for
+          // DECIDED kicks (the chooser knows his own facing)
           const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
           kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick);
         }
@@ -288,6 +375,16 @@ export class Sim {
     this.coupleCarry();
     const ballFrom = { x: this.ball.pos.x, y: this.ball.pos.y };
     stepBall(this.ball);
+    // a ball over any boundary is DEAD where it crossed (restarts are L8's;
+    // until then it must not roll to infinity — the L4 shot exposed this)
+    if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
+      (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length ||
+        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width)) {
+      this.ball.phase = 'dead';
+      this.ball.vel = { x: 0, y: 0 };
+      this.ball.vz = 0;
+      this.ball.z = 0;
+    }
 
     // 5. loose-ball claims (and the chaseBall race resolution) — against the
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
@@ -390,6 +487,22 @@ export class Sim {
       }
     }
     if (this.ball.z > BALL.claimMaxZ || d > BALL.controlRadiusM) return; // chasing his own touch
+    // a decided kick releases ON THIS TOUCH — the ball is at the boot for
+    // one contact and that contact is the pass/shot/clear
+    const pending = this.pendingKicks.get(carrier.id);
+    const pendingAligned = pending !== undefined && (() => {
+      const d = Math.atan2(pending.dest.y - carrier.pos.y, pending.dest.x - carrier.pos.x);
+      return Math.abs(((d - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI) <= Math.PI / 3;
+    })();
+    if (pending && pendingAligned) {
+      const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
+      kickBall(this.ball, noisy.target, noisy.speedMps, 0, carrier.id, this.tick);
+      if (pending.receiverId) this.intendedReceiverId = pending.receiverId;
+      this.pendingKicks.delete(carrier.id);
+      this.intents.delete(carrier.id);
+      this.assign(carrier, { type: 'hold' });
+      return;
+    }
     // a GATHERING carrier (chaseBall) traps the ball dead instead of touching
     // it on — without this the coupling is a donkey-and-carrot: every close
     // knocks the ball ahead again and the chase never ends
@@ -512,7 +625,7 @@ export class Sim {
   }
 
   private resolveClaims(from: Vec2): void {
-    if (this.ball.z > BALL.claimMaxZ) return;
+    if (this.ball.z > BALL.claimMaxZ || this.ball.phase === 'dead') return;
     // closest approach of a body to the ball's swept path — in the BODY'S
     // frame: subtract his own displacement so two fast movers crossing
     // cannot tunnel through each other's reach between samples
@@ -610,13 +723,40 @@ export class Sim {
     const rb = best.body;
     if (rb.speed > BALL.standingSpeedMps + 0.4) {
       const dest = currentTarget(rb);
+      const travel = dest
+        ? Math.atan2(dest.y - rb.pos.y, dest.x - rb.pos.x)
+        : Math.atan2(rb.vel.y, rb.vel.x);
+      // a racing claim can resolve with the ball BEHIND the runner (his
+      // sweep carried him past it) — an in-stride touch must OVERTAKE him,
+      // not trail him like a shadow he can never reach: aim at a lead point
+      // ahead of the RUNNER and weight the push to get there
+      // control TO THE BOOT, ahead: the contact point can be at the heels
+      // or beside mid-stride — the touch always originates just in front
+      // (a trailing or lateral origin reads as "controlled behind him")
+      this.ball.pos = {
+        x: rb.pos.x + Math.cos(travel) * 0.35,
+        y: rb.pos.y + Math.sin(travel) * 0.35,
+      };
       const dir = dest
         ? Math.atan2(dest.y - this.ball.pos.y, dest.x - this.ball.pos.x)
         : Math.atan2(rb.vel.y, rb.vel.x);
-      let push = rb.speed * (
-        TECH.directionalTouchBase +
-        TECH.directionalTouchControlGain * (1 - rb.attributes.firstTouch / 20)
-      );
+      // weight rides the gait: a RUNNER'S continuation touch is a CARRY
+      // touch (a proper stride ahead — the cushion weight died at his feet
+      // and checked the run); a stepping receiver still cushions
+      let push: number;
+      if (rb.speed > 3.5) {
+        const vmax = topSpeedMps(rb.attributes.pace);
+        push = rb.speed * (
+          BALL.touchPushBase +
+          BALL.touchPushSpeedGain * (rb.speed / vmax) +
+          BALL.touchPushControlGain * (1 - rb.attributes.dribbling / 20)
+        );
+      } else {
+        push = rb.speed * (
+          TECH.directionalTouchBase +
+          TECH.directionalTouchControlGain * (1 - rb.attributes.firstTouch / 20)
+        );
+      }
       const cap = this.dribbleArriveCap(rb);
       if (cap !== undefined) push = Math.min(push, cap);
       this.ball.vel = { x: Math.cos(dir) * push, y: Math.sin(dir) * push };
@@ -627,6 +767,131 @@ export class Sim {
 
   /** every chaseBall command completes — the race is over (the winner now
    * carries; losers pull their next command) */
+  /** L4 — the carrier's continuous evaluation (decide.ts is pure; this is
+   * the harness: cadence, execution, and the receive reflex). Bodies without
+   * a brain never enter here — scripts own them entirely. */
+  private decidePhase(): void {
+    if (this.brains.size === 0) return;
+    this.actionLabels.clear();
+    // the receive reflex ends when ANYONE ends up with the ball
+    if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
+    for (const id of this.brains) {
+      const body = this.byId.get(id)!;
+      if (this.ball.carrierId !== id) {
+        this.intents.delete(id);
+        if (this.intendedReceiverId === id) {
+          // go meet your pass (chase semantics take it from here: contested
+          // flights are raced, quiet ones are received)
+          if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
+          this.actionLabels.set(id, 'receive');
+          // scan the field DURING the flight: where does the next ball go?
+          // (decide() ignores ball state, so the receiver can evaluate as
+          // if he already had it at his feet)
+          if (this.tick % DECIDE.reconsiderTicks === 0) {
+            const ahead = decide({
+              carrier: body,
+              bodies: this.bodies,
+              ball: this.ball,
+              instructions: this.instructions.get(id) ?? {},
+              current: null,
+              homes: this.homes,
+            });
+            const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear'
+              ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
+              : ahead.kind === 'carry'
+                ? Math.atan2(ahead.target.y - body.pos.y, ahead.target.x - body.pos.x)
+                : undefined;
+            if (aim !== undefined) this.receiveOpenDir.set(id, aim);
+          }
+        } else {
+          this.receiveOpenDir.delete(id);
+          // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
+          // collected by the nearest idle brain — deflected passes died
+          // untouched with players standing over them (the audit)
+          if (body.command.type === 'hold' && this.ball.carrierId === null &&
+            this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
+            Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
+            const d = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+            if (d < 8) {
+              const nearestBrain = [...this.brains].reduce((best, bid) => {
+                const b = this.byId.get(bid)!;
+                const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+                return bd < best.d ? { id: bid, d: bd } : best;
+              }, { id: '', d: Infinity });
+              if (nearestBrain.id === id) {
+                this.assign(body, { type: 'chaseBall', regime: 'run' });
+                this.actionLabels.set(id, 'collect');
+              }
+            }
+          }
+        }
+        continue;
+      }
+      this.receiveOpenDir.delete(id);
+      let intent = this.intents.get(id) ?? null;
+      if (!intent || this.tick % DECIDE.reconsiderTicks === 0) {
+        intent = decide({
+          carrier: body,
+          bodies: this.bodies,
+          ball: this.ball,
+          instructions: this.instructions.get(id) ?? {},
+          current: intent,
+          homes: this.homes,
+        });
+        this.intents.set(id, intent);
+      }
+      switch (intent.kind) {
+        case 'carry':
+          this.pendingKicks.delete(id);
+          if (this.tick % DECIDE.reconsiderTicks === 0 || body.command.type !== 'moveTo') {
+            this.assign(body, { type: 'moveTo', target: intent.target, regime: intent.regime });
+          }
+          this.actionLabels.set(id, 'carry');
+          break;
+        case 'shield':
+          this.pendingKicks.delete(id);
+          if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+          this.actionLabels.set(id, 'shield');
+          break;
+        case 'pass':
+        case 'shoot':
+        case 'clear': {
+          this.actionLabels.set(id, intent.kind === 'pass' ? `pass→${intent.receiverId}` : intent.kind);
+          const reach = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+          const strikeDir = Math.atan2(intent.dest.y - body.pos.y, intent.dest.x - body.pos.x);
+          const strikeMis = Math.abs(((strikeDir - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          if (reach <= TECH.kickReachM && strikeMis > Math.PI / 3) {
+            // TURN, then strike — a misaligned kick is a backheel; the real
+            // action is rotate-and-play, and the turn's delay is its honest
+            // cost (defenders keep closing while the body comes around)
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+            body.command = { type: 'hold', facing: strikeDir };
+          } else if (reach <= TECH.kickReachM) {
+            // the strike itself is L3's: noisy by the kicker's feet
+            const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
+            kickBall(this.ball, noisy.target, noisy.speedMps, 0, id, this.tick);
+            if (intent.kind === 'pass') this.intendedReceiverId = intent.receiverId;
+            this.intents.delete(id);
+            this.pendingKicks.delete(id);
+            this.assign(body, { type: 'hold' });
+          } else {
+            // mid-touch: release ON THE NEXT TOUCH (coupleCarry fires it) —
+            // and close the gap meanwhile
+            this.pendingKicks.set(id, {
+              dest: intent.dest,
+              speedMps: intent.speedMps,
+              ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
+            });
+            if (body.command.type !== 'chaseBall') {
+              this.assign(body, { type: 'chaseBall', regime: 'run' });
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+
   private completeChases(winningTeam: 'home' | 'away'): void {
     for (const b of this.bodies) {
       if (b.command.type === 'chaseBall' && b.team === winningTeam) {
@@ -658,6 +923,31 @@ export class Sim {
    *     produces a parallel converging drift that reads as running away);
    *  2. ON the line → the earliest meeting point, approached at the speed
    *     that arrives WITH the ball. */
+  /** the in-stride meet: where the ball's predicted path comes onto the
+   * body's CONTINUED run (current velocity held) — or null if running
+   * through does not meet the ball and the receive must be timed */
+  private inStrideMeet(body: BodyState): Vec2 | null {
+    if (body.speed < 3.5) return null;
+    // a PASS in flight only — a slow or sitting ball must be braked into
+    // (the collect), not charged at full stride (the original overrun bug)
+    if (Math.hypot(this.ball.vel.x, this.ball.vel.y) < 4) return null;
+    const ux = body.vel.x / body.speed;
+    const uy = body.vel.y / body.speed;
+    let bestGap = Infinity;
+    let bestT = 0;
+    for (let t = 0.2; t <= 3.0; t += 0.2) {
+      const bp = predictBall(this.ball, t);
+      const g = Math.hypot(bp.x - (body.pos.x + ux * body.speed * t), bp.y - (body.pos.y + uy * body.speed * t));
+      if (g < bestGap) {
+        bestGap = g;
+        bestT = t;
+      }
+    }
+    if (bestGap > 1.0) return null;
+    const bp = predictBall(this.ball, bestT);
+    return { x: bp.x, y: bp.y };
+  }
+
   private interceptPoint(body: BodyState): {
     pNear: Vec2; tNear: number; lineDist: number; pMeet: Vec2; tMeet: number;
   } {
@@ -707,6 +997,8 @@ export class Sim {
         fb.tx = target.x;
         fb.ty = target.y;
       }
+      const action = this.actionLabels.get(b.id);
+      if (action) fb.action = action;
       return fb;
     });
     return {

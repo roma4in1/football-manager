@@ -3,6 +3,314 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 ACCEPTED + BAR 2 (TECHNICAL) CLAIMED
+
+L4 (on-ball decisions) passes the builder's acceptance after 7 judgment
+rounds + the systems audit. The final gate question — the counter striker
+angling around the box edge instead of driving the center — verified as
+CORRECT: d2's recovery station owns the central channel; the striker
+rounds him and cuts in late (real striker line vs a covering defender).
+The center-beating tools he lacks are recorded later-layer content
+(feints; teammate runs to drag the cover).
+
+**Bar 2 — Technical (spec §9) CLAIMED**: individual actions read as
+football skills. Evidence: the L3 technique matrix (first touch by
+pace/height/pressure/gait, tackles, shielding, knock-past) and the L4
+choice layer (EV carry/pass/shoot with real lane geometry, the risk dial's
+two poles, turn-then-strike, half-turn receives, in-stride through balls),
+all under scenario assertions (53/53) and seven rounds of the builder's
+eye. Bars 3+ await L5.
+
+Next: L5a (support & structure) — first L5 sub-phase, one per PR.
+
+## 2026-07-21 — L4 systems audit: gap sweep (builder ask — "what else is missing?")
+
+An automated anomaly sweep (run-check speed dips under flighted balls, dead
+balls nobody reacts to, stuck carriers, per scenario × seeds) plus a
+code-path review of the interaction seams. Found-and-fixed now:
+
+- **Lane-chaser stutter**: the race-mode set-at-the-line brake fired on
+  MARGINAL meets too — chasers half-stopped at points the ball crossed
+  0.3 s later anyway. Braking now requires being comfortably early
+  (arrive ≥0.35 s before the ball); marginal meets run through flat out.
+- **Stray balls died untouched**: only the intended receiver ever reacted
+  to a pass — a deflected ball dying in no-man's land was ignored by
+  players standing over it. The nearest idle brain now collects a loose,
+  dying, unclaimed ball within 8 m (labeled 'collect'). Deliberately NOT
+  pressing: opponent-carried balls stay unreacted (L5d's).
+- **Tried and reverted**: in-stride receives under CONTEST — aiming at the
+  current-pace meet concedes the earlier intercept to a sprinting chaser
+  (striker rates fell 14→10/16). Race mode keeps flat-out pMeet; the
+  contested run-through needs opponent-aware meet selection — recorded as
+  a refinement, likely alongside L5b.
+
+Recorded gaps by owning layer (not built, deliberate):
+- **L4-extension**: lofted balls (kicks support loftDeg; decisions never
+  chip — blocked lanes and keepers will demand it), true first-time flicks
+  and dummies (current one-touch is claim → fire ≈0.1–0.2 s — close),
+  contested in-stride (above).
+- **L5a**: post-pass movement (passers are statues), support angles.
+  **L5b**: run triggers, the delayed release (forward note exists).
+  **L5c/L5d**: shape; pressing/reacting to opponent-carried balls (the
+  rondo ends when a chaser wins it; scripted winners stand unpressured).
+  **L5e**: jockeying/backpedal, shoulder contests (tow-lock note exists),
+  the head-on guardrail. **L7** keeper; **L8** restarts (ball goes dead at
+  the boundary); **L9** fouls.
+- **Physics notes**: the ball can pass through a claim-LOCKED body's feet
+  (a just-fumbled player's body doesn't block — minor); no aerial play
+  (jump/header) anywhere yet; facing during in-stride receives never
+  glances at the incoming ball (cosmetic at 2D scale).
+
+Sweep findings that are CORRECT behavior (leave): chasers setting on lanes
+they comfortably reach (intercept posture); a station receiver braking to
+receive; scripted drill bodies standing at drill end. 53/53.
+
+## 2026-07-21 — L4 judgment round 7: the touch goes in FRONT; idle bodies watch the play
+
+Two judged defects and the knock-ons of fixing them:
+
+- **The continuation touch** (sim.ts): the directional first touch controlled
+  the ball to the boot but weighted it as a CUSHION (speed×1.07) — at
+  running pace the ball died at the receiver's feet, read as "controlled
+  behind him." A runner's (>3.5 m/s) first touch is now weighted like a
+  carry touch (a proper stride ahead) and the contact always snaps just in
+  FRONT of the boot (lateral contacts read as behind too). Post: the
+  counter-high runner's ball rides 0.4→1.5 m ahead through the claim.
+- **Idle ball-watching** (sim.ts): a hold body with no facing target froze
+  wherever it last pointed (the judged mannequin body shapes) — idle
+  non-carriers now lazily track the ball (3 rad/s).
+- **Racers set at the line** (sim.ts): an early racer to a LOOSE ball blew
+  through the meet point with momentum (the ball rolled past behind his
+  overshoot — loose-ball-race caught it). Race mode now brakes into the
+  meet when early. Gated to loose balls only: braking chasers of a CARRIED
+  ball accidentally invented proto-jockeying (set-defender pinch, front
+  duel collapsed 0/16 — the L5e boundary defended by a test).
+- **Separation capacity** (technique.ts, 2.5 → 3.5 m/s): a beaten man
+  lunging back at 2.6 m/s squeezed a one-tick 0.45 m overlap past the old
+  clamp. 53/53; dial 16/16 both poles; rondo texture unchanged.
+
+## 2026-07-21 — L4 judgment round 6: clean pace is automatic; pressure is a skill
+
+The judged rondo mistouches measured at ~1-in-9 receives — and the probe
+showed every one was a CLEAN-pace pop (nearest chaser 4–8 m away), not a
+pressured touch. Two model corrections:
+
+- **Pace onset to genuinely driven** (touchEasySpeedMps 6.5 → 8.0): a
+  10.5 m/s ground ball to good feet is near-automatic (fumbles now ~5%,
+  none below 9 m/s; one-touch releases 37/41 within 0.3 s).
+- **Pressure vulnerability skill-scaled** (touchPopPressure 0.52 ×
+  (1 − 0.65·ft/20)): a closing body barely troubles silk feet and ruins
+  heavy ones — one flat pressure constant could not serve both the pinned
+  heavy-spill floor and elite composure. Heavy-pressed spill holds ≥0.33;
+  silk pressured lands ~15% (a real body still disrupts).
+
+Keyed-draw note again: two rounds of small nudges flipped zero seeds —
+the fixed per-(tick,id) uniforms quantize rate tuning. 53/53; dial intact.
+
+## 2026-07-21 — L4 judgment round 5: the run is not checked
+
+The judged defect (sharpest on the counter-high long ball): receivers
+slowed to ANTICIPATE at the meet point — the receive machine's timed
+approach is right for a station receiver and wrong for a runner — so the
+firm through ball rolled on behind the checked run.
+
+- **In-stride receives** (sim.ts): a runner (>3.5 m/s) whose CONTINUED run
+  at current pace comes within 1 m of a flighted pass's predicted path
+  takes the ball at that meet, flat out — no timed cap, no brake-into-line.
+  Self-selecting by geometry: if running through does not meet the ball
+  (true crossing receives, early arrivals), the timed machine handles it as
+  before. Flight-only (>4 m/s ball): a sitting or dying ball must still be
+  braked into — the first cut hijacked static collects and resurrected the
+  charge-and-overrun bug (three tests caught it immediately).
+- Post: the counter-high runner holds 4.1→6.2 m/s through the whole flight
+  and takes the ball moving at his feet. 53/53; dial 16/16 both poles;
+  rondo unchanged (10.6 m/s, half-turn one-touch).
+
+## 2026-07-21 — L4 judgment round 4: pace is routine, body shape is the skill
+
+The judged rondo truth: pros don't struggle with a 10 m/s ball over 12 m —
+the difficulty is ANGLING THE BODY for the first-time next ball.
+
+- **Pop difficulty onset moved to driven pace** (technique.ts,
+  touchEasySpeedMps 4 → 6.5): control difficulty now starts where real
+  difficulty starts; bounces, gait, and pressure still bite from zero.
+  Pressure raised to compensate (0.22 → 0.34 — the equalizer; the pinned
+  heavy-pressed spill floor holds). Note: keyed pop draws are fixed per
+  seed, so small probability nudges can flip ZERO seeds — tune in steps
+  big enough to cross draws.
+- **The half-turn receive** (sim.ts): the intended receiver scans DURING
+  the flight (decide() ignores ball state, so he evaluates as if the ball
+  were already at his feet, at the reconsider cadence) and opens his body
+  halfway between the incoming ball and his anticipated next play. Aligned
+  first-time balls now fire without the turn delay (wb-1: claim t=12 →
+  release t=13); a next ball against the body shape still pays the
+  turn-then-strike cost. This is the coached "receive on the half-turn,"
+  and it is the mechanism the judgment asked for: distance-trap difficulty
+  out, body-shape difficulty in. 53/53; dial intact 16/16 both poles.
+
+## 2026-07-21 — L4 judgment round 3: zip the passes, trust the feet
+
+The judged sluggishness ("passes not fast enough, or the touches are
+lacking") measured true: rondo passes averaged 9.0 m/s at launch — the
+hot-arrival tax was receiver-blind, so the EV floated every ball soft.
+
+- **Receiver-aware weight** (decide.ts): the comfortable arrival pace rides
+  the RECEIVER'S firstTouch (≈ 5.5 + 0.35·ft m/s) — silk feet get the ball
+  zipped (rondo now ~10.5 m/s and quicker circulation), heavy feet get it
+  soft. The attribute now shapes how teammates PLAY TO you, not only how
+  you control.
+- **Deeper skill relief** (technique.ts): touchSkillRelief 0.75 → 0.85 —
+  silk feet fumbled ~16% of firm balls (judged "touches lacking"); elite
+  touches now kill pace reliably (~11% at 10.5 closing for ft 15) while
+  heavy feet barely change (the pinned heavy-pressed spill floor holds).
+- **Cautious floor re-seated** (passFloorBase 0.72 → 0.78): untaxing firm
+  balls to good receivers pushed the through ball's pC over the LOW-risk
+  floor and flipped the dial — a safety-first player does not hit a
+  2-in-3 ball. Dial re-verified 16/16 both poles. 53/53.
+
+## 2026-07-21 — Forward note: delayed releases and defender-baiting (builder ask)
+
+Asked during L4 judgment: can tactics later DELAY a pass to time a run, or
+attract defenders to open space in behind? Yes — recorded so those layers
+inherit the intent:
+
+- **Delayed release (L4-extension, gated on L5b)**: a `delay` intent — the
+  carrier holds a beat when the through ball's EV is RISING (runner
+  clearing the line). Same machinery as the lane model, projected onto the
+  teammate; needs L5b's real run triggers to have something to wait for.
+  Offside-timed delays additionally need the L5c/L9 continuous line.
+- **Baiting (gated on L5c/L5d)**: carrying at a defender to trigger his
+  commit, then releasing into the vacated space — needs REACTIVE defenders
+  (shape + press triggers) and then a shallow one-ply opponent-response
+  term in the carry/pass EV. The lane model already exploits committed
+  defenders (projection opens the space behind them); baiting is choosing
+  to CAUSE the commit.
+- **Surface at L6**: "patient buildup" / "draw the press" / "tempo" become
+  instruction parameters shaping these EV terms — the risk dial is the
+  prototype of that surface.
+
+## 2026-07-21 — L4 judgment round 2: turn-then-strike, wider caution, line-breakers
+
+Three judged asks, three mechanisms:
+
+- **Turn, then play** (sim.ts): a decided kick more than 60° off facing no
+  longer fires as a degraded backheel — the body TURNS first (hold-with-
+  facing, L1's rotation rate) and strikes clean when aligned. The turn's
+  delay is its honest cost: defenders keep closing, and the re-decide can
+  abort the pass the turn made stale. The backheel execution penalty stays
+  for whatever still fires misaligned.
+- **The cautious release** (decide.ts): the carry-pressure horizon is now
+  risk-scaled (7 m + 6·(1−risk)) — a safety-first carrier's danger radius
+  is wider, so he releases to the open man BEFORE engaging the 1v1 (wb-1:
+  safe ball at t=27, up from t=45; the judged ask). Same round also made
+  commitment inertia RELATIVE (8% of current utility, floor 0.004) — an
+  absolute switch cost was mis-sized at every utility scale and had blocked
+  three separate judged behaviors by a hair each.
+- **Line-breaking through balls** (decide.ts): a pass to a RUNNER (>2.5
+  m/s) evaluates a third candidate — the firm ball aimed 0.7 s BEYOND the
+  meet point, into the space he is running into — so the deep man takes it
+  in stride instead of checking back to his own feet (wb-1 high: received
+  at speed mid-run, carried 25 m). Soft-to-feet and firm-to-feet remain the
+  other two weights; EV picks.
+- **The xG-gradient carry** (decide.ts, surfaced by the striker rates):
+  within ~34 m of goal, carry directions add 0.8·xG(sample) — pure
+  positional value let a chased striker drift to the corner flag where the
+  angle dies (3/16 no-shot seeds, now 2/16, both honest chaser wins).
+
+53/53. Perf unchanged (~14 µs/tick).
+
+## 2026-07-21 — L4 judgment round 1: the backheel, the corner-dodge, and the dial's true poles
+
+Four judged defects, four mechanisms:
+
+- **The backheel** (technique.ts): kicks off facing degrade — noise
+  ×(1+1.6·(misalign/π)²), power fades beyond 90° (×0.55 at a blind 180°);
+  the pass EV discounts completion to match. DECIDED kicks only — scripted
+  kicks stay facing-blind (the script is the player's intent, body shape
+  included; the first cut penalized drill feeders parked facing "wrong" and
+  killed three L1–L3 scenarios).
+- **The corner-dodge** (decide.ts): carrying near defenders now carries a
+  risk-scaled TURNOVER term — dodging was free, so the mid dribbled to the
+  corner flag instead of ever releasing. With d1 parked ON the carry line
+  (drill), the mid now faces a real man and a real choice.
+- **The dial's true poles** (judged semantics): risk-low plays the SAFE
+  OUTLET (16/16 first passes to the settled right man), risk-high hits the
+  THROUGH BALL (16/16 to the deep runner). What it took: the through lane
+  must be clear at the release moment (d1 off the lane), the outlet must be
+  SETTLED (a second runner's lead point out-valued the through ball), a
+  deeper floor for speculative feet, inertia rescaled (a 0.0007 gap blocked
+  the safe release forever), and Δpv payoff weighting (a 55% through ball
+  honestly loses to a 95% square ball on raw EV — preferring it anyway IS
+  the instruction).
+- **Pass weight is a tradeoff, not a formula** (decide.ts): each pass now
+  evaluates TWO weights — soft (dies at the receiver's stride) vs firm
+  (beats interceptors, arrives hot, taxed for it) — and keeps the better.
+  The old linear weight hit every ball to arrive at pace and roll 60 m when
+  a receive missed (the judged corner-flag sail).
+
+Supporting fixes surfaced by the probes: lane threat = min(current,
+projected) defender position (projection alone rated a mid-turn chaser off
+the lane he then cut — the rondo's death); the receive final stride aims at
+the CROSSING point nudged up-line (a noisy pass's lateral gap went unclosed
+— a judged 3 cm miss); receiver-beaten tail threats soften rather than
+vanish (a marker standing on the receiver still taxes the ball). 53/53;
+dial asserted by first-pass TARGET now.
+
+## 2026-07-20 — L4 OPENED: on-ball decisions (continuous EV) — first cut for judgment
+
+Branch feat/engine2-l4 (stacked on l3). The carrier evaluates carry / pass /
+shoot / shield / clear by EV against the actual world (decide.ts, pure +
+deterministic; execution noise stays in L3's noisyKick — the §3 contract).
+Value scale: 1.0 ≡ goal; PV ∈ [0,0.35]; non-shot actions ×0.55 possession
+discount — striker-shoots-by-construction falls out of the scale, no role
+flag (breakaway: 15/16 shoot, the 16th is the chaser honestly winning).
+Brains are per-body opt-in (`brain: 'onBall'`); scripted bodies untouched.
+Instructions: risk (turnover penalty + completion floor + progressive-payoff
+weight) and objective ('score' | 'keep').
+
+Mechanisms that earned their place through probes:
+
+- **Pass lanes, accel-honest + projected**: intercept threat = defender's
+  real accel ramp then cruise, at his projected position when the ball
+  passes. The flat d/vmax model doubled the threat and killed every lane.
+- **Next-touch release**: a decided kick fires the moment the ball is at the
+  boot (coupleCarry), not after a gather-trap — the 1.1s trap latency closed
+  every lane the decision had correctly picked.
+- **Carry commands run THROUGH the valued point** (16m command for a 6m
+  valuation) — a command AT the lookahead kept the carrier in permanent
+  arrive-braking (the knock-past lesson, third appearance).
+- **In-stride claims hook the ball to the boot**: a racing claim can resolve
+  with the ball behind the runner; any push from there trails him forever.
+- **Race final stride**: a contested chaser with the ball on top of him
+  steps AT it — the 0.3s reaction margin made imminent meets "unreachable"
+  (pMeet jumped deep and he carved off the line as the ball arrived).
+- **Static balls are braked into** (receive machine off-line branch): tNear
+  is meaningless for a waiting ball; charging it at 5.8 m/s overran by 2.7m.
+- **Pass friction (0.85)**: a pass is not a lossless value teleport, or the
+  square ball forever edges out carrying forward.
+- **keepValue with a station tether**: without the anchor the optimal rondo
+  is to flee the square (judged corner sprint); without 'keep' at all, the
+  rondo players rationally attack the goal.
+- **Point-blank xG crush**: a boot on the shot line within 2m blocks the
+  shot outright — else the EV shoots into the man on its toes forever.
+- **Dead ball at the boundary**: shots rolled to x=226 (restarts are L8's;
+  until then the ball dies where it crosses).
+
+The risk dial expresses as TEMPO, not target choice: low = keep it on the
+boot (0/16 early release), high = hit the early forward ball (16/16). The
+deep in-behind ball needs RUN ANTICIPATION (knowing the lane opens as the
+run develops) — that is L5b's run-trigger context, recorded as the layer
+boundary, not forced with more knobs. Scenarios: rondo-4v2 (keep objective,
+one-touch circulation, ~7 passes before the chasers win it), counter-3v2 +
+risk-low/-high pair, striker-breakaway. Action labels ride FrameBody.action
+into the workbench label overlay (live source only — the stored stream stays
+kinematic, matching tx/ty). 53/53 tests; ~14µs/tick with decisions on.
+
+Accepted residuals for later passes: decision-quality attributes (vision /
+decisions / composure / anticipation) don't yet modulate the EV (perception
+is perfect per spec §3 v2.0); off-ball brains don't press after turnovers
+(L5d); the sliding tackle remains the parked L3-extension.
+
 ## 2026-07-20 — L3 ACCEPTED (builder's judgment) + the L5e head-on guardrail
 
 L3 (individual technique) passes acceptance after 12 judgment rounds; the

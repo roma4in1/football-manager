@@ -33,10 +33,16 @@ arrival tolerance 0.35 m, turn time budget 0.55 s.
 
 | attribute | channel | formula / effect |
 | --- | --- | --- |
-| firstTouch | trap quality | pop probability = (0.02 + 0.055·(closingSpeed−4) + 0.25·height + 0.025·receiverSpeed + 0.22·pressured) × (1 − 0.75·firstTouch/20). CLOSING speed = ball relative to receiver (in-stride cushions are easy, charges are hard); the receiver's own gait adds difficulty (walk +0.04, sprint +0.20). A MOVING receiver's successful touch is DIRECTIONAL — redirected into his route at ~his speed × (1.02 + 0.2·(1−firstTouch/20)); standing receivers kill it dead. Heavy feet under pressure spill (~2–4.5 m/s squirt, fumbler claim-locked 0.8s). |
+| firstTouch | trap quality | pop probability = (0.02 + 0.055·(closingSpeed−8) + 0.25·height + 0.025·receiverSpeed + 0.22·pressured) × (1 − 0.85·firstTouch/20); pressure adds 0.52·(1 − 0.65·firstTouch/20) — pressure vulnerability is itself a skill: a closing body barely troubles silk feet and ruins heavy ones. CLOSING speed = ball relative to receiver (in-stride cushions are easy, charges are hard); the receiver's own gait adds difficulty (walk +0.04, sprint +0.20). A MOVING receiver's successful touch is DIRECTIONAL — controlled to the boot AHEAD and redirected into his route; a RUNNER'S (>3.5 m/s) continuation touch is weighted like a carry touch (a proper stride ahead — cushion weight died at his feet and checked the run); a stepping receiver cushions at ~speed × 1.07; standing receivers kill it dead. Heavy feet under pressure spill (~2–4.5 m/s squirt, fumbler claim-locked 0.8s). |
 | passing | kick fidelity | direction σ = 0.13·(0.15 + 0.85·slack) rad, power σ = 0.12·(0.2 + 0.8·slack); elite ≈ 1m lateral at 40m, poor ≈ 4m. Kicks are reach-gated (≤1.1m). |
 | tackling + strength | winning glued-ball contests | winP = clamp(0.42 + 0.055·edge), edge = (tackling+0.5·strength) − (dribbling+0.5·balance); ÷(1 + 0.2·carrierSpeed) — lunging at a sprinter is much harder. Win knocks the ball loose; loser claim-locked. Lunges cooldown 1.2s. |
 | strength + balance | shield width | shield radius 0.3 + 0.25·composite/40 (0.3–0.55m): the carrier's body blocks the stealer→ball line. Far-foot dribbling: touches bias away from a marker inside 2.4m. |
+
+IN-STRIDE RECEIVES: a RUNNER (>3.5 m/s) whose continued run meets a
+flighted pass (>4 m/s) takes it at full pace — no timed brake (checking the
+run left through balls rolling on behind the receiver). Static and dying
+balls are still braked into; crossing receives that need timing still get
+the receive machine (self-selecting by geometry).
 
 RECEIVE REACH: a ball is claimable within 0.9 m of the body and below knee
 height (0.5 m), tested against the ball's swept path IN THE RECEIVER'S FRAME
@@ -45,6 +51,20 @@ each other's reach). Bodies are SOLID (radius 0.35m): soft pairwise
 separation at ≤2.5 m/s with inelastic closing-velocity resolution. Carriers ride their dying touch
 (speed caps to the dribble-to-arrive profile) — a probe showed sprinters
 overrunning their own slowing ball into a trailing defender's lap.
+
+## L4 — on-ball decisions (current)
+
+The decision layer consumes attributes rather than adding movement effects:
+the situation and INSTRUCTIONS bias the choice; attributes govern execution
+(the §3 contract). Choices are pure EV over posValue/xG/lane models.
+
+| input | affects | mechanism |
+|---|---|---|
+| passing + receiver's firstTouch | pass/shot/clear execution + WEIGHT choice | every decided kick goes through L3's noisyKick. Pass weight is receiver-aware: the hot-arrival tax relaxes with the receiver's firstTouch (comfortable ≈ 5.5 + 0.35·ft m/s), so good feet get zipped balls and heavy feet get them soft. BACKHEEL penalty (decided kicks only): strikes off facing multiply noise ×(1+1.6·(misalign/π)²) and lose power beyond 90° (×0.55 at 180°); the EV discounts completion to match. Scripted kicks stay facing-blind (the script IS the intent). |
+| pace + acceleration (opponents') | lane risk | passCompletion runs an accel-honest intercept model (ramp sqrt(2d/a), then cruise) against every defender, projected along his velocity to ball-arrival time |
+| pace (own) | carry urgency | heel pressure within 4m switches the carry regime to sprint |
+| instructions.risk | choice distribution | scales the turnover penalty (passes AND carries near defenders), the completion floor a pass must clear, the payoff weight of progressive balls, AND the carry-pressure horizon (a cautious player's danger radius is wider — he releases before engaging the 1v1) — judged semantics: low plays the safe outlet early, high hits the through ball |
+| instructions.objective | the value field | 'score' = posValue (goal-seeking); 'keep' = keepValue (space minus station-tether) — the rondo's truth |
 
 ## Decided for later layers
 

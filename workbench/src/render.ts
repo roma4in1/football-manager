@@ -171,7 +171,9 @@ export function draw(canvas: HTMLCanvasElement, view: ViewState): void {
       ctx.font = `600 ${Math.max(9, r * 0.9)}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillStyle = COLORS.label;
-      ctx.fillText(`${b.id} · ${b.regime}`, X(b.bx), Y(b.by) + r + Math.max(10, r));
+      // the action label (spec §4): what the body has DECIDED, not only how
+      // it moves — the L4 judging surface
+      ctx.fillText(`${b.id} · ${b.regime}${b.action ? ` · ${b.action}` : ''}`, X(b.bx), Y(b.by) + r + Math.max(10, r));
     }
   }
 

@@ -17,17 +17,21 @@ export const TECH = {
   touchPopBase: 0.02,
   /** + per m/s of ball speed above the easy band */
   touchPopPerMps: 0.055,
-  touchEasySpeedMps: 4,
+  touchEasySpeedMps: 8.0, // difficulty starts at genuinely DRIVEN pace — a clean 10.5 m/s ground ball popped ~1-in-11 off ft15 receivers (judged twice); bounces and pressure still bite from zero
   /** a dropping/bouncing ball (height at contact) is harder */
   touchPopPerMeterZ: 0.25,
   /** an opponent within pressure range raises the difficulty */
   touchPressureRangeM: 2.5,
-  touchPopPressure: 0.22,
+  touchPopPressure: 0.52,
+  /** pressure vulnerability is itself a SKILL: a closing body barely
+   * troubles silk feet and ruins heavy ones (the judged rondo fumbles —
+   * one receive in five popped with ft15 receivers, all under pressure) */
+  pressureSkillRelief: 0.65,
   /** controlling at speed is harder than standing — per m/s of the
    * RECEIVER'S own speed (walking ~+0.03, running ~+0.13, sprint ~+0.19) */
   touchPopPerReceiverMps: 0.025,
   /** skill relief: firstTouch 20 removes this much of the difficulty */
-  touchSkillRelief: 0.75,
+  touchSkillRelief: 0.85, // deepened (judged: silk feet fumbled ~16% at pace — elite touches kill firm balls)
   /** a popped ball squirts this far, scattered around the arrival direction */
   popSpeedMinMps: 2.2,
   popSpeedMaxMps: 4.5,
@@ -49,6 +53,11 @@ export const TECH = {
   kickVelSkillFloor: 0.2,
   /** a kick needs the ball at the boot — reach-gated (the audit item) */
   kickReachM: 1.1,
+  /** kicking AGAINST your facing: fine to ~90° (side-foot), degrading into
+   * the blind backheel at 180° — noise multiplies, power drains (the rondo
+   * judgment: a 180° pass is a backheel, not a free clean strike) */
+  backheelNoiseGain: 1.6, // σ × (1 + gain·(misalign/π)²) → ~2.6× at 180°
+  backheelPowerLossMax: 0.45, // power × (1 − max·(misalign−90°)/90°) beyond 90°
 
   // ── tackles: physical contests for a GLUED ball ──────────────────────────
   /** the tackler must reach the ball (not just the man) */
@@ -73,7 +82,7 @@ export const TECH = {
   // ── bodies are solid (the audit item): soft pairwise separation ──────────
   bodyRadiusM: 0.35,
   /** overlap resolves at a bounded speed — solid but soft, never a snap */
-  separationSpeedMps: 2.5,
+  separationSpeedMps: 3.5, // raised: a beaten man lunging back at 2.6 m/s squeezed a one-tick 0.45m overlap
 } as const;
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
@@ -92,7 +101,7 @@ export function touchPopProbability(
     TECH.touchPopPerMps * Math.max(0, closingSpeed - TECH.touchEasySpeedMps) +
     TECH.touchPopPerMeterZ * ballZ +
     TECH.touchPopPerReceiverMps * receiverSpeed +
-    (pressured ? TECH.touchPopPressure : 0);
+    (pressured ? TECH.touchPopPressure * (1 - TECH.pressureSkillRelief * (receiver.firstTouch / 20)) : 0);
   const relief = 1 - TECH.touchSkillRelief * (receiver.firstTouch / 20);
   return clamp01(difficulty * relief);
 }
@@ -129,14 +138,23 @@ export function noisyKick(
   target: Vec2,
   from: Vec2,
   speedMps: number,
+  kickerFacing?: number,
 ): { target: Vec2; speedMps: number } {
   const slack = 1 - kicker.passing / 20;
-  const dirSigma = TECH.kickDirSigmaRad * (TECH.kickDirSkillFloor + (1 - TECH.kickDirSkillFloor) * slack);
-  const velSigma = TECH.kickVelSigma * (TECH.kickVelSkillFloor + (1 - TECH.kickVelSkillFloor) * slack);
   const base = Math.atan2(target.y - from.y, target.x - from.x);
+  // the backheel penalty: strike direction vs the body's facing
+  let misalign = 0;
+  if (kickerFacing !== undefined) {
+    misalign = Math.abs(((base - kickerFacing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+  }
+  const backheel = 1 + TECH.backheelNoiseGain * (misalign / Math.PI) ** 2;
+  const powerKeep = 1 - TECH.backheelPowerLossMax *
+    Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
+  const dirSigma = TECH.kickDirSigmaRad * (TECH.kickDirSkillFloor + (1 - TECH.kickDirSkillFloor) * slack) * backheel;
+  const velSigma = TECH.kickVelSigma * (TECH.kickVelSkillFloor + (1 - TECH.kickVelSkillFloor) * slack) * backheel;
   const dir = base + rng.gauss(0, dirSigma, tick, kickerId, 'kick-dir');
   const d = Math.hypot(target.x - from.x, target.y - from.y);
-  const speed = Math.max(1, speedMps * (1 + rng.gauss(0, velSigma, tick, kickerId, 'kick-vel')));
+  const speed = Math.max(1, speedMps * powerKeep * (1 + rng.gauss(0, velSigma, tick, kickerId, 'kick-vel')));
   return {
     target: { x: from.x + Math.cos(dir) * d, y: from.y + Math.sin(dir) * d },
     speedMps: speed,
