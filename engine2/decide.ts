@@ -531,6 +531,67 @@ export const shadowSpot = (
   };
 };
 
+/** L5d — press-unit COVERAGE: while the first defender presses, every
+ * other member takes a DISTINCT assignment over the carrier's ranked
+ * passing options (lane k → nearest free defender), leftovers compact
+ * onto the unit's centroid-ball axis. Replaces the line-shape fallback
+ * for pressing units — a goal-protecting LINE in a boundary grid put
+ * all four pressers at one shared depth (the judged overlap and
+ * useless coverage). */
+export const pressCoverSpots = (
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+  coverIds: readonly string[],
+): Map<string, Vec2> => {
+  const out = new Map<string, Vec2>();
+  if (!coverIds.length) return out;
+  const defTeam = bodies.find((b) => b.id === coverIds[0])!.team;
+  const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
+  const others = bodies.filter((b) => b.team === defTeam);
+  // rank the carrier's options: openness × danger
+  const lanes = mates.map((m) => {
+    const dist0 = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
+    const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, m.pos, 11, others, dist0, m);
+    return { m, score: open * (0.4 + posValue(m.pos, carrier.team)) };
+  }).sort((a, b) => b.score - a.score);
+  const free = new Set(coverIds);
+  for (const lane of lanes) {
+    if (!free.size) break;
+    const spot = {
+      x: carrier.pos.x + (lane.m.pos.x - carrier.pos.x) * 0.45,
+      y: carrier.pos.y + (lane.m.pos.y - carrier.pos.y) * 0.45,
+    };
+    let best = '';
+    let bestD = Infinity;
+    for (const id of free) {
+      const b = bodies.find((x) => x.id === id)!;
+      const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    out.set(best, spot);
+    free.delete(best);
+  }
+  // leftovers: compact between the ball and the unit's centroid
+  if (free.size) {
+    let cx = 0;
+    let cy = 0;
+    for (const id of coverIds) {
+      const b = bodies.find((x) => x.id === id)!;
+      cx += b.pos.x;
+      cy += b.pos.y;
+    }
+    cx /= coverIds.length;
+    cy /= coverIds.length;
+    for (const id of free) {
+      out.set(id, { x: (carrier.pos.x + cx) / 2, y: (carrier.pos.y + cy) / 2 });
+    }
+  }
+  return out;
+};
+
 /** L5d — the CURVED press approach (pressing.md's "wrong angle" failure
  * case: running straight at the ball leaves the lane open): close down
  * FROM the side of the lane being denied, so the presser's body shadows

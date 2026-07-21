@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, pressApproach, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -1083,18 +1083,32 @@ export class Sim {
               this.actionLabels.set(id, 'delay');
             } else {
               this.pressingIds.delete(id);
-              // the SECOND defender shadows the escape lane while the first
-              // presses; everyone else keeps the line
-              const spot = (!iAmFirst && firstIsEngaged && nearest.d < 6)
-                ? shadowSpot(body, carrierBody, this.bodies)
-                : null;
-              const target = spot ?? shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
-                this.instructions.get(id)?.lineHeight ?? 0.5);
+              // a PRESSING UNIT's non-engaged members take distinct
+              // assignments over the carrier's ranked options (a line-shape
+              // fallback stacked all four at one depth — the judged
+              // overlaps); LINE units (pressing ≤ 0.3) keep L5c shape
+              let target: Vec2 | null = null;
+              let label = 'shape';
+              if (pressing > 0.3 && firstIsEngaged) {
+                const coverIds = defBrains.filter((bid) => bid !== nearest.id && bid !== id)
+                  .concat([id]).filter((bid) => bid !== nearest.id);
+                const spots = pressCoverSpots(carrierBody, this.bodies, coverIds);
+                target = spots.get(id) ?? null;
+                label = 'cover';
+              } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
+                target = shadowSpot(body, carrierBody, this.bodies);
+                label = 'shadow';
+              }
+              if (!target) {
+                target = shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
+                  this.instructions.get(id)?.lineHeight ?? 0.5);
+                label = 'shape';
+              }
               const d = Math.hypot(target.x - body.pos.x, target.y - body.pos.y);
               if (d > 1.2) {
                 this.assign(body, { type: 'moveTo', target, regime: d > 8 ? 'run' : 'jog' });
                 this.shapeHolding.add(id);
-                this.actionLabels.set(id, spot ? 'shadow' : 'shape');
+                this.actionLabels.set(id, label);
               } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
               }

@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d round 4: press-unit coverage — no line in a grid
+
+The judged defect: the grid's four pressers overlapped and covered
+useless space. Structural cause: non-engaged pressers fell back to
+shapeSpot — a GOAL-PROTECTING LINE — which in a boundary grid stacked
+all four at one shared depth.
+
+- **pressCoverSpots** (decide.ts): a pressing unit's non-engaged members
+  take DISTINCT assignments over the carrier's ranked passing options
+  (lane k → nearest free defender, greedy, deterministic; leftovers
+  compact onto the ball–centroid axis). Applies when pressing > 0.3 and
+  the first defender is engaged; LINE units (pressing ≤ 0.3) keep L5c
+  shape untouched.
+
+Measured: min presser-pair distance now averages 4.6 m (was stacked),
+2.3 of 4 lanes covered at any moment, and the grid flipped from 73
+transfers / 25 losses to 33 / 69 — four ORGANIZED pressers in a tight
+box genuinely suffocate five keepers. Balance knobs if the eye wants
+the keepers favored: pressing intensity, cover depth (0.45), keeper
+attributes. 59/59; rondo (2-man unit → lane-1 cover ≈ the old shadow)
+and all rates intact.
+
 ## 2026-07-21 — L5d round 3: the positional grid (builder ask) — bounded 5v4
 
 Scenario format gains BOUNDS (drill grids: a loose ball crossing them
