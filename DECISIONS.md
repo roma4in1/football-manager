@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d round 2: the curved press and the delay stance (pressing.md)
+
+pressing.md's failure-case list named our residual defect exactly:
+"wrong angle — player runs directly at ball → passing lane remains
+open." Two mechanisms landed:
+
+- **The curved press approach**: beyond 3 m, the first defender closes
+  FROM the side of the lane being denied (pressApproach: carrier +
+  1.4 m toward the most-open dangerous lane) — his body cover-shadows
+  the escape as he arrives, forcing play the other way; the last 3 m
+  hand over to the L3 hunt (contain + tackles need the chase command).
+- **The delay stance** (the passive band): below the trigger threshold
+  with the carrier within 11 m, the first defender holds off goal-side
+  at ~4.5 m — slow the attack, wait for the trigger (also the seed of
+  L5e's jockey).
+
+Effect: rondo turnovers 10 → 19 per 8 seeds (the press became effective
+through DENIAL, not swarming — double-press still ~1%), 15/19 regained
+within 7 s. pressing.md mapped in REFERENCES.md; false press, waves,
+man-orientation, trap direction recorded for L5e/L6. 59/59; dial and
+all rates intact.
+
 ## 2026-07-21 — L5d round 1: coordination is real — election, demotion, controlled duels
 
 Two judged defects:

@@ -531,6 +531,23 @@ export const shadowSpot = (
   };
 };
 
+/** L5d — the CURVED press approach (pressing.md's "wrong angle" failure
+ * case: running straight at the ball leaves the lane open): close down
+ * FROM the side of the lane being denied, so the presser's body shadows
+ * the escape as he arrives — forcing play the other way. */
+export const pressApproach = (
+  defender: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+): Vec2 => {
+  const lane = shadowSpot(defender, carrier, bodies);
+  if (!lane) return { x: carrier.pos.x, y: carrier.pos.y };
+  const lx = lane.x - carrier.pos.x;
+  const ly = lane.y - carrier.pos.y;
+  const ln = Math.hypot(lx, ly) || 1;
+  return { x: carrier.pos.x + (lx / ln) * 1.4, y: carrier.pos.y + (ly / ln) * 1.4 };
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];

@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, pressApproach, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -1041,10 +1041,38 @@ export class Sim {
             const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
             const firstIsEngaged = this.pressingIds.has(nearest.id) || (iAmFirst && pressNow);
             if (pressNow) {
-              if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+              // the CURVED approach: close from the denied lane's side
+              // (pressing.md: a straight chase leaves the lane open); the
+              // last 3 m are the L3 hunt (contain + tackles need the chase)
+              const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
+              if (dCar > 3 && !inCounterpress) {
+                const ap = pressApproach(body, carrierBody, this.bodies);
+                this.assign(body, { type: 'moveTo', target: ap, regime: 'sprint' });
+              } else if (body.command.type !== 'chaseBall') {
+                this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+              }
               this.pressingIds.add(id);
               this.shapeHolding.delete(id);
               this.actionLabels.set(id, inCounterpress ? 'counterpress' : 'press');
+            } else if (iAmFirst && pressing > 0 &&
+              Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 11) {
+              // the DELAY stance (pressing.md's passive band): hold off
+              // goal-side ~4.5 m — slow the attack, wait for the trigger
+              this.pressingIds.delete(id);
+              const gSign = body.team === 'home' ? 1 : -1;
+              const gx = gSign > 0 ? 0 : PITCH.length;
+              const dx = gx - carrierBody.pos.x;
+              const dy = 34 - carrierBody.pos.y;
+              const dn = Math.hypot(dx, dy) || 1;
+              const hold = { x: carrierBody.pos.x + (dx / dn) * 4.5, y: carrierBody.pos.y + (dy / dn) * 4.5 };
+              const dh = Math.hypot(hold.x - body.pos.x, hold.y - body.pos.y);
+              if (dh > 1.2) {
+                this.assign(body, { type: 'moveTo', target: hold, regime: dh > 7 ? 'run' : 'jog' });
+                this.shapeHolding.add(id);
+              } else if (body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
+              this.actionLabels.set(id, 'delay');
             } else {
               this.pressingIds.delete(id);
               // the SECOND defender shadows the escape lane while the first
