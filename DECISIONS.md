@@ -3,6 +3,24 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5c round 5: threads die in the space
+
+The judged overhits measured true and were NOT normal: 13 of 37
+line-vs-runs threads rolled dead (35%) — many fired with only 9–11 m of
+room behind an already-deep line, aimed line+4.5 with pace to spare,
+straight over the dead-ball boundary.
+
+- **No behind, no ball in behind**: the rider/driven candidates require
+  ≥14 m of room behind the line (mirrors runPlan's own run gate).
+- **The weight dies IN the space**: thread depth = min(4.5, 0.3·room)
+  and the arrival pace is capped so the roll-out ends ~4 m short of the
+  boundary (arrive ≤ √(2·decel·rollRoom)).
+
+Post: 27/29 threads collected, 2 dead, 0 intercepted. Note for the
+methodology file: two overlapping sed-style edits in one script silently
+lost the first when the second's assert threw — verify grep after
+multi-part patches. 59/59; runs/wall/dial intact.
+
 ## 2026-07-21 — L5c round 4: the shot economy — no infinite deferral
 
 The judged shyness: attackers too scared of defenders, range shots

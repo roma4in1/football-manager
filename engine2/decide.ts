@@ -521,19 +521,31 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // judged too-deep balls came from projecting 7 m past the runner
     // himself; the breach point is line-relative, not runner-relative
     let riderBehind: Vec2 | null = null;
+    let riderArriveCap = Infinity;
     if (runners?.has(mate.id)) {
       const rsign = attackSign(mate.team);
       const oppXs = opponents.map((o) => o.pos.x);
       const rLineX = oppXs.length ? (rsign > 0 ? Math.max(...oppXs) : Math.min(...oppXs)) : mate.pos.x;
-      riderBehind = { x: rLineX + rsign * 4.5, y: mate.pos.y };
+      const rGoalX = rsign > 0 ? PITCH.length : 0;
+      const room = rsign > 0 ? rGoalX - rLineX : rLineX - rGoalX;
+      // no behind, no ball in behind — and the weight must DIE IN THE
+      // SPACE (the judged overhits: threads at a deep line rolled dead)
+      if (room >= 14) {
+        const depth = Math.min(4.5, room * 0.3);
+        riderBehind = { x: rLineX + rsign * depth, y: mate.pos.y };
+        const rollRoom = Math.max(1.5, room - depth - 4);
+        riderArriveCap = Math.sqrt(2 * 1.7 * rollRoom);
+      }
     }
     const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
     if (riderBehind) {
-      allCandidates.push({ arrive: softArrive + 1, leadExtraS: 0, destOverride: riderBehind });
+      // both weights die IN the space (riderArriveCap): an overhit thread
+      // is a dead ball, not a pass
+      allCandidates.push({ arrive: Math.min(softArrive + 1, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
       // the DRIVEN thread (passing.md #9/#13): a faster ball through the
       // same gap — less flight time beats closing defenders; the receiver
       // pays the hot-arrival tax instead
-      allCandidates.push({ arrive: softArrive + 4, leadExtraS: 0, destOverride: riderBehind });
+      allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
     }
     for (const { arrive, leadExtraS, destOverride } of allCandidates) {
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
