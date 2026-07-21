@@ -157,6 +157,9 @@ export class Sim {
 
   /** advance one tick; returns the full-rate frame for it */
   step(): Frame {
+    // action labels are per-tick — clear them up front so brain-less scenarios
+    // (which skip decidePhase) don't carry a stale header/block/handball label
+    this.actionLabels.clear();
     // 1. scripted re-targets (replace the current command, keep the queue)
     const events = this.atTick.get(this.tick);
     if (events) {
@@ -776,8 +779,11 @@ export class Sim {
    * him). Only the intended receiver is exempt — he is controlling it, not
    * deflecting his own ball. A slow ball is controlled/headed, not deflected.
    * Runs after the deliberate header, before the ground claim. (The keeper — a
-   * higher reach and a catch — is L7; the handball ruling on an arm-height
-   * deflection is the fouls layer, on this same footing.) */
+   * higher reach and a catch — is L7; the HANDBALL ruling belongs to the Fouls
+   * layer, and cannot be a pure-geometry hook here: a ball merely passing OVER
+   * a man's head is not a handball, only one his arm deliberately plays is —
+   * that needs intent, not a reach test. The per-player reach below is the
+   * foundation that layer will build on.) */
   private resolveBlocks(from: Vec2): void {
     const ball = this.ball;
     if (ball.phase !== 'airborne' || ball.z > BALL.headMaxZ) return; // above any reach → clears
@@ -787,7 +793,9 @@ export class Sim {
     for (const body of this.bodies) {
       if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
       if (body.id === this.intendedReceiverId) continue; // the intended man controls it
-      // PER-PLAYER vertical reach — the same leap the header gates on
+      // PER-PLAYER vertical reach — the same leap the header gates on; a ball
+      // above his head passes over (only an arm would reach it — a handball,
+      // which is the Fouls layer's call, not here)
       if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue;
       const { d, at } = this.sweptApproach(body, from);
       if (d > BALL.controlRadiusM) continue;
@@ -995,7 +1003,6 @@ export class Sim {
    * a brain never enter here — scripts own them entirely. */
   private decidePhase(): void {
     if (this.brains.size === 0) return;
-    this.actionLabels.clear();
     // the receive reflex ends when ANYONE ends up with the ball
     if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
     for (const id of this.brains) {
