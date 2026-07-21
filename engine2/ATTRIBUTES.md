@@ -78,14 +78,15 @@ script is the run until L5b); defensive off-ball stays L5c/L5d.
 ## L5b — runs (opened)
 
 An idle brain ahead of a teammate carrier, with ≥12 m of room behind the
-last defender and within ~22 m of the line, RUNS: he seeks the SEAM
-(between line defenders or off the outside shoulder, never a marker's own
-channel), rides level just short of the line at a jog, and bursts when the
-ball is played (the receive reflex owns the burst). The carrier's EV gains
-the RIDER'S BALL (a candidate into the space behind the line regardless of
-the rider's jogging speed) and the DELAYED RELEASE (hold a beat when the
-best pass's value is still rising with the run). Run priority beats
-support; scripts still beat both.
+last defender and within ~22 m of the line, RUNS a cycle: approach → RIDE
+(reload at a jog, level just short of the line, at the SEAM — between
+defenders or off the outside shoulder, never a marker's own channel) →
+DART (sprint diagonally across a defender's blind side into the adjacent
+seam — pace is built BEFORE the ball is played) → back to ride if no ball
+comes. The carrier's release WAITS for the movement (passes to riding/
+approaching runners taxed ×0.45; the dart lifts it) and gains the rider's
+in-behind candidate + the delayed release. The receive reflex owns the
+burst. Run priority beats support; scripts still beat both.
 
 ## Decided for later layers
 

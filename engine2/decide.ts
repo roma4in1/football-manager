@@ -297,7 +297,7 @@ export const runPlan = (
   mate: BodyState,
   carrier: BodyState,
   bodies: readonly BodyState[],
-): { target: Vec2; lineX: number } | null => {
+): { target: Vec2; lineX: number; dartY: number } | null => {
   const sign = attackSign(mate.team);
   const opponents = bodies.filter((b) => b.team !== mate.team);
   if (opponents.length === 0) return null;
@@ -338,7 +338,21 @@ export const runPlan = (
     }
   }
   const target = { x: goalX - sign * 8, y: chanY };
-  return { target, lineX };
+  // the DART lane: the adjacent seam — a diagonal burst ACROSS a
+  // defender's blind side into the next gap (the judged run shape:
+  // behind d1, receiving between d1 and d2)
+  let dartY = chanY;
+  let bestDart = -Infinity;
+  for (const y of seams) {
+    if (Math.abs(y - chanY) < 2) continue;
+    const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
+    const score = clear - 0.12 * Math.abs(y - GOAL.centerY) - 0.05 * Math.abs(y - chanY);
+    if (score > bestDart) {
+      bestDart = score;
+      dartY = y;
+    }
+  }
+  return { target, lineX, dartY };
 };
 
 export interface DecideInput {
@@ -352,12 +366,15 @@ export interface DecideInput {
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
+  /** runners NOT yet darting (approaching or reloading at the line) — the
+   * ball to them WAITS for the movement */
+  waitingRunners?: ReadonlySet<string>;
 }
 
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes, runners } = input;
+  const { carrier, bodies, instructions, homes, runners, waitingRunners } = input;
   const risk = instructions.risk ?? 0.5;
   const keep = instructions.objective === 'keep';
   const team = carrier.team;
@@ -431,7 +448,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const pvThere = value(dest, mate.id);
       const meets = pC >= passFloor ? 1 : 0.35; // sub-floor lanes are heavily taxed
       const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
-      const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets;
+      // the ball to a RIDING runner waits for his movement — you play the
+      // through ball when the dart goes, not while he stands on the line
+      // (the release meets the run; the run does not chase the release)
+      const ridingWait = waitingRunners?.has(mate.id) ? 0.45 : 1;
+      const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
       }

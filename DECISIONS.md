@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5b round 1: the dart — the release meets the run
+
+The judged shape: a real runner PICKS UP SPEED before the ball is played,
+often diagonally behind one defender into the next gap — the static
+line-ride with a post-release burst was backwards.
+
+- **The run cycle** (sim.ts): approach → RIDE (reload at a jog on the
+  seam) → DART (sprint diagonally across a defender's blind side into the
+  ADJACENT seam, ~1.6 s) → back to ride if the ball doesn't come. The
+  dart lane comes from runPlan (the neighboring seam — the judged
+  "behind d1, receive between d1 and d2" geometry).
+- **The release meets the run** (decide.ts): passes to riding/approaching
+  runners are taxed ×0.45 — you don't play the through ball while the
+  runner stands on the line; the dart lifts the tax and the ball goes
+  while he is AT PACE (wb-1: dart t=12, release t=15). Phase-gated, not
+  speed-gated — the approach run's pace masqueraded as a dart until the
+  waitingRunners set carried the phase into decide().
+
+16/16 triggered/received/finished; dial intact; 56/56.
+
 ## 2026-07-21 — L5b OPENED: runs — trigger, seam, line-ride, release, burst
 
 Branch feat/engine2-l5b (stacked on l5a). The in-behind run, fully

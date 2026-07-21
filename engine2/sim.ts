@@ -59,6 +59,10 @@ export class Sim {
   /** brains currently making an L5b run (their moveTo is the run, not a
    * script — the run re-plans at cadence) */
   private readonly runningLine = new Set<string>();
+  /** the run's phase per runner: RIDE (reload at a jog, level with the
+   * line) or DART (sprint diagonally across a defender's blind side into
+   * the next seam — the ball is released while the runner is AT PACE) */
+  private readonly runPhase = new Map<string, { phase: 'ride' | 'dart'; since: number; dartY: number }>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -790,6 +794,7 @@ export class Sim {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
           this.runningLine.delete(id);
+          this.runPhase.delete(id);
           // go meet your pass (chase semantics take it from here: contested
           // flights are raced, quiet ones are received)
           if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
@@ -827,22 +832,48 @@ export class Sim {
             const objective = (this.instructions.get(id)?.objective) ?? 'score';
             const plan = objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
             if (plan) {
-              // RIDE THE LINE: advance capped just short of the last
-              // defender until the ball is actually played to the runner
-              // (the receive reflex then owns the burst)
+              // the RUN CYCLE: approach → RIDE the line (reload, jog) →
+              // DART (sprint diagonally across the blind side into the
+              // adjacent seam — pace is built BEFORE the ball is played;
+              // the release meets the dart, not the other way around) →
+              // if no ball comes, drop back to ride and go again
               const sign = body.team === 'home' ? 1 : -1;
               const cappedX = sign > 0
                 ? Math.min(plan.target.x, plan.lineX - 0.4)
                 : Math.max(plan.target.x, plan.lineX + 0.4);
-              const riding = sign > 0 ? body.pos.x >= cappedX - 0.8 : body.pos.x <= cappedX + 0.8;
-              this.assign(body, {
-                type: 'moveTo',
-                target: { x: cappedX, y: plan.target.y },
-                regime: riding ? 'jog' : 'run',
-              });
+              const atLine = sign > 0 ? body.pos.x >= cappedX - 0.8 : body.pos.x <= cappedX + 0.8;
+              let st = this.runPhase.get(id);
+              if (!st) {
+                st = { phase: 'ride', since: this.tick, dartY: plan.dartY };
+                this.runPhase.set(id, st);
+              }
+              if (st.phase === 'ride' && atLine && this.tick - st.since >= 9) {
+                st.phase = 'dart';
+                st.since = this.tick;
+                st.dartY = plan.dartY;
+              } else if (st.phase === 'dart' &&
+                (this.tick - st.since >= 16 || Math.abs(body.pos.y - st.dartY) < 1.2)) {
+                st.phase = 'ride';
+                st.since = this.tick;
+              }
+              if (st.phase === 'dart') {
+                this.assign(body, {
+                  type: 'moveTo',
+                  target: { x: sign > 0 ? plan.lineX - 0.25 : plan.lineX + 0.25, y: st.dartY },
+                  regime: 'sprint',
+                });
+                this.actionLabels.set(id, 'dart');
+              } else {
+                this.assign(body, {
+                  type: 'moveTo',
+                  target: { x: cappedX, y: plan.target.y },
+                  regime: atLine ? 'jog' : 'run',
+                });
+                this.actionLabels.set(id, 'run');
+              }
               this.runningLine.add(id);
-              this.actionLabels.set(id, 'run');
             } else {
+              this.runPhase.delete(id);
               this.runningLine.delete(id);
               if (body.command.type === 'hold') {
                 const spot = supportSpot(
@@ -889,6 +920,9 @@ export class Sim {
           current: intent,
           homes: this.homes,
           runners: this.runningLine,
+          waitingRunners: new Set([...this.runningLine].filter(
+            (rid) => this.runPhase.get(rid)?.phase !== 'dart',
+          )),
         });
         this.intents.set(id, intent);
       }
