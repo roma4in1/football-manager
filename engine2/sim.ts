@@ -738,10 +738,14 @@ export class Sim {
     }
     if (!best) return;
     const w = best.body;
-    // the header REDIRECTS the ball's pace — power from the BALL, a small
-    // strength term from the neck. A fast cross → a powerful header.
+    // the header REDIRECTS the ball's pace — power from the BALL, plus a
+    // strength term the header EARNS by attacking the ball: his approach/leap
+    // speed into it. A passive nod under a weak lob adds almost nothing; a
+    // committed header drives through it. A fast cross → a powerful header
+    // whichever way, because the ball's pace dominates.
     const incoming = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
-    const headed = incoming * BALL.headRedirect + BALL.headPlayerPower * (w.attributes.strength / 20);
+    const attack = Math.max(BALL.headPassiveFloor, Math.min(1, w.speed / BALL.headAttackRefMps));
+    const headed = incoming * BALL.headRedirect + BALL.headPlayerPower * (w.attributes.strength / 20) * attack;
     const sign = attackSign(w.team);
     const ownGoal = { x: sign > 0 ? 0 : PITCH.length, y: PITCH.width / 2 };
     const oppGoal = goalCenter(w.team);

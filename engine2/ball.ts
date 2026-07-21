@@ -96,12 +96,17 @@ export const BALL = {
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
   /** a header REDIRECTS the ball's pace — the power comes mostly from the BALL,
-   * not the neck: headed speed = incoming·headRedirect + headPlayerPower·(str/20).
-   * So a header off a fast cross flies, one off a floated lob is weak. A
-   * defensive header CLEARS (lofted, far, upfield, wide direction noise); an
-   * attacking one is driven at goal; else a knock-DOWN cushions the pace out. */
+   * not the neck: headed = incoming·headRedirect + headPlayerPower·(str/20)·attack.
+   * So a header off a fast cross flies, one off a floated lob is weak. The
+   * player term is EARNED by attacking the ball — his approach/leap speed into
+   * it (attack = clamp(speed/ref, floor, 1)); a passive nod under a weak lob
+   * generates almost nothing, a committed header drives through it. A defensive
+   * header CLEARS (lofted, far, upfield); an attacking one is driven at goal;
+   * else a knock-DOWN cushions the pace out. */
   headRedirect: 0.7,
   headPlayerPower: 5,
+  headAttackRefMps: 5, // approach speed for a FULL player contribution
+  headPassiveFloor: 0.2, // a standing header still snaps the neck a little
   headClearLoftDeg: 34,
   headClearScatterRad: 0.35,
   headKnockCushion: 0.2, // a controlled header down keeps only this of the pace
