@@ -24,7 +24,10 @@ export const firstTouchRunScenarios: ScenarioDef[] = [
       { atTick: 30, bodyId: 'receiver', command: { type: 'moveTo', target: { x: 90, y: 34.5 }, regime: 'run' } },
     ],
     kicks: [
-      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 70, y: 34.5 }, speedMps: 15, loftDeg: 0 } },
+      // 27 m/s under realistic drag arrives ~7 m/s at x70 (as the old 15 m/s
+      // did under weak friction) — the ball stays AHEAD of the running
+      // receiver so he cushions it in stride (low closing speed preserved)
+      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 70, y: 34.5 }, speedMps: 27, loftDeg: 0 } },
     ],
   },
   {
@@ -44,7 +47,9 @@ export const firstTouchRunScenarios: ScenarioDef[] = [
       { atTick: 20, bodyId: 'receiver', command: { type: 'moveTo', target: { x: 35, y: 34 }, regime: 'run' } },
     ],
     kicks: [
-      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 65, y: 34 }, speedMps: 13, loftDeg: 0 } },
+      // 17 m/s: the head-on charge still meets a driven ball around x60, now
+      // decelerated to a controllable pace by drag (was 13 m/s / weak friction)
+      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 65, y: 34 }, speedMps: 17, loftDeg: 0 } },
     ],
   },
 ];

@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BALL, kickBall, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, rollDistance, stepBall, type BallState } from './ball.ts';
 import { runScenario } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
 import type { Frame } from './engine2-types.ts';
@@ -29,8 +29,9 @@ test('a ground kick decelerates monotonically to rest — no gliding, no reversa
     ticks++;
   }
   const travelled = ball.pos.x - 30;
-  // v²/(2a) = 16²/3.4 ≈ 75 m, discretization ±a few m
-  assert.ok(Math.abs(travelled - 16 ** 2 / (2 * BALL.rollDecelMps2)) < 6, `roll-out ${travelled.toFixed(1)}m ≈ v²/2a`);
+  // speed-dependent decel a = A + B·v²: a firm 16 m/s pass dies in ~27 m
+  // (the closed-form rollDistance is the exact integral of the tick physics)
+  assert.ok(Math.abs(travelled - rollDistance(16)) < 3, `roll-out ${travelled.toFixed(1)}m ≈ rollDistance(16)=${rollDistance(16).toFixed(1)}m`);
 });
 
 test('a lofted kick flies ballistically: range ≈ v²·sin(2θ)/g before the first bounce', () => {
@@ -44,8 +45,10 @@ test('a lofted kick flies ballistically: range ≈ v²·sin(2θ)/g before the fi
     if (ball.z === 0 && ball.vz >= 0 && ticks > 2) break; // first ground contact handled
   }
   const range = ball.pos.x - 30;
-  const expected = (20 ** 2 * Math.sin((2 * 40 * Math.PI) / 180)) / BALL.gravity; // ≈ 40.2 m
-  assert.ok(Math.abs(range - expected) < 3, `first-bounce range ${range.toFixed(1)}m ≈ ${expected.toFixed(1)}m`);
+  // WITH air drag (physics.md) the flight is a real projectile but shorter
+  // than the vacuum range v²·sin(2θ)/g — drag bleeds pace through the arc
+  const vacuum = (20 ** 2 * Math.sin((2 * 40 * Math.PI) / 180)) / BALL.gravity; // ≈ 40.2 m
+  assert.ok(range > 22 && range < vacuum, `first-bounce range ${range.toFixed(1)}m: a real arc, drag-shortened below the ${vacuum.toFixed(1)}m vacuum range`);
 });
 
 test('bounces decay by restitution and hand over to rolling', () => {

@@ -116,8 +116,10 @@ test('supportSpot (L5a): moves off a blocked lane, spaces off teammates, deforms
   const mate = mkBody('m', 'home', 54, 34);
   const blocker = mkBody('o', 'away', 47, 34.2); // parked ON the home lane
   const spot = supportSpot(mate, carrier, [carrier, mate, blocker], { x: 54, y: 34 }, 'keep');
-  const laneAtHome = passCompletion(carrier.pos, { x: 54, y: 34 }, 10, [blocker], 14, mate);
-  const laneAtSpot = passCompletion(carrier.pos, spot, 10, [blocker], 14, mate);
+  // 14 m/s: a firm outlet that actually reaches the receiver under realistic
+  // drag (a 10 m/s ball now dies right at the 14 m destination)
+  const laneAtHome = passCompletion(carrier.pos, { x: 54, y: 34 }, 14, [blocker], 14, mate);
+  const laneAtSpot = passCompletion(carrier.pos, spot, 14, [blocker], 14, mate);
   assert.ok(laneAtSpot > laneAtHome + 0.15, `the spot opens the lane (${laneAtHome.toFixed(2)} → ${laneAtSpot.toFixed(2)})`);
   // spacing: a crowding teammate pushes the spot away
   const crowd = mkBody('m2', 'home', 54, 35);

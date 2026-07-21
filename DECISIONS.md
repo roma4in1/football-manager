@@ -3,6 +3,118 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Drive at goal from wide, and shoot THROUGH the last line (line-vs-runs)
+
+Builder: in line-vs-runs the carrier drifts to the edge of the box instead of
+driving at goal, and neither player will shoot through defenders.
+
+Root: one problem. The CBs shepherd the striker WIDE — the central carry is
+pressure-discounted, so he drives to the box edge (88,52), and from that angle
+xG is ~0.04 so he never shoots (endless square passing ~20 m out). Fix him
+central and the shot follows.
+
+Fix: the DRIVE credit now also fires NEAR GOAL (within driveAtGoalM=28) under
+pressure — a striker takes on the last line for a shooting position — but ONLY
+while he is more than driveWideM(6) off-centre. So a WIDE striker drives IN
+toward the goal line (its pvDrive carries the xG of where he is driving, which
+favours the central line over the box edge), and stops once central; a CENTRAL
+striker already has his angle and SHOOTS (the breakaway property — the width
+gate is what separates "drive to improve the angle" from "shoot the chance you
+have"; an xG-floor gate could not, since a clear range shot and a wide blocked
+one score alike). The xG blocker was already a discount not a veto (0.6/blocker,
+point-blank ×0.35 "through the legs"), so once central he shoots THROUGH the CBs.
+
+line-vs-runs: 7 → 15 shots, 11 of them through a defender within 3.5 m; the
+striker cuts central (y47→40, dGoal 24→18) instead of drifting to the edge.
+Breakaway still 16/16 shoots; dial holds; front/runs/wall/rondo/grid pinned.
+59/59.
+
+## 2026-07-21 — The thread waits for the DART, not the ride (through-ball timing)
+
+Builder (after the friction change): in runs-in-behind the ball is played too
+early and the striker drops back to collect instead of splitting the lines.
+
+Traced: the striker IS running (rides back to his hover point, lineX−5), and
+the playmaker correctly aimed the RIDER ball into the space behind the line
+(~72.5). But the rider (destOverride) was EXEMPT from the riding-wait tax, so
+it was played at t12 WHILE the striker was still riding BACKWARD — his receive
+reflex then met the ball SHORT (x61, 7 m short of the line) and he turned back
+for it. Pre-friction the same ball was played later (the friction shifted the
+release earlier), so the regression only showed now.
+
+Fix: the riding-wait tax holds the RIDER ball too while the runner is a
+waitingRunner (hovering) — it releases only once he DARTS (leaves the waiting
+set: darting, at pace, within a stride of the line). One character: dropped
+the `&& !destOverride` exemption. Now the playmaker holds/drives until the
+dart, then threads behind, and the striker RUNS ONTO it: collects BEYOND the
+line (69.9 vs 61), runs-in-behind shots 11 → 16/16.
+
+Dial holds 16/16; front pinned; line-vs-runs 10 splits; rondo/grid healthy.
+Cost: wall-pass one-two 14 → 12/16 (still ≥ floor — the return now waits for
+the returning man to be darting, which is the correct one-two timing). 59/59.
+
+## 2026-07-21 — The DRIVE credit: an unpressured carrier runs, doesn't over-pass
+
+Builder: players pass too often even with no defender on them and no good
+pass — they should drive. Measured true: an open carrier with one advanced
+mate and NO defenders chose the pass (u0.075) over carrying (0.052). The pass
+wins because it reaches a more-advanced spot AND gets the risk-progressive
+bonus, while the carry only values 6 m ahead — the drive into open space is
+undervalued.
+
+Fix: a DRIVE credit — when GENUINELY UNPRESSURED (pressure < 0.2) the carry's
+progression is valued at the command point it is driving at, like a pass's:
+u += possessionDiscount · driveGain(1.2) · max(0, pv(runThrough) − pvHere).
+Gated on no pressure so it never competes with a release under a real
+defender, and NO risk multiplier (an open drive is not a gamble). A true
+thread still wins — its destination (a runner beyond the line) outvalues the
+drive. An EARLIER attempt (full risk-progressive, ungated) regressed
+line-vs-runs; the pressure gate + no-risk form is what spares it.
+
+Now: open carrier DRIVES at risk 0.3/0.5 (0.079 > pass); still releases the
+progressive ball at risk 0.7 (the instruction) or when a defender shades the
+lane. Dial holds 16/16; front 16/16·14/16; line-vs-runs threading RECOVERED
+(splits 3→10 under the new friction — the drive lets the playmaker carry into
+a cleaner threading angle). 59/59. (One rondo seed drops: a DEFENDER who wins
+the ball now drives off — realistic, the drill just has no reset.)
+
+## 2026-07-21 — Realistic ball friction: speed-dependent drag on free balls (builder ask)
+
+Builder: the ball never slows / rolls forever. Measured true: rollDecel 1.7
+(μ≈0.17), constant, no aero drag — a firm 16 m/s pass rolled 74 m still doing
+12 m/s at 30 m; 20 m/s crossed the whole pitch.
+
+New model for FREE balls DERIVED from reference/physics.md (not hand-tuned):
+a = μ·g + (½·ρ·Cd·A/m)·v². Drag k = ½·1.225·0.22·(π·0.11²)/0.43 ≈ 0.0119 /m
+(the doc's aero constants); rolling μ = 0.30 (a dry-grass value — the doc's
+yaml 0.018 is an artificial-turf number that trickles a soft pass ~70 m, but
+the doc itself calls dry grass "high resistance"). Together: firm 16 m/s dies
+in ~29 m, 25 m/s drive ~51 m, soft 8 m/s ~9 m. Air drag now also acts in
+FLIGHT (long balls/crosses lose pace); restitution 0.55→0.72 (doc 0.70–0.78).
+a=A+B·v² integrates in closed form, so decide.ts weights every pass against
+the SAME physics (rollSpeedAfter / rollLaunchForArrival / rollTimeToDistance /
+rollDistance helpers) — no constant-decel fiction; the hardcoded 1.7 is gone.
+
+SCOPED to free balls: the CARRIED ball between touches keeps the tuned
+dribble constant (1.7) — the heavily-judged L2/L3 dribble/knock-past feel was
+calibrated to it, and realistic drag would halve touch length and re-open all
+of it. predictBall now PRESERVES phase so the carrier's own-touch fetch reads
+the dribble constant (converting carried→rolling made the dribbled ball
+escape its orbit).
+
+Re-tune: passSpeedMax 16→19 (long balls need more boot vs drag; 19 is the
+narrow value where the risk dial still discriminates — 18 kills the through
+ball, 20 makes it too safe for both poles). Scenario feeds bumped to preserve
+their drills' arrival pace (loose-ball-race 13.5→22, first-touch-run 15→27 /
+13→17). 59/59.
+
+KNOWN SHIFTS to judge (through-ball / combination play, weighting-sensitive):
+line-vs-runs threaded splits 11→2 (but 15 clean uncontested shots), wall-pass
+one-two 15→12, runs-in-behind shots 15→10 (receptions 15→16). IMPROVED: dial
+holds, front duels pinned, rondo circulation up, grid less chaotic. The
+through-ball weighting (passArriveMps, rider caps, throughRunOn) likely needs
+a follow-up tune for the new drag — flagged for the builder's judgment.
+
 ## 2026-07-21 — Through on goal: thread only to a runner AHEAD (kill the wide giveaway)
 
 Builder judgment (counter-3v2-risk-high): left is through from the first
