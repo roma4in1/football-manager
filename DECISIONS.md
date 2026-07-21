@@ -3,6 +3,20 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Run taxonomies extended: midfield + defensive references
+
+The builder added midfield support runs (20) and defensive runs (26) —
+mapped in engine2/RUNS.md. Midfield: most support variants are LIVE via
+L5a's supportSpot (the lane-openness × value candidate space covers
+simple/forward/backward/lateral/escape); bounce-pass support is the L5b
+one-two; pocket runs gate on L5c's lines, rotations/overloads/half-space
+roles on L6. The DEFENSIVE list is effectively the pre-spec for
+L5c/L5d/L5e — it maps one-to-one onto the spec's own sub-phase
+acceptance lines (ball-side shift/weak-side compression = L5c's
+compactness+shift; shadow press = cover shadows; jockey = the recorded
+L5e head-on guardrail) and should seed those scenario libraries when the
+sub-phases open.
+
 ## 2026-07-21 — L5b round 2: the run taxonomy + the emergent one-two
 
 The builder supplied a 34-run taxonomy (reference/types_runs.md), now

@@ -48,3 +48,48 @@ marking); building them earlier would be animation, not football.
 The build order this implies for L5b's remaining rounds: check-run calls
 (19) and richer seam/dart variety now; everything cross-related waits for
 L8; everything manipulation-related waits for reacting defenders.
+
+## Midfielder support runs (`reference/midfield_runs.md`)
+
+| # | Run | Status | Where / gate |
+|---|---|---|---|
+| 1 | Simple support | **live** | L5a supportSpot (lane-openness × value) |
+| 2 | Forward support | **live** | supportSpot under 'score' (posValue pulls forward) |
+| 3 | Backward support | **live** | supportSpot ring includes drop candidates; the EV picks them when lanes ahead are shut |
+| 4 | Lateral support | **live** | same candidate space |
+| 5 | Triangle support | emergent | two supports + a carrier form it from spacing + lane terms — verify by eye in small-sided |
+| 6 | Diamond support | emergent/L6 | four-man structure holds when roles (L6) anchor the shape |
+| 7 | Half-space occupation | partial | posValue's central bias approximates it; explicit half-space channels are L6 role geometry |
+| 8 | Pocket run | gated | L5c — the pocket is BETWEEN LINES, and lines don't exist yet |
+| 9 | Late box arrival | gated | L8 crosses; the timing pattern reuses ride/dart |
+| 10 | Deep build-up drop | gated | L6 (role rotation, back-three formation) |
+| 11 | Pivot rotation | gated | L6 (paired-role choreography) |
+| 12 | Switch support | gated | L6 (weak side implies team shape) |
+| 13 | Bounce pass support | **live** | the one-two (wall-pass drill, L5b round 2) |
+| 14 | Overload run | gated | L6 (numbers awareness is a team computation) |
+| 15 | Escape support | **live** | keepValue's space term |
+| 16 | Cover support | gated | L5c (defensive balance behind the attack) |
+| 17 | Tempo control position | gated | L6 (deep playmaker role) + tactics instructions |
+| 18 | Blindside midfield | gated | L5c/L5d — blind spots need perceiving opponents |
+| 19 | Underlapping midfield | gated | L6 role structure (same as overlap #15/16 above) |
+| 20 | Third-man midfield | **emergent** | pass → support → run beyond: runPlan + flight-possession already produce it; judge in small-sided |
+
+## Defensive runs (`reference/defender_runs.md`) — the L5c/L5d/L5e pre-spec
+
+None are buildable yet (brains do not defend — the recorded boundary), but
+the list maps almost one-to-one onto the spec's defensive sub-phases and
+should seed their scenario libraries:
+
+- **L5c (defensive shape)**: cover run (3), channel recovery (5),
+  interception run (10), passing lane block (12), goal protection (13),
+  box recovery (14), offside line recovery (22 — with L9), ball-side
+  shift (24), weak-side compression (25) — the spec's "line as a unit,
+  compactness, horizontal shift" list, verbatim.
+- **L5d (pressing)**: pressing run (6), curved press (7), shadow press
+  (8 — the spec's cover shadows), counterpress (18), delay run (19 —
+  with L5e's jockey).
+- **L5e (marking & duels)**: recovery run (1), goal-side recovery (2),
+  tracking run (4), jockey (9 — the recorded head-on guardrail), cut-off
+  (11), wide recovery (15), double team (16), switch tracking (17),
+  screening (20), mark switch (23).
+- **Later**: cross coverage (21) → L8; emergency goal-line (26) → L7.
