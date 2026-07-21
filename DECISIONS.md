@@ -3,6 +3,31 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Chest control: the receive's middle band (a swept-z crossing)
+
+Builder question: when is a teammate COLLISION used vs a teammate trying to
+control the pass and failing? The answer exposed a gap — a receiver going for a
+fast ball at CHEST height (0.5–0.9 m, between the ground first touch ≤0.5 and the
+header ≥0.9) had no outcome: he wasn't a passive obstacle (collision) and
+resolveClaims wouldn't fire that high, so the ball tunnelled through him.
+
+- **`resolveChestControl`** (after the header, before the collision): a man
+  ATTACKING the ball — the intended man or a chaser — takes a fast ball on the
+  chest via `resolveFirstTouch` judged at chest height. A good touch cushions it
+  to his feet (`chest`); a poor one BOUNCES OFF loose (`chest-miss`). Distinct
+  from the collision (a passive body caroming it) and a clean miss.
+- **The 10 Hz finding:** a ground-launched ball crosses the 0.4 m chest band in
+  ~ONE tick (always rising/falling through it, never dwelling), so an
+  instantaneous-z gate never fires — measured 0 across every config. The gate is
+  a SWEPT-z crossing: did the ball's z-path span the band this tick (`zFrom`
+  captured before `stepBall`). Gated to FAST balls only (≥ `blockMinSpeedMps`), so
+  a slow drop is still let fall and controlled on the ground — aerial-through /
+  chip untouched.
+
+chest-control scenario: cushioned 11/16, bounced-off 3/16. Only side effect:
+cross-header's ~3 low-cross seeds (dipping below the 0.9 m header floor) now
+chest the ball instead of caroming. 71/71.
+
 ## 2026-07-21 — 3-D interception (xyz block/collision) + the Fouls-layer brief
 
 Builder question: when heading, does the ball stay up or drop — and does a
