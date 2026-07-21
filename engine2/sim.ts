@@ -759,9 +759,16 @@ export class Sim {
     if (ball.phase !== 'airborne' || ball.z > BALL.bodyBlockReachZ) return;
     const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
     if (speed < BALL.blockMinSpeedMps) return;
+    // a block is an OPPONENT'S act — a teammate of the kicker in the path is a
+    // receiver, and controls/heads it (resolveHeaders/resolveClaims), he does
+    // not deflect his own team's ball loose. A loose ball (no kicker) is fair
+    // game for anyone.
+    const kicker = ball.kickerId ? this.bodies.find((b) => b.id === ball.kickerId) : undefined;
+    const kickerTeam = kicker?.team;
     let best: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const body of this.bodies) {
       if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      if (kickerTeam && body.team === kickerTeam) continue;
       // horizontal closest approach of the body to the ball's swept path, in
       // the body's frame (so a fast ball cannot tunnel past his reach)
       const prev = this.prevPos.get(body.id) ?? body.pos;
