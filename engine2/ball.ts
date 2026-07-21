@@ -225,6 +225,42 @@ export function rollTimeToDistance(v0: number, d: number): number {
   return (1 / Math.sqrt(A * B)) * (Math.atan(v0 * k) - Math.atan(v * k));
 }
 
+/** Launch SPEED (along the flight chord) so a ball lofted at `loftDeg` lands
+ * (z→0) at horizontal distance `dist` m — numeric, since drag has no closed
+ * form. Binary search over the flight sim. Clamped to a sane kick range; a
+ * distance unreachable at this loft returns the ceiling. */
+export function solveLoftSpeed(dist: number, loftDeg: number): number {
+  const loft = (loftDeg * Math.PI) / 180;
+  const cos = Math.cos(loft), sin = Math.sin(loft);
+  const landsAt = (speed: number): number => {
+    const b: BallState = {
+      pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * cos, y: 0 }, vz: speed * sin,
+      phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+    };
+    for (let i = 0; i < 600 && b.phase === 'airborne'; i++) stepBall(b);
+    return b.pos.x; // first-bounce (landing) distance
+  };
+  let lo = 8, hi = 42;
+  for (let i = 0; i < 26; i++) {
+    const mid = (lo + hi) / 2;
+    if (landsAt(mid) < dist) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** apex height of a lofted flight (for the decision's "does it clear him?"). */
+export function loftApex(dist: number, loftDeg: number): number {
+  const speed = solveLoftSpeed(dist, loftDeg);
+  const loft = (loftDeg * Math.PI) / 180;
+  const b: BallState = {
+    pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * Math.cos(loft), y: 0 }, vz: speed * Math.sin(loft),
+    phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  let apex = 0;
+  for (let i = 0; i < 600 && b.phase === 'airborne'; i++) { stepBall(b); apex = Math.max(apex, b.z); }
+  return apex;
+}
+
 /** Strike the ball: direction toward `target`, `speedMps` along the flight
  * chord, lofted by `loftDeg`. Releases any carry. Scenario-exact at L2 —
  * execution noise is L3's. */
