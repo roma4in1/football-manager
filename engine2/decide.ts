@@ -186,7 +186,12 @@ export const passCompletion = (
   const d = Math.hypot(dest.x - from.x, dest.y - from.y);
   if (d < 0.5) return 0.2; // a pass to your own feet is not a pass
   let worst = Infinity; // seconds of margin the ball holds over the best interceptor
-  for (let f = DECIDE.laneSampleStep; f <= 1.0001; f += DECIDE.laneSampleStep) {
+  // sample to EXACTLY f=1.0 — a step grid stopping at 0.9 left the final
+  // two meters of every pass unsampled, making tight marks on the receiver
+  // invisible to the model (the audit class: unreachable code regions)
+  const nSamples = Math.round(1 / DECIDE.laneSampleStep);
+  for (let k = 1; k <= nSamples; k++) {
+    const f = k / nSamples;
     const px = from.x + (dest.x - from.x) * f;
     const py = from.y + (dest.y - from.y) * f;
     const seg = d * f;
@@ -285,6 +290,57 @@ export const supportSpot = (
   return best;
 };
 
+/** L5b — the RUN: an off-ball attacker's timed burst in behind, riding the
+ * last defender's line until the ball is played (the v1 line-riding
+ * insight, now geometric). Returns the run plan or null when no run is on. */
+export const runPlan = (
+  mate: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+): { target: Vec2; lineX: number } | null => {
+  const sign = attackSign(mate.team);
+  const opponents = bodies.filter((b) => b.team !== mate.team);
+  if (opponents.length === 0) return null;
+  // the last defender's line (deepest opponent toward the attacked goal)
+  const lineX = sign > 0
+    ? Math.max(...opponents.map((o) => o.pos.x))
+    : Math.min(...opponents.map((o) => o.pos.x));
+  const goalX = sign > 0 ? PITCH.length : 0;
+  // a run is ON when: room in behind, the runner is near enough to the
+  // line to threaten it, and he is AHEAD of the carrier (channel runners,
+  // not deep midfielders)
+  const room = sign > 0 ? goalX - lineX : lineX - goalX;
+  if (room < 12) return null;
+  const distToLine = sign > 0 ? lineX - mate.pos.x : mate.pos.x - lineX;
+  if (distToLine > 22 || distToLine < -2) return null;
+  const aheadOfCarrier = sign > 0 ? mate.pos.x > carrier.pos.x + 2 : mate.pos.x < carrier.pos.x - 2;
+  if (!aheadOfCarrier) return null;
+  // the channel is a SEAM: ride between defenders (or off the outside
+  // shoulder), never a defender's own lane — the ball in behind must have
+  // somewhere to go (the judged drill: the runner rode the marker's
+  // channel and every through ball died on the marker)
+  const lineDefs = opponents.filter((o) => Math.abs(o.pos.x - lineX) < 6)
+    .map((o) => o.pos.y).sort((a, b) => a - b);
+  const seams: number[] = [];
+  if (lineDefs.length) {
+    seams.push(Math.max(8, lineDefs[0] - 8));
+    for (let i = 0; i + 1 < lineDefs.length; i++) seams.push((lineDefs[i] + lineDefs[i + 1]) / 2);
+    seams.push(Math.min(PITCH.width - 8, lineDefs[lineDefs.length - 1] + 8));
+  } else seams.push(mate.pos.y);
+  let chanY = mate.pos.y;
+  let bestScore = -Infinity;
+  for (const y of seams) {
+    const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
+    const score = clear - 0.15 * Math.abs(y - GOAL.centerY) - 0.1 * Math.abs(y - mate.pos.y);
+    if (score > bestScore) {
+      bestScore = score;
+      chanY = y;
+    }
+  }
+  const target = { x: goalX - sign * 8, y: chanY };
+  return { target, lineX };
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];
@@ -293,12 +349,15 @@ export interface DecideInput {
   current: Intent | null;
   /** drill stations (initial positions) — the 'keep' objective's anchors */
   homes?: ReadonlyMap<string, Vec2>;
+  /** mates currently RIDING the line on an L5b run — their meaningful ball
+   * is into the space behind, regardless of current (jogging) speed */
+  runners?: ReadonlySet<string>;
 }
 
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes } = input;
+  const { carrier, bodies, instructions, homes, runners } = input;
   const risk = instructions.risk ?? 0.5;
   const keep = instructions.objective === 'keep';
   const team = carrier.team;
@@ -337,15 +396,24 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       { arrive: softArrive + 4.5, leadExtraS: 0 },
     ];
     if (mate.speed > 2.5) candidates.push({ arrive: softArrive + 4.5, leadExtraS: 0.7 });
-    for (const { arrive, leadExtraS } of candidates) {
+    // the RIDER'S ball: a runner holding the line gets his candidate IN
+    // BEHIND — he is jogging now, but the burst is the whole point
+    const riderBehind = runners?.has(mate.id)
+      ? { x: mate.pos.x + attackSign(mate.team) * 7, y: mate.pos.y }
+      : null;
+    const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
+    if (riderBehind) allCandidates.push({ arrive: softArrive + 5, leadExtraS: 0, destOverride: riderBehind });
+    for (const { arrive, leadExtraS, destOverride } of allCandidates) {
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
       // two-iteration lead on the mate's current velocity
-      let dest = { x: mate.pos.x, y: mate.pos.y };
-      for (let i = 0; i < 2; i++) {
-        const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
-        const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55) + leadExtraS;
-        dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
+      let dest = destOverride ?? { x: mate.pos.x, y: mate.pos.y };
+      if (!destOverride) {
+        for (let i = 0; i < 2; i++) {
+          const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
+          const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55) + leadExtraS;
+          dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
+        }
       }
       let pC = passCompletion(here, dest, speed, opponents, dist0, mate);
       // the backheel discount: strikes far off facing complete less
@@ -428,6 +496,32 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   }
 
   options.sort((a, b) => b.utility - a.utility);
+  // L5b — the DELAYED RELEASE (the forward note, now earnable): if the best
+  // option is a pass to a RUNNER whose value is still RISING (project him
+  // half a second on), hold the ball a beat — the run makes the pass better.
+  const best0 = options[0];
+  if (best0 && best0.kind === 'pass') {
+    const mate = bodies.find((b) => b.id === best0.receiverId);
+    if (mate && mate.speed > 3) {
+      const ahead: BodyState = { ...mate, pos: { x: mate.pos.x + mate.vel.x * 0.5, y: mate.pos.y + mate.vel.y * 0.5 } };
+      const dist0 = Math.hypot(ahead.pos.x - here.x, ahead.pos.y - here.y);
+      const arr = DECIDE.passArriveMps + 0.5 * ahead.speed + 4.5;
+      const spd = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax, Math.sqrt(arr ** 2 + 2 * 1.7 * dist0)));
+      const dest2 = { x: ahead.pos.x + ahead.vel.x * 0.8, y: ahead.pos.y + ahead.vel.y * 0.8 };
+      const pC2 = passCompletion(here, dest2, spd, opponents, dist0, ahead);
+      const pv2 = value(dest2, mate.id);
+      const u2 = DECIDE.possessionDiscount * DECIDE.passFriction * (pC2 * pv2 - (1 - pC2) * turnoverW * pv2) +
+        DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pv2 - pvHere);
+      if (u2 > best0.utility * 1.15) {
+        // wait: surface the carry (or shield) instead this beat
+        const holdOpt = options.find((o) => o.kind === 'carry' || o.kind === 'shield');
+        if (holdOpt) {
+          const rest = options.filter((o) => o !== holdOpt);
+          return [holdOpt, ...rest];
+        }
+      }
+    }
+  }
   return options;
 };
 

@@ -114,6 +114,34 @@ export const strikerBreakaway: ScenarioDef = {
   ],
 };
 
+/** L5b — the in-behind run: NOTHING is scripted for the striker. The run
+ * must come from the trigger (team has the ball, room behind the line),
+ * the line-riding from geometry, the through ball from the carrier's EV,
+ * and the burst from the receive reflex. Judge: does it look like a
+ * striker playing off the last man? */
+export const runsInBehind: ScenarioDef = {
+  version: 1,
+  name: 'runs-in-behind',
+  description: 'A playmaker carries; an unscripted striker rides the two-man line, and the through ball releases him. The whole move is emergent — trigger, line-ride, release, burst.',
+  durationTicks: 220,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 46, y: 34 }, attributes: { ...passer, passing: 17 }, brain: 'onBall', instructions: { risk: 0.7 } },
+    // the striker starts ON the line, marked — the ball to his feet is
+    // taxed (contested receive), so the RUN is where the value lives
+    { id: 'striker', team: 'home', pos: { x: 66.5, y: 28 }, attributes: { ...passer, pace: 16, acceleration: 15, firstTouch: 16 }, brain: 'onBall', instructions: { risk: 0.7 } },
+    // the two-man line — parked; d1 reacts late (defending AI is L5c/d)
+    // d1 marks TIGHT (a loose mark left the feet-ball free and no run
+    // was ever needed)
+    { id: 'd1', team: 'away', pos: { x: 67.3, y: 28.6 }, attributes: chaser },
+    { id: 'd2', team: 'away', pos: { x: 68, y: 39 }, attributes: chaser },
+  ],
+  ball: { carrier: 'playmaker' },
+  script: [
+    { atTick: 60, bodyId: 'd1', command: { type: 'chaseBall', regime: 'sprint' } },
+    { atTick: 90, bodyId: 'd2', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
 export const l4Scenarios: ScenarioDef[] = [
-  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway,
+  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind,
 ];

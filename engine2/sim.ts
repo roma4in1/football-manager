@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -56,6 +56,9 @@ export class Sim {
   /** last scripted atTick per body — a body with a FUTURE scripted command
    * is waiting for his cue, not idle: support must not pre-move him */
   private readonly scriptedUntil = new Map<string, number>();
+  /** brains currently making an L5b run (their moveTo is the run, not a
+   * script — the run re-plans at cadence) */
+  private readonly runningLine = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -786,6 +789,7 @@ export class Sim {
       if (this.ball.carrierId !== id) {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
+          this.runningLine.delete(id);
           // go meet your pass (chase semantics take it from here: contested
           // flights are raced, quiet ones are received)
           if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
@@ -811,21 +815,45 @@ export class Sim {
           }
         } else {
           this.receiveOpenDir.delete(id);
-          // L5a SUPPORT: an IDLE brain whose team has the ball moves to
-          // offer an angle — never overriding a scripted route (runs in
-          // behind are L5b's; the script is the run until then)
+          // L5b RUN first, L5a SUPPORT second: an IDLE brain whose team
+          // has the ball either attacks the space in behind (riding the
+          // last defender's line until the ball is played) or drops to
+          // offer an angle. Never overrides a scripted route.
           const carrierBody = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
           if (carrierBody && carrierBody.team === body.team && carrierBody.id !== id &&
-            body.command.type === 'hold' && this.tick % DECIDE.reconsiderTicks === 0 &&
+            (body.command.type === 'hold' || this.runningLine.has(id)) &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
-            const spot = supportSpot(
-              body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos,
-              (this.instructions.get(id)?.objective) ?? 'score',
-            );
-            const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
-            if (d > 1.4) {
-              this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
-              this.actionLabels.set(id, 'support');
+            const objective = (this.instructions.get(id)?.objective) ?? 'score';
+            const plan = objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
+            if (plan) {
+              // RIDE THE LINE: advance capped just short of the last
+              // defender until the ball is actually played to the runner
+              // (the receive reflex then owns the burst)
+              const sign = body.team === 'home' ? 1 : -1;
+              const cappedX = sign > 0
+                ? Math.min(plan.target.x, plan.lineX - 0.4)
+                : Math.max(plan.target.x, plan.lineX + 0.4);
+              const riding = sign > 0 ? body.pos.x >= cappedX - 0.8 : body.pos.x <= cappedX + 0.8;
+              this.assign(body, {
+                type: 'moveTo',
+                target: { x: cappedX, y: plan.target.y },
+                regime: riding ? 'jog' : 'run',
+              });
+              this.runningLine.add(id);
+              this.actionLabels.set(id, 'run');
+            } else {
+              this.runningLine.delete(id);
+              if (body.command.type === 'hold') {
+                const spot = supportSpot(
+                  body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos, objective,
+                );
+                const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
+                if (d > 1.4) {
+                  this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
+                  this.actionLabels.set(id, 'support');
+                }
+              }
             }
           }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
@@ -860,6 +888,7 @@ export class Sim {
           instructions: this.instructions.get(id) ?? {},
           current: intent,
           homes: this.homes,
+          runners: this.runningLine,
         });
         this.intents.set(id, intent);
       }

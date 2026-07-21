@@ -3,6 +3,48 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5b OPENED: runs — trigger, seam, line-ride, release, burst
+
+Branch feat/engine2-l5b (stacked on l5a). The in-behind run, fully
+emergent (the runs-in-behind drill scripts NOTHING for the striker):
+
+- **runPlan** (decide.ts): a run is ON when the team has the ball, the
+  runner is ahead of the carrier, within ~22 m of the last defender's
+  line, and ≥12 m of room exists behind it. The channel is a SEAM —
+  between line defenders or off the outside shoulder, never a marker's own
+  lane (the first cut rode the marker's channel and every through ball
+  died on the marker).
+- **Line-riding** (sim.ts): the runner advances capped 0.4 m short of the
+  line at a jog (the v1 line-riding insight, geometric — no offside law
+  until L9); the receive reflex owns the burst when the ball is played.
+  Run priority beats support; scripts beat both (scriptedUntil).
+- **The rider's ball** (decide.ts): a rider jogs, so speed-gated through
+  candidates never saw him — runners get an explicit candidate into the
+  space behind the line. **The delayed release** (the forward note, now
+  live): when the best pass's value is still RISING with the run
+  (projected +0.5 s), the carrier holds a beat.
+- **AUDIT-CLASS FIND — the unsampled lane tail**: passCompletion's sample
+  grid stopped at f=0.90 — the final two meters of EVERY pass were never
+  checked, so a tight mark standing ON the receiver was invisible to the
+  model. Sampling now lands exactly on f=1.0. All 55 prior tests survived
+  the correction (the pinned rates were honest), and rondo circulation
+  IMPROVED again (94 → 121 transfers/8 seeds — better pass selection).
+
+Rates: run triggered 16/16, striker received 16/16, move finished with a
+shot 16/16; dial 16/16 both poles; 56/56.
+
+## 2026-07-21 — Forward note: curl and the trivela (builder ask)
+
+Spin/curve stays DEFERRED per spec §3 ("earns a layer only if scenario
+evidence shows its absence matters"). The earning conditions are now
+concrete: (a) bending a ball around a blocker — the lane model calls a
+blocked lane dead; curl is the real answer; (b) crosses and corners (L8);
+(c) keeper-beating placement (L7). The TRIVELA additionally hooks into the
+facing model: an outside-boot ball is how a player passes 45–90° against
+his facing WITHOUT turning — when curve lands, it slots in as a skill-gated
+alternative to turn-then-strike (technique attribute, execution-noise
+scaled). Until then: straight balls, noisy by passing skill.
+
 ## 2026-07-21 — L5a round 1: the side-foot range + the three-body squeeze
 
 - **Side-foot passes** (judged): turn-before-strike now only fires for
