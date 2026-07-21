@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5c round 3: the bend-receive — a runner never turns back for his ball
+
+The judged wrongness (runs-in-behind): the runner stopped, turned, and
+walked BACK to meet a thread played into his run — hold-up behavior with
+no defender to hold up against. Cause: at release, the dart's velocity is
+angled across the seam, so the strict in-stride check (current velocity,
+±1 m corridor) failed and the STATION receive machine took over —
+braking, turning, stepping back.
+
+- **The bend-receive** (sim.ts): a runner whose thread is in flight bends
+  (≤1.2 rad of current heading) onto the ball's PREDICTED PATH at pace —
+  the earliest path point he reaches at current speed, no caps, no
+  braking; the ball catches him up in stride. Gated to actual runners
+  (bendReceive set, armed when the receive reflex fires for a body in
+  runningLine) so the judged station/crossing receives are untouched.
+- Post (wb-1): the striker runs forward the whole flight (4.4–5.3 m/s,
+  never braking) while the ball closes along his path and arrives at
+  d=1.1 in stride. runs-in-behind 16/16/16; all other rates intact.
+  59/59.
+
 ## 2026-07-21 — L5c round 2: the splitting ball, carry courage, shots through legs
 
 Three judged over-conservatism knobs (line-vs-runs) + passing.md mapped:

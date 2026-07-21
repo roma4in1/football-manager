@@ -72,6 +72,10 @@ export class Sim {
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
+  /** runners whose thread is in flight: they BEND onto the ball's path at
+   * pace instead of turning back to meet it (the judged wrongness: a free
+   * runner stopping and coming back for a ball played into his run) */
+  private readonly bendReceive = new Set<string>();
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
@@ -215,6 +219,12 @@ export class Sim {
                 if (dMeet / vcap < icept.tMeet - 0.35) brakeIntoLine = true;
               }
             }
+          } else if (this.bendReceive.has(body.id) && this.bendMeet(body)) {
+            // a RUNNER receives ON THE RUN: bend (≤~70°) onto the ball's
+            // path ahead at pace — never stop, never turn back for a ball
+            // played into the run (hold-up is a pressured behavior)
+            live = this.bendMeet(body)!;
+            this.receiveOnLine.delete(body.id);
           } else if (this.inStrideMeet(body)) {
             // the RUNNER'S receive: his continued run meets the ball — take
             // it in stride, no timing, no brake (the judged check-and-wait:
@@ -802,6 +812,7 @@ export class Sim {
       if (this.ball.carrierId !== id) {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
+          if (this.runningLine.has(id)) this.bendReceive.add(id);
           this.runningLine.delete(id);
           this.runPhase.delete(id);
           // go meet your pass (chase semantics take it from here: contested
@@ -966,6 +977,7 @@ export class Sim {
         continue;
       }
       this.receiveOpenDir.delete(id);
+      this.bendReceive.delete(id); // carrier now — the run is received
       let intent = this.intents.get(id) ?? null;
       if (!intent || this.tick % DECIDE.reconsiderTicks === 0) {
         intent = decide({
@@ -1099,6 +1111,25 @@ export class Sim {
     if (bestGap > 1.0) return null;
     const bp = predictBall(this.ball, bestT);
     return { x: bp.x, y: bp.y };
+  }
+
+  /** the bend-receive meet: the earliest point on the ball's predicted
+   * path the runner reaches AT PACE with a forward-ish bend (≤1.2 rad of
+   * his current heading) — or null if the ball truly requires turning back */
+  private bendMeet(body: BodyState): Vec2 | null {
+    if (body.speed < 3) return null;
+    if (Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) return null;
+    const hd = Math.atan2(body.vel.y, body.vel.x);
+    for (let t = 0.2; t <= 3.0; t += 0.2) {
+      const bp = predictBall(this.ball, t);
+      const d = Math.hypot(bp.x - body.pos.x, bp.y - body.pos.y);
+      if (d > body.speed * t + 0.9) continue; // cannot make it at pace
+      const dir = Math.atan2(bp.y - body.pos.y, bp.x - body.pos.x);
+      const bend = Math.abs(((dir - hd + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      if (d > 0.6 && bend > 1.2) continue; // that would be a turn-back
+      return bp;
+    }
+    return null;
   }
 
   private interceptPoint(body: BodyState): {
