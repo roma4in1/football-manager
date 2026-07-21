@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, predictBallState, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { attackSign, decide, DECIDE, goalCenter, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -442,6 +442,7 @@ export class Sim {
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
+    this.resolveHeaders();
     this.resolveClaims(ballFrom);
 
     // L5d bookkeeping: possession flips arm the counterpress window; a
@@ -690,6 +691,55 @@ export class Sim {
     this.ball.z = 0;
     this.ball.vz = 0;
     this.ball.phase = 'carried';
+  }
+
+  /** the AERIAL CONTEST — a ball in the header band is challenged in the AIR:
+   * bodies within a leap contest it (closer + stronger + a little agility,
+   * with a coin-flip of noise), the winner heads it. A DEFENDER near his own
+   * goal clears it upfield; an ATTACKER near the opponent goal heads at goal;
+   * otherwise a knock-DOWN drops it at his feet to control. This is what makes
+   * a loft OVER a defender honest — one standing under it heads it away. */
+  private resolveHeaders(): void {
+    const ball = this.ball;
+    if (ball.phase !== 'airborne' || ball.z < BALL.headMinZ || ball.z > BALL.headMaxZ) return;
+    let best: { body: BodyState; score: number } | null = null;
+    for (const body of this.bodies) {
+      if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      const d = Math.hypot(body.pos.x - ball.pos.x, body.pos.y - ball.pos.y);
+      if (d > BALL.headReachM) continue;
+      if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue; // can't leap to it
+      const score = -d + 0.08 * body.attributes.strength + 0.05 * body.attributes.agility +
+        this.rng.gauss(0, BALL.headContestNoise, this.tick, body.id, 'header');
+      if (!best || score > best.score) best = { body, score };
+    }
+    if (!best) return;
+    const w = best.body;
+    const sign = attackSign(w.team);
+    const ownGoal = { x: sign > 0 ? 0 : PITCH.length, y: PITCH.width / 2 };
+    const oppGoal = goalCenter(w.team);
+    const dOwn = Math.hypot(ownGoal.x - w.pos.x, ownGoal.y - w.pos.y);
+    const dOpp = Math.hypot(oppGoal.x - w.pos.x, oppGoal.y - w.pos.y);
+    if (dOwn < 35) {
+      // DEFENSIVE clearance — lofted, far, upfield, with wide direction noise
+      const ang = (sign > 0 ? 0 : Math.PI) + this.rng.gauss(0, BALL.headClearScatterRad, this.tick, w.id, 'head-clear');
+      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 30, y: w.pos.y + Math.sin(ang) * 30 }, BALL.headClearSpeed, BALL.headClearLoftDeg, w.id, this.tick);
+      this.actionLabels.set(w.id, 'header-clear');
+    } else if (dOpp < 14) {
+      // ATTACKING header at goal — a driven strike, slight noise
+      const ang = Math.atan2(oppGoal.y - w.pos.y, oppGoal.x - w.pos.x) + this.rng.gauss(0, 0.12, this.tick, w.id, 'head-goal');
+      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 20, y: w.pos.y + Math.sin(ang) * 20 }, BALL.headGoalSpeed, 8, w.id, this.tick);
+      this.actionLabels.set(w.id, 'header-goal');
+    } else {
+      this.actionLabels.set(w.id, 'header-down');
+      // KNOCK-DOWN — drop it at his feet forward to control (no kicker lock:
+      // he plays his own knockdown next tick; an opponent may still contest)
+      ball.z = 0;
+      ball.vz = 0;
+      ball.phase = 'rolling';
+      ball.carrierId = null;
+      ball.kickerId = null;
+      ball.vel = { x: sign * BALL.headKnockSpeed, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
+    }
   }
 
   private resolveClaims(from: Vec2): void {

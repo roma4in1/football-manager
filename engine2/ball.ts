@@ -70,6 +70,23 @@ export const BALL = {
   controlRadiusM: 0.9,
   /** ball must be below knee height to claim on the move */
   claimMaxZ: 0.5,
+  /** HEADER contest: a ball in this height band (above the foot, up to a
+   * leap) is contested in the AIR — the winner heads it. Reach is standing
+   * head height plus a strength-scaled jump. */
+  headMinZ: 0.9,
+  headMaxZ: 2.5,
+  headReachM: 1.5, // horizontal reach to leap for it
+  headStandM: 1.9,
+  headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
+  headContestNoise: 0.9,
+  /** a defensive header CLEARS: lofted, far, upfield, with wide direction
+   * noise; an attacking header at goal is a driven strike; otherwise a
+   * knock-DOWN sets the ball at the header's feet to control */
+  headClearSpeed: 18,
+  headClearLoftDeg: 34,
+  headClearScatterRad: 0.35,
+  headGoalSpeed: 15,
+  headKnockSpeed: 4.5,
   /** touch push: ball speed = carrier speed × (base + speedGain·(v/vmax) +
    * controlGain·(1 − dribbling/20)) — the ball leaves the boot only slightly
    * faster than the runner. SPEED is the dominant trend (the L2 judgment

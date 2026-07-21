@@ -51,6 +51,31 @@ test('the carrier LOFTS over a blocked ground lane, clearing the defender\'s hea
   assert.ok(received >= 6, `the open mate collects the drop (${received}/8)`);
 });
 
+test('the AERIAL CONTEST: a defender under a lofted ball heads it clear (lofts are honest)', () => {
+  let headed = 0;
+  let defenderCleared = 0;
+  let clearedUpfield = 0;
+  for (let s = 0; s < 16; s++) {
+    const sim = new Sim(scenarioByName('aerial-contest'), `ct-${s}`);
+    for (let t = 0; t < 60; t++) {
+      const f = sim.step();
+      const h = f.bodies.find((b) => b.action?.startsWith('header'));
+      if (h) {
+        headed++;
+        if (h.id === 'defender' && h.action === 'header-clear') {
+          defenderCleared++;
+          // the away defender clears toward his attacking half (−x, away from his goal at 105)
+          if (sim.ball.vel.x < 0) clearedUpfield++;
+        }
+        break;
+      }
+    }
+  }
+  assert.ok(headed >= 13, `the aerial ball is contested with a header (${headed}/16)`);
+  assert.ok(defenderCleared >= 12, `the defender wins the leap and clears (${defenderCleared}/16)`);
+  assert.equal(clearedUpfield, defenderCleared, `every clearance goes upfield, away from goal`);
+});
+
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
   // driven lofts (low angle) are the accurate, fast aerial ball
   for (const [dist, loft] of [[25, 22], [34, 22], [40, 25]] as const) {

@@ -3,6 +3,34 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Aerial contest: the HEADER (lofts over defenders are now honest)
+
+Builder ask: add headers / the aerial contest. Until now a ball above knee
+height (claimMaxZ 0.5) was uncontestable — lofts sailed over defenders who
+should challenge them.
+
+resolveHeaders() (a phase before resolveClaims): a ball in the header BAND
+(z 0.9–2.5 m, airborne) is challenged in the air. Bodies within a leap
+(headReach 1.5 m, and z ≤ standing head 1.9 + a strength-scaled jump) contest
+it — score = −distance + strength + a little agility + a coin-flip of noise,
+so the STRONGER/closer man wins the duel. The winner heads it by ROLE:
+- a DEFENDER near his own goal (<35 m) CLEARS — lofted, far, UPFIELD, wide
+  direction noise;
+- an ATTACKER near the opponent goal (<14 m) heads AT GOAL (a driven strike);
+- otherwise a KNOCK-DOWN drops it at his feet to control (no kicker lock — he
+  plays his own knockdown; an opponent may still nick it).
+
+Verified (aerial-contest scenario): the header is contested 15/16, the
+stronger defender wins the leap and clears 15/15, every clearance goes upfield
+away from his goal. Design notes learned: a header contest needs a STEEP drop
+(a flat loft is high mid-flight, low at the landing — the band never meets a
+body at the landing) and the loft's v²-scatter makes long contests unreliable,
+so the drill uses a short steep lob. Ground receives/claims are unchanged
+(the header band is airborne-only). 63/63; all ground rates pinned.
+
+Next: curve (Magnus) — spin state + bending flight, the last physical-pass
+piece (unlocks the KDB cross-field ball and swerving crosses).
+
 ## 2026-07-21 — Aerial fixes: read the DROP, and weight the loft to settle (not skip)
 
 Builder judgment on the aerial pieces: (1) the receiver reads the landing
