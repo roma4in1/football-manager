@@ -3,6 +3,31 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Aerial fixes: read the DROP, and weight the loft to settle (not skip)
+
+Builder judgment on the aerial pieces: (1) the receiver reads the landing
+badly, (2) the aerial through ball is over-hit — it bounces on to the penalty
+spot.
+
+- **Read the drop:** interceptPoint used predictBall (position only), so a
+  receiver targeted the earliest reachable point on the ball's PATH — a
+  mid-flight point where the ball is still over his head. He ran to meet it
+  there, it sailed past, and landed BEHIND him (mate over-ran to x62 for a
+  ball that dropped at x69). Fix: predictBallState() adds height+vz; for an
+  AIRBORNE ball interceptPoint now only accepts a CLAIMABLE, DESCENDING point
+  (z ≤ knee, vz ≤ 0) — the drop. The mate now comes to the landing and
+  collects it early (t30 vs t49). Ground receives are unchanged (the filter
+  is airborne-only); all rates pinned.
+- **Weight the loft to settle:** a driven loft lands flat and SKIPS forward
+  (restitution 0.72 keeps 75% of pace through the bounce), carrying a 38 m
+  through ball on to x86. The geometry is the constraint: clearing a defender
+  needs the ball high AT him, which for a far line means a long loft that
+  lands deep. So the aerial-through scenario now clears the line while the
+  ball is RISING (blocker at 12 m, 32° peaks ~2.7 m by there) and drops behind
+  it — settling ~x75 for the runner, not the penalty spot.
+
+62/62; all ground rates pinned.
+
 ## 2026-07-21 — Aerial (L-aerial): the lofted ball — foundation + the decision to loft
 
 Next step after the ball-friction merge: settle foundational aerial PHYSICS

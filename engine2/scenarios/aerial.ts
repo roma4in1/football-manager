@@ -10,12 +10,13 @@ import { solveLoftSpeed } from '../ball.ts';
 
 const passer = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
 
-/** a driven lofted ball from the feeder over the defensive LINE to a runner
- * who arrives on the drop. Loft solved so it LANDS ~38 m out, behind the
- * line — by the line's distance (~20 m) the ball is at/past apex, over a
- * standing defender's head. A near blocker needs a steeper chip (later). */
-const feedDist = 38;
-const feedLoft = 24;
+/** a lofted ball from the feeder over the defensive line to a runner who
+ * arrives on the drop. The loft is weighted to CLEAR the line as it rises
+ * (32° peaks ~2.7 m by the line at 12 m) and then DROP behind it, settling
+ * ~30 m out for the runner — not a driven ball that skips on to the penalty
+ * spot (the judged over-hit). */
+const feedDist = 30;
+const feedLoft = 32;
 
 export const aerialThrough: ScenarioDef = {
   version: 1,
@@ -24,10 +25,10 @@ export const aerialThrough: ScenarioDef = {
   durationTicks: 120,
   bodies: [
     { id: 'feeder', team: 'home', pos: { x: 46, y: 34 }, attributes: passer },
-    // the runner starts level with the line, times his run onto the drop
-    { id: 'runner', team: 'home', pos: { x: 64, y: 34 }, attributes: { ...passer, pace: 16, acceleration: 15 }, brain: 'onBall' },
-    // a defender on the LINE, in the GROUND lane — a rolled ball never arrives
-    { id: 'blocker', team: 'away', pos: { x: 66, y: 34 }, attributes: passer },
+    // the runner starts just behind the line, times his run onto the drop
+    { id: 'runner', team: 'home', pos: { x: 56, y: 34 }, attributes: { ...passer, pace: 16, acceleration: 15 }, brain: 'onBall' },
+    // a defender on the line, in the GROUND lane — a rolled ball never arrives
+    { id: 'blocker', team: 'away', pos: { x: 58, y: 34 }, attributes: passer },
   ],
   ball: { carrier: 'feeder' },
   script: [

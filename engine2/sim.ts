@@ -25,7 +25,7 @@ import {
   type ScenarioDef,
   type Vec2,
 } from './engine2-types.ts';
-import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, predictBall, predictBallState, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
 import { decide, DECIDE, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
@@ -1332,8 +1332,14 @@ export class Sim {
     const vcap = Math.max(regimeCapMps(body.attributes.pace, regime), 0.5);
     let meet: { p: Vec2; tStar: number } | null = null;
     let near: { p: Vec2; d: number; t: number } | null = null;
+    const airborne = this.ball.phase === 'airborne';
     for (let t = 0.2; t <= 6.0; t += 0.2) {
-      const p = predictBall(this.ball, t);
+      const s = predictBallState(this.ball, t);
+      const p = s.pos;
+      // an AIRBORNE ball is only a receive point where it is CLAIMABLE and
+      // DESCENDING (the drop) — a mid-flight point is over the receiver's
+      // head; running to it lets the ball sail past and land behind him
+      if (airborne && (s.z > BALL.claimMaxZ || s.vz > 0.2)) continue;
       const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
       if (!near || d < near.d) near = { p, d, t };
       if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };

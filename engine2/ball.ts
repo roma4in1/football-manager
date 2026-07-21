@@ -144,6 +144,20 @@ export function predictBall(ball: BallState, seconds: number): Vec2 {
   return clone.pos;
 }
 
+/** predictBall with HEIGHT — a receiver reads not just where the ball goes but
+ * whether it is claimable (below knee height) and descending there, so he
+ * runs to the DROP, not to a point where it is still over his head. */
+export function predictBallState(ball: BallState, seconds: number): { pos: Vec2; z: number; vz: number } {
+  const clone: BallState = {
+    pos: { ...ball.pos }, z: ball.z, vel: { ...ball.vel }, vz: ball.vz,
+    phase: ball.phase === 'dead' ? 'rolling' : ball.phase,
+    carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  const steps = Math.round(seconds / DT);
+  for (let i = 0; i < steps; i++) stepBall(clone);
+  return { pos: clone.pos, z: clone.z, vz: clone.vz };
+}
+
 /** One physics tick for the free ball (rolling or airborne). Carried-ball
  * coupling lives in the sim loop (it needs the carrier's body). */
 export function stepBall(ball: BallState): void {
