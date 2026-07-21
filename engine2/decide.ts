@@ -126,6 +126,16 @@ export const DECIDE = {
   loftChipDeg: 42,
   aerialControlBase: 0.5,
   aerialControlTouchGain: 0.02,
+  /** the CROSS: a wide, advanced carrier whips an aerial ball into the box for
+   * an attacker's run — a DRIVEN (fast, flat) or FLOATED (high, hang-time)
+   * delivery, both solved to land on his run. Fires from wide + advanced into a
+   * box target; unlike the loft it needs no blocked lane — the cross IS the
+   * ball into the danger zone. The EV picks driven vs floated by who completes. */
+  crossWideM: 13, // carrier at least this far off centre (a flank position)
+  crossAdvanceM: 32, // and within this of the byline (the attacking flank)
+  crossBoxM: 20, // the landing this near the opp goal, and central (the box)
+  crossDrivenLoftDeg: 16,
+  crossFloatLoftDeg: 34,
   /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
@@ -890,6 +900,34 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const uL = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCa * pvL - (1 - pCa) * turnoverW * pvL) + uProgL) * meetsL;
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
+        }
+      }
+    }
+    // ── the CROSS: a wide, advanced carrier whips an aerial ball into the box
+    // for a mate attacking it — DRIVEN (fast, flat) or FLOATED (hang-time),
+    // both solved to land on his run. No blocked lane required — the cross IS
+    // the ball into the danger zone; the EV picks the delivery that completes. ─
+    if (!keep) {
+      const sign = attackSign(carrier.team);
+      const wide = Math.abs(here.y - PITCH.width / 2) >= DECIDE.crossWideM;
+      const advanced = (sign > 0 ? PITCH.length - here.x : here.x) <= DECIDE.crossAdvanceM;
+      const cross = { x: mate.pos.x + mate.vel.x * 0.5, y: mate.pos.y + mate.vel.y * 0.5 };
+      const intoBox = (sign > 0 ? PITCH.length - cross.x : cross.x) <= DECIDE.crossBoxM &&
+        Math.abs(cross.y - PITCH.width / 2) < 20;
+      const dCross = Math.hypot(cross.x - here.x, cross.y - here.y);
+      if (wide && advanced && intoBox && dCross >= 8 && inBounds(cross, 0.8)) {
+        for (const loftDeg of [DECIDE.crossDrivenLoftDeg, DECIDE.crossFloatLoftDeg]) {
+          const speedC = solveLoftSpeed(dCross, loftDeg);
+          const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+          const pCc = aerialCompletion(cross, mate, opponents) * ctrl;
+          let pvC = value(cross, mate.id);
+          pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+          const uProgC = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvC - pvHere);
+          const meetsC = pCc >= passFloor ? 1 : 0.25 + 0.45 * risk;
+          const uC = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCc * pvC - (1 - pCc) * turnoverW * pvC) + uProgC) * meetsC;
+          if (!bestPass || uC > bestPass.utility) {
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg };
+          }
         }
       }
     }

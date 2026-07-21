@@ -185,4 +185,26 @@ export const chestControl: ScenarioDef = {
   ],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl];
+/** the CROSS DECISION: a wide, advanced carrier with a striker attacking the
+ * box should CHOOSE to whip an aerial cross in — not carry into the corner or
+ * force a ground ball through the defence. The delivery mechanic exists
+ * (crossHeader); this exercises the EV that picks it. */
+export const crossDecision: ScenarioDef = {
+  version: 1,
+  name: 'cross-decision',
+  description: 'A wide, advanced carrier with a striker in the box chooses to whip an aerial cross in rather than carry into the corner. Judge the DECISION to cross.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'winger', team: 'home', pos: { x: 98, y: 55 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // a striker attacking the centre of the box
+    { id: 'striker', team: 'home', pos: { x: 99, y: 37 }, attributes: { ...passer, strength: 15 }, brain: 'onBall' },
+    // a defender on the ground lane between winger and striker (the air is open)
+    { id: 'cb', team: 'away', pos: { x: 98, y: 46 }, attributes: passer },
+    // a defender closing the winger — carrying on is not free
+    { id: 'fb', team: 'away', pos: { x: 96, y: 54 }, attributes: passer },
+  ],
+  ball: { carrier: 'winger' },
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl, crossDecision];

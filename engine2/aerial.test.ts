@@ -174,6 +174,23 @@ test('CHEST control: a fast ball crossing chest height is cushioned down OR boun
   assert.ok(cushioned >= 1 && bounced >= 1, `both a clean control and a bounce-off occur (${cushioned} cushion, ${bounced} off)`);
 });
 
+test('the CROSS DECISION: a wide, advanced carrier chooses to whip an aerial cross to a striker in the box', () => {
+  let crossed = 0;
+  let reached = 0;
+  for (let s = 0; s < 10; s++) {
+    const sim = new Sim(scenarioByName('cross-decision'), `cd-${s}`);
+    let sawAir = false;
+    for (let t = 0; t < 60; t++) {
+      sim.step();
+      if (sim.ball.phase === 'airborne' && sim.ball.kickerId === 'winger') sawAir = true;
+      if (sim.ball.carrierId === 'striker' && sawAir) { reached++; break; }
+    }
+    if (sawAir) crossed++;
+  }
+  assert.ok(crossed >= 8, `the winger chooses an aerial cross, not a carry into the corner (${crossed}/10)`);
+  assert.ok(reached >= 7, `the cross reaches the striker in the box (${reached}/10)`);
+});
+
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
   // driven lofts (low angle) are the accurate, fast aerial ball
   for (const [dist, loft] of [[25, 22], [34, 22], [40, 25]] as const) {
