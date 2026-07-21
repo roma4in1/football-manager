@@ -366,6 +366,73 @@ export const runPlan = (
   return { target, lineX, dartY };
 };
 
+/** L5c — the defensive SHAPE spot: where a defending brain stands so his
+ * LINE defends as a unit. Three forces, in priority: hold the line's
+ * shared depth (step/drop with the ball), shift laterally with the ball
+ * (ball-side shift, spacing-capped), and bend toward the cover shadow
+ * (sit in the lane between the carrier and the most dangerous runner in
+ * your channel). Pressing is L5d's — the line slides, it does not chase. */
+export const shapeSpot = (
+  defender: BodyState,
+  bodies: readonly BodyState[],
+  ball: { pos: Vec2 },
+  homes: ReadonlyMap<string, Vec2> | undefined,
+  unit: readonly string[],
+): Vec2 => {
+  const home = homes?.get(defender.id) ?? defender.pos;
+  const dSign = attackSign(defender.team); // own goal = the END we attack FROM
+  const ownGoalX = dSign > 0 ? 0 : PITCH.length;
+  const opponents = bodies.filter((b) => b.team !== defender.team);
+  // the LINE'S depth — shared by the unit (computed identically by each
+  // member): hold the home line, but DROP goal-side of the ball when the
+  // play advances (buffer 12 m), never shallower than 10 m from goal
+  const unitHomes = unit.map((id) => homes?.get(id) ?? defender.pos);
+  const homeLineX = dSign > 0
+    ? Math.min(...unitHomes.map((h) => h.x))
+    : Math.max(...unitHomes.map((h) => h.x));
+  const ballBuffer = ball.pos.x - dSign * 12;
+  let lineX = dSign > 0 ? Math.min(homeLineX, ballBuffer) : Math.max(homeLineX, ballBuffer);
+  // floor: do not retreat into the goal
+  lineX = dSign > 0 ? Math.max(lineX, ownGoalX + 10) : Math.min(lineX, ownGoalX - 10);
+  // ball-side shift, capped — the unit slides toward the ball together
+  let y = home.y + Math.max(-7, Math.min(7, (ball.pos.y - home.y) * 0.4));
+  // cover shadow: the most dangerous opponent in MY channel (deep, near my
+  // lane) — bend toward the carrier→threat line at my depth
+  let threat: BodyState | null = null;
+  let threatScore = -Infinity;
+  for (const o of opponents) {
+    if (Math.abs(o.pos.y - home.y) > 9) continue;
+    const depth = dSign > 0 ? -o.pos.x : o.pos.x; // deeper toward MY goal = bigger
+    const score = depth - Math.abs(o.pos.y - home.y) * 0.5;
+    if (score > threatScore) {
+      threatScore = score;
+      threat = o;
+    }
+  }
+  if (threat) {
+    const dx = threat.pos.x - ball.pos.x;
+    if (Math.abs(dx) > 1e-6) {
+      const t = (lineX - ball.pos.x) / dx;
+      if (t > 0 && t < 1.2) {
+        const laneY = ball.pos.y + (threat.pos.y - ball.pos.y) * t;
+        y = y + (laneY - y) * 0.35;
+      }
+    }
+  }
+  // spacing: keep the unit ORDERED and apart (min 5.5 m) — identical
+  // computation in every member keeps it consistent without messages
+  const ordered = [...unit].sort((a, b) => (homes?.get(a)?.y ?? 0) - (homes?.get(b)?.y ?? 0));
+  const idx = ordered.indexOf(defender.id);
+  if (idx > 0) {
+    const below = homes?.get(ordered[idx - 1]);
+    if (below) {
+      const belowY = below.y + Math.max(-7, Math.min(7, (ball.pos.y - below.y) * 0.4));
+      y = Math.max(y, belowY + 5.5);
+    }
+  }
+  return { x: lineX, y: Math.max(2, Math.min(PITCH.width - 2, y)) };
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];

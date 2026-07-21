@@ -190,6 +190,52 @@ test('wall-pass (L5b): the one-two rhythm — give, dart in flight, return met m
   assert.ok(movingReturns >= 12, `threads met moving beyond the wall (${movingReturns}/16)`);
 });
 
+test('back-line-shift (L5c): the line is a UNIT — level, sliding, spaced (4 seeds)', () => {
+  for (let s = 0; s < 4; s++) {
+    const def = scenarioByName('back-line-shift');
+    const sim = new Sim(def, `l5c-${s}`);
+    let maxSpread = 0;
+    let minGap = Infinity;
+    let shiftCorr = 0;
+    let samples = 0;
+    for (let t = 0; t < def.durationTicks; t++) {
+      sim.step();
+      if (sim.tick < 60 || sim.tick % 5 !== 0) continue;
+      const cbs = sim.bodies.filter((b) => b.id.startsWith('cb'));
+      const xs = cbs.map((b) => b.pos.x);
+      maxSpread = Math.max(maxSpread, Math.max(...xs) - Math.min(...xs));
+      const ys = cbs.map((b) => b.pos.y).sort((a, b) => a - b);
+      for (let i = 0; i + 1 < ys.length; i++) minGap = Math.min(minGap, ys[i + 1] - ys[i]);
+      const meanY = ys.reduce((a, b) => a + b, 0) / ys.length;
+      shiftCorr += Math.sign((sim.ball.pos.y - 34) * (meanY - 34));
+      samples++;
+    }
+    assert.ok(maxSpread <= 3.5, `l5c-${s}: the line stays LEVEL (spread ${maxSpread.toFixed(1)}m)`);
+    assert.ok(minGap >= 4, `l5c-${s}: spacing holds (${minGap.toFixed(1)}m)`);
+    assert.ok(shiftCorr / samples > 0.15, `l5c-${s}: the unit slides WITH the ball (corr ${(shiftCorr / samples).toFixed(2)})`);
+  }
+});
+
+test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (4 seeds)', () => {
+  for (let s = 0; s < 4; s++) {
+    const def = scenarioByName('line-vs-runs');
+    const sim = new Sim(def, `l5c-${s}`);
+    let goalSide = 0;
+    let total = 0;
+    for (let t = 0; t < def.durationTicks; t++) {
+      sim.step();
+      if (sim.tick < 30) continue;
+      const cbs = sim.bodies.filter((b) => b.id.startsWith('cb'));
+      const st = sim.bodies.find((b) => b.id === 'striker')!;
+      total++;
+      if (Math.max(...cbs.map((b) => b.pos.x)) >= st.pos.x - 2.5) goalSide++;
+    }
+    // breaches ARE the attack succeeding — the line-integrity bar is that
+    // it recovers goal-side for the great majority of the drill
+    assert.ok(goalSide / total > 0.75, `l5c-${s}: the line holds goal-side (${(goalSide / total * 100).toFixed(0)}%)`);
+  }
+});
+
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {
   // whole-drill circulation: a cut ball can end a seed's keep early (the
   // passers cannot press to recover — that is L4's boundary, off-ball

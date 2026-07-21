@@ -88,6 +88,17 @@ approaching runners taxed ×0.45; the dart lifts it) and gains the rider's
 in-behind candidate + the delayed release. The receive reflex owns the
 burst. Run priority beats support; scripts still beat both.
 
+## L5c — defensive shape (opened)
+
+The first DEFENDING layer: an idle brain whose OPPONENT has the ball (and
+whose objective isn't 'keep') joins his LINE — shapeSpot computes, per
+member but identically (no messages needed): the unit's shared depth
+(hold the home line; DROP goal-side of the ball with a 12 m buffer, floor
+10 m from goal), the ball-side slide (0.4 × ball offset, capped ±7 m),
+the cover-shadow bend (sit in the carrier→deepest-threat lane at line
+depth, 0.35 blend), and spacing (ordered, ≥5.5 m). The line SLIDES; it
+does not chase — pressing is L5d's, jockeying L5e's.
+
 ## Decided for later layers
 
 - **Positioning split (decided 2026-09-07, implemented at L5)**: the pool

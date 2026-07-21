@@ -170,6 +170,45 @@ export const wallPass: ScenarioDef = {
   ],
 };
 
+/** L5c — the back line as a unit: three defender BRAINS (the first
+ * defending brains in the engine) hold a line against circulation. Judge:
+ * shared depth, the ball-side slide, step/drop with advance, spacing. */
+export const backLineShift: ScenarioDef = {
+  version: 1,
+  name: 'back-line-shift',
+  description: 'Three home passers circulate; an AWAY back three of brains holds the line — watch the unit slide with the ball, drop with advance, and keep its spacing.',
+  durationTicks: 400,
+  bodies: [
+    { id: 'p1', team: 'home', pos: { x: 52, y: 14 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'p2', team: 'home', pos: { x: 48, y: 34 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'p3', team: 'home', pos: { x: 52, y: 54 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
+    { id: 'cb1', team: 'away', pos: { x: 72, y: 22 }, attributes: chaser, brain: 'onBall' },
+    { id: 'cb2', team: 'away', pos: { x: 72, y: 34 }, attributes: chaser, brain: 'onBall' },
+    { id: 'cb3', team: 'away', pos: { x: 72, y: 46 }, attributes: chaser, brain: 'onBall' },
+  ],
+  ball: { carrier: 'p2' },
+  script: [],
+};
+
+/** L5c × L5b — the first true small-sided interplay: the APPROVED
+ * runs-in-behind attack against a LIVING two-man line (brains, not parked
+ * statues). The line drops with the dart and shifts with the ball; the
+ * thread must now beat a moving unit. Nothing is scripted on either side. */
+export const lineVsRuns: ScenarioDef = {
+  version: 1,
+  name: 'line-vs-runs',
+  description: 'The approved run-in-behind attack vs a living back two: the line drops with the dart, slides with the ball, and the thread must beat a moving unit. Fully emergent, both sides.',
+  durationTicks: 260,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 46, y: 34 }, attributes: { ...passer, passing: 17 }, brain: 'onBall', instructions: { risk: 0.7 } },
+    { id: 'striker', team: 'home', pos: { x: 66.5, y: 28 }, attributes: { ...passer, pace: 16, acceleration: 15, firstTouch: 16 }, brain: 'onBall', instructions: { risk: 0.7 } },
+    { id: 'cb1', team: 'away', pos: { x: 70, y: 29 }, attributes: chaser, brain: 'onBall' },
+    { id: 'cb2', team: 'away', pos: { x: 70, y: 39 }, attributes: chaser, brain: 'onBall' },
+  ],
+  ball: { carrier: 'playmaker' },
+  script: [],
+};
+
 export const l4Scenarios: ScenarioDef[] = [
-  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind, wallPass,
+  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind, wallPass, backLineShift, lineVsRuns,
 ];

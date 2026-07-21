@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5c OPENED: defensive shape — the line as a unit
+
+Branch feat/engine2-l5c (chain l3→l4→l5a→l5b merged to main; PR #53).
+The first DEFENDING brains in the engine. shapeSpot (decide.ts): shared
+line depth (hold home; drop goal-side of the ball, 12 m buffer, floor
+10 m from goal), ball-side slide (0.4×, cap ±7), cover-shadow bend
+(carrier→deepest-threat lane at line depth), ordered spacing ≥5.5 m —
+computed identically per member, so the unit coheres without messages
+(the communication reference's losslessly-shared-state regime). The line
+SLIDES, never chases: pressing is L5d's, jockeying L5e's. 'keep' brains
+skip shape (a rondo has no goal to protect).
+
+Scenarios: back-line-shift (a back three of brains vs keep-circulation —
+level to ±0.6 m, slides with the ball, spacing held) and LINE-VS-RUNS —
+the first true small-sided interplay: the APPROVED L5b attack against a
+living line, nothing scripted on either side. The dart still breaches,
+the thread still arrives, and the line retreats goal-side and contests
+deep (goal-side ≥75% pinned; breaches are the attack succeeding).
+
+Perf ~39 µs/tick with shape+decisions on (budget ~185). 59/59; all prior
+rates intact (dial 16/16 both poles, runs 16/16/13, wall 16/16).
+Known-and-deliberate: the line backpedals to its floor rather than ever
+engaging (no pressing yet) — the drop-forever look is L5c-only honesty.
+
 ## 2026-07-21 — L5b scenarios APPROVED + reference index (roles / spatial / communication)
 
 Builder approval: runs-in-behind and wall-pass both pass the eye (the

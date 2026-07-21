@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, runPlan, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -66,6 +66,9 @@ export class Sim {
   /** tick each brain last RELEASED a pass — the one-two: a giver near the
    * line bursts immediately (the give IS his trigger; no patient ride) */
   private readonly lastGiveTick = new Map<string, number>();
+  /** brains currently holding defensive shape (their moveTo is the line's,
+   * re-planned at cadence — not a script) */
+  private readonly shapeHolding = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -915,6 +918,29 @@ export class Sim {
                 }
               }
             }
+          }
+          // L5c SHAPE: an idle brain whose OPPONENT has the ball (carried
+          // or in flight to one) joins his line — shared depth, ball-side
+          // shift, cover shadows. The line slides; pressing is L5d's.
+          if (carrierBody && carrierBody.team !== body.team &&
+            (this.instructions.get(id)?.objective) !== 'keep' &&
+            (body.command.type === 'hold' || this.shapeHolding.has(id)) &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            const unit = [...this.brains].filter((bid) =>
+              this.byId.get(bid)!.team === body.team &&
+              this.tick > (this.scriptedUntil.get(bid) ?? -1));
+            const spot = shapeSpot(body, this.bodies, this.ball, this.homes, unit);
+            const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
+            if (d > 1.2) {
+              this.assign(body, { type: 'moveTo', target: spot, regime: d > 8 ? 'run' : 'jog' });
+              this.shapeHolding.add(id);
+              this.actionLabels.set(id, 'shape');
+            } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
+              this.assign(body, { type: 'hold' });
+            }
+          } else if (carrierBody && carrierBody.team === body.team) {
+            this.shapeHolding.delete(id);
           }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
           // collected by the nearest idle brain — deflected passes died
