@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d round 3: the positional grid (builder ask) — bounded 5v4
+
+Scenario format gains BOUNDS (drill grids: a loose ball crossing them
+goes dead, like the pitch edge) and the EV became bounds-aware — the
+first sessions ended in seconds because keepers aimed and weighted
+passes with full-pitch semantics and every miss rolled out dead:
+
+- pass destinations outside the grid are skipped ("you do not pass to
+  out"), arrival pace is capped so the roll-out DIES INSIDE (the thread
+  room-cap, generalized), carry directions leaving the grid are not
+  plans, run-through targets clamp to the box.
+
+grid-5v4: five keepers (keep objective, pentagon homes) vs four pressers
+(pressing 0.85) in a 32×32 box hugging the sideline (live trap trigger).
+Nothing scripted. Across 8×50 s seeds: 73 transfers, 25 losses, 21
+counterpressed back within 7 s, 6 dead balls, double-press 2%; label
+distribution press 419 / shadow 345 / delay+shape 1755 / counterpress
+373 — the whole collective-pressing vocabulary in one judgeable drill.
+59/59.
+
 ## 2026-07-21 — L5d round 2: the curved press and the delay stance (pressing.md)
 
 pressing.md's failure-case list named our residual defect exactly:

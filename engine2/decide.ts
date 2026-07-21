@@ -556,6 +556,9 @@ export interface DecideInput {
   current: Intent | null;
   /** drill stations (initial positions) — the 'keep' objective's anchors */
   homes?: ReadonlyMap<string, Vec2>;
+  /** drill boundaries (positional grids): the EV never aims outside them
+   * and weights balls to die inside */
+  bounds?: { x0: number; y0: number; x1: number; y1: number };
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
@@ -567,7 +570,21 @@ export interface DecideInput {
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes, runners, waitingRunners } = input;
+  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds } = input;
+  const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
+    (p.x >= bounds.x0 + m && p.x <= bounds.x1 - m && p.y >= bounds.y0 + m && p.y <= bounds.y1 - m);
+  const roomToBound = (from2: Vec2, dir: { x: number; y: number }): number => {
+    if (!bounds) return 99;
+    const n = Math.hypot(dir.x, dir.y) || 1;
+    const ux = dir.x / n;
+    const uy = dir.y / n;
+    let r = 99;
+    if (ux > 1e-6) r = Math.min(r, (bounds.x1 - from2.x) / ux);
+    if (ux < -1e-6) r = Math.min(r, (bounds.x0 - from2.x) / ux);
+    if (uy > 1e-6) r = Math.min(r, (bounds.y1 - from2.y) / uy);
+    if (uy < -1e-6) r = Math.min(r, (bounds.y0 - from2.y) / uy);
+    return Math.max(0, r);
+  };
   const risk = instructions.risk ?? 0.5;
   const keep = instructions.objective === 'keep';
   const team = carrier.team;
@@ -636,7 +653,15 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // pays the hot-arrival tax instead
       allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
     }
-    for (const { arrive, leadExtraS, destOverride } of allCandidates) {
+    for (const { arrive: arrive0, leadExtraS, destOverride } of allCandidates) {
+      // in a bounded grid, weight the ball to DIE INSIDE (the grid's first
+      // sessions ended in seconds — every miss rolled out dead)
+      let arrive = arrive0;
+      if (bounds) {
+        const dirB = { x: (destOverride ?? mate.pos).x - here.x, y: (destOverride ?? mate.pos).y - here.y };
+        const room = roomToBound(destOverride ?? mate.pos, dirB);
+        arrive = Math.min(arrive, Math.max(4, Math.sqrt(2 * 1.7 * Math.max(1, room - 1))));
+      }
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
         Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
       // two-iteration lead on the mate's current velocity
@@ -648,6 +673,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
         }
       }
+      if (!inBounds(dest, 0.8)) continue; // you do not pass to out
       let pC = passCompletion(here, dest, speed, opponents, dist0, mate, carrier.attributes.passing);
       // the backheel discount — but ONLY under pressure: an unpressured
       // carrier TURNS before striking (turn-then-strike executes it), so
@@ -723,6 +749,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       y: here.y + Math.sin(ang) * DECIDE.carryLookaheadM,
     };
     if (p.x < 0.5 || p.x > PITCH.length - 0.5 || p.y < 0.5 || p.y > PITCH.width - 0.5) continue;
+    if (!inBounds(p, 0.8)) continue; // carrying out of the grid is not a plan
     let pressure = 0;
     for (const o of opponents) {
       const dNow = Math.hypot(o.pos.x - p.x, o.pos.y - p.y);
@@ -748,8 +775,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       turnoverW * pv * pressure * DECIDE.carryTurnoverGain
     );
     const runThrough = {
-      x: Math.min(PITCH.length - 0.5, Math.max(0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
-      y: Math.min(PITCH.width - 0.5, Math.max(0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
+      x: Math.min(bounds ? bounds.x1 - 1 : PITCH.length - 0.5, Math.max(bounds ? bounds.x0 + 1 : 0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
+      y: Math.min(bounds ? bounds.y1 - 1 : PITCH.width - 0.5, Math.max(bounds ? bounds.y0 + 1 : 0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
     };
     options.push({ kind: 'carry', target: runThrough, regime: carryRegime, utility: u });
   }

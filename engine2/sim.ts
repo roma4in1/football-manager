@@ -53,6 +53,8 @@ export class Sim {
   private intendedReceiverId: string | null = null;
   /** initial positions — the 'keep' objective's drill stations */
   private readonly homes = new Map<string, Vec2>();
+  /** drill boundaries, when the scenario defines a positional grid */
+  private bounds?: { x0: number; y0: number; x1: number; y1: number };
   /** last scripted atTick per body — a body with a FUTURE scripted command
    * is waiting for his cue, not idle: support must not pre-move him */
   private readonly scriptedUntil = new Map<string, number>();
@@ -136,6 +138,7 @@ export class Sim {
       list.push({ bodyId: k.bodyId, kick: k.kick });
       this.kicksAt.set(k.atTick, list);
     }
+    this.bounds = def.bounds;
     const carrier = def.ball?.carrier ? this.byId.get(def.ball.carrier) : undefined;
     if (def.ball?.carrier && !carrier) throw new Error(`ball.carrier references unknown body ${def.ball.carrier}`);
     this.ball = {
@@ -421,10 +424,14 @@ export class Sim {
     const ballFrom = { x: this.ball.pos.x, y: this.ball.pos.y };
     stepBall(this.ball);
     // a ball over any boundary is DEAD where it crossed (restarts are L8's;
-    // until then it must not roll to infinity — the L4 shot exposed this)
+    // until then it must not roll to infinity — the L4 shot exposed this).
+    // Drill BOUNDS count as boundaries too (positional grids).
+    const ob = this.bounds;
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
       (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length ||
-        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width)) {
+        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width ||
+        (ob !== undefined && (this.ball.pos.x < ob.x0 || this.ball.pos.x > ob.x1 ||
+          this.ball.pos.y < ob.y0 || this.ball.pos.y > ob.y1)))) {
       this.ball.phase = 'dead';
       this.ball.vel = { x: 0, y: 0 };
       this.ball.vz = 0;
@@ -865,6 +872,7 @@ export class Sim {
               instructions: this.instructions.get(id) ?? {},
               current: null,
               homes: this.homes,
+              bounds: this.bounds,
             });
             const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear'
               ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
@@ -1128,6 +1136,7 @@ export class Sim {
           instructions: this.instructions.get(id) ?? {},
           current: intent,
           homes: this.homes,
+          bounds: this.bounds,
           runners: this.runningLine,
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
             const rp = this.runPhase.get(rid);
