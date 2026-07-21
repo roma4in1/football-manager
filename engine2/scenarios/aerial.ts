@@ -207,4 +207,30 @@ export const crossDecision: ScenarioDef = {
   script: [],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl, crossDecision];
+/** the SWITCH DECISION: a carrier wide on one flank, his only outlet a wide
+ * mate on the FAR side with the middle congested, should FLOAT a long ball
+ * across rather than force it through the crowd or carry into pressure. */
+export const switchDecision: ScenarioDef = {
+  version: 1,
+  name: 'switch-decision',
+  description: 'A carrier wide on one flank floats a long ball to a wide mate on the far side, over a congested middle. Judge the DECISION to switch play.',
+  durationTicks: 70,
+  bodies: [
+    { id: 'lm', team: 'home', pos: { x: 55, y: 12 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // the only outlet — a wide mate in space on the far flank
+    { id: 'rm', team: 'home', pos: { x: 62, y: 56 }, attributes: passer, brain: 'onBall' },
+    // the middle is congested — the ground ball across never arrives
+    { id: 'd1', team: 'away', pos: { x: 58, y: 30 }, attributes: passer },
+    { id: 'd2', team: 'away', pos: { x: 60, y: 38 }, attributes: passer },
+    { id: 'd3', team: 'away', pos: { x: 56, y: 24 }, attributes: passer },
+    // the left flank AHEAD is walled — carrying on is dead
+    { id: 'd4', team: 'away', pos: { x: 61, y: 13 }, attributes: passer },
+    { id: 'd5', team: 'away', pos: { x: 64, y: 18 }, attributes: passer },
+    // and one pressing the carrier from behind
+    { id: 'd6', team: 'away', pos: { x: 53, y: 14 }, attributes: passer },
+  ],
+  ball: { carrier: 'lm' },
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl, crossDecision, switchDecision];

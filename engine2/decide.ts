@@ -136,6 +136,13 @@ export const DECIDE = {
   crossBoxM: 20, // the landing this near the opp goal, and central (the box)
   crossDrivenLoftDeg: 16,
   crossFloatLoftDeg: 34,
+  /** the SWITCH of play (passing.md #7): a long FLOATED aerial from one flank
+   * to a wide mate on the FAR side — over the congested middle, into the space
+   * an overload left. Fires wide → far-wide at range; a hang-time ball he runs
+   * onto. Escapes a compact/overloaded side the ground ball can't cross. */
+  switchWideM: 13,
+  switchMinM: 30,
+  switchFloatLoftDeg: 38,
   /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
@@ -928,6 +935,30 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg };
           }
+        }
+      }
+    }
+    // ── the SWITCH of play: a long FLOATED aerial to a wide mate on the FAR
+    // flank, over the congested middle — wide → far-wide, at range. ──────────
+    if (!keep) {
+      const cy = PITCH.width / 2;
+      const carrierSide = Math.sign(here.y - cy);
+      const land = { x: mate.pos.x + mate.vel.x * 0.5, y: mate.pos.y + mate.vel.y * 0.5 };
+      const farWide = carrierSide !== 0 && Math.sign(mate.pos.y - cy) === -carrierSide &&
+        Math.abs(mate.pos.y - cy) >= DECIDE.switchWideM && Math.abs(here.y - cy) >= DECIDE.switchWideM;
+      const dSwitch = Math.hypot(land.x - here.x, land.y - here.y);
+      if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
+        const loftDeg = DECIDE.switchFloatLoftDeg;
+        const speedS = solveLoftSpeed(dSwitch, loftDeg);
+        const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+        const pCs = aerialCompletion(land, mate, opponents) * ctrl;
+        let pvS = value(land, mate.id);
+        pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+        const uProgS = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvS - pvHere);
+        const meetsS = pCs >= passFloor ? 1 : 0.25 + 0.45 * risk;
+        const uS = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCs * pvS - (1 - pCs) * turnoverW * pvS) + uProgS) * meetsS;
+        if (!bestPass || uS > bestPass.utility) {
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg };
         }
       }
     }

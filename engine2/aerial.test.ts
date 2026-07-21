@@ -191,6 +191,23 @@ test('the CROSS DECISION: a wide, advanced carrier chooses to whip an aerial cro
   assert.ok(reached >= 7, `the cross reaches the striker in the box (${reached}/10)`);
 });
 
+test('the SWITCH DECISION: a walled-in wide carrier floats a long ball to the far flank', () => {
+  let switched = 0;
+  let reached = 0;
+  for (let s = 0; s < 10; s++) {
+    const sim = new Sim(scenarioByName('switch-decision'), `sw-${s}`);
+    let sawAir = false;
+    for (let t = 0; t < 70; t++) {
+      sim.step();
+      if (sim.ball.phase === 'airborne' && sim.ball.kickerId === 'lm') sawAir = true;
+      if (sim.ball.carrierId === 'rm' && sawAir) { reached++; break; }
+    }
+    if (sawAir) switched++;
+  }
+  assert.ok(switched >= 8, `the carrier switches play with a floated ball, not a dead carry (${switched}/10)`);
+  assert.ok(reached >= 6, `the switch finds the far-flank mate (${reached}/10)`);
+});
+
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
   // driven lofts (low angle) are the accurate, fast aerial ball
   for (const [dist, loft] of [[25, 22], [34, 22], [40, 25]] as const) {
