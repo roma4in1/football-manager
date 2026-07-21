@@ -715,6 +715,10 @@ export class Sim {
     }
     if (!best) return;
     const w = best.body;
+    // the header REDIRECTS the ball's pace — power from the BALL, a small
+    // strength term from the neck. A fast cross → a powerful header.
+    const incoming = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    const headed = incoming * BALL.headRedirect + BALL.headPlayerPower * (w.attributes.strength / 20);
     const sign = attackSign(w.team);
     const ownGoal = { x: sign > 0 ? 0 : PITCH.length, y: PITCH.width / 2 };
     const oppGoal = goalCenter(w.team);
@@ -723,23 +727,23 @@ export class Sim {
     if (dOwn < 35) {
       // DEFENSIVE clearance — lofted, far, upfield, with wide direction noise
       const ang = (sign > 0 ? 0 : Math.PI) + this.rng.gauss(0, BALL.headClearScatterRad, this.tick, w.id, 'head-clear');
-      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 30, y: w.pos.y + Math.sin(ang) * 30 }, BALL.headClearSpeed, BALL.headClearLoftDeg, w.id, this.tick);
+      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 30, y: w.pos.y + Math.sin(ang) * 30 }, headed, BALL.headClearLoftDeg, w.id, this.tick);
       this.actionLabels.set(w.id, 'header-clear');
     } else if (dOpp < 14) {
-      // ATTACKING header at goal — a driven strike, slight noise
+      // ATTACKING header at goal — a driven strike, slight noise, low
       const ang = Math.atan2(oppGoal.y - w.pos.y, oppGoal.x - w.pos.x) + this.rng.gauss(0, 0.12, this.tick, w.id, 'head-goal');
-      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 20, y: w.pos.y + Math.sin(ang) * 20 }, BALL.headGoalSpeed, 8, w.id, this.tick);
+      kickBall(ball, { x: w.pos.x + Math.cos(ang) * 20, y: w.pos.y + Math.sin(ang) * 20 }, headed, 8, w.id, this.tick);
       this.actionLabels.set(w.id, 'header-goal');
     } else {
       this.actionLabels.set(w.id, 'header-down');
-      // KNOCK-DOWN — drop it at his feet forward to control (no kicker lock:
-      // he plays his own knockdown next tick; an opponent may still contest)
+      // KNOCK-DOWN — cushion the pace OUT (a controlled header down to feet:
+      // no kicker lock, he plays it next tick; an opponent may still contest)
       ball.z = 0;
       ball.vz = 0;
       ball.phase = 'rolling';
       ball.carrierId = null;
       ball.kickerId = null;
-      ball.vel = { x: sign * BALL.headKnockSpeed, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
+      ball.vel = { x: sign * incoming * BALL.headKnockCushion, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
     }
   }
 

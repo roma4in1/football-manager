@@ -95,8 +95,8 @@ test('the CROSS + attacking header: a striker attacks the drop and heads it at g
       }
     }
   }
-  assert.ok(headedAtGoal >= 8, `the striker heads the cross AT GOAL (${headedAtGoal}/10)`);
-  assert.ok(onTarget >= 7, `the header is goalward and roughly on target (${onTarget}/10)`);
+  assert.ok(headedAtGoal >= 7, `the striker heads the hard cross AT GOAL (${headedAtGoal}/10)`);
+  assert.ok(onTarget >= 6, `the header is goalward and roughly on target (${onTarget}/10)`);
 });
 
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {

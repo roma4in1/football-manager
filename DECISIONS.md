@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Header power comes from the BALL; the cross is whipped from the by-line
+
+Builder judgment: a crosser works from closer to the touchline with faster
+crosses (low-driven / lofty / inverted / hard), and most of a header's power
+is the BALL's, not the player's.
+
+- **Header power from the ball:** the header outcomes used fixed speeds; now
+  headed = incoming·headRedirect(0.7) + headPlayerPower(5)·(str/20). A header
+  REDIRECTS the ball's pace with only a small neck contribution — a header off
+  a fast cross flies (18→16 m/s here), one off a floated lob is weak. The
+  knock-down cushions the pace OUT (keeps 0.2). Clearance/at-goal derive their
+  power the same way.
+- **By-line + hard cross:** the crosser moved to the by-line (101,58 — 10 m off
+  the touchline) and now whips a HARD DRIVEN cross (24 m/s, low 18° loft) that
+  arrives fast and flat (~1.5 m, ~18 m/s) at the striker. cross-header: heads
+  it at goal 8/10, avg header 16 m/s (a real strike). Cross VARIETY (low
+  driven / lofty / inswinger) is just loft + speed + spin on the same
+  kickBall — the physics already carries all of them.
+
+Defensive clearance power now scales with the incoming lob too (aerial-contest
+still 15/16, upfield). 67/67; all ground rates pinned.
+
 ## 2026-07-21 — The cross + attacking header (near a goal you ATTACK the ball in the air)
 
 Builder ask: a crossing scenario for attacking headers. This exercised the

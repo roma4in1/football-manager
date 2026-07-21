@@ -86,14 +86,16 @@ export const BALL = {
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
-  /** a defensive header CLEARS: lofted, far, upfield, with wide direction
-   * noise; an attacking header at goal is a driven strike; otherwise a
-   * knock-DOWN sets the ball at the header's feet to control */
-  headClearSpeed: 18,
+  /** a header REDIRECTS the ball's pace — the power comes mostly from the BALL,
+   * not the neck: headed speed = incoming·headRedirect + headPlayerPower·(str/20).
+   * So a header off a fast cross flies, one off a floated lob is weak. A
+   * defensive header CLEARS (lofted, far, upfield, wide direction noise); an
+   * attacking one is driven at goal; else a knock-DOWN cushions the pace out. */
+  headRedirect: 0.7,
+  headPlayerPower: 5,
   headClearLoftDeg: 34,
   headClearScatterRad: 0.35,
-  headGoalSpeed: 15,
-  headKnockSpeed: 4.5,
+  headKnockCushion: 0.2, // a controlled header down keeps only this of the pace
   /** touch push: ball speed = carrier speed × (base + speedGain·(v/vmax) +
    * controlGain·(1 − dribbling/20)) — the ball leaves the boot only slightly
    * faster than the runner. SPEED is the dominant trend (the L2 judgment

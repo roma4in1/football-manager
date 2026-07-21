@@ -90,26 +90,27 @@ export const aerialContest: ScenarioDef = {
   ],
 };
 
-/** the CROSS + attacking header: a wide player floats a ball into the box and
- * a striker attacks it, heading it AT GOAL (the attacking-header branch — the
- * winner near the opponent goal heads toward it, not a clearance). */
-const crossDist = 16;
-const crossLoft = 54;
+/** the CROSS + attacking header: a wide player whips a HARD DRIVEN cross from
+ * the BY-LINE and a striker attacks it, heading it AT GOAL. A driven cross
+ * arrives fast at head height — and the header's power comes from that pace
+ * (redirect), not the neck, so it's a real strike. (Cross variety — low
+ * driven / lofty / inswinger — is just loft+speed+spin on this same delivery.) */
 export const crossHeader: ScenarioDef = {
   version: 1,
   name: 'cross-header',
-  description: 'A wide player crosses into the box; a striker attacks the drop and heads it AT GOAL. Judge the delivery, the attacking header, and its direction on target.',
+  description: 'A wide player whips a hard driven cross from the by-line; a striker attacks it at head height and heads it AT GOAL. The header\'s pace is the ball\'s, redirected. Judge the delivery, the attacking header, and its power.',
   durationTicks: 90,
   bodies: [
-    // a crosser near the right by-line (home attacks +x, goal at 105)
-    { id: 'crosser', team: 'home', pos: { x: 89, y: 47 }, attributes: { ...passer, passing: 18 } },
-    // the striker attacks the near-central drop, ~7 m from goal
+    // a crosser at the right by-line (home attacks +x, goal at 105)
+    { id: 'crosser', team: 'home', pos: { x: 101, y: 58 }, attributes: { ...passer, passing: 20 } },
+    // the striker attacks the central drop, ~7 m from goal
     { id: 'striker', team: 'home', pos: { x: 96, y: 35.5 }, attributes: { ...passer, strength: 15, pace: 15 }, brain: 'onBall' },
   ],
   ball: { carrier: 'crosser' },
   kicks: [
-    // a floated cross that drops steeply into the six-yard area (~x99, y33)
-    { atTick: 10, bodyId: 'crosser', kick: { target: { x: 98.5, y: 34 }, speedMps: solveLoftSpeed(crossDist, crossLoft), loftDeg: crossLoft } },
+    // a HARD driven cross (24 m/s, low loft) whipped across the six-yard box —
+    // fast and flat, arriving ~1.5 m high at the striker for a header
+    { atTick: 10, bodyId: 'crosser', kick: { target: { x: 96, y: 35 }, speedMps: 24, loftDeg: 18 } },
   ],
   script: [
     { atTick: 11, bodyId: 'striker', command: { type: 'chaseBall', regime: 'sprint' } },
