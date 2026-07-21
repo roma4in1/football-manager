@@ -142,6 +142,34 @@ export const runsInBehind: ScenarioDef = {
   ],
 };
 
+/** L5b — the wall pass (one-two): NOTHING scripted. The give, the run
+ * beyond, the first-time return into the dart — all emergent from runPlan
+ * + the release-meets-the-run coupling. Taxonomy #22 (emergent class). */
+export const wallPass: ScenarioDef = {
+  version: 1,
+  name: 'wall-pass',
+  description: 'Give-and-go, unscripted: the playmaker feeds the wall man, runs beyond the line, and the return meets his dart. Judge the one-two shape.',
+  durationTicks: 200,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 58, y: 31 }, attributes: { ...passer, pace: 14, acceleration: 14, passing: 17 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // the wall man is a PIVOT: marked from behind, back to goal, keep
+    // objective — his best ball is the first-time return (a free wall man
+    // just turned and went himself, which was correct EV and no one-two)
+    { id: 'wall', team: 'home', pos: { x: 64, y: 33 }, attributes: { ...passer, firstTouch: 17, passing: 16 }, brain: 'onBall', instructions: { risk: 0.25 } },
+    { id: 'd1', team: 'away', pos: { x: 65.9, y: 34.6 }, attributes: chaser },
+    { id: 'd2', team: 'away', pos: { x: 66, y: 26 }, attributes: chaser },
+  ],
+  ball: { carrier: 'playmaker' },
+  script: [
+    // pin the wall as a pivot (his marker pins him in reality; scripted
+    // ownership keeps runPlan/support from walking him off the spot —
+    // 'keep' staging instead ZEROED the path ball via the station tether)
+    { atTick: 190, bodyId: 'wall', command: { type: 'hold' } },
+    { atTick: 70, bodyId: 'd1', command: { type: 'chaseBall', regime: 'sprint' } },
+    { atTick: 100, bodyId: 'd2', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
 export const l4Scenarios: ScenarioDef[] = [
-  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind,
+  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind, wallPass,
 ];

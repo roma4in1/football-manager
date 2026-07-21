@@ -313,8 +313,10 @@ export const runPlan = (
   if (room < 12) return null;
   const distToLine = sign > 0 ? lineX - mate.pos.x : mate.pos.x - lineX;
   if (distToLine > 22 || distToLine < -2) return null;
+  // ahead of the carrier — OR close enough to the line to beat it (the
+  // one-two: the giver starts BEHIND his wall man and runs beyond)
   const aheadOfCarrier = sign > 0 ? mate.pos.x > carrier.pos.x + 2 : mate.pos.x < carrier.pos.x - 2;
-  if (!aheadOfCarrier) return null;
+  if (!aheadOfCarrier && distToLine > 12) return null;
   // the channel is a SEAM: ride between defenders (or off the outside
   // shoulder), never a defender's own lane — the ball in behind must have
   // somewhere to go (the judged drill: the runner rode the marker's
@@ -342,16 +344,22 @@ export const runPlan = (
   // defender's blind side into the next gap (the judged run shape:
   // behind d1, receiving between d1 and d2)
   let dartY = chanY;
-  let bestDart = -Infinity;
-  for (const y of seams) {
-    if (Math.abs(y - chanY) < 2) continue;
-    const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
-    const score = clear - 0.12 * Math.abs(y - GOAL.centerY) - 0.05 * Math.abs(y - chanY);
-    if (score > bestDart) {
-      bestDart = score;
-      dartY = y;
+  const chanClear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - chanY))) : 10;
+  if (chanClear < 3.5) {
+    // the current seam is tight — dart ACROSS into the adjacent gap
+    let bestDart = -Infinity;
+    for (const y of seams) {
+      if (Math.abs(y - chanY) < 2) continue;
+      const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
+      const score = clear - 0.12 * Math.abs(y - GOAL.centerY) - 0.05 * Math.abs(y - chanY);
+      if (score > bestDart) {
+        bestDart = score;
+        dartY = y;
+      }
     }
   }
+  // else: the seam IS the gap — dart STRAIGHT through it (the fastest
+  // line, and the return between the defenders is the classic one-two)
   return { target, lineX, dartY };
 };
 
@@ -449,9 +457,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const meets = pC >= passFloor ? 1 : 0.35; // sub-floor lanes are heavily taxed
       const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
       // the ball to a RIDING runner waits for his movement — you play the
-      // through ball when the dart goes, not while he stands on the line
-      // (the release meets the run; the run does not chase the release)
-      const ridingWait = waitingRunners?.has(mate.id) ? 0.45 : 1;
+      // through ball when the dart goes, not while he stands on the line.
+      // EXCEPT the ball into his run's PATH (destOverride): the first-time
+      // one-two return is played early precisely BECAUSE the run is coming
+      const ridingWait = waitingRunners?.has(mate.id) && !destOverride ? 0.45 : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };

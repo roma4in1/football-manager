@@ -3,6 +3,40 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5b round 2: the run taxonomy + the emergent one-two
+
+The builder supplied a 34-run taxonomy (reference/types_runs.md), now
+mapped in engine2/RUNS.md by status: live / emergent / gated. The gating
+principle worth recording: runs that MANIPULATE a defender (dummy, decoy,
+blindside, shadow, double movement, spin, false-nine drop) are
+semantically empty until defenders perceive and react — L5c/L5d/L5e own
+them; building earlier would be animation, not football. Cross-family
+runs (near/far post, box crash, peel-off, delayed box run) gate on L8.
+
+The WALL PASS (#22) built this round as the emergent test case — nothing
+scripted; five mechanisms earned:
+
+- **The one-two burst**: a giver near the line darts IMMEDIATELY (the give
+  is his trigger — lastGiveTick; no patient ride phase).
+- **Flight counts as possession**: the run block engages while the ball
+  flies to a teammate, or the wall's instant return beats the run into
+  existence.
+- **The release waits for PACE**: the wait tax lifts when the dart is
+  MOVING (≥3 m/s), not when it merely starts — and never applies to the
+  ball into the run's PATH (destOverride): the first-time return is played
+  early precisely because the run is coming.
+- **Straight darts**: when the runner's seam IS the gap, the dart goes
+  through it (adjacent-seam-only darts ran to the corner and killed every
+  return lane).
+- **'keep' is a rondo device**: staging the wall man with the keep
+  objective ZEROED the path ball via the station tether — pivots are
+  score-objective bodies pinned by script.
+
+State: give → dart-in-flight → wall waits → early return → met MOVING in
+11/16. The RETURN DEPTH (led beyond the wall into the gap — 2/16) is the
+open judgment knob, deliberately unpinned. Runs drill 16/15/14, dial
+16/16 both poles, 57/57.
+
 ## 2026-07-21 — L5b round 1: the dart — the release meets the run
 
 The judged shape: a real runner PICKS UP SPEED before the ball is played,

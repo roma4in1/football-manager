@@ -167,6 +167,29 @@ test('runs-in-behind (L5b): the whole move is emergent — trigger, seam, releas
   assert.ok(shot >= 10, `the move finishes (${shot}/16)`);
 });
 
+test('wall-pass (L5b): the one-two rhythm — give, dart in flight, return met moving (16 seeds)', () => {
+  let movingReturns = 0;
+  for (let s = 0; s < 16; s++) {
+    const def = scenarioByName('wall-pass');
+    const sim = new Sim(def, `l5-${s}`);
+    let wallHad = false;
+    let done = false;
+    for (let t = 0; t < def.durationTicks && !done; t++) {
+      sim.step();
+      const c = sim.ball.carrierId;
+      if (c === 'wall') wallHad = true;
+      if (wallHad && c === 'playmaker') {
+        const pm = sim.bodies.find((b) => b.id === 'playmaker')!;
+        if (pm.speed > 2.5) movingReturns++;
+        done = true;
+      }
+    }
+  }
+  // the give-and-go rhythm: the return meets a MOVING man (return depth —
+  // beyond the wall — is the open judgment knob, deliberately unpinned)
+  assert.ok(movingReturns >= 8, `returns met on the move (${movingReturns}/16)`);
+});
+
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {
   // whole-drill circulation: a cut ball can end a seed's keep early (the
   // passers cannot press to recover — that is L4's boundary, off-ball
