@@ -3,6 +3,24 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 6: clean pace is automatic; pressure is a skill
+
+The judged rondo mistouches measured at ~1-in-9 receives — and the probe
+showed every one was a CLEAN-pace pop (nearest chaser 4–8 m away), not a
+pressured touch. Two model corrections:
+
+- **Pace onset to genuinely driven** (touchEasySpeedMps 6.5 → 8.0): a
+  10.5 m/s ground ball to good feet is near-automatic (fumbles now ~5%,
+  none below 9 m/s; one-touch releases 37/41 within 0.3 s).
+- **Pressure vulnerability skill-scaled** (touchPopPressure 0.52 ×
+  (1 − 0.65·ft/20)): a closing body barely troubles silk feet and ruins
+  heavy ones — one flat pressure constant could not serve both the pinned
+  heavy-spill floor and elite composure. Heavy-pressed spill holds ≥0.33;
+  silk pressured lands ~15% (a real body still disrupts).
+
+Keyed-draw note again: two rounds of small nudges flipped zero seeds —
+the fixed per-(tick,id) uniforms quantize rate tuning. 53/53; dial intact.
+
 ## 2026-07-21 — L4 judgment round 5: the run is not checked
 
 The judged defect (sharpest on the counter-high long ball): receivers

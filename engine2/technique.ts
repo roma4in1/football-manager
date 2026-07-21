@@ -17,12 +17,16 @@ export const TECH = {
   touchPopBase: 0.02,
   /** + per m/s of ball speed above the easy band */
   touchPopPerMps: 0.055,
-  touchEasySpeedMps: 6.5, // difficulty starts at genuinely DRIVEN pace — a 10 m/s rondo ball is routine for a pro (the judged over-fumbling); bounces and pressure still bite from zero
+  touchEasySpeedMps: 8.0, // difficulty starts at genuinely DRIVEN pace — a clean 10.5 m/s ground ball popped ~1-in-11 off ft15 receivers (judged twice); bounces and pressure still bite from zero
   /** a dropping/bouncing ball (height at contact) is harder */
   touchPopPerMeterZ: 0.25,
   /** an opponent within pressure range raises the difficulty */
   touchPressureRangeM: 2.5,
-  touchPopPressure: 0.34, // pressure is the equalizer (raised when pace-difficulty onset moved to driven balls: pace is routine for pros, bodies on you are not)
+  touchPopPressure: 0.52,
+  /** pressure vulnerability is itself a SKILL: a closing body barely
+   * troubles silk feet and ruins heavy ones (the judged rondo fumbles —
+   * one receive in five popped with ft15 receivers, all under pressure) */
+  pressureSkillRelief: 0.65,
   /** controlling at speed is harder than standing — per m/s of the
    * RECEIVER'S own speed (walking ~+0.03, running ~+0.13, sprint ~+0.19) */
   touchPopPerReceiverMps: 0.025,
@@ -97,7 +101,7 @@ export function touchPopProbability(
     TECH.touchPopPerMps * Math.max(0, closingSpeed - TECH.touchEasySpeedMps) +
     TECH.touchPopPerMeterZ * ballZ +
     TECH.touchPopPerReceiverMps * receiverSpeed +
-    (pressured ? TECH.touchPopPressure : 0);
+    (pressured ? TECH.touchPopPressure * (1 - TECH.pressureSkillRelief * (receiver.firstTouch / 20)) : 0);
   const relief = 1 - TECH.touchSkillRelief * (receiver.firstTouch / 20);
   return clamp01(difficulty * relief);
 }
