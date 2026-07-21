@@ -3,6 +3,48 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 systems audit: gap sweep (builder ask — "what else is missing?")
+
+An automated anomaly sweep (run-check speed dips under flighted balls, dead
+balls nobody reacts to, stuck carriers, per scenario × seeds) plus a
+code-path review of the interaction seams. Found-and-fixed now:
+
+- **Lane-chaser stutter**: the race-mode set-at-the-line brake fired on
+  MARGINAL meets too — chasers half-stopped at points the ball crossed
+  0.3 s later anyway. Braking now requires being comfortably early
+  (arrive ≥0.35 s before the ball); marginal meets run through flat out.
+- **Stray balls died untouched**: only the intended receiver ever reacted
+  to a pass — a deflected ball dying in no-man's land was ignored by
+  players standing over it. The nearest idle brain now collects a loose,
+  dying, unclaimed ball within 8 m (labeled 'collect'). Deliberately NOT
+  pressing: opponent-carried balls stay unreacted (L5d's).
+- **Tried and reverted**: in-stride receives under CONTEST — aiming at the
+  current-pace meet concedes the earlier intercept to a sprinting chaser
+  (striker rates fell 14→10/16). Race mode keeps flat-out pMeet; the
+  contested run-through needs opponent-aware meet selection — recorded as
+  a refinement, likely alongside L5b.
+
+Recorded gaps by owning layer (not built, deliberate):
+- **L4-extension**: lofted balls (kicks support loftDeg; decisions never
+  chip — blocked lanes and keepers will demand it), true first-time flicks
+  and dummies (current one-touch is claim → fire ≈0.1–0.2 s — close),
+  contested in-stride (above).
+- **L5a**: post-pass movement (passers are statues), support angles.
+  **L5b**: run triggers, the delayed release (forward note exists).
+  **L5c/L5d**: shape; pressing/reacting to opponent-carried balls (the
+  rondo ends when a chaser wins it; scripted winners stand unpressured).
+  **L5e**: jockeying/backpedal, shoulder contests (tow-lock note exists),
+  the head-on guardrail. **L7** keeper; **L8** restarts (ball goes dead at
+  the boundary); **L9** fouls.
+- **Physics notes**: the ball can pass through a claim-LOCKED body's feet
+  (a just-fumbled player's body doesn't block — minor); no aerial play
+  (jump/header) anywhere yet; facing during in-stride receives never
+  glances at the incoming ball (cosmetic at 2D scale).
+
+Sweep findings that are CORRECT behavior (leave): chasers setting on lanes
+they comfortably reach (intercept posture); a station receiver braking to
+receive; scripted drill bodies standing at drill end. 53/53.
+
 ## 2026-07-21 — L4 judgment round 7: the touch goes in FRONT; idle bodies watch the play
 
 Two judged defects and the knock-ons of fixing them:

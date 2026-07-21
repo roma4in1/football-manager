@@ -186,11 +186,17 @@ export class Sim {
               live = { x: this.ball.pos.x, y: this.ball.pos.y };
             } else {
               live = icept.pMeet;
-              // racing a LOOSE ball to the meet point: SET at it if early
-              // (momentum blew an early racer straight through the line).
-              // Chasers of a CARRIED ball keep flying — braking in gave
-              // them a set-defender's pinch and broke the judged duel
-              if (this.ball.carrierId === null) brakeIntoLine = true;
+              // racing a LOOSE ball to the meet point: SET at it only when
+              // COMFORTABLY early (momentum blew an early racer through the
+              // line; but braking on marginal meets made lane-chasers
+              // stutter under passes that beat them anyway). Chasers of a
+              // CARRIED ball keep flying — braking gave them a
+              // set-defender's pinch and broke the judged duel.
+              if (this.ball.carrierId === null) {
+                const dMeet = Math.hypot(icept.pMeet.x - body.pos.x, icept.pMeet.y - body.pos.y);
+                const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
+                if (dMeet / vcap < icept.tMeet - 0.35) brakeIntoLine = true;
+              }
             }
           } else if (this.inStrideMeet(body)) {
             // the RUNNER'S receive: his continued run meets the ball — take
@@ -799,6 +805,25 @@ export class Sim {
           }
         } else {
           this.receiveOpenDir.delete(id);
+          // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
+          // collected by the nearest idle brain — deflected passes died
+          // untouched with players standing over them (the audit)
+          if (body.command.type === 'hold' && this.ball.carrierId === null &&
+            this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
+            Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
+            const d = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+            if (d < 8) {
+              const nearestBrain = [...this.brains].reduce((best, bid) => {
+                const b = this.byId.get(bid)!;
+                const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+                return bd < best.d ? { id: bid, d: bd } : best;
+              }, { id: '', d: Infinity });
+              if (nearestBrain.id === id) {
+                this.assign(body, { type: 'chaseBall', regime: 'run' });
+                this.actionLabels.set(id, 'collect');
+              }
+            }
+          }
         }
         continue;
       }
