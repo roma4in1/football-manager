@@ -114,6 +114,62 @@ export const strikerBreakaway: ScenarioDef = {
   ],
 };
 
+/** L5b — the in-behind run: NOTHING is scripted for the striker. The run
+ * must come from the trigger (team has the ball, room behind the line),
+ * the line-riding from geometry, the through ball from the carrier's EV,
+ * and the burst from the receive reflex. Judge: does it look like a
+ * striker playing off the last man? */
+export const runsInBehind: ScenarioDef = {
+  version: 1,
+  name: 'runs-in-behind',
+  description: 'A playmaker carries; an unscripted striker rides the two-man line, and the through ball releases him. The whole move is emergent — trigger, line-ride, release, burst.',
+  durationTicks: 220,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 46, y: 34 }, attributes: { ...passer, passing: 17 }, brain: 'onBall', instructions: { risk: 0.7 } },
+    // the striker starts ON the line, marked — the ball to his feet is
+    // taxed (contested receive), so the RUN is where the value lives
+    { id: 'striker', team: 'home', pos: { x: 66.5, y: 28 }, attributes: { ...passer, pace: 16, acceleration: 15, firstTouch: 16 }, brain: 'onBall', instructions: { risk: 0.7 } },
+    // the two-man line — parked; d1 reacts late (defending AI is L5c/d)
+    // d1 marks TIGHT (a loose mark left the feet-ball free and no run
+    // was ever needed)
+    { id: 'd1', team: 'away', pos: { x: 67.3, y: 28.6 }, attributes: chaser },
+    { id: 'd2', team: 'away', pos: { x: 68, y: 39 }, attributes: chaser },
+  ],
+  ball: { carrier: 'playmaker' },
+  script: [
+    { atTick: 60, bodyId: 'd1', command: { type: 'chaseBall', regime: 'sprint' } },
+    { atTick: 90, bodyId: 'd2', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
+/** L5b — the wall pass (one-two): NOTHING scripted. The give, the run
+ * beyond, the first-time return into the dart — all emergent from runPlan
+ * + the release-meets-the-run coupling. Taxonomy #22 (emergent class). */
+export const wallPass: ScenarioDef = {
+  version: 1,
+  name: 'wall-pass',
+  description: 'Give-and-go, unscripted: the playmaker feeds the wall man, runs beyond the line, and the return meets his dart. Judge the one-two shape.',
+  durationTicks: 200,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 58, y: 31 }, attributes: { ...passer, pace: 14, acceleration: 14, passing: 17 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // the wall man is a PIVOT: marked from behind, back to goal, keep
+    // objective — his best ball is the first-time return (a free wall man
+    // just turned and went himself, which was correct EV and no one-two)
+    { id: 'wall', team: 'home', pos: { x: 64, y: 33 }, attributes: { ...passer, firstTouch: 17, passing: 16 }, brain: 'onBall', instructions: { risk: 0.25 } },
+    { id: 'd1', team: 'away', pos: { x: 65.9, y: 34.6 }, attributes: chaser },
+    { id: 'd2', team: 'away', pos: { x: 66, y: 26 }, attributes: chaser },
+  ],
+  ball: { carrier: 'playmaker' },
+  script: [
+    // pin the wall as a pivot (his marker pins him in reality; scripted
+    // ownership keeps runPlan/support from walking him off the spot —
+    // 'keep' staging instead ZEROED the path ball via the station tether)
+    { atTick: 190, bodyId: 'wall', command: { type: 'hold' } },
+    { atTick: 70, bodyId: 'd1', command: { type: 'chaseBall', regime: 'sprint' } },
+    { atTick: 100, bodyId: 'd2', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
 export const l4Scenarios: ScenarioDef[] = [
-  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway,
+  rondo4v2, counter3v2, counterRiskLow, counterRiskHigh, strikerBreakaway, runsInBehind, wallPass,
 ];

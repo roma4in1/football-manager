@@ -3,6 +3,168 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5b scenarios APPROVED + reference index (roles / spatial / communication)
+
+Builder approval: runs-in-behind and wall-pass both pass the eye (the
+hover-burst-thread round). Floors stand as pinned (threads met moving
+beyond the wall ≥12/16; run triggered/received/finished ≥15/12/10).
+
+Three new references mapped in engine2/REFERENCES.md:
+- **roles.md → the L6 pre-spec**: roles as parameter bundles over L5
+  behaviors; the risk/objective instruction surface is the embryo; target
+  man ≈ the wall-pass pivot, advanced forward ≈ runPlan's bias, regista ≈
+  deep support + delay-release.
+- **spatial.md → the perception-pass pre-spec** (spec §3's deliberate
+  "imperfect later"): vision cones, scan cadence, reaction delay,
+  confidence, memory. True-state analogues already live (posValue/
+  keepValue, passCompletion, predictBall). Gate: after L5 stabilizes.
+- **communication.md → gated WITH perception**: today runningLine/
+  waitingRunners/intendedReceiver ARE the messages, delivered losslessly;
+  explicit messaging + chemistry + miscommunication only mean something
+  between imperfect perceivers. Build the two together.
+
+## 2026-07-21 — L5b round 3: the breach — hover, burst, thread
+
+The judged defects: runs dragged way wide of the defenders; no run UP TO
+the breach; the one-two either ping-ponged or threaded way too deep. The
+judged spec: give → the wall WAITS → the thread goes as the runner is
+ABOUT TO BREACH the line. Five mechanisms:
+
+- **Seams hug the line** (runPlan): shoulder seams at defender ±4 m (±8 m
+  dragged runners to the touchline) with stronger locality weighting.
+- **Hover-and-burst**: riding GLUED to the line left a straight dart
+  nowhere to go (instant termination, zero pace — the judged stall).
+  Runners now hover ~5 m off the line and attack it in bursts; the reload
+  depth is what makes pace at the breach possible.
+- **Darts aim THROUGH the line** (the knock-past lesson's third
+  appearance): a dart target AT the line arrive-braked the runner to a
+  walk at exactly the breach moment.
+- **The breach gate**: the release tax lifts only when the runner is
+  darting, at pace (≥3 m/s), AND within a stride of the line (≤4.5 m) —
+  "about to breach," per the spec. The thread's destination is
+  LINE-relative (line +4.5 m in the runner's lane), at a softer weight —
+  the old runner-relative +7 m at firm pace was the judged too-deep ball.
+- **The backheel EV discount is pressure-gated**: an unpressured carrier
+  TURNS before striking (turn-then-strike already executes it), so
+  discounting his EV for a blind ball he will never hit double-counted —
+  it killed the wall's thread with an open lane and no time pressure
+  (pC 0.98 raw → 0.65 → under the floor, by facing alone).
+
+Rates: wall-pass 16/16 threads met moving BEYOND the wall (was 11 moving,
+2 advanced); runs-in-behind 16/16 received (the striker hits ~7 m/s
+through the CB gap, collected between d1 and d2); dial 16/16 both poles;
+57/57.
+
+## 2026-07-21 — Run taxonomies extended: midfield + defensive references
+
+The builder added midfield support runs (20) and defensive runs (26) —
+mapped in engine2/RUNS.md. Midfield: most support variants are LIVE via
+L5a's supportSpot (the lane-openness × value candidate space covers
+simple/forward/backward/lateral/escape); bounce-pass support is the L5b
+one-two; pocket runs gate on L5c's lines, rotations/overloads/half-space
+roles on L6. The DEFENSIVE list is effectively the pre-spec for
+L5c/L5d/L5e — it maps one-to-one onto the spec's own sub-phase
+acceptance lines (ball-side shift/weak-side compression = L5c's
+compactness+shift; shadow press = cover shadows; jockey = the recorded
+L5e head-on guardrail) and should seed those scenario libraries when the
+sub-phases open.
+
+## 2026-07-21 — L5b round 2: the run taxonomy + the emergent one-two
+
+The builder supplied a 34-run taxonomy (reference/types_runs.md), now
+mapped in engine2/RUNS.md by status: live / emergent / gated. The gating
+principle worth recording: runs that MANIPULATE a defender (dummy, decoy,
+blindside, shadow, double movement, spin, false-nine drop) are
+semantically empty until defenders perceive and react — L5c/L5d/L5e own
+them; building earlier would be animation, not football. Cross-family
+runs (near/far post, box crash, peel-off, delayed box run) gate on L8.
+
+The WALL PASS (#22) built this round as the emergent test case — nothing
+scripted; five mechanisms earned:
+
+- **The one-two burst**: a giver near the line darts IMMEDIATELY (the give
+  is his trigger — lastGiveTick; no patient ride phase).
+- **Flight counts as possession**: the run block engages while the ball
+  flies to a teammate, or the wall's instant return beats the run into
+  existence.
+- **The release waits for PACE**: the wait tax lifts when the dart is
+  MOVING (≥3 m/s), not when it merely starts — and never applies to the
+  ball into the run's PATH (destOverride): the first-time return is played
+  early precisely because the run is coming.
+- **Straight darts**: when the runner's seam IS the gap, the dart goes
+  through it (adjacent-seam-only darts ran to the corner and killed every
+  return lane).
+- **'keep' is a rondo device**: staging the wall man with the keep
+  objective ZEROED the path ball via the station tether — pivots are
+  score-objective bodies pinned by script.
+
+State: give → dart-in-flight → wall waits → early return → met MOVING in
+11/16. The RETURN DEPTH (led beyond the wall into the gap — 2/16) is the
+open judgment knob, deliberately unpinned. Runs drill 16/15/14, dial
+16/16 both poles, 57/57.
+
+## 2026-07-21 — L5b round 1: the dart — the release meets the run
+
+The judged shape: a real runner PICKS UP SPEED before the ball is played,
+often diagonally behind one defender into the next gap — the static
+line-ride with a post-release burst was backwards.
+
+- **The run cycle** (sim.ts): approach → RIDE (reload at a jog on the
+  seam) → DART (sprint diagonally across a defender's blind side into the
+  ADJACENT seam, ~1.6 s) → back to ride if the ball doesn't come. The
+  dart lane comes from runPlan (the neighboring seam — the judged
+  "behind d1, receive between d1 and d2" geometry).
+- **The release meets the run** (decide.ts): passes to riding/approaching
+  runners are taxed ×0.45 — you don't play the through ball while the
+  runner stands on the line; the dart lifts the tax and the ball goes
+  while he is AT PACE (wb-1: dart t=12, release t=15). Phase-gated, not
+  speed-gated — the approach run's pace masqueraded as a dart until the
+  waitingRunners set carried the phase into decide().
+
+16/16 triggered/received/finished; dial intact; 56/56.
+
+## 2026-07-21 — L5b OPENED: runs — trigger, seam, line-ride, release, burst
+
+Branch feat/engine2-l5b (stacked on l5a). The in-behind run, fully
+emergent (the runs-in-behind drill scripts NOTHING for the striker):
+
+- **runPlan** (decide.ts): a run is ON when the team has the ball, the
+  runner is ahead of the carrier, within ~22 m of the last defender's
+  line, and ≥12 m of room exists behind it. The channel is a SEAM —
+  between line defenders or off the outside shoulder, never a marker's own
+  lane (the first cut rode the marker's channel and every through ball
+  died on the marker).
+- **Line-riding** (sim.ts): the runner advances capped 0.4 m short of the
+  line at a jog (the v1 line-riding insight, geometric — no offside law
+  until L9); the receive reflex owns the burst when the ball is played.
+  Run priority beats support; scripts beat both (scriptedUntil).
+- **The rider's ball** (decide.ts): a rider jogs, so speed-gated through
+  candidates never saw him — runners get an explicit candidate into the
+  space behind the line. **The delayed release** (the forward note, now
+  live): when the best pass's value is still RISING with the run
+  (projected +0.5 s), the carrier holds a beat.
+- **AUDIT-CLASS FIND — the unsampled lane tail**: passCompletion's sample
+  grid stopped at f=0.90 — the final two meters of EVERY pass were never
+  checked, so a tight mark standing ON the receiver was invisible to the
+  model. Sampling now lands exactly on f=1.0. All 55 prior tests survived
+  the correction (the pinned rates were honest), and rondo circulation
+  IMPROVED again (94 → 121 transfers/8 seeds — better pass selection).
+
+Rates: run triggered 16/16, striker received 16/16, move finished with a
+shot 16/16; dial 16/16 both poles; 56/56.
+
+## 2026-07-21 — Forward note: curl and the trivela (builder ask)
+
+Spin/curve stays DEFERRED per spec §3 ("earns a layer only if scenario
+evidence shows its absence matters"). The earning conditions are now
+concrete: (a) bending a ball around a blocker — the lane model calls a
+blocked lane dead; curl is the real answer; (b) crosses and corners (L8);
+(c) keeper-beating placement (L7). The TRIVELA additionally hooks into the
+facing model: an outside-boot ball is how a player passes 45–90° against
+his facing WITHOUT turning — when curve lands, it slots in as a skill-gated
+alternative to turn-then-strike (technique attribute, execution-noise
+scaled). Until then: straight balls, noisy by passing skill.
+
 ## 2026-07-21 — L5a round 1: the side-foot range + the three-body squeeze
 
 - **Side-foot passes** (judged): turn-before-strike now only fires for

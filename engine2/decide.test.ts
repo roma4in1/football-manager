@@ -141,6 +141,55 @@ test('rondo-4v2 with support (L5a): passers reposition and the ball still circul
   assert.ok(moved >= checked * 0.5, `support repositions the passers (${moved}/${checked} moved >2m)`);
 });
 
+test('runs-in-behind (L5b): the whole move is emergent — trigger, seam, release, finish (16 seeds)', () => {
+  let ran = 0;
+  let received = 0;
+  let shot = 0;
+  for (let s = 0; s < 16; s++) {
+    const def = scenarioByName('runs-in-behind');
+    const sim = new Sim(def, `l5-${s}`);
+    let sawRun = false;
+    let got = false;
+    let fired = false;
+    for (let t = 0; t < def.durationTicks; t++) {
+      const f = sim.step();
+      const st = f.bodies.find((b) => b.id === 'striker')!;
+      if (st.action === 'run') sawRun = true;
+      if (f.ball.carrierId === 'striker') got = true;
+      if (st.action === 'shoot') fired = true;
+    }
+    if (sawRun) ran++;
+    if (got) received++;
+    if (fired) shot++;
+  }
+  assert.ok(ran >= 15, `the run triggers from carrier context (${ran}/16)`);
+  assert.ok(received >= 12, `the release finds the runner (${received}/16)`);
+  assert.ok(shot >= 10, `the move finishes (${shot}/16)`);
+});
+
+test('wall-pass (L5b): the one-two rhythm — give, dart in flight, return met moving (16 seeds)', () => {
+  let movingReturns = 0;
+  for (let s = 0; s < 16; s++) {
+    const def = scenarioByName('wall-pass');
+    const sim = new Sim(def, `l5-${s}`);
+    let wallHad = false;
+    let done = false;
+    for (let t = 0; t < def.durationTicks && !done; t++) {
+      sim.step();
+      const c = sim.ball.carrierId;
+      if (c === 'wall') wallHad = true;
+      if (wallHad && c === 'playmaker') {
+        const pm = sim.bodies.find((b) => b.id === 'playmaker')!;
+        if (pm.speed > 2.5 && pm.pos.x > 62) movingReturns++;
+        done = true;
+      }
+    }
+  }
+  // the give-and-go: the thread meets a MOVING man BEYOND the wall (the
+  // judged one-two spec: give → dart → thread at the breach)
+  assert.ok(movingReturns >= 12, `threads met moving beyond the wall (${movingReturns}/16)`);
+});
+
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {
   // whole-drill circulation: a cut ball can end a seed's keep early (the
   // passers cannot press to recover — that is L4's boundary, off-ball

@@ -75,6 +75,19 @@ deforms toward the ball (30% of the distance, capped 3 m keep / 8 m
 score). Engages only for IDLE bodies past their last scripted cue (the
 script is the run until L5b); defensive off-ball stays L5c/L5d.
 
+## L5b — runs (opened)
+
+An idle brain ahead of a teammate carrier, with ≥12 m of room behind the
+last defender and within ~22 m of the line, RUNS a cycle: approach → RIDE
+(reload at a jog, level just short of the line, at the SEAM — between
+defenders or off the outside shoulder, never a marker's own channel) →
+DART (sprint diagonally across a defender's blind side into the adjacent
+seam — pace is built BEFORE the ball is played) → back to ride if no ball
+comes. The carrier's release WAITS for the movement (passes to riding/
+approaching runners taxed ×0.45; the dart lifts it) and gains the rider's
+in-behind candidate + the delayed release. The receive reflex owns the
+burst. Run priority beats support; scripts still beat both.
+
 ## Decided for later layers
 
 - **Positioning split (decided 2026-09-07, implemented at L5)**: the pool

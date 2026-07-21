@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -56,6 +56,16 @@ export class Sim {
   /** last scripted atTick per body — a body with a FUTURE scripted command
    * is waiting for his cue, not idle: support must not pre-move him */
   private readonly scriptedUntil = new Map<string, number>();
+  /** brains currently making an L5b run (their moveTo is the run, not a
+   * script — the run re-plans at cadence) */
+  private readonly runningLine = new Set<string>();
+  /** the run's phase per runner: RIDE (reload at a jog, level with the
+   * line) or DART (sprint diagonally across a defender's blind side into
+   * the next seam — the ball is released while the runner is AT PACE) */
+  private readonly runPhase = new Map<string, { phase: 'ride' | 'dart'; since: number; dartY: number; lineX: number }>();
+  /** tick each brain last RELEASED a pass — the one-two: a giver near the
+   * line bursts immediately (the give IS his trigger; no patient ride) */
+  private readonly lastGiveTick = new Map<string, number>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -503,7 +513,10 @@ export class Sim {
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
       kickBall(this.ball, noisy.target, noisy.speedMps, 0, carrier.id, this.tick);
-      if (pending.receiverId) this.intendedReceiverId = pending.receiverId;
+      if (pending.receiverId) {
+        this.intendedReceiverId = pending.receiverId;
+        this.lastGiveTick.set(carrier.id, this.tick);
+      }
       this.pendingKicks.delete(carrier.id);
       this.intents.delete(carrier.id);
       this.assign(carrier, { type: 'hold' });
@@ -786,6 +799,8 @@ export class Sim {
       if (this.ball.carrierId !== id) {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
+          this.runningLine.delete(id);
+          this.runPhase.delete(id);
           // go meet your pass (chase semantics take it from here: contested
           // flights are raced, quiet ones are received)
           if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
@@ -811,21 +826,94 @@ export class Sim {
           }
         } else {
           this.receiveOpenDir.delete(id);
-          // L5a SUPPORT: an IDLE brain whose team has the ball moves to
-          // offer an angle — never overriding a scripted route (runs in
-          // behind are L5b's; the script is the run until then)
-          const carrierBody = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+          // L5b RUN first, L5a SUPPORT second: an IDLE brain whose team
+          // has the ball either attacks the space in behind (riding the
+          // last defender's line until the ball is played) or drops to
+          // offer an angle. Never overrides a scripted route.
+          // "team in possession" includes the ball IN FLIGHT to a teammate
+          // — the one-two giver darts DURING his pass's flight, or the
+          // wall's instant return beats the run into existence
+          const carrierBody = this.ball.carrierId
+            ? this.byId.get(this.ball.carrierId)
+            : (this.intendedReceiverId && this.intendedReceiverId !== id
+              ? this.byId.get(this.intendedReceiverId)
+              : undefined);
           if (carrierBody && carrierBody.team === body.team && carrierBody.id !== id &&
-            body.command.type === 'hold' && this.tick % DECIDE.reconsiderTicks === 0 &&
+            (body.command.type === 'hold' || this.runningLine.has(id)) &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
-            const spot = supportSpot(
-              body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos,
-              (this.instructions.get(id)?.objective) ?? 'score',
-            );
-            const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
-            if (d > 1.4) {
-              this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
-              this.actionLabels.set(id, 'support');
+            const objective = (this.instructions.get(id)?.objective) ?? 'score';
+            const plan = objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
+            if (plan) {
+              // the RUN CYCLE: approach → RIDE the line (reload, jog) →
+              // DART (sprint diagonally across the blind side into the
+              // adjacent seam — pace is built BEFORE the ball is played;
+              // the release meets the dart, not the other way around) →
+              // if no ball comes, drop back to ride and go again
+              const sign = body.team === 'home' ? 1 : -1;
+              // the runner HOVERS a few meters OFF the line and attacks it
+              // in bursts — riding glued to the line left a straight dart
+              // nowhere to go (instant termination, zero pace, no breach:
+              // the judged stall). The reload depth is what makes pace at
+              // the breach possible.
+              const hoverX = sign > 0
+                ? Math.min(plan.target.x, plan.lineX - 5)
+                : Math.max(plan.target.x, plan.lineX + 5);
+              // the dart aims THROUGH the line (a target AT it arrive-brakes
+              // the runner to a walk at the breach moment — the knock-past
+              // lesson's third appearance); the phase ends as he reaches it
+              const dartX = sign > 0 ? plan.lineX + 2 : plan.lineX - 2;
+              const atHover = Math.abs(body.pos.x - hoverX) < 1.6;
+              let st = this.runPhase.get(id);
+              if (!st) {
+                const gave = this.lastGiveTick.get(id);
+                const oneTwo = gave !== undefined && this.tick - gave <= 12;
+                st = { phase: oneTwo ? 'dart' : 'ride', since: this.tick, dartY: plan.dartY, lineX: plan.lineX };
+                this.runPhase.set(id, st);
+              }
+              st.lineX = plan.lineX;
+              const straight = Math.abs(st.dartY - body.pos.y) < 2;
+              const atDartEnd = straight
+                ? (sign > 0 ? body.pos.x >= plan.lineX - 0.2 : body.pos.x <= plan.lineX + 0.2)
+                : Math.abs(body.pos.y - st.dartY) < 1.2;
+              if (st.phase === 'ride' && atHover && this.tick - st.since >= 7) {
+                st.phase = 'dart';
+                st.since = this.tick;
+                st.dartY = plan.dartY;
+              } else if (st.phase === 'dart' &&
+                (this.tick - st.since >= 26 || atDartEnd)) {
+                st.phase = 'ride';
+                st.since = this.tick;
+              }
+              if (st.phase === 'dart') {
+                this.assign(body, {
+                  type: 'moveTo',
+                  target: { x: dartX, y: st.dartY },
+                  regime: 'sprint',
+                });
+                this.actionLabels.set(id, 'dart');
+              } else {
+                this.assign(body, {
+                  type: 'moveTo',
+                  target: { x: hoverX, y: plan.target.y },
+                  regime: atHover ? 'jog' : 'run',
+                });
+                this.actionLabels.set(id, 'run');
+              }
+              this.runningLine.add(id);
+            } else {
+              this.runPhase.delete(id);
+              this.runningLine.delete(id);
+              if (body.command.type === 'hold') {
+                const spot = supportSpot(
+                  body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos, objective,
+                );
+                const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
+                if (d > 1.4) {
+                  this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
+                  this.actionLabels.set(id, 'support');
+                }
+              }
             }
           }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
@@ -860,6 +948,18 @@ export class Sim {
           instructions: this.instructions.get(id) ?? {},
           current: intent,
           homes: this.homes,
+          runners: this.runningLine,
+          waitingRunners: new Set([...this.runningLine].filter((rid) => {
+            const rp = this.runPhase.get(rid);
+            const rb = this.byId.get(rid)!;
+            if (!rp) return true;
+            // the thread goes when the runner is ABOUT TO BREACH: darting,
+            // at pace, and within a stride of the line (the judged one-two
+            // spec — not merely "moving somewhere")
+            const rsign = rb.team === 'home' ? 1 : -1;
+            const dLine = rsign > 0 ? rp.lineX - rb.pos.x : rb.pos.x - rp.lineX;
+            return rp.phase !== 'dart' || rb.speed < 3 || dLine > 4.5;
+          })),
         });
         this.intents.set(id, intent);
       }
@@ -893,7 +993,10 @@ export class Sim {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
             kickBall(this.ball, noisy.target, noisy.speedMps, 0, id, this.tick);
-            if (intent.kind === 'pass') this.intendedReceiverId = intent.receiverId;
+            if (intent.kind === 'pass') {
+              this.intendedReceiverId = intent.receiverId;
+              this.lastGiveTick.set(id, this.tick);
+            }
             this.intents.delete(id);
             this.pendingKicks.delete(id);
             this.assign(body, { type: 'hold' });
