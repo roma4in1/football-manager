@@ -726,6 +726,17 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
+      // a pass in FLIGHT is protected: while it is fresh (the kicker's lock
+      // window), a teammate who is NOT the intended receiver stands off and
+      // lets it reach its target — otherwise two stacked teammates in the
+      // lane trade a ball meant for a THIRD man (the level-audit corner flap:
+      // left passes to mid, the stacked right intercepts, repeat). Opponents
+      // still intercept freely; past the window an unmet ball is collectable.
+      if (this.intendedReceiverId && b.id !== this.intendedReceiverId &&
+        this.tick < this.ball.kickerLockUntilTick) {
+        const intended = this.byId.get(this.intendedReceiverId);
+        if (intended && b.team === intended.team) continue;
+      }
       // you never steal the ball off your OWN teammate's feet: only an
       // opponent pinches a carrier's live touch. Without this two stacked
       // teammates trade the carrier's popped touch back and forth every tick

@@ -3,6 +3,33 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5e piece 2: pass-in-flight protection kills the corner flap
+
+The residual from piece 1 (two stacked teammates trading a ball meant for a
+third) — root-caused and fixed. Diagnosis: after a loose-ball scramble the
+counterpress double-chase (`nearestCp || ballDist<6`) stacks two teammates
+~0.7 m apart; the separation solver only nudges 0.1 m/tick, far slower than
+the 1–2-tick flap. The carrier passes to a THIRD mate (mid) but the stacked
+twin sits in the lane and CLAIMS it — resolveClaims never checked the
+intended receiver.
+
+Fix: **a pass in flight is protected** — while it is fresh (the kicker's lock
+window, 8 ticks) a teammate who is NOT the intended receiver stands off and
+lets the ball reach its target. Opponents still intercept freely; past the
+window an unmet ball is collectable (no permanent lock). The decision side
+already respected the pass (chase gated on intendedReceiverId===null); this
+extends the same respect to the physical claim.
+
+Measured: counter-3v2 and rondo corner flaps GONE (now: left passes to mid,
+the ball reaches mid, left/right peel off to support). Direct teammate
+carrier→carrier flips 26 (pre) → 13 (piece 1) → **5** (piece 2). All
+guardrails pinned (front 16/16·14/16, dial 16/16, runs 15/15, wall 16/16,
+grid double-press 7%, counterpress 6/8 regained ≤7 s). 59/59.
+
+Residual: grid-5v4 still shows a few defender↔defender trades on a loose
+ball in the tight 32×32 box — a milder contested scramble (no third-man
+pass, so this fix doesn't apply), left as acceptable for now.
+
 ## 2026-07-21 — L5e piece 1: possession-contest hardening (pinch lock + teammate can't pinch)
 
 Builder ask: start with the pinch lock + arbitration (the safe entry). Two
