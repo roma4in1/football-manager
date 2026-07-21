@@ -3,6 +3,30 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — The thread waits for the DART, not the ride (through-ball timing)
+
+Builder (after the friction change): in runs-in-behind the ball is played too
+early and the striker drops back to collect instead of splitting the lines.
+
+Traced: the striker IS running (rides back to his hover point, lineX−5), and
+the playmaker correctly aimed the RIDER ball into the space behind the line
+(~72.5). But the rider (destOverride) was EXEMPT from the riding-wait tax, so
+it was played at t12 WHILE the striker was still riding BACKWARD — his receive
+reflex then met the ball SHORT (x61, 7 m short of the line) and he turned back
+for it. Pre-friction the same ball was played later (the friction shifted the
+release earlier), so the regression only showed now.
+
+Fix: the riding-wait tax holds the RIDER ball too while the runner is a
+waitingRunner (hovering) — it releases only once he DARTS (leaves the waiting
+set: darting, at pace, within a stride of the line). One character: dropped
+the `&& !destOverride` exemption. Now the playmaker holds/drives until the
+dart, then threads behind, and the striker RUNS ONTO it: collects BEYOND the
+line (69.9 vs 61), runs-in-behind shots 11 → 16/16.
+
+Dial holds 16/16; front pinned; line-vs-runs 10 splits; rondo/grid healthy.
+Cost: wall-pass one-two 14 → 12/16 (still ≥ floor — the return now waits for
+the returning man to be darting, which is the correct one-two timing). 59/59.
+
 ## 2026-07-21 — The DRIVE credit: an unpressured carrier runs, doesn't over-pass
 
 Builder: players pass too often even with no defender on them and no good
