@@ -3,6 +3,27 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Round: lead a runner, play feet to a stepper; attack the lone man; shoot
+
+Three judgments, each landed in ISOLATION (the night's lesson) with the
+suite verified between:
+
+- **The down-the-line interception**: the passer's lead extrapolated the
+  receiver's velocity over the FULL flight (1.3–1.8 s ≈ 8–10 m), aiming
+  balls deep and dragging receivers off their spots to chase their own
+  pass. Feet balls now lead ≤0.7 s; RUNNING mates (>3.5 m/s) and through
+  candidates keep the real lead — you lead a runner, you play a stepping
+  man to feet. Bonus cascade: line-vs-runs splitting balls 7 → 16/16.
+- **The wide-then-center arc**: the isolation principle (from the L5e
+  brief, landed standalone): a defender with no cover within 12 m is half
+  the pressure — attack the lone man, respect the covered one. Front
+  duels and runs verified pinned.
+- **Shooting desire**: carry future-xG discount 0.5 → 0.38 — shoot-now
+  beats carry-closer sooner. line-vs-runs: 16/16 shoot, 7 from range
+  (was 3), avg first shot 16.2 m, 15 central squares.
+
+59/59; dial 16/16 both poles; wall/runs/front-duels pinned.
+
 ## 2026-07-21 — L5e: the duel state machine needs a DESIGNED session (stop-rule; branch = design brief)
 
 A full exploratory build of L5e (jockey, track, engage-score, stagger,

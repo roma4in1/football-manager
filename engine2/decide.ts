@@ -740,7 +740,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         for (let i = 0; i < 2; i++) {
           const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
           const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55) + leadExtraS;
-          dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
+          // a feet ball leads A STEP, not the whole flight — full-flight
+          // extrapolation aimed balls 8-10 m down the receiver's motion and
+          // dragged him off his spot to chase his own pass deep (the
+          // judged down-the-line interceptions). Runs keep the real lead.
+          const leadT = (leadExtraS > 0 || mate.speed > 3.5) ? tFly : Math.min(tFly, 0.7);
+          dest = { x: mate.pos.x + mate.vel.x * leadT, y: mate.pos.y + mate.vel.y * leadT };
         }
       }
       if (!inBounds(dest, 0.8)) continue; // you do not pass to out
@@ -823,7 +828,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     let pressure = 0;
     for (const o of opponents) {
       const dNow = Math.hypot(o.pos.x - p.x, o.pos.y - p.y);
-      pressure = Math.max(pressure, Math.max(0, 1 - dNow / pressRange));
+      // an ISOLATED defender (no cover within 12 m) is half the threat —
+      // attack the lone man, respect the covered one (the judged
+      // wide-then-center arc around defenders a direct line beats)
+      const covered = opponents.some((o2) => o2.id !== o.id &&
+        Math.hypot(o2.pos.x - o.pos.x, o2.pos.y - o.pos.y) < 12);
+      pressure = Math.max(pressure, Math.max(0, 1 - dNow / pressRange) * (covered ? 1 : 0.5));
     }
     let pv = value(p, carrier.id);
     // near goal the carry follows the xG GRADIENT — pure positional value
@@ -833,7 +843,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // 0.5, not 0.8: the carry's future-xG is NOT certain (you can lose
       // the ball en route) — at 0.8 carrying closer always beat shooting
       // NOW and the range shot never fired (the judged shyness)
-      if (gd < DECIDE.shootRangeM * 1.3) pv += 0.5 * xG(p, team, opponents);
+      if (gd < DECIDE.shootRangeM * 1.3) pv += 0.38 * xG(p, team, opponents);
     }
     const u = DECIDE.possessionDiscount * (
       // pressure taxes the spot, but momentum and control mean a defender
