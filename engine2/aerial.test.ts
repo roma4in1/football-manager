@@ -211,6 +211,23 @@ test('the SWITCH DECISION: a walled-in wide carrier floats a long ball to the fa
   assert.ok(reached >= 6, `the switch finds the far-flank mate (${reached}/10)`);
 });
 
+test('the CUTBACK DECISION: a byline carrier pulls it back to the penalty spot (emerges from ground pass + xG)', () => {
+  let cutback = 0;
+  let reached = 0;
+  for (let s = 0; s < 10; s++) {
+    const sim = new Sim(scenarioByName('cutback-decision'), `cb-${s}`);
+    let passed = false;
+    for (let t = 0; t < 50; t++) {
+      const f = sim.step();
+      if (f.bodies.find((b) => b.id === 'winger' && b.action === 'pass→striker')) passed = true;
+      if (sim.ball.carrierId === 'striker' && passed) { reached++; break; }
+    }
+    if (passed) cutback++;
+  }
+  assert.ok(cutback >= 8, `the winger cuts it back rather than forcing a tight-angle shot (${cutback}/10)`);
+  assert.ok(reached >= 7, `the cutback finds the striker at the spot (${reached}/10)`);
+});
+
 test('the ballistic loft solver lands the ball at the requested distance (driven loft)', () => {
   // driven lofts (low angle) are the accurate, fast aerial ball
   for (const [dist, loft] of [[25, 22], [34, 22], [40, 25]] as const) {

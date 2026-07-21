@@ -233,4 +233,24 @@ export const switchDecision: ScenarioDef = {
   script: [],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl, crossDecision, switchDecision];
+/** the CUTBACK: a carrier at the byline pulls the ball BACK to a mate at the
+ * penalty spot — passing.md #21, the highest-quality chance. It needs no new
+ * candidate: the ground pass + the chance-creation (xG) term already values a
+ * ball to a man in a shooting position over a tight-angle shot. This pins it. */
+export const cutbackDecision: ScenarioDef = {
+  version: 1,
+  name: 'cutback-decision',
+  description: 'A carrier at the byline pulls the ball back to a striker at the penalty spot rather than forcing a tight-angle shot. Judge the DECISION to cut it back.',
+  durationTicks: 50,
+  bodies: [
+    { id: 'winger', team: 'home', pos: { x: 103, y: 48 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // a striker at the penalty spot (11 m out, central) — the high-xG cutback
+    { id: 'striker', team: 'home', pos: { x: 94, y: 34 }, attributes: passer, brain: 'onBall' },
+    { id: 'cb', team: 'away', pos: { x: 99, y: 40 }, attributes: passer },
+    { id: 'fb', team: 'away', pos: { x: 104, y: 52 }, attributes: passer },
+  ],
+  ball: { carrier: 'winger' },
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl, crossDecision, switchDecision, cutbackDecision];
