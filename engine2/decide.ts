@@ -881,16 +881,17 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const dLoft = Math.hypot(landing.x - here.x, landing.y - here.y);
       // a defender parked in the DIRECT ground lane (mid-flight) — the loft's
       // whole reason to exist; over him the air ball is clean
-      let blockerT = 0;
-      const laneBlocked = dLoft >= 10 && dLoft <= 44 && inBounds(landing, 0.8) && opponents.some((o) => {
-        const t = ((o.pos.x - here.x) * (landing.x - here.x) + (o.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
-        if (t <= 0.12 || t >= 0.92) return false;
-        const px = here.x + t * (landing.x - here.x);
-        const py = here.y + t * (landing.y - here.y);
-        if (Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2) { blockerT = Math.max(blockerT, t); return true; }
-        return false;
-      });
-      if (laneBlocked) {
+      const laneBlocker = (dLoft >= 10 && dLoft <= 44 && inBounds(landing, 0.8))
+        ? opponents.find((o) => {
+            const t = ((o.pos.x - here.x) * (landing.x - here.x) + (o.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
+            if (t <= 0.12 || t >= 0.92) return false;
+            const px = here.x + t * (landing.x - here.x);
+            const py = here.y + t * (landing.y - here.y);
+            return Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2;
+          }) ?? null
+        : null;
+      if (laneBlocker) {
+        const blockerT = ((laneBlocker.pos.x - here.x) * (landing.x - here.x) + (laneBlocker.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
         // clear the blocker's HEAD: a near defender (early in the flight)
         // needs a steeper CHIP so the ball is already up; a far one (a deep
         // line) is cleared by the flatter, faster DRIVEN loft
@@ -908,6 +909,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
         }
+        // NOTE: the CURL AROUND (a trivela ground ball bent around this blocker,
+        // via solveCurl) belongs here too — validated in isolation (bends clear
+        // and reaches the man 12/12) — but as a fully-controllable ground ball it
+        // OUT-COMPETES the loft here and the cross into the box, and whether a
+        // curl-to-feet should beat a cross-to-head or a loft-over is a real EV
+        // calibration + scenario-isolation question. Deferred, not forced.
       }
     }
     // ── the CROSS: a wide, advanced carrier whips an aerial ball into the box

@@ -348,6 +348,40 @@ export function loftFlightTimeS(speed: number, loftDeg: number): number {
   return 600 * DT;
 }
 
+/** AIM point for a curling GROUND ball: struck at `speedMps` with `spin`, the
+ * Magnus bend carries it OFF the straight line, so to ARRIVE at `target` you
+ * aim off and let it curve back. Binary-search the launch heading whose spun
+ * endpoint lands on the target's range. +spin bends +y, so the aim sits to the
+ * −y side. Returns the point to strike toward (at the target's distance). */
+export function solveCurl(from: Vec2, target: Vec2, spin: number, speedMps: number): Vec2 {
+  const dx = target.x - from.x, dy = target.y - from.y;
+  const dist = Math.max(Math.hypot(dx, dy), 1e-6);
+  const dir = Math.atan2(dy, dx);
+  const cdir = Math.cos(dir), sdir = Math.sin(dir);
+  // signed perpendicular offset (relative to the direct line) of where the
+  // spun ball crosses the target's range — target itself is at perp 0
+  const perpMiss = (h: number): number => {
+    const b: BallState = {
+      pos: { x: from.x, y: from.y }, z: 0, vel: { x: Math.cos(h) * speedMps, y: Math.sin(h) * speedMps }, vz: 0, spin,
+      phase: 'rolling', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+    };
+    for (let i = 0; i < 400; i++) {
+      stepBall(b);
+      const proj = (b.pos.x - from.x) * cdir + (b.pos.y - from.y) * sdir;
+      if (proj >= dist || Math.hypot(b.vel.x, b.vel.y) < 0.3) break;
+    }
+    return -(b.pos.x - from.x) * sdir + (b.pos.y - from.y) * cdir; // +spin → +y → >0
+  };
+  // perpMiss increases with h; bracket ±0.8 rad and bisect to perp 0
+  let lo = dir - 0.8, hi = dir + 0.8;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (perpMiss(mid) > 0) hi = mid; else lo = mid;
+  }
+  const h = (lo + hi) / 2;
+  return { x: from.x + Math.cos(h) * dist, y: from.y + Math.sin(h) * dist };
+}
+
 /** apex height of a lofted flight (for the decision's "does it clear him?"). */
 export function loftApex(dist: number, loftDeg: number): number {
   const speed = solveLoftSpeed(dist, loftDeg);

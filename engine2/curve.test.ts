@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { kickBall, stepBall, type BallState } from './ball.ts';
+import { kickBall, solveCurl, stepBall, type BallState } from './ball.ts';
 
 const mkBall = (): BallState => ({
   pos: { x: 10, y: 34 }, z: 0, vel: { x: 0, y: 0 }, vz: 0, spin: 0,
@@ -96,4 +96,28 @@ test('a curling GROUND through ball splits the centre backs and bends to the win
   assert.ok(curledOut >= 7, `it curls out into the winger's channel (${curledOut}/8)`);
   assert.equal(onGround, 8, `it is a GROUND ball throughout (${onGround}/8)`);
   assert.ok(received >= 7, `the winger runs onto it (${received}/8)`);
+});
+
+test('solveCurl aims a spun ball so it ARRIVES on target (the curve foundation)', () => {
+  // the aim is OFF the target; the spin bends the ball back onto it. Validated
+  // across signs and geometries — the solver the (deferred) curl decision needs.
+  for (const [fx, fy, tx, ty, spin, sp] of [
+    [50, 34, 78, 33, 85, 16], [50, 34, 78, 33, -85, 16], [60, 50, 90, 36, -70, 18],
+  ] as const) {
+    const aim = solveCurl({ x: fx, y: fy }, { x: tx, y: ty }, spin, sp);
+    const b: BallState = {
+      pos: { x: fx, y: fy }, z: 0, vel: { x: 0, y: 0 }, vz: 0, spin: 0,
+      phase: 'carried', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+    };
+    kickBall(b, aim, sp, 0, 'k', 0, spin);
+    const dir = Math.atan2(ty - fy, tx - fx), dist = Math.hypot(tx - fx, ty - fy);
+    let closest = 99, t = 0;
+    while (t < 300) {
+      stepBall(b); t++;
+      closest = Math.min(closest, Math.hypot(b.pos.x - tx, b.pos.y - ty));
+      const proj = (b.pos.x - fx) * Math.cos(dir) + (b.pos.y - fy) * Math.sin(dir);
+      if (proj >= dist + 2 || Math.hypot(b.vel.x, b.vel.y) < 0.3) break;
+    }
+    assert.ok(closest < 2, `the curled ball arrives on target (miss ${closest.toFixed(1)} m)`);
+  }
 });
