@@ -3,6 +3,31 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — The DRIVE credit: an unpressured carrier runs, doesn't over-pass
+
+Builder: players pass too often even with no defender on them and no good
+pass — they should drive. Measured true: an open carrier with one advanced
+mate and NO defenders chose the pass (u0.075) over carrying (0.052). The pass
+wins because it reaches a more-advanced spot AND gets the risk-progressive
+bonus, while the carry only values 6 m ahead — the drive into open space is
+undervalued.
+
+Fix: a DRIVE credit — when GENUINELY UNPRESSURED (pressure < 0.2) the carry's
+progression is valued at the command point it is driving at, like a pass's:
+u += possessionDiscount · driveGain(1.2) · max(0, pv(runThrough) − pvHere).
+Gated on no pressure so it never competes with a release under a real
+defender, and NO risk multiplier (an open drive is not a gamble). A true
+thread still wins — its destination (a runner beyond the line) outvalues the
+drive. An EARLIER attempt (full risk-progressive, ungated) regressed
+line-vs-runs; the pressure gate + no-risk form is what spares it.
+
+Now: open carrier DRIVES at risk 0.3/0.5 (0.079 > pass); still releases the
+progressive ball at risk 0.7 (the instruction) or when a defender shades the
+lane. Dial holds 16/16; front 16/16·14/16; line-vs-runs threading RECOVERED
+(splits 3→10 under the new friction — the drive lets the playmaker carry into
+a cleaner threading angle). 59/59. (One rondo seed drops: a DEFENDER who wins
+the ball now drives off — realistic, the drill just has no reset.)
+
 ## 2026-07-21 — Realistic ball friction: speed-dependent drag on free balls (builder ask)
 
 Builder: the ball never slows / rolls forever. Measured true: rollDecel 1.7

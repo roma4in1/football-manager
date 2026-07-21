@@ -119,6 +119,10 @@ export const DECIDE = {
   clearPressureM: 3.0,
   clearUtility: 0.06,
   shieldUtility: 0.03,
+  /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
+   * pass's) and the pressure ceiling under which it applies */
+  driveGain: 1.2,
+  drivePressureCeil: 0.2,
 } as const;
 
 export const attackSign = (team: 'home' | 'away'): 1 | -1 => (team === 'home' ? 1 : -1);
@@ -853,7 +857,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // NOW and the range shot never fired (the judged shyness)
       if (gd < DECIDE.shootRangeM * 1.3) pv += 0.38 * xG(p, team, opponents);
     }
-    const u = DECIDE.possessionDiscount * (
+    const runThrough = {
+      x: Math.min(bounds ? bounds.x1 - 1 : PITCH.length - 0.5, Math.max(bounds ? bounds.x0 + 1 : 0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
+      y: Math.min(bounds ? bounds.y1 - 1 : PITCH.width - 0.5, Math.max(bounds ? bounds.y0 + 1 : 0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
+    };
+    let u = DECIDE.possessionDiscount * (
       // pressure taxes the spot, but momentum and control mean a defender
       // meters away is a problem, not half your value (the judged
       // dribble-away-from-everyone)
@@ -862,10 +870,20 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // family as the pass penalty (dodging is not free)
       turnoverW * pv * pressure * DECIDE.carryTurnoverGain
     );
-    const runThrough = {
-      x: Math.min(bounds ? bounds.x1 - 1 : PITCH.length - 0.5, Math.max(bounds ? bounds.x0 + 1 : 0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
-      y: Math.min(bounds ? bounds.y1 - 1 : PITCH.width - 0.5, Math.max(bounds ? bounds.y0 + 1 : 0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
-    };
+    // the DRIVE credit: when GENUINELY UNPRESSURED a carrier is free to run
+    // the ball forward, and that progression should read like a pass's does
+    // — otherwise a marginal square/forward ball to an open mate beats simply
+    // driving into space (the judged over-passing). Valued at the command
+    // point he is driving at, gated on no pressure so it never competes with
+    // a release under a real defender (and never overpowers a true thread,
+    // whose destination outvalues the drive). No risk term: an open drive is
+    // not a gamble.
+    if (!keep && pressure < DECIDE.drivePressureCeil) {
+      let pvDrive = value(runThrough, carrier.id);
+      const gdT = Math.hypot(g.x - runThrough.x, g.y - runThrough.y);
+      if (gdT < DECIDE.shootRangeM * 1.3) pvDrive += 0.38 * xG(runThrough, team, opponents);
+      u += DECIDE.possessionDiscount * DECIDE.driveGain * Math.max(0, pvDrive - pvHere);
+    }
     options.push({ kind: 'carry', target: runThrough, regime: carryRegime, utility: u, dir: ang });
   }
 
