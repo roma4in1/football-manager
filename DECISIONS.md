@@ -3,6 +3,172 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — KDB completion DEFERRED to curve + aerials (builder decision)
+
+The elite-passer decision terms are in (precision margin, lines broken,
+uncuttable pace); the full across-the-defence ball waits for BALL CURVE
+and AERIAL play — the flat 40 m diagonal is honestly dead on the ground.
+Finish the De Bruyne kit when those physical passes land. L5c judgment
+continues in parallel; next sub-phase: L5d pressing.
+
+## 2026-07-21 — The elite passer (builder ask: replicating De Bruyne/Messi)
+
+The design finding: in a true-state engine everyone already SEES
+everything — elite vision is not perception, it is (a) SELF-KNOWLEDGE in
+the risk model and (b) valuing what the pass DESTROYS. Three mechanisms
+landed (decide.ts):
+
+- **Precision buys margin**: pC gains (passing−14)·0.02 s of interception
+  margin — the De Bruyne term: he attempts the ball because HIS version
+  of it completes. Baselined at 14 so good pros don't inherit elite
+  appetite (the first cut at −12 flipped the risk dial).
+- **Lines broken**: every defender the pass puts behind the ball adds
+  value beyond the destination (×0.016 × risk × passing/20) — the
+  multi-line ball exists because this term exists. Risk-pure scaling
+  (a floor of appetite at risk 0 also flipped the dial).
+- **Fast balls are harder to CUT**: interception reaction +0.01 s per m/s
+  over 8 — the missing second half of passing.md's "driven passes are
+  harder to intercept" (the flat 0.35 s made every zipped diagonal
+  cuttable).
+
+Demonstrated at the honest scale (a 25 m one-line breaker): passing 12
+DECLINES it (rates it 0.017, carries), 15 attempts it, 19 attempts it
+decisively. The full 40 m cross-field diagonal measured honestly DEAD on
+the ground (2.3 s of flight lets everyone converge — pC 0.018 at any
+skill): the true across-everything KDB ball is AERIAL (lofted-driven,
+~1.5 s, over the lines) — it arrives with the recorded aerial pass +
+curve work, on top of these decision terms.
+
+Fallout absorbed: the counter dial drill had been OUTGROWN — the run
+machinery matured until the left thread was a safe killer ball and the
+"risky pole" premise eroded; d2's recovery now covers the left channel
+(the drill re-staged, not the model nerfed). passFloorBase re-seated to
+0.80 as the lane model got honest. 59/59; threads 27/29 collected,
+runs/wall/dial intact.
+
+## 2026-07-21 — L5c round 5: threads die in the space
+
+The judged overhits measured true and were NOT normal: 13 of 37
+line-vs-runs threads rolled dead (35%) — many fired with only 9–11 m of
+room behind an already-deep line, aimed line+4.5 with pace to spare,
+straight over the dead-ball boundary.
+
+- **No behind, no ball in behind**: the rider/driven candidates require
+  ≥14 m of room behind the line (mirrors runPlan's own run gate).
+- **The weight dies IN the space**: thread depth = min(4.5, 0.3·room)
+  and the arrival pace is capped so the roll-out ends ~4 m short of the
+  boundary (arrive ≤ √(2·decel·rollRoom)).
+
+Post: 27/29 threads collected, 2 dead, 0 intercepted. Note for the
+methodology file: two overlapping sed-style edits in one script silently
+lost the first when the second's assert threw — verify grep after
+multi-part patches. 59/59; runs/wall/dial intact.
+
+## 2026-07-21 — L5c round 4: the shot economy — no infinite deferral
+
+The judged shyness: attackers too scared of defenders, range shots
+near-absent, and no square ball into the centre for a better look.
+Structural cause: the carry's xG-gradient bonus (0.8·xG at the sample)
+made "carry closer" ALWAYS out-value "shoot now" — infinite deferral —
+while the pass EV had NO chance-creation term (passing.md lists it in
+the pass score explicitly), so the square/cutback was invisible value.
+
+- Carry future-xG discounted (0.8 → 0.5): the ball can be lost en route;
+  shooting NOW is certain to at least be an attempt.
+- Passes credit the RECEIVER'S shot (+0.6·xG at the destination, score
+  objective) — the centre square ball now carries its true value.
+- Shots considered from 30 m (was 26) — the EV decides if range is
+  worth it.
+
+Post: line-vs-runs 14/16 seeds shoot with 3 from range (>17 m, was 0)
+and 4 central squares (was 0); runs/wall/dial/splits all intact. 59/59.
+
+## 2026-07-21 — L5c round 3: the bend-receive — a runner never turns back for his ball
+
+The judged wrongness (runs-in-behind): the runner stopped, turned, and
+walked BACK to meet a thread played into his run — hold-up behavior with
+no defender to hold up against. Cause: at release, the dart's velocity is
+angled across the seam, so the strict in-stride check (current velocity,
+±1 m corridor) failed and the STATION receive machine took over —
+braking, turning, stepping back.
+
+- **The bend-receive** (sim.ts): a runner whose thread is in flight bends
+  (≤1.2 rad of current heading) onto the ball's PREDICTED PATH at pace —
+  the earliest path point he reaches at current speed, no caps, no
+  braking; the ball catches him up in stride. Gated to actual runners
+  (bendReceive set, armed when the receive reflex fires for a body in
+  runningLine) so the judged station/crossing receives are untouched.
+- Post (wb-1): the striker runs forward the whole flight (4.4–5.3 m/s,
+  never braking) while the ball closes along his path and arrives at
+  d=1.1 in stride. runs-in-behind 16/16/16; all other rates intact.
+  59/59.
+
+## 2026-07-21 — L5c round 2: the splitting ball, carry courage, shots through legs
+
+Three judged over-conservatism knobs (line-vs-runs) + passing.md mapped:
+
+- **The splitting ball**: the sub-floor lane tax (×0.35 flat) crushed the
+  threaded ball's payoff along with its risk — a speculative player never
+  split a tight CB pair. The tax now rides risk (0.25 + 0.45·risk), and
+  runners get a DRIVEN thread variant (passing.md #9/#13: less flight
+  time beats closing defenders; the receiver pays the hot-arrival tax).
+  Post: 8/16 line-vs-runs seeds thread the CB gap (was ~never).
+- **Carry courage**: the pressure tax weight 0.8 → 0.55 — momentum and
+  control mean a defender meters away is a problem, not half the spot's
+  value (the judged dribble-away-from-everyone).
+- **Shots are discounted, not vetoed**: the block corridor TAPERS with
+  distance (0.45 m at the boot → wider downrange; the flat 0.9 m made any
+  loitering body a veto) and point-blank costs ×0.35 instead of ×0.15 —
+  shots go past close defenders and through legs. Striker-breakaway
+  shots ROSE 13 → 15/16; line-vs-runs 16/16 shots, 3 under a defender
+  within 3.5 m. The xG unit test re-pinned to discount-not-veto.
+
+59/59; dial and wall-pass rates intact.
+
+## 2026-07-21 — L5c round 1: the step-up, the line-height knob, and the no-offside cap
+
+From the builder's defensive.md/defender.md (mapped in REFERENCES.md):
+
+- **The STEP-UP**: the line only dropped — the missing half of
+  step/drop/hold. A high line now squeezes toward a distant ball;
+  `instructions.lineHeight` (0 low block … 1 high line, default 0.5
+  mid-block) is the FIRST TACTICS KNOB (L6 will set it per team/role).
+- **The no-offside cap**: stepping past the deepest attacker without an
+  offside law doesn't trap him — it abandons him (goal-side collapsed to
+  26% the moment the step-up landed). The line never steps beyond the
+  deepest attacker +1.2 m until L9 arms the trap.
+- **Metric honesty**: line-vs-runs' goal-side ratio now counts LIVE play
+  only — a scored striker standing next to the goal poisoned 160
+  dead-ball ticks against the line's floor.
+
+defender.md validates the L3 duel inventory and pre-specs L5e's engage
+model (tackle-score); NEW gap recorded: AERIAL play (jump/heading) is
+wholly absent — needed before L8 crosses. 59/59; dial and runs intact.
+
+## 2026-07-21 — L5c OPENED: defensive shape — the line as a unit
+
+Branch feat/engine2-l5c (chain l3→l4→l5a→l5b merged to main; PR #53).
+The first DEFENDING brains in the engine. shapeSpot (decide.ts): shared
+line depth (hold home; drop goal-side of the ball, 12 m buffer, floor
+10 m from goal), ball-side slide (0.4×, cap ±7), cover-shadow bend
+(carrier→deepest-threat lane at line depth), ordered spacing ≥5.5 m —
+computed identically per member, so the unit coheres without messages
+(the communication reference's losslessly-shared-state regime). The line
+SLIDES, never chases: pressing is L5d's, jockeying L5e's. 'keep' brains
+skip shape (a rondo has no goal to protect).
+
+Scenarios: back-line-shift (a back three of brains vs keep-circulation —
+level to ±0.6 m, slides with the ball, spacing held) and LINE-VS-RUNS —
+the first true small-sided interplay: the APPROVED L5b attack against a
+living line, nothing scripted on either side. The dart still breaches,
+the thread still arrives, and the line retreats goal-side and contests
+deep (goal-side ≥75% pinned; breaches are the attack succeeding).
+
+Perf ~39 µs/tick with shape+decisions on (budget ~185). 59/59; all prior
+rates intact (dial 16/16 both poles, runs 16/16/13, wall 16/16).
+Known-and-deliberate: the line backpedals to its floor rather than ever
+engaging (no pressing yet) — the drop-forever look is L5c-only honesty.
+
 ## 2026-07-21 — L5b scenarios APPROVED + reference index (roles / spatial / communication)
 
 Builder approval: runs-in-behind and wall-pass both pass the eye (the
