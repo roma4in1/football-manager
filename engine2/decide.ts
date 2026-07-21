@@ -81,7 +81,7 @@ export const DECIDE = {
   turnoverBase: 0.9,
   turnoverRiskGain: 0.55,
   /** completion floor a pass must clear, risk-scaled */
-  passFloorBase: 0.78, // a safety-first player does not hit a ~2-in-3 ball
+  passFloorBase: 0.8, // a safety-first player wants near-certainty (re-seated as the lane model got honest)
   passFloorRiskGain: 0.45, // speculative feet barely have a floor
   /** the speculative player's thumb on the scale: risk WEIGHTS the payoff
    * of progressive balls (a safe square ball's EV honestly beats a 55%
@@ -191,6 +191,7 @@ export const passCompletion = (
   opponents: readonly BodyState[],
   receiverDist: number,
   receiver?: BodyState,
+  passerSkill = 12,
 ): number => {
   const d = Math.hypot(dest.x - from.x, dest.y - from.y);
   if (d < 0.5) return 0.2; // a pass to your own feet is not a pass
@@ -233,7 +234,12 @@ export const passCompletion = (
       const a = KIN.accelBase + KIN.accelPerPoint * o.attributes.acceleration;
       const ramp = (vOpp * vOpp) / (2 * a);
       const tRun = dOpp <= ramp ? Math.sqrt((2 * dOpp) / a) : vOpp / (2 * a) + dOpp / vOpp;
-      const tOpp = 0.35 + tRun;
+      // reacting to CUT a fast ball is harder than stepping on a roller —
+      // the second half of "driven passes are harder to intercept"
+      // (passing.md #13; the flat 0.35 s made every zipped diagonal
+      // cuttable and the multi-line ball never existed)
+      const ballHere = Math.sqrt(Math.max(disc, 1));
+      const tOpp = 0.35 + 0.01 * Math.max(0, ballHere - 8) + tRun;
       // the lane's TAIL belongs to the receiver: a defender the receiver
       // beats to a late sample isn't cleanly intercepting — he's arriving
       // into a contested receive. Soften his threat rather than void it (a
@@ -244,8 +250,11 @@ export const passCompletion = (
     }
   }
   // margin → probability: a lane the defenders miss by ≥0.6 s is safe; a
-  // lane they beat by ≥0.4 s is dead
-  const p = (worst + 0.4) / 1.0;
+  // lane they beat by ≥0.4 s is dead. The PASSER'S precision buys margin —
+  // an elite weight/line arrives where and when planned (the De Bruyne
+  // term: he attempts the ball because HIS version of it completes)
+  const precision = (passerSkill - 14) * 0.02; // baseline pro = 14; only the true elite buy real margin
+  const p = (worst + precision + 0.4) / 1.0;
   const lane = Math.max(0.02, Math.min(0.98, p));
   // long balls complete less even into space (execution noise grows with
   // distance) — but an OPEN 35m lane is still a good ball; the old 18m soft
@@ -559,7 +568,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           dest = { x: mate.pos.x + mate.vel.x * tFly, y: mate.pos.y + mate.vel.y * tFly };
         }
       }
-      let pC = passCompletion(here, dest, speed, opponents, dist0, mate);
+      let pC = passCompletion(here, dest, speed, opponents, dist0, mate, carrier.attributes.passing);
       // the backheel discount — but ONLY under pressure: an unpressured
       // carrier TURNS before striking (turn-then-strike executes it), so
       // discounting his EV for a blind ball he will never hit double-counts
@@ -584,6 +593,18 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // a shooting position carries his shot's value — the square/cutback
       // into the centre was invisible to the EV without it
       if (!keep) pvThere += 0.6 * xG(dest, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+      // LINES BROKEN (the multi-line ball): every defender the pass puts
+      // behind the ball is value beyond the destination itself — scaled by
+      // the passer's skill and appetite (the elite diagonal that eliminates
+      // six men exists because this term exists)
+      if (!keep) {
+        const sign2 = attackSign(carrier.team);
+        let bypassed = 0;
+        for (const o of opponents) {
+          if (sign2 > 0 ? (o.pos.x > here.x + 1 && o.pos.x < dest.x - 1) : (o.pos.x < here.x - 1 && o.pos.x > dest.x + 1)) bypassed++;
+        }
+        pvThere += bypassed * 0.016 * risk * (carrier.attributes.passing / 20);
+      }
       // sub-floor lanes are taxed, but the tax RIDES RISK — "the best pass
       // is not always the safest" (passing.md): a speculative player keeps
       // the threaded splitting ball live; a safe one buries it

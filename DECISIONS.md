@@ -3,6 +3,41 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — The elite passer (builder ask: replicating De Bruyne/Messi)
+
+The design finding: in a true-state engine everyone already SEES
+everything — elite vision is not perception, it is (a) SELF-KNOWLEDGE in
+the risk model and (b) valuing what the pass DESTROYS. Three mechanisms
+landed (decide.ts):
+
+- **Precision buys margin**: pC gains (passing−14)·0.02 s of interception
+  margin — the De Bruyne term: he attempts the ball because HIS version
+  of it completes. Baselined at 14 so good pros don't inherit elite
+  appetite (the first cut at −12 flipped the risk dial).
+- **Lines broken**: every defender the pass puts behind the ball adds
+  value beyond the destination (×0.016 × risk × passing/20) — the
+  multi-line ball exists because this term exists. Risk-pure scaling
+  (a floor of appetite at risk 0 also flipped the dial).
+- **Fast balls are harder to CUT**: interception reaction +0.01 s per m/s
+  over 8 — the missing second half of passing.md's "driven passes are
+  harder to intercept" (the flat 0.35 s made every zipped diagonal
+  cuttable).
+
+Demonstrated at the honest scale (a 25 m one-line breaker): passing 12
+DECLINES it (rates it 0.017, carries), 15 attempts it, 19 attempts it
+decisively. The full 40 m cross-field diagonal measured honestly DEAD on
+the ground (2.3 s of flight lets everyone converge — pC 0.018 at any
+skill): the true across-everything KDB ball is AERIAL (lofted-driven,
+~1.5 s, over the lines) — it arrives with the recorded aerial pass +
+curve work, on top of these decision terms.
+
+Fallout absorbed: the counter dial drill had been OUTGROWN — the run
+machinery matured until the left thread was a safe killer ball and the
+"risky pole" premise eroded; d2's recovery now covers the left channel
+(the drill re-staged, not the model nerfed). passFloorBase re-seated to
+0.80 as the lane model got honest. 59/59; threads 27/29 collected,
+runs/wall/dial intact.
+
 ## 2026-07-21 — L5c round 5: threads die in the space
 
 The judged overhits measured true and were NOT normal: 13 of 37

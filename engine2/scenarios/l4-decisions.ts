@@ -73,9 +73,10 @@ const counter = (name: string, risk: number, description: string): ScenarioDef =
     // the lane defender COMMITS to the carrier at 3s — the safe man slips
     // his pass now; the speculative man has already hit it
     { atTick: 30, bodyId: 'd1', command: { type: 'chaseBall', regime: 'sprint' } },
-    // d2 recovers INTO the in-behind zone — an unmarked man standing in
-    // the box made the "risky" ball free for everyone by t=50
-    { atTick: 8, bodyId: 'd2', command: { type: 'moveTo', target: { x: 85, y: 29 }, regime: 'sprint' } },
+    // d2 recovers INTO the left channel early — the run machinery matured
+    // until the left thread was a SAFE killer ball and the dial's premise
+    // (left = the risky one) eroded; his cover restores it
+    { atTick: 8, bodyId: 'd2', command: { type: 'moveTo', target: { x: 77, y: 26 }, regime: 'sprint' } },
     { atTick: 70, bodyId: 'd2', command: { type: 'chaseBall', regime: 'sprint' } },
   ],
 });
