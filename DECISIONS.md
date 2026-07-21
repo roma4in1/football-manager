@@ -3,6 +3,64 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Level audit (physics + mechanics) + the through-ball is a TIMING problem
+
+Builder ask: check this level for mechanics problems / physics
+incompatibility. Method: a per-tick physical-invariant checker across every
+scenario × 8 seeds, plus two adversarial code readers (decide.ts, sim.ts),
+plus a possession-flap detector.
+
+**Physics: CLEAN.** Zero invariant violations — no NaN, no body over its
+personal top speed, no teleport past the continuity cap, no negative ball
+height, no ball off-pitch while alive, no velocity blow-up. Integrator
+(force–velocity accel, grip-bounded turning) and ball.ts (g=9.81,
+restitution, roll-friction) are consistent. Aerials correctly inert — only
+struck-ball emits loft; every decided kick is ground-only.
+
+**Mechanics findings — folded into the L5e brief below** (all are loose-ball
+contest / coordination, i.e. L5e's domain):
+
+- **Pinch arms no refractory lock** (MED-HIGH): the pinch is the only
+  possession-transfer path that never sets kickerLock (the won tackle, the
+  fumbled pop, and kickBall all do). A clean steal can be reversed by the
+  just-dispossessed dribbler next tick; level two-body touch duels oscillate.
+  Fix is a one-liner mirroring the tackle-win lock — do it in the L5e session.
+- **Teammate ping-pong** (MED): two stacked teammates on one loose ball
+  trade it carrier-to-carrier ~every tick for ~1.3 s (measured counter-3v2
+  t144–157) — each kicks, kickerLock hands it to the twin 0.07 m away, repeat.
+  No "you take it / I support" arbitration + separation never splits them.
+- **Bounds enforced for the BALL only** (MED): bodies are never clamped to
+  pitch/grid, and a CARRIED ball can be dribbled out of a grid without going
+  dead (the dead-ball check gates on carrierId===null).
+
+**Lower-priority observations** (recorded, not urgent): intercept model gives
+a defender up to 0.8 s (~6 m) of free closing (pass EV pessimistic into
+converging traffic); separation solver can dispossess a carrier in a scrum
+before the touch couples; pass launch speed is sized to the receiver's
+CURRENT position not the led point; carry future-xG counts only opponents as
+blockers while shot-xG counts both teams. **Validated clean:** the
+carry-direction fix, no double-carrier, kicker-lock not bypassable, dead-ball
+terminal, no claim tunneling (swept-segment test), no NaN/div0.
+
+**The through ball ("too much power / not coordinated"): diagnosed, NOT a
+weight constant.** Measured: through balls launch ~13 m/s and arrive ~7 m/s
+(line-vs-runs) — because in EVERY current scenario the lane is CONTESTED by
+markers, so the ball genuinely needs pace to thread it; a soft twin at the
+same lead gets intercepted (pC 0.43 vs the firm's 0.94), so the firm ball
+correctly wins and ~7 m/s onto a 5.7 m/s run (1.3 m/s relative) is takeable.
+The real defect is the TIMING TAIL (runs-in-behind s6: launch 13.6 past a
+striker still at 3.5 m/s → overruns → DEAD): the ball is played before the
+runner is up to speed and timed to the breach. A pure arrival-cap fixes the
+open run (runs-in-behind all-controlled, DEAD gone) but SLOWS the contested
+ball below the pace that beats the lane and breaks the risk dial (risk-high
+stops forcing the through ball) — it conflates "coordinate the weight" with
+"don't attempt a contested ball." And a speed-aware hot-arrival tax is inert:
+at the DECISION tick the runner is still slow, his speed only builds by
+ARRIVAL, so a single-tick EV can't see it. **The fix is run-coordination:
+release timed to the runner's arrival at the breach at pace (the L5b-run /
+L5e-contest coupling), not a pass-weight number.** Added to the brief. Code
+untouched, 59/59.
+
 ## 2026-07-21 — Carry commitment is by DIRECTION (the kinked carry)
 
 Judged in line-vs-runs: the striker receives, drives at goal, then does a
@@ -90,6 +148,23 @@ survive as the design brief:
 - Both duel sides must be brains, and the shield floor must not exceed
   deep-field carry EV (0.03 froze carriers at kickoff; now-known, to
   re-apply in the session: shieldUtility ≈ 0.014).
+- **The pinch needs its own refractory lock** (from the level audit): mirror
+  the tackle-win kickerLock on a successful pinch, or level touch duels
+  oscillate and a steal reverses next tick. One-liner, but it belongs with
+  the contest machine.
+- **Loose-ball arbitration** (from the audit): two teammates converging on a
+  loose ball must resolve to one claimant + one supporter, and the separation
+  solver must split stacked bodies — else they ping-pong the ball via the
+  kicker-lock (measured ~1.3 s tug-of-war).
+- **Carried-ball bounds + body bounds** (from the audit): a carried ball
+  dribbled over a grid/pitch line should go dead; bodies should clamp to the
+  playing area. Decide with the contest rules.
+- **The through ball is a coordination problem, not a weight** (this session):
+  time the release to the runner's arrival at the breach AT PACE — a contested
+  lane needs pace (softening breaks the risk dial), and the overhit tail comes
+  from playing the ball before the runner is up to speed. Couple the L5b run
+  cycle to the pass release here; a single-tick arrival-cap or hot-tax cannot
+  see the runner's future speed.
 
 Codebase reverted to the green L5d state (59/59, all rates pinned).
 The L5e session builds the machine from this brief.
