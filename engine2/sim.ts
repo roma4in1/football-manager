@@ -748,27 +748,28 @@ export class Sim {
     }
   }
 
-  /** the 3-D BLOCK — interception in xyz, not xy: a DRIVEN airborne ball
-   * (a shot, a cross, a driven pass) that passes through a body's reach (feet
-   * to arms-up, bodyBlockReachZ) is DEFLECTED off him; one flighted OVER his
-   * reach clears. A slow ball is controlled/headed, not blocked. Runs after the
-   * deliberate header, before the ground claim. (The keeper — a higher reach
-   * and a catch — is L7 on this same footing.) */
+  /** the 3-D COLLISION — interception in xyz, not xy: a DRIVEN airborne ball
+   * (a shot, a cross, a driven pass) that passes through a body deflects off
+   * him; one flighted OVER his reach clears. Reach is PER-PLAYER — the same
+   * jump the header uses (headStandM + headJumpPerStr·strength), so a stronger
+   * man reaches higher. An OPPONENT in the way is a BLOCK; a teammate who is
+   * not the intended man is an accidental COLLISION (a hard ball caroms off
+   * him). Only the intended receiver is exempt — he is controlling it, not
+   * deflecting his own ball. A slow ball is controlled/headed, not deflected.
+   * Runs after the deliberate header, before the ground claim. (The keeper — a
+   * higher reach and a catch — is L7; the handball ruling on an arm-height
+   * deflection is the fouls layer, on this same footing.) */
   private resolveBlocks(from: Vec2): void {
     const ball = this.ball;
-    if (ball.phase !== 'airborne' || ball.z > BALL.bodyBlockReachZ) return;
+    if (ball.phase !== 'airborne' || ball.z > BALL.headMaxZ) return; // above any reach → clears
     const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
-    if (speed < BALL.blockMinSpeedMps) return;
-    // a block is an OPPONENT'S act — a teammate of the kicker in the path is a
-    // receiver, and controls/heads it (resolveHeaders/resolveClaims), he does
-    // not deflect his own team's ball loose. A loose ball (no kicker) is fair
-    // game for anyone.
-    const kicker = ball.kickerId ? this.bodies.find((b) => b.id === ball.kickerId) : undefined;
-    const kickerTeam = kicker?.team;
+    if (speed < BALL.blockMinSpeedMps) return; // slow enough to be controlled/headed
     let best: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const body of this.bodies) {
       if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
-      if (kickerTeam && body.team === kickerTeam) continue;
+      if (body.id === this.intendedReceiverId) continue; // the intended man controls it
+      // PER-PLAYER vertical reach — the same leap the header gates on
+      if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue;
       // horizontal closest approach of the body to the ball's swept path, in
       // the body's frame (so a fast ball cannot tunnel past his reach)
       const prev = this.prevPos.get(body.id) ?? body.pos;
@@ -784,11 +785,14 @@ export class Sim {
       if (!best || d < best.d) best = { body, d, at };
     }
     if (!best) return;
-    // DEFLECT — scrub most of the pace and scatter it off his body, a loose
-    // pop; he cannot instantly re-claim his own block (brief refractory)
+    // a BLOCK (opponent, deliberate) or a COLLISION (teammate, accidental) —
+    // both deflect loose, but a body not trying to block scrubs less pace off
+    const kicker = ball.kickerId ? this.byId.get(ball.kickerId) : undefined;
+    const isCollision = kicker !== undefined && best.body.team === kicker.team;
+    const keep = isCollision ? BALL.collisionDeflectKeep : BALL.blockDeflectKeep;
     const ang = Math.atan2(ball.vel.y, ball.vel.x) + Math.PI +
       this.rng.gauss(0, 0.8, this.tick, best.body.id, 'block');
-    const sp = speed * BALL.blockDeflectKeep;
+    const sp = speed * keep;
     ball.pos = { x: best.at.x, y: best.at.y };
     ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
     ball.vz = sp * 0.3;
@@ -797,7 +801,7 @@ export class Sim {
     ball.kickerId = best.body.id;
     ball.kickerLockUntilTick = this.tick + 4;
     ball.spin = 0;
-    this.actionLabels.set(best.body.id, 'block');
+    this.actionLabels.set(best.body.id, isCollision ? 'collision' : 'block');
   }
 
   private resolveClaims(from: Vec2): void {

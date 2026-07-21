@@ -126,6 +126,19 @@ test('the 3-D BLOCK: a driven ball at body height is blocked by a defender in th
   assert.ok(bodyHeight >= 7, `the block is at body height, above the ground-claim ceiling (${bodyHeight}/8)`);
 });
 
+test('a hard ball caroms off a TEAMMATE in the path — a collision, not a block, and he is not immune', () => {
+  let collided = 0;
+  for (let s = 0; s < 8; s++) {
+    const sim = new Sim(scenarioByName('teammate-collision'), `col-${s}`);
+    for (let t = 0; t < 60; t++) {
+      const f = sim.step();
+      if (f.bodies.find((b) => b.id === 'mate' && b.action === 'collision')) { collided++; break; }
+      if (sim.ball.pos.x > 90) break; // sailed past untouched
+    }
+  }
+  assert.ok(collided >= 7, `the ball caroms off the teammate in its path (${collided}/8)`);
+});
+
 test('a ball flighted OVER the defender\'s reach clears him — the block is height-aware', () => {
   // the same 24 m/s strike, but lofted: it sails over the 2 m reach untouched
   const b = mkBallOver();

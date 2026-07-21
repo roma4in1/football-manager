@@ -139,4 +139,25 @@ export const drivenBlock: ScenarioDef = {
   script: [],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock];
+/** the COLLISION: a hard driven ball caroms off a TEAMMATE who is in the path
+ * but is not the intended man — not a block (he's not defending), an accidental
+ * carom that keeps more of the pace on. Same geometry as driven-block, but the
+ * body in the way wears the kicker's colours. */
+export const teammateCollision: ScenarioDef = {
+  version: 1,
+  name: 'teammate-collision',
+  description: 'A hard driven ball caroms off a teammate standing in its path — an accidental collision, not a block. Judge that a teammate is not immune to a ball he is in the way of.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'shooter', team: 'home', pos: { x: 66, y: 34 }, attributes: passer },
+    // a TEAMMATE square in the path — the hard ball caroms off him
+    { id: 'mate', team: 'home', pos: { x: 76, y: 34 }, attributes: passer },
+  ],
+  ball: { carrier: 'shooter' },
+  kicks: [
+    { atTick: 8, bodyId: 'shooter', kick: { target: { x: 100, y: 34 }, speedMps: 24, loftDeg: 10 } },
+  ],
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision];

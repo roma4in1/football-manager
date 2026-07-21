@@ -83,14 +83,15 @@ export const BALL = {
   headMinZ: 0.9,
   headMaxZ: 2.5,
   headReachM: 1.5, // horizontal reach to leap for it
-  /** 3-D BLOCK: a body in the path of a DRIVEN airborne ball deflects it if it
-   * passes through his reach — feet up to arms-up height. This is what makes
-   * interception xyz, not xy: a shot/cross at body height hits the defender in
-   * the way; one flighted OVER him (above the reach) clears. A leaping header
-   * (above) is the deliberate version; this is the reactive block. */
-  bodyBlockReachZ: 2.0,
-  blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not blocked
-  blockDeflectKeep: 0.35, // a block scrubs most of the pace off
+  /** 3-D COLLISION: a body in the path of a DRIVEN airborne ball deflects it if
+   * it passes through his reach — feet up to the leap the header uses
+   * (headStandM + headJumpPerStr·strength), so reach is PER-PLAYER. This makes
+   * interception xyz, not xy: a shot/cross at body height hits the man in the
+   * way; one flighted OVER his reach clears. A leaping header (above) is the
+   * deliberate version; this is the reactive deflection. */
+  blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not deflected
+  blockDeflectKeep: 0.35, // an OPPONENT'S block scrubs most of the pace off
+  collisionDeflectKeep: 0.55, // a teammate not defending caroms more pace on
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
