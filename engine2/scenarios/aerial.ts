@@ -40,4 +40,23 @@ export const aerialThrough: ScenarioDef = {
   ],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough];
+/** the DECISION: an unscripted carrier's direct ground lane to a mate is
+ * blocked by a defender; the mate is open beyond. The carrier should LOFT it
+ * over — the ground ball never arrives, the air ball does. */
+export const aerialChip: ScenarioDef = {
+  version: 1,
+  name: 'aerial-chip',
+  description: 'The carrier\'s ground lane to an open mate is blocked by a defender in the way; he should chip/loft over rather than force the ground ball. Judge the decision to go aerial.',
+  durationTicks: 90,
+  bodies: [
+    { id: 'carrier', team: 'home', pos: { x: 46, y: 34 }, attributes: { ...passer, passing: 17 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // the open mate beyond the block — a clean drop, no defender near him
+    { id: 'mate', team: 'home', pos: { x: 72, y: 34 }, attributes: passer, brain: 'onBall', instructions: { risk: 0.4 } },
+    // a defender square in the DIRECT ground lane, mid-way
+    { id: 'blocker', team: 'away', pos: { x: 58, y: 34 }, attributes: passer },
+  ],
+  ball: { carrier: 'carrier' },
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip];

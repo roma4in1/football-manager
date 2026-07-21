@@ -15,7 +15,7 @@
  */
 
 import { PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
-import { rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, type BallState } from './ball.ts';
+import { rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
@@ -43,7 +43,7 @@ export interface PlayInstructions {
 
 export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
-  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number }
+  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number }
   | { kind: 'shield'; utility: number }
   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
@@ -119,6 +119,13 @@ export const DECIDE = {
   clearPressureM: 3.0,
   clearUtility: 0.06,
   shieldUtility: 0.03,
+  /** LOFTED ball: a driven loft (low angle) is the accurate, fast aerial
+   * through ball; a chip (steeper) clears a nearer man. Aerial control is
+   * harder than a ground receive — the drop is taxed by first touch. */
+  loftDrivenDeg: 24,
+  loftChipDeg: 42,
+  aerialControlBase: 0.5,
+  aerialControlTouchGain: 0.02,
   /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
@@ -279,6 +286,26 @@ export const passCompletion = (
   // cap taxed every through ball to death regardless of the lane
   const range = 1 / (1 + Math.max(0, receiverDist - 26) / 30);
   return lane * range;
+};
+
+/** completion of a LOFTED ball to `landing`: it flies OVER ground defenders
+ * in the middle of the flight, so the contest is the DROP — an arrival race
+ * at the landing between the receiver and the nearest defender to it. The
+ * mid-lane blocker that kills the ground ball is irrelevant to the air one. */
+export const aerialCompletion = (
+  landing: Vec2,
+  mate: BodyState,
+  opponents: readonly BodyState[],
+): number => {
+  const dMate = Math.hypot(mate.pos.x - landing.x, mate.pos.y - landing.y);
+  let nearest = Infinity;
+  for (const o of opponents) {
+    nearest = Math.min(nearest, Math.hypot(o.pos.x - landing.x, o.pos.y - landing.y));
+  }
+  // metre margin at the drop (receiver closer than any defender = safe); the
+  // receiver reads the flight and gets under it, a defender must recover to it
+  const margin = nearest - dMate;
+  return 1 / (1 + Math.exp(-(margin - 0.5) / 2.0));
 };
 
 /** L5a — the support spot: where an off-ball teammate should stand so the
@@ -827,6 +854,43 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
+      }
+    }
+    // ── the LOFTED ball: a chip / driven loft OVER a ground defender in the
+    // lane, dropping for the mate. Only worth it when the ground lane IS
+    // blocked (else the ground ball is simpler and easier to control). ──────
+    if (!keep) {
+      const landing = riderBehind ?? { x: mate.pos.x + mate.vel.x * 0.3, y: mate.pos.y + mate.vel.y * 0.3 };
+      const dLoft = Math.hypot(landing.x - here.x, landing.y - here.y);
+      // a defender parked in the DIRECT ground lane (mid-flight) — the loft's
+      // whole reason to exist; over him the air ball is clean
+      let blockerT = 0;
+      const laneBlocked = dLoft >= 10 && dLoft <= 44 && inBounds(landing, 0.8) && opponents.some((o) => {
+        const t = ((o.pos.x - here.x) * (landing.x - here.x) + (o.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
+        if (t <= 0.12 || t >= 0.92) return false;
+        const px = here.x + t * (landing.x - here.x);
+        const py = here.y + t * (landing.y - here.y);
+        if (Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2) { blockerT = Math.max(blockerT, t); return true; }
+        return false;
+      });
+      if (laneBlocked) {
+        // clear the blocker's HEAD: a near defender (early in the flight)
+        // needs a steeper CHIP so the ball is already up; a far one (a deep
+        // line) is cleared by the flatter, faster DRIVEN loft
+        const loftDeg = blockerT < 0.5 ? DECIDE.loftChipDeg : DECIDE.loftDrivenDeg;
+        const speedL = solveLoftSpeed(dLoft, loftDeg);
+        // aerial control is HARDER than a ground receive — a dropping ball
+        // is taxed by the taker's first touch (silk feet cushion it)
+        const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+        const pCa = aerialCompletion(landing, mate, opponents) * ctrl;
+        let pvL = value(landing, mate.id);
+        if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+        const uProgL = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvL - pvHere);
+        const meetsL = pCa >= passFloor ? 1 : 0.25 + 0.45 * risk;
+        const uL = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCa * pvL - (1 - pCa) * turnoverW * pvL) + uProgL) * meetsL;
+        if (!bestPass || uL > bestPass.utility) {
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
+        }
       }
     }
     if (bestPass) options.push(bestPass);

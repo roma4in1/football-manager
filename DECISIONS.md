@@ -3,6 +3,35 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Aerial (L-aerial): the lofted ball — foundation + the decision to loft
+
+Next step after the ball-friction merge: settle foundational aerial PHYSICS
+before more behavior layers (the friction change showed how physics ripples
+upward). physics.md's flight model (gravity + drag + bounce) existed but was
+INERT — every decided kick was ground-only, and the KDB across-the-defence
+ball was explicitly deferred here waiting for the aerial pass.
+
+- **a1 (foundation):** solveLoftSpeed(dist, loftDeg) — numeric ballistic solve
+  (drag has no closed form) for the launch speed that lands a loft at a
+  distance; loftApex() for clearance. Driven lofts (20-25°) land accurately at
+  25-40 m. The aerial RECEIVE already works via the existing machinery: a
+  runner reads the drag+bounce flight (predictBall) and controls the drop.
+- **a2 (the decision):** a LOFTED pass candidate — the Intent gained loftDeg,
+  threaded through pendingKicks → kickBall. It fires ONLY when a ground
+  defender sits in the DIRECT lane (t 0.12-0.92, within 2.2 m); over him the
+  air ball is clean. aerialCompletion() judges the DROP (an arrival race at
+  the landing — mid-flight ground defenders are irrelevant, the ball is over
+  them). Aerial control is TAXED (a dropping ball is harder — first-touch
+  scaled). The loft ANGLE is adaptive: a near blocker (t<0.5) gets a steeper
+  CHIP (42°) so the ball clears his head early; a far line the flatter DRIVEN
+  loft (24°). Verified: clears the blocker's head 8/8, open mate collects 8/8.
+
+Crucially the loft does NOT disrupt open-lane play — all existing rates pinned
+(dial, line-vs-runs, runs, wall, front, rondo). 62/62.
+
+Next: aerial receive refinement (control-on-the-drop / headers — a defender
+can't yet challenge a mid-height ball), then curve (Magnus).
+
 ## 2026-07-21 — Drive at goal from wide, and shoot THROUGH the last line (line-vs-runs)
 
 Builder: in line-vs-runs the carrier drifts to the edge of the box instead of
