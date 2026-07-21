@@ -88,7 +88,7 @@ export class Sim {
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
-  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number }>();
+  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number; spin?: number }>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -569,7 +569,7 @@ export class Sim {
     })();
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
-      kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick);
+      kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick, pending.spin ?? 0);
       if (pending.receiverId) {
         this.intendedReceiverId = pending.receiverId;
         this.lastGiveTick.set(carrier.id, this.tick);
@@ -1427,7 +1427,7 @@ export class Sim {
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
-            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' ? (intent.loftDeg ?? 0) : 0, id, this.tick);
+            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' ? (intent.spin ?? 0) : 0);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
@@ -1442,6 +1442,7 @@ export class Sim {
               dest: intent.dest,
               speedMps: intent.speedMps,
               ...(intent.kind === 'pass' && intent.loftDeg ? { loftDeg: intent.loftDeg } : {}),
+              ...(intent.kind === 'pass' && intent.spin ? { spin: intent.spin } : {}),
               ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
             });
             if (body.command.type !== 'chaseBall') {
