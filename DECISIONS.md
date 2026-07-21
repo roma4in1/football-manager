@@ -3,6 +3,205 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5e piece 1: possession-contest hardening (pinch lock + teammate can't pinch)
+
+Builder ask: start with the pinch lock + arbitration (the safe entry). Two
+possession invariants landed in sim.ts, one change at a time, measured:
+
+- **The pinch arms a refractory lock** (audit finding #1): a pinch that
+  steals from a live carrier now sets kickerLock on the DISPOSSESSED man,
+  exactly as the won tackle and the fumbled pop already do — the pinch was
+  the only transfer path missing it (a code-confirmed asymmetry; the
+  tackle-win comment already warns of this bug class). Currently unexercised
+  by the scenario set (opponent pinches are geometry-rare here: 113 vs 112
+  steals, 19 vs 19 reversals) — kept as correctness hardening that completes
+  the lock trio, to be stress-pinned when the L5e duel scenarios land.
+- **A teammate never pinches his teammate's live touch** (audit finding #2,
+  the direct half): the claim loop skipped opponent-vs-carrier but let a
+  teammate 0.1 m closer steal the carrier's popped dribble touch. MEASURED:
+  direct teammate carrier→carrier flips HALVED, 26 → 13 across all scenarios.
+
+**What these do NOT fix — the residual, now precisely characterized.** The
+counter-3v2 corner flap survives: it is NOT a pinch and NOT a pass-to-feet.
+Two teammates end up STACKED ~0.7 m apart (both ran the same loose ball; the
+separation solver never split them), and each then passes to a THIRD mate
+(mid) — but being stacked, each sits in the other's lane and CLAIMS the ball
+meant for mid, so the carrier flips left↔right via intra-tick kick→reclaim.
+This is the loose-ball PURSUIT ARBITRATION + SEPARATION problem: one claimant
++ one supporter on a loose ball, and stacked teammates must break apart. It
+is the real L5e contest work, not a one-liner (three one-liners bounced off
+it — the stop-rule signal). Recorded in the brief.
+
+59/59; front/dial/runs/wall/rondo/grid all pinned.
+
+## 2026-07-21 — Level audit (physics + mechanics) + the through-ball is a TIMING problem
+
+Builder ask: check this level for mechanics problems / physics
+incompatibility. Method: a per-tick physical-invariant checker across every
+scenario × 8 seeds, plus two adversarial code readers (decide.ts, sim.ts),
+plus a possession-flap detector.
+
+**Physics: CLEAN.** Zero invariant violations — no NaN, no body over its
+personal top speed, no teleport past the continuity cap, no negative ball
+height, no ball off-pitch while alive, no velocity blow-up. Integrator
+(force–velocity accel, grip-bounded turning) and ball.ts (g=9.81,
+restitution, roll-friction) are consistent. Aerials correctly inert — only
+struck-ball emits loft; every decided kick is ground-only.
+
+**Mechanics findings — folded into the L5e brief below** (all are loose-ball
+contest / coordination, i.e. L5e's domain):
+
+- **Pinch arms no refractory lock** (MED-HIGH): the pinch is the only
+  possession-transfer path that never sets kickerLock (the won tackle, the
+  fumbled pop, and kickBall all do). A clean steal can be reversed by the
+  just-dispossessed dribbler next tick; level two-body touch duels oscillate.
+  Fix is a one-liner mirroring the tackle-win lock — do it in the L5e session.
+- **Teammate ping-pong** (MED): two stacked teammates on one loose ball
+  trade it carrier-to-carrier ~every tick for ~1.3 s (measured counter-3v2
+  t144–157) — each kicks, kickerLock hands it to the twin 0.07 m away, repeat.
+  No "you take it / I support" arbitration + separation never splits them.
+- **Bounds enforced for the BALL only** (MED): bodies are never clamped to
+  pitch/grid, and a CARRIED ball can be dribbled out of a grid without going
+  dead (the dead-ball check gates on carrierId===null).
+
+**Lower-priority observations** (recorded, not urgent): intercept model gives
+a defender up to 0.8 s (~6 m) of free closing (pass EV pessimistic into
+converging traffic); separation solver can dispossess a carrier in a scrum
+before the touch couples; pass launch speed is sized to the receiver's
+CURRENT position not the led point; carry future-xG counts only opponents as
+blockers while shot-xG counts both teams. **Validated clean:** the
+carry-direction fix, no double-carrier, kicker-lock not bypassable, dead-ball
+terminal, no claim tunneling (swept-segment test), no NaN/div0.
+
+**The through ball ("too much power / not coordinated"): diagnosed, NOT a
+weight constant.** Measured: through balls launch ~13 m/s and arrive ~7 m/s
+(line-vs-runs) — because in EVERY current scenario the lane is CONTESTED by
+markers, so the ball genuinely needs pace to thread it; a soft twin at the
+same lead gets intercepted (pC 0.43 vs the firm's 0.94), so the firm ball
+correctly wins and ~7 m/s onto a 5.7 m/s run (1.3 m/s relative) is takeable.
+The real defect is the TIMING TAIL (runs-in-behind s6: launch 13.6 past a
+striker still at 3.5 m/s → overruns → DEAD): the ball is played before the
+runner is up to speed and timed to the breach. A pure arrival-cap fixes the
+open run (runs-in-behind all-controlled, DEAD gone) but SLOWS the contested
+ball below the pace that beats the lane and breaks the risk dial (risk-high
+stops forcing the through ball) — it conflates "coordinate the weight" with
+"don't attempt a contested ball." And a speed-aware hot-arrival tax is inert:
+at the DECISION tick the runner is still slow, his speed only builds by
+ARRIVAL, so a single-tick EV can't see it. **The fix is run-coordination:
+release timed to the runner's arrival at the breach at pace (the L5b-run /
+L5e-contest coupling), not a pass-weight number.** Added to the brief. Code
+untouched, 59/59.
+
+## 2026-07-21 — Carry commitment is by DIRECTION (the kinked carry)
+
+Judged in line-vs-runs: the striker receives, drives at goal, then does a
+sharp unmotivated turn a beat before playing centre.
+
+Root cause: commitment inertia matched a carry to the current intent by
+KIND alone. Every one of the 8 carry directions is `kind: 'carry'`, so
+`same` bound to whichever carry sat first in the option list (the 0° bin),
+never the heading actually being run. Carries therefore had NO directional
+commitment — each reconsider tick was a fresh argmax, and the winning bin
+hopped between adjacent (or wide) directions as pressure shifted. The
+visible artifact: a transient flip to a wide bin in the two or three beats
+before the pass fired — the sharp turn.
+
+Fix: tag each carry option with its `dir`; when a carry is changing to
+another carry, `same` is the bin NEAREST the current heading, so a new
+direction must clearly beat continuing. Scoped to carry→carry only —
+carry↔pass release keeps its original inertia (an earlier unscoped version
+strengthened carry-vs-pass suppression and lifted rondo losses 35→42;
+scoping restored circulation, l4-6 21 transfers).
+
+Effect: striker now holds its cut-inside line (−17° locked t66→shot at
+92.8,45.3) instead of kinking into a pass-back. 59/59; dial/front/runs/
+wall pinned; line-vs-runs 11 thread + 5 drive-and-shoot (was 16 thread /
+0 shot — the smoother carry lets the shot win).
+
+## 2026-07-21 — Round: lead a runner, play feet to a stepper; attack the lone man; shoot
+
+Three judgments, each landed in ISOLATION (the night's lesson) with the
+suite verified between:
+
+- **The down-the-line interception**: the passer's lead extrapolated the
+  receiver's velocity over the FULL flight (1.3–1.8 s ≈ 8–10 m), aiming
+  balls deep and dragging receivers off their spots to chase their own
+  pass. Feet balls now lead ≤0.7 s; RUNNING mates (>3.5 m/s) and through
+  candidates keep the real lead — you lead a runner, you play a stepping
+  man to feet. Bonus cascade: line-vs-runs splitting balls 7 → 16/16.
+- **The wide-then-center arc**: the isolation principle (from the L5e
+  brief, landed standalone): a defender with no cover within 12 m is half
+  the pressure — attack the lone man, respect the covered one. Front
+  duels and runs verified pinned.
+- **Shooting desire**: carry future-xG discount 0.5 → 0.38 — shoot-now
+  beats carry-closer sooner. line-vs-runs: 16/16 shoot, 7 from range
+  (was 3), avg first shot 16.2 m, 15 central squares.
+
+59/59; dial 16/16 both poles; wall/runs/front-duels pinned.
+
+## 2026-07-21 — L5e: the duel state machine needs a DESIGNED session (stop-rule; branch = design brief)
+
+A full exploratory build of L5e (jockey, track, engage-score, stagger,
+knock-and-go, dart-tracking) was BUILT, MEASURED, and REVERTED — ten
+iterations of whack-a-mole where every fix inverted the guardrail
+(close/heavy through-rates swung 0↔16 in both directions). The pieces
+are correct individually and COUPLED fatally: they form one state
+machine (jockey ↔ track ↔ engage ↔ staggered/beaten) that must be
+designed with hysteresis and intercept geometry as a unit. Findings that
+survive as the design brief:
+
+- **The jockey needs two modes**: backpedal-capped (~4.5 m/s, facing
+  play) vs a SLOW carrier; full-speed goal-side TRACKING vs one at pace
+  (the cap alone donates a permanent 4 m escort trail).
+- **Never duel from the wrong side**: a trailing ball-chase can never
+  pinch (the ball is always ahead of the carrier) — engage only
+  goal-side/alongside; otherwise cut the path ahead to REGAIN the side.
+- **The no-man's band kills everything**: jockey hold (2.0 m), engage
+  range (2.6 m), and the attacker's arc (2.2–2.7 m) must be designed
+  together or nothing ever engages.
+- **The failed lunge is the beaten moment**: without a stagger (~0.8 s
+  planted), repeated 27% tackles compound to inevitability over any
+  crawl (16/16 defender wins vs elite close control).
+- **Engagement pressure grows with jockey time** (delay = waiting for
+  support; support may not come) and spikes on a STOPPED carrier.
+- **The knock-and-go is the attacker's half** (jockeyed + space behind →
+  self-pass past the shoulder + race): its clearance is DEFENDER-relative
+  (the knock-past drill's too-tight lesson recurs in EV form) and it
+  requires the isolation principle below or it never fires.
+- **Attack the isolated man**: carry pressure from a defender with no
+  cover within ~12 m should discount (~0.45) — one lone jockey was
+  repelling a close-control carrier from half the pitch (a 16 s orbit of
+  his own half, measured).
+- **Dart-tracking cannot be naive**: goal-side man-tracking of runners
+  drags line members out (goal-side integrity 75% → 27%) — tracking must
+  HAND OFF along the line (the mark-switch run from defender_runs), which
+  is itself part of the state machine.
+- Both duel sides must be brains, and the shield floor must not exceed
+  deep-field carry EV (0.03 froze carriers at kickoff; now-known, to
+  re-apply in the session: shieldUtility ≈ 0.014).
+- **The pinch needs its own refractory lock** — ✅ LANDED (piece 1): mirrors
+  the tackle-win kickerLock. Still wants a level-pinch scenario to stress-pin.
+- **A teammate never pinches his teammate's live touch** — ✅ LANDED (piece 1):
+  direct teammate carrier→carrier flips halved (26→13). The RESIDUAL is
+  harder: **loose-ball PURSUIT ARBITRATION + SEPARATION** — two teammates run
+  the same loose ball, end up stacked ~0.7 m (the separation solver never
+  splits them), and each then intercepts the other's pass to a THIRD mate
+  because both sit in the lane. Needs: one claimant + one supporter on a
+  loose ball, and stacked bodies breaking apart. This IS the contest machine,
+  not a one-liner (three one-liners bounced off it).
+- **Carried-ball bounds + body bounds** (from the audit): a carried ball
+  dribbled over a grid/pitch line should go dead; bodies should clamp to the
+  playing area. Decide with the contest rules.
+- **The through ball is a coordination problem, not a weight** (this session):
+  time the release to the runner's arrival at the breach AT PACE — a contested
+  lane needs pace (softening breaks the risk dial), and the overhit tail comes
+  from playing the ball before the runner is up to speed. Couple the L5b run
+  cycle to the pass release here; a single-tick arrival-cap or hot-tax cannot
+  see the runner's future speed.
+
+Codebase reverted to the green L5d state (59/59, all rates pinned).
+The L5e session builds the machine from this brief.
+
 ## 2026-07-21 — L5d starvation redesign DEFERRED (builder decision); L5e opens
 
 The support-angle starvation (round 6's stop-rule finding) waits for its
