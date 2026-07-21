@@ -99,6 +99,18 @@ the cover-shadow bend (sit in the carrier→deepest-threat lane at line
 depth, 0.35 blend), and spacing (ordered, ≥5.5 m). The line SLIDES; it
 does not chase — pressing is L5d's, jockeying L5e's.
 
+## L5d — pressing (opened)
+
+The defensive chain per idle defending brain: COUNTERPRESS (innate — the
+5–8 s window after losing the ball, chases loose or opponent-carried
+balls within 15 m, overrides stale commands, even for 'keep' brains: it
+is literally the rondo's rule) > elected PRESS (instructions.pressing
+0..1, DEFAULT 0 — organized stepping-out is a tactic; triggers per
+defensive.md: the receive moment +0.35, sideline +0.25, isolation +0.2,
+proximity; exactly ONE first defender, nearest-elected) > SHADOW (the
+second man sits on the pressed carrier's best escape lane at 40%) >
+SHAPE (the L5c line). Contact stays L3's contain/tackle machinery.
+
 ## Decided for later layers
 
 - **Positioning split (decided 2026-09-07, implemented at L5)**: the pool

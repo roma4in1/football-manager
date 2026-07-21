@@ -25,14 +25,14 @@ export const rondo4v2: ScenarioDef = {
     { id: 'p2', team: 'home', pos: { x: 54, y: 27 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
     { id: 'p3', team: 'home', pos: { x: 54, y: 41 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
     { id: 'p4', team: 'home', pos: { x: 40, y: 41 }, attributes: passer, brain: 'onBall', instructions: { objective: 'keep' } },
-    { id: 'c1', team: 'away', pos: { x: 45, y: 33 }, attributes: chaser },
-    { id: 'c2', team: 'away', pos: { x: 49, y: 35 }, attributes: chaser },
+    // L5d: the chasers are PRESS BRAINS — one presses the carrier, the
+    // other shadows the escape lane (the real rondo dynamic, replacing
+    // two blind scripted hounds)
+    { id: 'c1', team: 'away', pos: { x: 45, y: 33 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
+    { id: 'c2', team: 'away', pos: { x: 49, y: 35 }, attributes: chaser, brain: 'onBall', instructions: { pressing: 0.85 } },
   ],
   ball: { carrier: 'p1' },
-  script: [
-    { atTick: 14, bodyId: 'c1', command: { type: 'chaseBall', regime: 'run' } },
-    { atTick: 22, bodyId: 'c2', command: { type: 'chaseBall', regime: 'run' } },
-  ],
+  script: [],
 };
 
 /** counter 3v2 — the break: carrier + two lanes vs two retreating defenders.

@@ -35,6 +35,10 @@ export interface PlayInstructions {
    * 1 = high line (squeeze up with the ball). Default 0.5 — a mid block.
    * The first tactics knob: L6 will set these per role/team. */
   lineHeight?: number;
+  /** L5d organized pressing appetite, 0..1. DEFAULT 0 — shape-holders
+   * never step out unless instructed (counterpress is separate and
+   * innate: transition instinct, not organization). */
+  pressing?: number;
 }
 
 export type Intent =
@@ -466,6 +470,57 @@ export const shapeSpot = (
     }
   }
   return { x: lineX, y: Math.max(2, Math.min(PITCH.width - 2, y)) };
+};
+
+/** L5d — should THIS defender press the carrier now? Trigger-scored
+ * (defensive.md): receive moments, sideline traps, isolation, plus raw
+ * proximity — gated by the pressing instruction and first-defender
+ * election (exactly one presser; the sim elects the nearest). Contact
+ * itself is L3's contain/tackle machinery — pressing is the decision to
+ * LEAVE SHAPE and close. */
+export const pressScore = (
+  defender: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+  justReceived: boolean,
+  pressing: number,
+): number => {
+  const d = Math.hypot(carrier.pos.x - defender.pos.x, carrier.pos.y - defender.pos.y);
+  const range = 12 + pressing * 10;
+  if (d > range) return 0;
+  let score = 0.3 + pressing * 0.4 + (1 - d / range) * 0.3;
+  if (justReceived) score += 0.35; // press the touch (defensive.md: high)
+  if (carrier.pos.y < 11 || carrier.pos.y > PITCH.width - 11) score += 0.25; // sideline trap
+  const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
+  if (!mates.some((m) => Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y) < 12)) score += 0.2; // isolated
+  return score;
+};
+
+/** L5d — the SECOND defender's shadow spot: stand on the pressed
+ * carrier's best escape lane (defender_runs' shadow press / passing lane
+ * block): pick his most dangerous open mate and sit on that lane. */
+export const shadowSpot = (
+  defender: BodyState,
+  carrier: BodyState,
+  bodies: readonly BodyState[],
+): Vec2 | null => {
+  const mates = bodies.filter((b) => b.team === carrier.team && b.id !== carrier.id);
+  if (!mates.length) return null;
+  let best: BodyState | null = null;
+  let bestVal = -Infinity;
+  for (const m of mates) {
+    const v = posValue(m.pos, carrier.team) - Math.hypot(m.pos.x - defender.pos.x, m.pos.y - defender.pos.y) * 0.004;
+    if (v > bestVal) {
+      bestVal = v;
+      best = m;
+    }
+  }
+  if (!best) return null;
+  const t = 0.4; // on the lane, nearer the carrier (cuts early)
+  return {
+    x: carrier.pos.x + (best.pos.x - carrier.pos.x) * t,
+    y: carrier.pos.y + (best.pos.y - carrier.pos.y) * t,
+  };
 };
 
 export interface DecideInput {

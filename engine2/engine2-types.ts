@@ -56,7 +56,7 @@ export interface BodyInit {
    * the ball. Bodies without a brain follow their script only. */
   brain?: 'onBall';
   /** L4 instruction surface (spec: instructions bias the choice) */
-  instructions?: { risk?: number; objective?: 'keep' | 'score'; lineHeight?: number };
+  instructions?: { risk?: number; objective?: 'keep' | 'score'; lineHeight?: number; pressing?: number };
 }
 
 /** Movement commands — the L1/L2 action vocabulary (scenario scripts issue

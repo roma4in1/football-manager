@@ -52,7 +52,10 @@ test('every scenario is v1, runs its full duration, and keeps bodies on-pitch-sa
 test('continuity everywhere: no body ever moves farther in one tick than physics allows', () => {
   for (const def of SCENARIOS) {
     const frames = runScenario(def, 'assert');
-    const caps = new Map(def.bodies.map((b) => [b.id, topSpeedMps(b.attributes.pace) * DT + 1e-6]));
+    // movement at vmax PLUS the capped per-tick separation displacement
+    // (press scrums collide at sprint — a nudge while at top speed is
+    // physics, not a teleport)
+    const caps = new Map(def.bodies.map((b) => [b.id, topSpeedMps(b.attributes.pace) * DT + 0.5 + 1e-6]));
     for (let i = 1; i < frames.length; i++) {
       for (const b of frames[i].bodies) {
         const p = body(frames[i - 1], b.id);

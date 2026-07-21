@@ -3,6 +3,38 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5d OPENED: pressing — counterpress, the elected press, the shadow
+
+Branch feat/engine2-l5d. The defensive chain (counterpress > press >
+shadow > shape), from the defensive.md/defender_runs pre-specs:
+
+- **Counterpress is INNATE** (transition instinct, not organization): the
+  5–8 s window after losing the ball; chases loose or opponent-carried
+  balls within 15 m; overrides stale attack commands; applies even to
+  'keep' brains — the immediate hunt is literally the rondo's rule. The
+  rondo transformed: 41 losses / 39 REGAINED within 7 s across 8 seeds
+  (the chasers-keep-it-forever era ends).
+- **Organized pressing is a KNOB** (instructions.pressing, default 0 —
+  zero regression surface): trigger-scored per defensive.md (the receive
+  moment, sideline traps, isolation, proximity), with exactly ONE
+  first defender (nearest-elected). The rondo chasers upgraded from two
+  blind scripted hounds to press brains: one presses, one shadows —
+  double-press share fell from ~100% to 3%, circulation stayed healthy
+  (94 transfers/8 seeds).
+- **The shadow** (second defender): sits on the pressed carrier's best
+  escape lane at 40% from the carrier (defender_runs' shadow press /
+  passing-lane block).
+- Contact unchanged: L3's contain/tackle machinery owns engagement.
+
+Fallout: the continuity invariant allowed exactly vmax·DT — a collision
+nudge while sprinting in a press scrum read as a teleport; the cap now
+allows movement + the (newly capped, 0.5 m/tick) separation
+displacement. 59/59; dial 16/16 both poles, runs/wall/threads intact.
+Known-and-deliberate: line-vs-runs' shape-holding line (pressing 0)
+still never engages — give it a pressing instruction to judge the full
+chain; press-resistance interplay emerges free via the carrier's
+existing pressure EV.
+
 ## 2026-07-21 — KDB completion DEFERRED to curve + aerials (builder decision)
 
 The elite-passer decision terms are in (precision margin, lines broken,

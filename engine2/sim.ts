@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { decide, DECIDE, runPlan, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { decide, DECIDE, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -69,6 +69,13 @@ export class Sim {
   /** brains currently holding defensive shape (their moveTo is the line's,
    * re-planned at cadence — not a script) */
   private readonly shapeHolding = new Set<string>();
+  /** L5d: when each team LOST possession (the counterpress window) and
+   * when the current carrier claimed (the press-the-touch trigger) */
+  private readonly lostPossessionAt = new Map<'home' | 'away', number>();
+  private carrierSince = -1;
+  private prevCarrierTeam: 'home' | 'away' | null = null;
+  /** brains currently pressing (the first-defender election's memory) */
+  private readonly pressingIds = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -339,7 +346,10 @@ export class Sim {
     // 2b. bodies are SOLID (soft): pairwise separation — nobody ghosts
     // through an opponent. Accumulate displacements, then apply (order-free).
     // iterated (a single pass cannot resolve three-body chains: a crowder
-    // pushing the middle man INTO a third body squeezed past the floor)
+    // pushing the middle man INTO a third body squeezed past the floor);
+    // total displacement per body per tick is CAPPED — iterations could
+    // accumulate a 0.84 m teleport in dense press scrums
+    const sepTotal = new Map<string, number>();
     for (let sepIter = 0; sepIter < 3; sepIter++) {
       const minSep = TECH.bodyRadiusM * 2;
       const push = new Map<string, Vec2>();
@@ -371,7 +381,13 @@ export class Sim {
       }
       for (const b of this.bodies) {
         const p = push.get(b.id);
-        if (p) b.pos = { x: b.pos.x + p.x, y: b.pos.y + p.y };
+        if (!p) continue;
+        const used = sepTotal.get(b.id) ?? 0;
+        const mag = Math.hypot(p.x, p.y);
+        const allowed = Math.max(0, 0.5 - used);
+        const k = mag > allowed ? allowed / (mag || 1) : 1;
+        b.pos = { x: b.pos.x + p.x * k, y: b.pos.y + p.y * k };
+        sepTotal.set(b.id, used + mag * k);
       }
     }
 
@@ -420,6 +436,19 @@ export class Sim {
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
     this.resolveClaims(ballFrom);
+
+    // L5d bookkeeping: possession flips arm the counterpress window; a
+    // fresh carrier arms the press-the-touch trigger
+    {
+      const cb2 = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+      if (cb2) {
+        if (this.prevCarrierTeam !== null && cb2.team !== this.prevCarrierTeam) {
+          this.lostPossessionAt.set(this.prevCarrierTeam, this.tick);
+        }
+        if (this.prevCarrierTeam !== cb2.team || this.carrierSince < 0) this.carrierSince = this.tick;
+        this.prevCarrierTeam = cb2.team;
+      }
+    }
 
     const frame = this.snapshot();
     this.tick++;
@@ -930,29 +959,82 @@ export class Sim {
               }
             }
           }
-          // L5c SHAPE: an idle brain whose OPPONENT has the ball (carried
-          // or in flight to one) joins his line — shared depth, ball-side
-          // shift, cover shadows. The line slides; pressing is L5d's.
+          // L5d COUNTERPRESS (before everything): the 5–8 s transition
+          // instinct — chase the ball you just lost (loose OR opponent-
+          // carried), overriding stale attack commands; organized defense
+          // below still requires idleness
+          {
+            const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
+            const oppHasIt = carrierBody !== undefined && carrierBody.team !== body.team;
+            const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null;
+            // counterpress is INNATE — even 'keep' brains hunt the ball
+            // they just lost (it is literally the rondo's rule); the keep
+            // gate below only blocks ORGANIZED defense
+            if (this.tick - lostAt <= 60 && (oppHasIt || looseBall) &&
+              this.tick % DECIDE.reconsiderTicks === 0 &&
+              this.tick > (this.scriptedUntil.get(id) ?? -1) &&
+              Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15) {
+              if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+              this.actionLabels.set(id, 'counterpress');
+              continue;
+            }
+          }
+          // L5c/L5d DEFENDING: an idle brain whose OPPONENT has the ball
+          // runs the defensive chain — COUNTERPRESS (innate, the 5–8 s
+          // transition window) > elected PRESS (instructed, one first
+          // defender) > SHADOW (the second man sits on the escape lane) >
+          // SHAPE (the line). Contact stays L3's contain/tackle machinery.
           if (carrierBody && carrierBody.team !== body.team &&
             (this.instructions.get(id)?.objective) !== 'keep' &&
             (body.command.type === 'hold' || this.shapeHolding.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
-            const unit = [...this.brains].filter((bid) =>
-              this.byId.get(bid)!.team === body.team &&
-              this.tick > (this.scriptedUntil.get(bid) ?? -1));
-            const spot = shapeSpot(body, this.bodies, this.ball, this.homes, unit,
-              this.instructions.get(id)?.lineHeight ?? 0.5);
-            const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
-            if (d > 1.2) {
-              this.assign(body, { type: 'moveTo', target: spot, regime: d > 8 ? 'run' : 'jog' });
-              this.shapeHolding.add(id);
-              this.actionLabels.set(id, 'shape');
-            } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
-              this.assign(body, { type: 'hold' });
+            const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
+            const inCounterpress = this.tick - lostAt <= 60 &&
+              Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15;
+            const pressing = this.instructions.get(id)?.pressing ?? 0;
+            const justReceived = this.tick - this.carrierSince <= 8;
+            // first-defender election: the nearest eligible defending brain
+            const defBrains = [...this.brains].filter((bid) => {
+              const b2 = this.byId.get(bid)!;
+              return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
+                (this.instructions.get(bid)?.objective) !== 'keep';
+            });
+            const nearest = defBrains.reduce((best, bid) => {
+              const b2 = this.byId.get(bid)!;
+              const d2 = Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y);
+              return d2 < best.d ? { id: bid, d: d2 } : best;
+            }, { id: '', d: Infinity });
+            const iAmFirst = nearest.id === id;
+            const score = pressScore(body, carrierBody, this.bodies, justReceived, pressing);
+            const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
+            const firstIsEngaged = this.pressingIds.has(nearest.id) || (iAmFirst && pressNow);
+            if (pressNow) {
+              if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+              this.pressingIds.add(id);
+              this.shapeHolding.delete(id);
+              this.actionLabels.set(id, inCounterpress ? 'counterpress' : 'press');
+            } else {
+              this.pressingIds.delete(id);
+              // the SECOND defender shadows the escape lane while the first
+              // presses; everyone else keeps the line
+              const spot = (!iAmFirst && firstIsEngaged && nearest.d < 6)
+                ? shadowSpot(body, carrierBody, this.bodies)
+                : null;
+              const target = spot ?? shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
+                this.instructions.get(id)?.lineHeight ?? 0.5);
+              const d = Math.hypot(target.x - body.pos.x, target.y - body.pos.y);
+              if (d > 1.2) {
+                this.assign(body, { type: 'moveTo', target, regime: d > 8 ? 'run' : 'jog' });
+                this.shapeHolding.add(id);
+                this.actionLabels.set(id, spot ? 'shadow' : 'shape');
+              } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
             }
           } else if (carrierBody && carrierBody.team === body.team) {
             this.shapeHolding.delete(id);
+            this.pressingIds.delete(id);
           }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
           // collected by the nearest idle brain — deflected passes died
