@@ -53,6 +53,9 @@ export class Sim {
   private intendedReceiverId: string | null = null;
   /** initial positions — the 'keep' objective's drill stations */
   private readonly homes = new Map<string, Vec2>();
+  /** the half-turn: the intended receiver's anticipated NEXT-play direction,
+   * refreshed during the flight — his receive facing opens toward it */
+  private readonly receiveOpenDir = new Map<string, number>();
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
@@ -254,9 +257,18 @@ export class Sim {
         speedCapMps: timedCap,
       });
       if (standing) {
-        // a set receiver watches the ball in
+        // a set receiver watches the ball in — a BRAIN receiver takes it on
+        // the HALF-TURN: body opened between the incoming ball and his
+        // anticipated next play, so the aligned first-time ball needs no
+        // turn (the judged rondo truth: the skill is body shape, not trap)
         const toBall = Math.atan2(this.ball.pos.y - body.pos.y, this.ball.pos.x - body.pos.x);
-        const delta = ((toBall - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        let want = toBall;
+        const open = this.receiveOpenDir.get(body.id);
+        if (open !== undefined) {
+          const half = ((open - toBall + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+          want = toBall + half * 0.5;
+        }
+        const delta = ((want - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
         body.facing += Math.sign(delta) * Math.min(Math.abs(delta), 4.0 * DT);
       }
       if (body.arrived) {
@@ -732,9 +744,31 @@ export class Sim {
           // flights are raced, quiet ones are received)
           if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
           this.actionLabels.set(id, 'receive');
+          // scan the field DURING the flight: where does the next ball go?
+          // (decide() ignores ball state, so the receiver can evaluate as
+          // if he already had it at his feet)
+          if (this.tick % DECIDE.reconsiderTicks === 0) {
+            const ahead = decide({
+              carrier: body,
+              bodies: this.bodies,
+              ball: this.ball,
+              instructions: this.instructions.get(id) ?? {},
+              current: null,
+              homes: this.homes,
+            });
+            const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear'
+              ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
+              : ahead.kind === 'carry'
+                ? Math.atan2(ahead.target.y - body.pos.y, ahead.target.x - body.pos.x)
+                : undefined;
+            if (aim !== undefined) this.receiveOpenDir.set(id, aim);
+          }
+        } else {
+          this.receiveOpenDir.delete(id);
         }
         continue;
       }
+      this.receiveOpenDir.delete(id);
       let intent = this.intents.get(id) ?? null;
       if (!intent || this.tick % DECIDE.reconsiderTicks === 0) {
         intent = decide({

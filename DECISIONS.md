@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 judgment round 4: pace is routine, body shape is the skill
+
+The judged rondo truth: pros don't struggle with a 10 m/s ball over 12 m —
+the difficulty is ANGLING THE BODY for the first-time next ball.
+
+- **Pop difficulty onset moved to driven pace** (technique.ts,
+  touchEasySpeedMps 4 → 6.5): control difficulty now starts where real
+  difficulty starts; bounces, gait, and pressure still bite from zero.
+  Pressure raised to compensate (0.22 → 0.34 — the equalizer; the pinned
+  heavy-pressed spill floor holds). Note: keyed pop draws are fixed per
+  seed, so small probability nudges can flip ZERO seeds — tune in steps
+  big enough to cross draws.
+- **The half-turn receive** (sim.ts): the intended receiver scans DURING
+  the flight (decide() ignores ball state, so he evaluates as if the ball
+  were already at his feet, at the reconsider cadence) and opens his body
+  halfway between the incoming ball and his anticipated next play. Aligned
+  first-time balls now fire without the turn delay (wb-1: claim t=12 →
+  release t=13); a next ball against the body shape still pays the
+  turn-then-strike cost. This is the coached "receive on the half-turn,"
+  and it is the mechanism the judgment asked for: distance-trap difficulty
+  out, body-shape difficulty in. 53/53; dial intact 16/16 both poles.
+
 ## 2026-07-21 — L4 judgment round 3: zip the passes, trust the feet
 
 The judged sluggishness ("passes not fast enough, or the touches are

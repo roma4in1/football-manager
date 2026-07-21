@@ -17,12 +17,12 @@ export const TECH = {
   touchPopBase: 0.02,
   /** + per m/s of ball speed above the easy band */
   touchPopPerMps: 0.055,
-  touchEasySpeedMps: 4,
+  touchEasySpeedMps: 6.5, // difficulty starts at genuinely DRIVEN pace — a 10 m/s rondo ball is routine for a pro (the judged over-fumbling); bounces and pressure still bite from zero
   /** a dropping/bouncing ball (height at contact) is harder */
   touchPopPerMeterZ: 0.25,
   /** an opponent within pressure range raises the difficulty */
   touchPressureRangeM: 2.5,
-  touchPopPressure: 0.22,
+  touchPopPressure: 0.34, // pressure is the equalizer (raised when pace-difficulty onset moved to driven balls: pace is routine for pros, bodies on you are not)
   /** controlling at speed is harder than standing — per m/s of the
    * RECEIVER'S own speed (walking ~+0.03, running ~+0.13, sprint ~+0.19) */
   touchPopPerReceiverMps: 0.025,
