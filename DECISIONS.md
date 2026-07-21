@@ -3,6 +3,50 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L5e: the duel state machine needs a DESIGNED session (stop-rule; branch = design brief)
+
+A full exploratory build of L5e (jockey, track, engage-score, stagger,
+knock-and-go, dart-tracking) was BUILT, MEASURED, and REVERTED — ten
+iterations of whack-a-mole where every fix inverted the guardrail
+(close/heavy through-rates swung 0↔16 in both directions). The pieces
+are correct individually and COUPLED fatally: they form one state
+machine (jockey ↔ track ↔ engage ↔ staggered/beaten) that must be
+designed with hysteresis and intercept geometry as a unit. Findings that
+survive as the design brief:
+
+- **The jockey needs two modes**: backpedal-capped (~4.5 m/s, facing
+  play) vs a SLOW carrier; full-speed goal-side TRACKING vs one at pace
+  (the cap alone donates a permanent 4 m escort trail).
+- **Never duel from the wrong side**: a trailing ball-chase can never
+  pinch (the ball is always ahead of the carrier) — engage only
+  goal-side/alongside; otherwise cut the path ahead to REGAIN the side.
+- **The no-man's band kills everything**: jockey hold (2.0 m), engage
+  range (2.6 m), and the attacker's arc (2.2–2.7 m) must be designed
+  together or nothing ever engages.
+- **The failed lunge is the beaten moment**: without a stagger (~0.8 s
+  planted), repeated 27% tackles compound to inevitability over any
+  crawl (16/16 defender wins vs elite close control).
+- **Engagement pressure grows with jockey time** (delay = waiting for
+  support; support may not come) and spikes on a STOPPED carrier.
+- **The knock-and-go is the attacker's half** (jockeyed + space behind →
+  self-pass past the shoulder + race): its clearance is DEFENDER-relative
+  (the knock-past drill's too-tight lesson recurs in EV form) and it
+  requires the isolation principle below or it never fires.
+- **Attack the isolated man**: carry pressure from a defender with no
+  cover within ~12 m should discount (~0.45) — one lone jockey was
+  repelling a close-control carrier from half the pitch (a 16 s orbit of
+  his own half, measured).
+- **Dart-tracking cannot be naive**: goal-side man-tracking of runners
+  drags line members out (goal-side integrity 75% → 27%) — tracking must
+  HAND OFF along the line (the mark-switch run from defender_runs), which
+  is itself part of the state machine.
+- Both duel sides must be brains, and the shield floor must not exceed
+  deep-field carry EV (0.03 froze carriers at kickoff; now-known, to
+  re-apply in the session: shieldUtility ≈ 0.014).
+
+Codebase reverted to the green L5d state (59/59, all rates pinned).
+The L5e session builds the machine from this brief.
+
 ## 2026-07-21 — L5d starvation redesign DEFERRED (builder decision); L5e opens
 
 The support-angle starvation (round 6's stop-rule finding) waits for its
