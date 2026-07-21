@@ -694,7 +694,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // himself; the breach point is line-relative, not runner-relative
     let riderBehind: Vec2 | null = null;
     let riderArriveCap = Infinity;
-    if (runners?.has(mate.id)) {
+    // a THROUGH ball threads to a runner AHEAD of the carrier (goal-side) —
+    // never to a wide man BEHIND the ball. Without this the break carrier
+    // fired a deep thread into the touchline space for a support runner
+    // trailing him, squandering a run at goal (the judged bad long ball;
+    // the runners in behind we DO thread are all goal-side of the carrier).
+    if (runners?.has(mate.id) && attackSign(mate.team) * (mate.pos.x - here.x) > -2) {
       const rsign = attackSign(mate.team);
       const oppXs = opponents.map((o) => o.pos.x);
       const rLineX = oppXs.length ? (rsign > 0 ? Math.max(...oppXs) : Math.min(...oppXs)) : mate.pos.x;

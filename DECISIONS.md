@@ -3,6 +3,34 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Through on goal: thread only to a runner AHEAD (kill the wide giveaway)
+
+Builder judgment (counter-3v2-risk-high): left is through from the first
+pass but plays a long ball to the right that reaches the touchline — we want
+him to drive at goal and shoot.
+
+Diagnosed: at the reception left chose `pass→right` (u0.139) over the best
+goalward carry (u0.067). The pass was the RIDER-BEHIND through ball, aimed at
+the breach point in right's lane (~81,45) — but right was at (64,45), BEHIND
+the carrier and doing 3.3 m/s, 17 m short of a point he could never reach, so
+the ball sailed to the touchline. A through ball is for a runner AHEAD of the
+ball, not a wide man trailing it.
+
+Fix: gate the rider-behind candidate on `attackSign·(mate.x − carrier.x) >
+−2` — the runner must be goal-side of the carrier (small tolerance for a
+level diagonal). Now left holds and drives at goal from the reception and
+shoots (counter-3v2-risk-high 10/16 shoot, avg 11.3 m).
+
+Rejected first: a symmetric risk-progressive DRIVE reward on the carry — it
+fixed left but regressed line-vs-runs (the playmaker stopped threading and
+forced contested shots: splits 11→1, central shots →0). The playmaker
+correctly threads; the defect was the OVERVALUED wide pass, not an
+undervalued carry. Reverted per the stop-rule.
+
+Dial holds 16/16 both poles (the gate leaves goal-side runners — the dial's
+premise — untouched). line-vs-runs healthy (11 split, 16 central shots),
+runs 15/15, front 16/16·14/16, wall 15/16. 59/59.
+
 ## 2026-07-21 — L5e piece 2: pass-in-flight protection kills the corner flap
 
 The residual from piece 1 (two stacked teammates trading a ball meant for a
