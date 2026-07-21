@@ -3,6 +3,56 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — 3-D interception (xyz block/collision) + the Fouls-layer brief
+
+Builder question: when heading, does the ball stay up or drop — and does a
+keeper save / defender block in xyz or just xy? It should be xyz. Then: a hard
+pass that hits a teammate — a collision, not a block? Should reach depend on
+height + jump? And once bodies deflect balls, how are HANDBALLS determined?
+
+- **The 3-D collision (shipped):** interception is now height-aware.
+  `resolveBlocks` (after the deliberate header, before the ground claim)
+  deflects a DRIVEN airborne ball (> `blockMinSpeedMps` 9) that passes through a
+  body's PER-PLAYER reach — `headStandM + headJumpPerStr·strength`, the same leap
+  the header uses, so a stronger man reaches higher. A ball flighted OVER the
+  reach clears. This fills the z-gap the banded body-ball model left: ground
+  claim caught z≤0.5, header 0.9–2.5, and a driven ball at body height
+  between/above tunnelled straight through defenders.
+- **Block vs collision:** an OPPONENT in the path is a `block` (deliberate, keep
+  0.35); a teammate merely in the way is an accidental `collision` (keep 0.55).
+  Exempt — they RECEIVE, not carom — the intended receiver AND a teammate
+  CHASING the ball (a striker onto a cross; `command.type==='chaseBall'`). The
+  ground game is structurally untouched: a flat pass is `rolling`, and the block
+  only sees `airborne` balls.
+- **One detection model:** the header used a POINT test, the collision a SWEPT
+  test, so a fast head-height ball tunnelled the header's point per tick and read
+  as a scrambled block. Unified both on `sweptApproach` — a fast ball a man is
+  under is a clean header again.
+- **Handball — explored, measured, DEFERRED (stop-rule).** Built the arm-band
+  hook (a reach band above natural head reach, up to a raised arm) and it
+  OVERFIRES at the foundation: geometric presence in the arm zone ≠ the arm
+  playing the ball. A ball merely passing OVER a player's head — a loft rising
+  over a runner, a dropping cross a striker stands near — flagged as a handball.
+  A dropping-vs-escaping lookahead (even movement-aware, extrapolating the
+  chaser) did NOT close it: the missing signal is INTENT, not geometry. Reverted
+  the detection; kept the per-player reach it stands on.
+
+**The Fouls-layer brief (L8+).** Handball is the first tenant of an officiating
+layer, not a geometry hook. It needs: (1) INTENT — was the arm deliberately or
+unnaturally played into the ball, vs a ball passing over a still silhouette;
+(2) arm-position/silhouette state the body model doesn't carry today; (3) the
+whistle / free-kick / penalty / advantage / restart machinery — there are NO
+fouls in the engine yet; (4) the keeper-in-box exception (legal arms, an L7
+concern). It builds on the xyz per-player reach now in place. The same layer
+will own offside-as-an-OFFENCE (distinct from the L-agent trap) and
+fouls / tackles-from-behind. Until then `resolveBlocks` documents the deferral.
+
+Also fixed en route: `actionLabels.clear()` sat behind `decidePhase`'s
+brain-less early return, so brain-less scenarios (`driven-block`) carried a
+STALE header/block label for ticks after the event; moved to the top of
+`step()` so labels are per-tick. Scenarios: `driven-block`,
+`teammate-collision`. 70/70; all ground rates pinned.
+
 ## 2026-07-21 — Header power comes from the BALL; the cross is whipped from the by-line
 
 Builder judgment: a crosser works from closer to the touchline with faster
