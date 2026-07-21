@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BALL, kickBall, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, rollDistance, stepBall, type BallState } from './ball.ts';
 import { runScenario } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
 import type { Frame } from './engine2-types.ts';
@@ -29,8 +29,9 @@ test('a ground kick decelerates monotonically to rest — no gliding, no reversa
     ticks++;
   }
   const travelled = ball.pos.x - 30;
-  // v²/(2a) = 16²/3.4 ≈ 75 m, discretization ±a few m
-  assert.ok(Math.abs(travelled - 16 ** 2 / (2 * BALL.rollDecelMps2)) < 6, `roll-out ${travelled.toFixed(1)}m ≈ v²/2a`);
+  // speed-dependent decel a = A + B·v²: a firm 16 m/s pass dies in ~27 m
+  // (the closed-form rollDistance is the exact integral of the tick physics)
+  assert.ok(Math.abs(travelled - rollDistance(16)) < 3, `roll-out ${travelled.toFixed(1)}m ≈ rollDistance(16)=${rollDistance(16).toFixed(1)}m`);
 });
 
 test('a lofted kick flies ballistically: range ≈ v²·sin(2θ)/g before the first bounce', () => {

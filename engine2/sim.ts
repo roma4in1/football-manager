@@ -486,7 +486,7 @@ export class Sim {
     if (!dest) return undefined;
     const distToDest = Math.hypot(dest.x - this.ball.pos.x, dest.y - this.ball.pos.y);
     const cap = Math.sqrt(
-      BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * Math.max(0, distToDest),
+      BALL.touchArriveResidualMps ** 2 + 2 * BALL.dribbleRollDecelMps2 * Math.max(0, distToDest),
     );
     return cap * 1.05;
   }
@@ -659,7 +659,7 @@ export class Sim {
     if (dest) {
       const distToDest = Math.hypot(dest.x - this.ball.pos.x, dest.y - this.ball.pos.y);
       push = Math.min(push, Math.sqrt(
-        BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * Math.max(0, distToDest),
+        BALL.touchArriveResidualMps ** 2 + 2 * BALL.dribbleRollDecelMps2 * Math.max(0, distToDest),
       ));
     }
     // pressure-shortened touches: a defender set AHEAD caps the roll-out to
@@ -683,7 +683,7 @@ export class Sim {
         BALL.pressRollFracControlGain * (carrier.attributes.dribbling / 20);
       const rollMax = Math.max(BALL.pressRollMinM, pressD * frac);
       push = Math.min(push, Math.sqrt(
-        BALL.touchArriveResidualMps ** 2 + 2 * BALL.rollDecelMps2 * rollMax,
+        BALL.touchArriveResidualMps ** 2 + 2 * BALL.dribbleRollDecelMps2 * rollMax,
       ));
     }
     this.ball.vel = { x: Math.cos(heading) * push, y: Math.sin(heading) * push };

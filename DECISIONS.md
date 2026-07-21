@@ -3,6 +3,40 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Realistic ball friction: speed-dependent drag on free balls (builder ask)
+
+Builder: the ball never slows / rolls forever. Measured true: rollDecel 1.7
+(μ≈0.17), constant, no aero drag — a firm 16 m/s pass rolled 74 m still doing
+12 m/s at 30 m; 20 m/s crossed the whole pitch.
+
+New model for FREE balls: a = rollFriction(3.4) + rollDrag(0.010)·v² — grass
+rolling resistance plus the aerodynamic term that sheds pace off a hard ball
+fast then coasts. Now: firm 16 m/s dies in ~27 m, 25 m/s drive ~50 m, soft
+8 m/s ~9 m. a=A+B·v² integrates in closed form, so decide.ts weights every
+pass against the SAME physics (new rollSpeedAfter / rollLaunchForArrival /
+rollTimeToDistance / rollDistance helpers in ball.ts) — no constant-decel
+fiction; all the hardcoded 1.7 in the pass math is gone.
+
+SCOPED to free balls: the CARRIED ball between touches keeps the tuned
+dribble constant (1.7) — the heavily-judged L2/L3 dribble/knock-past feel was
+calibrated to it, and realistic drag would halve touch length and re-open all
+of it. predictBall now PRESERVES phase so the carrier's own-touch fetch reads
+the dribble constant (converting carried→rolling made the dribbled ball
+escape its orbit).
+
+Re-tune: passSpeedMax 16→19 (long balls need more boot vs drag; 19 is the
+narrow value where the risk dial still discriminates — 18 kills the through
+ball, 20 makes it too safe for both poles). Scenario feeds bumped to preserve
+their drills' arrival pace (loose-ball-race 13.5→22, first-touch-run 15→27 /
+13→17). 59/59.
+
+KNOWN SHIFTS to judge (through-ball / combination play, weighting-sensitive):
+line-vs-runs threaded splits 11→2 (but 15 clean uncontested shots), wall-pass
+one-two 15→12, runs-in-behind shots 15→10 (receptions 15→16). IMPROVED: dial
+holds, front duels pinned, rondo circulation up, grid less chaotic. The
+through-ball weighting (passArriveMps, rider caps, throughRunOn) likely needs
+a follow-up tune for the new drag — flagged for the builder's judgment.
+
 ## 2026-07-21 — Through on goal: thread only to a runner AHEAD (kill the wide giveaway)
 
 Builder judgment (counter-3v2-risk-high): left is through from the first

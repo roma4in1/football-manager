@@ -15,7 +15,7 @@
  */
 
 import { PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
-import type { BallState } from './ball.ts';
+import { rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
@@ -72,7 +72,10 @@ export const DECIDE = {
   carryPressureRangeM: 7.0,
   /** pass speeds clamp (firm floor — lofted/driven variety is later) */
   passSpeedMin: 8,
-  passSpeedMax: 16,
+  // realistic drag eats pace off a long ball fast, so the ceiling rises: a
+  // 40 m pass to arrive collectable now needs ~22 m/s at the boot (was ~13
+  // under the old weak friction). Driven long passes live here.
+  passSpeedMax: 19,
   /** pass WEIGHT: launch speed chosen so the ball ARRIVES at the receiver
    * around this pace and dies just beyond him — the old linear formula hit
    * every ball to arrive at full pace and roll 60 m when a receive missed */
@@ -209,10 +212,11 @@ export const passCompletion = (
     const px = from.x + (dest.x - from.x) * f;
     const py = from.y + (dest.y - from.y) * f;
     const seg = d * f;
-    // rolling decel matched to ball.ts physics (1.7 m/s²)
-    const disc = speedMps * speedMps - 2 * 1.7 * seg;
-    if (disc <= 0) break; // the ball dies before this sample
-    const tBall = (speedMps - Math.sqrt(disc)) / 1.7;
+    // ball speed & travel time at this sample, from the SAME a=A+B·v² physics
+    // stepBall runs (closed-form — no constant-decel fiction)
+    const ballHere = rollSpeedAfter(speedMps, seg);
+    if (ballHere <= 0) break; // the ball dies before this sample
+    const tBall = rollTimeToDistance(speedMps, seg);
     const runTime = (b: BodyState, tx: number, ty: number, reactS: number): number => {
       const d = Math.max(0, Math.hypot(b.pos.x - tx, b.pos.y - ty) - DECIDE.interceptReachM);
       const v = Math.max(regimeCapMps(b.attributes.pace, 'sprint'), 1);
@@ -242,7 +246,6 @@ export const passCompletion = (
       // the second half of "driven passes are harder to intercept"
       // (passing.md #13; the flat 0.35 s made every zipped diagonal
       // cuttable and the multi-line ball never existed)
-      const ballHere = Math.sqrt(Math.max(disc, 1));
       const tOpp = 0.35 + 0.01 * Math.max(0, ballHere - 8) + tRun;
       // the lane's TAIL belongs to the receiver: a defender the receiver
       // beats to a late sample isn't cleanly intercepting — he's arriving
@@ -296,7 +299,7 @@ export const supportSpot = (
     if (cand.x < 1 || cand.x > PITCH.length - 1 || cand.y < 1 || cand.y > PITCH.width - 1) continue;
     const dist = Math.hypot(cand.x - carrier.pos.x, cand.y - carrier.pos.y);
     if (dist < 4) continue; // an outlet is not a crowd around the carrier
-    const lane = passCompletion(carrier.pos, cand, Math.sqrt(6 ** 2 + 2 * 1.7 * dist), opponents, dist, mate);
+    const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;
     for (const m of mates) {
@@ -711,7 +714,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const depth = Math.min(4.5, room * 0.3);
         riderBehind = { x: rLineX + rsign * depth, y: mate.pos.y };
         const rollRoom = Math.max(1.5, room - depth - 4);
-        riderArriveCap = Math.sqrt(2 * 1.7 * rollRoom);
+        riderArriveCap = rollLaunchForArrival(0, rollRoom);
       }
     }
     const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
@@ -735,10 +738,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         // out, so the cap credits the catch (a hard floor of 4 made every
         // boundary-line switch a 3.4 s float and the judged freeze:
         // nobody passes long when long is uncompletable)
-        arrive = Math.min(arrive, 4 + Math.sqrt(2 * 1.7 * Math.max(0.5, room - 0.5)));
+        arrive = Math.min(arrive, 4 + rollLaunchForArrival(0, Math.max(0.5, room - 0.5)));
       }
       const speed = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
-        Math.sqrt(arrive ** 2 + 2 * 1.7 * dist0)));
+        rollLaunchForArrival(arrive, dist0)));
       // two-iteration lead on the mate's current velocity
       let dest = destOverride ?? { x: mate.pos.x, y: mate.pos.y };
       if (!destOverride) {
@@ -770,7 +773,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // balls (a rondo between silk receivers zips; the flat tax floated
       // every pass at 9 m/s — the judged sluggishness)
       const dd0 = Math.hypot(dest.x - here.x, dest.y - here.y);
-      const arrTrue = Math.sqrt(Math.max(1, speed * speed - 2 * 1.7 * dd0));
+      const arrTrue = rollSpeedAfter(speed, dd0);
       const comfy = 5.5 + 0.35 * mate.attributes.firstTouch;
       pC *= 1 - 0.04 * Math.max(0, arrTrue - comfy);
       if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
@@ -895,7 +898,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const ahead: BodyState = { ...mate, pos: { x: mate.pos.x + mate.vel.x * 0.5, y: mate.pos.y + mate.vel.y * 0.5 } };
       const dist0 = Math.hypot(ahead.pos.x - here.x, ahead.pos.y - here.y);
       const arr = DECIDE.passArriveMps + 0.5 * ahead.speed + 4.5;
-      const spd = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax, Math.sqrt(arr ** 2 + 2 * 1.7 * dist0)));
+      const spd = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax, rollLaunchForArrival(arr, dist0)));
       const dest2 = { x: ahead.pos.x + ahead.vel.x * 0.8, y: ahead.pos.y + ahead.vel.y * 0.8 };
       const pC2 = passCompletion(here, dest2, spd, opponents, dist0, ahead);
       const pv2 = value(dest2, mate.id);
