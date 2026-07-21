@@ -443,7 +443,7 @@ export class Sim {
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
-    this.resolveHeaders();
+    this.resolveHeaders(ballFrom);
     this.resolveBlocks(ballFrom);
     this.resolveClaims(ballFrom);
 
@@ -701,13 +701,32 @@ export class Sim {
    * goal clears it upfield; an ATTACKER near the opponent goal heads at goal;
    * otherwise a knock-DOWN drops it at his feet to control. This is what makes
    * a loft OVER a defender honest — one standing under it heads it away. */
-  private resolveHeaders(): void {
+  /** closest horizontal approach of a body to the ball's swept path this tick,
+   * in the body's own frame so a fast ball can't tunnel past his reach between
+   * ticks. Shared by the header and the collision — one detection model. */
+  private sweptApproach(body: BodyState, from: Vec2): { d: number; at: Vec2 } {
+    const ball = this.ball;
+    const prev = this.prevPos.get(body.id) ?? body.pos;
+    const fx = from.x - (body.pos.x - prev.x);
+    const fy = from.y - (body.pos.y - prev.y);
+    const dx = ball.pos.x - fx;
+    const dy = ball.pos.y - fy;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((body.pos.x - fx) * dx + (body.pos.y - fy) * dy) / len2));
+    const at = { x: fx + dx * t, y: fy + dy * t };
+    return { d: Math.hypot(body.pos.x - at.x, body.pos.y - at.y), at };
+  }
+
+  private resolveHeaders(from: Vec2): void {
     const ball = this.ball;
     if (ball.phase !== 'airborne' || ball.z < BALL.headMinZ || ball.z > BALL.headMaxZ) return;
     let best: { body: BodyState; score: number } | null = null;
     for (const body of this.bodies) {
       if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
-      const d = Math.hypot(body.pos.x - ball.pos.x, body.pos.y - ball.pos.y);
+      // SWEPT reach, like the collision — a fast ball can't tunnel past the
+      // leap between ticks (else a rocket at head height reads as a scrambled
+      // block instead of the clean header a man standing under it wins)
+      const d = this.sweptApproach(body, from).d;
       if (d > BALL.headReachM) continue;
       if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue; // can't leap to it
       const score = -d + 0.08 * body.attributes.strength + 0.05 * body.attributes.agility +
@@ -770,17 +789,7 @@ export class Sim {
       if (body.id === this.intendedReceiverId) continue; // the intended man controls it
       // PER-PLAYER vertical reach — the same leap the header gates on
       if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue;
-      // horizontal closest approach of the body to the ball's swept path, in
-      // the body's frame (so a fast ball cannot tunnel past his reach)
-      const prev = this.prevPos.get(body.id) ?? body.pos;
-      const fx = from.x - (body.pos.x - prev.x);
-      const fy = from.y - (body.pos.y - prev.y);
-      const dx = ball.pos.x - fx;
-      const dy = ball.pos.y - fy;
-      const len2 = dx * dx + dy * dy;
-      const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((body.pos.x - fx) * dx + (body.pos.y - fy) * dy) / len2));
-      const at = { x: fx + dx * t, y: fy + dy * t };
-      const d = Math.hypot(body.pos.x - at.x, body.pos.y - at.y);
+      const { d, at } = this.sweptApproach(body, from);
       if (d > BALL.controlRadiusM) continue;
       if (!best || d < best.d) best = { body, d, at };
     }
