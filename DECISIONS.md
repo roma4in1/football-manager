@@ -3,6 +3,26 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — L4 ACCEPTED + BAR 2 (TECHNICAL) CLAIMED
+
+L4 (on-ball decisions) passes the builder's acceptance after 7 judgment
+rounds + the systems audit. The final gate question — the counter striker
+angling around the box edge instead of driving the center — verified as
+CORRECT: d2's recovery station owns the central channel; the striker
+rounds him and cuts in late (real striker line vs a covering defender).
+The center-beating tools he lacks are recorded later-layer content
+(feints; teammate runs to drag the cover).
+
+**Bar 2 — Technical (spec §9) CLAIMED**: individual actions read as
+football skills. Evidence: the L3 technique matrix (first touch by
+pace/height/pressure/gait, tackles, shielding, knock-past) and the L4
+choice layer (EV carry/pass/shoot with real lane geometry, the risk dial's
+two poles, turn-then-strike, half-turn receives, in-stride through balls),
+all under scenario assertions (53/53) and seven rounds of the builder's
+eye. Bars 3+ await L5.
+
+Next: L5a (support & structure) — first L5 sub-phase, one per PR.
+
 ## 2026-07-21 — L4 systems audit: gap sweep (builder ask — "what else is missing?")
 
 An automated anomaly sweep (run-check speed dips under flighted balls, dead
