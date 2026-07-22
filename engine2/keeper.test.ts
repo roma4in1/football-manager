@@ -255,6 +255,33 @@ test('nobody open → the PUNT, high and long upfield', () => {
   assert.ok(farEnough >= 6, `the punt carries deep upfield, past x70 (${farEnough}/8)`);
 });
 
+test('the DROP TO FEET: unpressed with the open man beyond throw range, he puts it down and plays the pass', () => {
+  let dropped = 0;
+  let passed = 0;
+  let received = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('keeper-buildup'), `kb-${s}`);
+    let sawDrop = false;
+    let sawPass = false;
+    for (let t = 0; t < 70; t++) {
+      const f = sim.step();
+      const ka = f.bodies.find((b) => b.id === 'keeper')?.action;
+      if (ka === 'drop') sawDrop = true;
+      if (ka === 'keeper-pass') {
+        // the pass comes only AFTER the drop — hands off, then the strike
+        assert.ok(sawDrop, 'the ball is put down before it is kicked');
+        sawPass = true;
+      }
+      if (sawPass && sim.ball.carrierId === 'cb') { received++; break; }
+    }
+    if (sawDrop) dropped++;
+    if (sawPass) passed++;
+  }
+  assert.ok(dropped >= 10, `he drops the held ball to his feet (${dropped}/12)`);
+  assert.ok(passed >= 10, `the ground/driven pass follows the beat (${passed}/12)`);
+  assert.ok(received >= 8, `the far centre-back receives the build-up pass (${received}/12)`);
+});
+
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
   const def: ScenarioDef = {

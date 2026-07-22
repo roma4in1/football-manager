@@ -176,4 +176,27 @@ export const keeperDistribution: ScenarioDef = {
   ],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution];
+/** the DROP TO FEET: unpressed, with the only open mate BEYOND throw range,
+ * the keeper puts the held ball down (tackleable now!) and plays a weighted
+ * GROUND pass — the modern build-up. Near mates are marked; the free man is
+ * the far centre-back. */
+export const keeperBuildup: ScenarioDef = {
+  version: 1,
+  name: 'keeper-buildup',
+  description: 'Unpressed, the keeper drops the held ball to his feet and plays a ground pass to the open man beyond throw range — the modern build-up. Judge the drop, the beat, and the weighted pass.',
+  durationTicks: 70,
+  bodies: [
+    { id: 'keeper', team: 'away', pos: { x: 103, y: 34 }, attributes: gloves, keeper: true },
+    // near mates all MARKED — no throw exists
+    { id: 'fb', team: 'away', pos: { x: 92, y: 50 }, attributes: outfield, brain: 'onBall' },
+    { id: 'm1', team: 'home', pos: { x: 91, y: 49 }, attributes: outfield },
+    { id: 'cm', team: 'away', pos: { x: 90, y: 30 }, attributes: outfield, brain: 'onBall' },
+    { id: 'm2', team: 'home', pos: { x: 89, y: 29 }, attributes: outfield },
+    // the free man — a centre-back dropped wide, beyond the 32 m throw
+    { id: 'cb', team: 'away', pos: { x: 65, y: 40 }, attributes: outfield, brain: 'onBall' },
+  ],
+  ball: { carrier: 'keeper' },
+  script: [],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup];

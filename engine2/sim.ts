@@ -25,10 +25,10 @@ import {
   type ScenarioDef,
   type Vec2,
 } from './engine2-types.ts';
-import { BALL, kickBall, predictBall, predictBallState, rollLaunchForArrival, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { attackSign, decide, DECIDE, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, decide, DECIDE, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -59,6 +59,9 @@ export class Sim {
   private keeperHolding: string | null = null;
   /** tick the hold began — distribution follows after a settle */
   private keeperHeldSince = 0;
+  /** a DROP-TO-FEET pass in progress: the ball is down (immunity OFF — he is
+   * honestly tackleable) and the ground pass strikes after the beat */
+  private keeperDropPass: { keeperId: string; mateId: string; strikeTick: number } | null = null;
   /** goals conceded — a ball crossing either goal line between the posts,
    * under the bar. The minimal seam L7 acceptance needs (saved vs beaten);
    * restarts stay L8's. `against` is the team whose goal it crossed. */
@@ -191,6 +194,7 @@ export class Sim {
     // 1c. L7 — keepers self-position on the ball–goal line (after decide so a
     // keeper with the ball at his feet is decision- or script-owned that tick)
     if (this.keeperHolding && this.ball.carrierId !== this.keeperHolding) this.keeperHolding = null;
+    if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
     this.keeperPhase();
 
     // 2. bodies move; chaseBall runs to the INTERCEPT point (players
@@ -931,6 +935,41 @@ export class Sim {
           this.actionLabels.set(id, 'keeper-clear');
           continue;
         }
+        // a DROP-TO-FEET pass mid-flow: the ball is DOWN (immunity off, he is
+        // tackleable) — strike the ground pass after the beat, or pick it
+        // straight back up if a presser closes in
+        if (this.keeperDropPass?.keeperId === id) {
+          const dp = this.keeperDropPass;
+          const pressed = this.bodies.some((o) => o.team !== k.team &&
+            Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < 3.5);
+          if (pressed) {
+            this.keeperDropPass = null;
+            this.keeperHolding = id; // back into the hands — safety first
+            this.keeperHeldSince = this.tick;
+          } else if (this.tick >= dp.strikeTick) {
+            this.keeperDropPass = null;
+            const m = this.byId.get(dp.mateId);
+            if (m) {
+              const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
+              const lead = { x: m.pos.x + m.vel.x * 0.4, y: m.pos.y + m.vel.y * 0.4 };
+              // dry grass kills a rolled ball by ~38 m — beyond ~30 the pass
+              // is a DRIVEN LOW ball: flighted flat, landing short, skidding
+              // the last metres in with pace
+              if (dm > 30) {
+                // ~16°: a real driven pass — 8° needed a ~40 m/s rocket to
+                // carry, which no first touch survives
+                kickBall(this.ball, lead, solveLoftSpeed(Math.max(6, dm - 5), 16), 16, id, this.tick);
+              } else {
+                kickBall(this.ball, lead, Math.max(8, Math.min(19, rollLaunchForArrival(5, dm))), 0, id, this.tick);
+              }
+              this.intendedReceiverId = m.id;
+              this.actionLabels.set(id, 'keeper-pass');
+            }
+          } else if (k.command.type !== 'hold') {
+            this.assign(k, { type: 'hold' });
+          }
+          continue;
+        }
         // INSIDE his box a settled ball at his feet is PICKED UP — held in
         // both hands he is untouchable (no tackle exists against a held ball)
         if (this.keeperHolding !== id) {
@@ -938,8 +977,10 @@ export class Sim {
           this.keeperHeldSince = this.tick;
         }
         if (k.command.type !== 'hold') this.assign(k, { type: 'hold' });
-        // DISTRIBUTION: a beat to settle, then the nearest OPEN mate with a
-        // clean lane gets the fast flat THROW; nobody open → the PUNT long
+        // DISTRIBUTION: a beat to settle, then — the nearest OPEN mate in
+        // throw range gets the fast flat THROW; an open mate beyond it (inside
+        // kick range, nobody pressing) earns the DROP TO FEET and a ground
+        // pass; nobody at all → the PUNT long
         if (this.tick - this.keeperHeldSince >= BALL.keeperHoldTicks) {
           // the throw must SURVIVE moving opponents, not just a static lane —
           // a pressing striker ran down every "clear-at-release" throw. The
@@ -959,6 +1000,34 @@ export class Sim {
             if (passCompletion(k.pos, m.pos, spd, opps, dm, m, 14) < 0.72) continue;
             if (!best || dm < best.d) best = { mate: m, d: dm };
           }
+          // beyond throw range: an open mate a KICK can reach — worth putting
+          // the ball down for, but only with nobody near (at his feet the
+          // immunity is off)
+          let kickable: { mate: BodyState; d: number } | null = null;
+          if (!best) {
+            const safe = !this.bodies.some((o) => o.team !== k.team &&
+              Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < BALL.keeperDropSafeM);
+            if (safe) {
+              for (const m of this.bodies) {
+                if (m.team !== k.team || m.id === id) continue;
+                const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
+                if (dm <= BALL.keeperThrowMaxM || dm > BALL.keeperKickMaxM) continue;
+                const marked = this.bodies.some((o) => o.team !== k.team &&
+                  Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
+                if (marked) continue;
+                // the driven low ball FLIES most of the way and skids the last
+                // metres — the rolling race model can't represent it (a rolled
+                // 19 m/s ball is dead at 37 m and rated near-zero). The gate is
+                // the ARRIVAL RACE AT THE LANDING, as crosses use.
+                const landing = {
+                  x: m.pos.x - ((m.pos.x - k.pos.x) / dm) * 5,
+                  y: m.pos.y - ((m.pos.y - k.pos.y) / dm) * 5,
+                };
+                if (aerialCompletion(landing, m, opps) < 0.6) continue;
+                if (!kickable || dm < kickable.d) kickable = { mate: m, d: dm };
+              }
+            }
+          }
           this.keeperHolding = null;
           if (best) {
             // the THROW — flat, fast, to feet, weighted by range
@@ -966,6 +1035,10 @@ export class Sim {
             kickBall(this.ball, lead, Math.max(8, Math.min(16, rollLaunchForArrival(5, best.d))), BALL.keeperThrowLoftDeg, id, this.tick);
             this.intendedReceiverId = best.mate.id;
             this.actionLabels.set(id, 'throw');
+          } else if (kickable) {
+            // the DROP — ball to his feet (tackleable now), the pass follows
+            this.keeperDropPass = { keeperId: id, mateId: kickable.mate.id, strikeTick: this.tick + BALL.keeperDropTicks };
+            this.actionLabels.set(id, 'drop');
           } else {
             // the PUNT — high and long upfield
             const upAng = (sign > 0 ? 0 : Math.PI) +

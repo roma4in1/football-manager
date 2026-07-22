@@ -164,6 +164,13 @@ export const BALL = {
   keeperPuntSpeed: 27,
   keeperPuntLoftDeg: 38,
   keeperPuntScatterRad: 0.25,
+  /** DROP TO FEET: beyond throw range but inside kick range, an open mate is
+   * reached by dropping the held ball and playing a GROUND PASS — the modern
+   * build-up. At his feet the immunity is OFF (honestly tackleable), so he
+   * only drops with no presser near, and picks it back up if one closes in. */
+  keeperKickMaxM: 50,
+  keeperDropTicks: 3, // the beat between the drop and the strike
+  keeperDropSafeM: 8, // no opponent within this → safe to put it down
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
