@@ -589,14 +589,20 @@ export class Sim {
         else break;
       }
     }
-    if (this.ball.z > BALL.claimMaxZ || d > BALL.controlRadiusM) return; // chasing his own touch
-    // a decided kick releases ON THIS TOUCH — the ball is at the boot for
-    // one contact and that contact is the pass/shot/clear
+    // a decided kick releases ON THIS TOUCH — the ball is at the boot for one
+    // contact and that contact is the pass/shot/clear. The reach for a PENDING
+    // kick is a STRIDE (kickReachM), not the dribble's control disc: a man
+    // running onto his own rolling touch strikes it FIRST-TIME as he meets it.
+    // Gating it on the tighter control radius made a driving striker chase a
+    // 6.8 m/s ball for a full second — carrying his decided shot from 16 m out
+    // to point-blank into the keeper's gloves (the shot-angle finding).
     const pending = this.pendingKicks.get(carrier.id);
     const pendingAligned = pending !== undefined && (() => {
       const d = Math.atan2(pending.dest.y - carrier.pos.y, pending.dest.x - carrier.pos.x);
       return Math.abs(((d - carrier.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI) <= DECIDE.strikeTurnThresholdRad;
     })();
+    if (this.ball.z > BALL.claimMaxZ ||
+      d > (pending && pendingAligned ? TECH.kickReachM : BALL.controlRadiusM)) return; // chasing his own touch
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
       kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick, pending.spin ?? 0);
@@ -905,11 +911,22 @@ export class Sim {
       } else {
         this.keeperShotSeen.delete(id);
       }
-      const bx = this.ball.pos.x - own.x;
-      const by = this.ball.pos.y - own.y;
+      // NEAR-POST cover: the guarded line runs from the ball to a point shaded
+      // toward the post on the ball's side — beaten at the near post is a
+      // keeper's sin; the across-goal ball (the long dive) is the honest one
+      const shade = Math.max(-1, Math.min(1, (this.ball.pos.y - GOAL.centerY) / 12)) * BALL.keeperNearPostShadeM;
+      const anchor = { x: own.x, y: GOAL.centerY + shade };
+      const bx = this.ball.pos.x - anchor.x;
+      const by = this.ball.pos.y - anchor.y;
       const d = Math.max(Math.hypot(bx, by), 1e-6);
-      const depth = Math.min(BALL.keeperDepthM, Math.max(0.6, d - 1));
-      const spot = { x: own.x + (bx / d) * depth, y: own.y + (by / d) * depth };
+      // CLOSING DOWN: come out toward the shooter as the ball nears — the cone
+      // narrows toward him, so depth buys coverage (the chip is L7-later)
+      const depth = Math.min(
+        Math.max(BALL.keeperDepthMinM, BALL.keeperCloseGain * (28 - d)),
+        BALL.keeperDepthMaxM,
+        Math.max(0.6, d - 1),
+      );
+      const spot = { x: anchor.x + (bx / d) * depth, y: anchor.y + (by / d) * depth };
       // no point standing beyond the post line — the frame is what he guards
       spot.y = Math.max(GOAL.centerY - GOAL.mouthHalfWidthM - 0.5,
         Math.min(GOAL.centerY + GOAL.mouthHalfWidthM + 0.5, spot.y));

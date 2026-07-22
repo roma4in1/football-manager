@@ -72,21 +72,47 @@ test('the CATCH: a soft on-target ball is held — the keeper becomes the carrie
   assert.ok(caught >= 7, `the soft ball is caught and held (${caught}/8)`);
 });
 
-test('ANGLE PLAY: the keeper mirrors a carrier across the box, staying on the ball–goal line at depth', () => {
+test('ANGLE PLAY: the keeper mirrors a carrier across the box, holding the NEAR-POST-shaded line at depth', () => {
   const sim = new Sim(scenarioByName('keeper-angle'), `ka-0`);
   let worstOff = 0;
   for (let t = 0; t < 90; t++) {
     sim.step();
     const k = sim.bodies.find((b) => b.id === 'keeper')!;
     const b = sim.ball.pos;
-    const g = { x: 105, y: GOAL.centerY };
+    // the line he GUARDS runs ball → the near-post-shaded anchor, not centre
+    const shade = Math.max(-1, Math.min(1, (b.y - GOAL.centerY) / 12)) * 1.2;
+    const g = { x: 105, y: GOAL.centerY + shade };
     const dx = g.x - b.x, dy = g.y - b.y;
     const len2 = Math.max(dx * dx + dy * dy, 1e-9);
     const tt = Math.max(0, Math.min(1, ((k.pos.x - b.x) * dx + (k.pos.y - b.y) * dy) / len2));
     const off = Math.hypot(k.pos.x - (b.x + dx * tt), k.pos.y - (b.y + dy * tt));
     if (t > 15) worstOff = Math.max(worstOff, off); // after he settles onto the line
   }
-  assert.ok(worstOff < 1.2, `he stays on the ball–goal line while it moves (worst ${worstOff.toFixed(2)} m)`);
+  assert.ok(worstOff < 1.2, `he stays on the shaded ball–goal line while it moves (worst ${worstOff.toFixed(2)} m)`);
+});
+
+test('the ANGLED shot: the striker goes ACROSS goal, and the near post never concedes', () => {
+  let saves = 0;
+  let goals = 0;
+  let nearPostGoals = 0;
+  for (let s = 0; s < 16; s++) {
+    const sim = new Sim(scenarioByName('shot-angle'), `sa-${s}`);
+    let outcome = '';
+    for (let t = 0; t < 50; t++) {
+      const f = sim.step();
+      const k = f.bodies.find((b) => b.id === 'keeper');
+      if (!outcome && (k?.action === 'save-catch' || k?.action === 'save-parry')) { outcome = 'save'; saves++; }
+      if (!outcome && sim.goals.length > 0) {
+        outcome = 'goal'; goals++;
+        // the striker is at y≈24-31 (left channel): near post is the y<centre
+        // post — the keeper's post. A goal there is the keeper's sin.
+        if (sim.goals[0].y < GOAL.centerY) nearPostGoals++;
+      }
+    }
+  }
+  assert.ok(saves >= 5, `the keeper still saves a real share on the angle (${saves}/16)`);
+  assert.ok(goals >= 2, `the across-goal finish genuinely scores (${goals}/16)`);
+  assert.equal(nearPostGoals, 0, `the near post NEVER concedes — it is the keeper's post (${nearPostGoals})`);
 });
 
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {

@@ -144,6 +144,10 @@ export const DECIDE = {
   switchWideM: 13,
   switchMinM: 30,
   switchFloatLoftDeg: 38,
+  /** ACROSS-GOAL finishing (L7): from an angle, the far corner's clear-lane
+   * score earns this bonus — the keeper shades his near post, so across him is
+   * the open side (and the longer dive). Central shooters have no "across". */
+  shotAcrossBonus: 0.8,
   /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
@@ -731,9 +735,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   const xGHere = !keep && dGoal <= DECIDE.shootRangeM ? xG(here, team, bodies.filter((b) => b.id !== carrier.id)) : 0;
   if (!keep && dGoal <= DECIDE.shootRangeM) {
     // KEEPER-BEATING placement (L7): a shot at the CENTER is a shot at the
-    // keeper — aim just inside the corner whose lane is clearer of bodies
+    // keeper — aim just inside a corner. From an angle a striker goes ACROSS
+    // the goal (the far post): the keeper shades his near post, so across is
+    // the longer dive and the open side — the finish coaches teach.
     let dest = g;
     let bestClear = -1;
+    const offCentre = here.y - GOAL.centerY;
     for (const side of [-1, 1] as const) {
       const c = { x: g.x, y: GOAL.centerY + side * (GOAL.mouthHalfWidthM - 0.6) };
       let clear = Infinity;
@@ -743,6 +750,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const t = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((o.pos.x - here.x) * ldx + (o.pos.y - here.y) * ldy) / len2));
         clear = Math.min(clear, Math.hypot(o.pos.x - (here.x + ldx * t), o.pos.y - (here.y + ldy * t)));
       }
+      // the far post from an angled position earns the across-goal bonus
+      if (Math.abs(offCentre) > 1.5 && side !== Math.sign(offCentre)) clear += DECIDE.shotAcrossBonus;
       if (clear > bestClear) { bestClear = clear; dest = c; }
     }
     options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere });

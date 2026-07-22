@@ -96,15 +96,26 @@ export const BALL = {
    * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
    * with firstTouch (a clean catch vs a parry). Attributes are the outfield
    * schema deliberately: agility ≈ reflexes/dive, firstTouch ≈ handling. */
-  keeperDepthM: 3.5, // off his line toward the ball (angle play depth)
-  keeperReachBaseM: 1.35,
+  /** CLOSING DOWN: the keeper comes OUT toward the shooter as the ball nears —
+   * the shot cone narrows toward the striker, so standing further up it leaves
+   * less to cover each side (the chip over him is the price; L7-later). Far
+   * ball → near his line; a striker bearing down → out to ~7 m. */
+  keeperDepthMinM: 1.2,
+  keeperDepthMaxM: 5,
+  keeperCloseGain: 0.2, // metres of depth per metre the ball closes inside ~28 m
+  /** NEAR-POST cover: he shades his spot toward the post on the ball's side —
+   * you do not get beaten at your near post; the across-goal shot (far post,
+   * the longer dive) is the one that beats him. Shade scales with the ball's
+   * angle off centre, zero for a central shooter. */
+  keeperNearPostShadeM: 1.2,
+  keeperReachBaseM: 1.1,
   keeperReachAgility: 0.035, // agility 20 → 2.05 m dive radius
   keeperCatchBase: 8, // catchable ball speed floor...
   keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~12.9 m/s)
   keeperCatchMaxZ: 2.2, // a stinger above this is parried, not held
   keeperParryKeep: 0.35, // a parry scrubs the shot's pace like a block
   keeperEngageM: 22, // he deals with balls THREATENING his goal, not midfield
-  keeperReactTicks: 1, // 0.1 s before the dive tracks the shot's line
+  keeperReactTicks: 2, // 0.2 s before the dive tracks the shot's line
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,

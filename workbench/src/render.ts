@@ -33,6 +33,7 @@ const COLORS = {
   facing: '#0d1114',
   selected: '#8f86ff',
   velocity: '#7fd4ff',
+  goal: 'rgba(255,255,255,0.95)',
   target: 'rgba(255,255,255,0.65)',
   label: 'rgba(255,255,255,0.85)',
   hud: 'rgba(255,255,255,0.75)',
@@ -111,6 +112,26 @@ export function draw(canvas: HTMLCanvasElement, view: ViewState): void {
     ctx.arc(X(gx + 11 * dir), Y(PITCH.width / 2), 2, 0, Math.PI * 2);
     ctx.fillStyle = COLORS.line;
     ctx.fill();
+    // ── the GOAL — unmissable: a bright mouth on the line between the posts
+    // (GOAL.mouthHalfWidthM = 3.66), a shallow net box behind it, post dots ──
+    const py0 = PITCH.width / 2 - 3.66;
+    const py1 = PITCH.width / 2 + 3.66;
+    ctx.strokeStyle = COLORS.goal;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(X(gx), Y(py0), X(-1.6 * dir), Y(py1) - Y(py0)); // the net, outside the line
+    ctx.beginPath();
+    ctx.moveTo(X(gx), Y(py0));
+    ctx.lineTo(X(gx), Y(py1));
+    ctx.lineWidth = 4;
+    ctx.stroke(); // the mouth itself — the thick line shots must cross
+    for (const py of [py0, py1]) {
+      ctx.beginPath();
+      ctx.arc(X(gx), Y(py), 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.goal;
+      ctx.fill(); // the posts
+    }
+    ctx.strokeStyle = COLORS.line;
+    ctx.lineWidth = 1.2;
   }
 
   const bodies = blend(view);

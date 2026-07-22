@@ -48,4 +48,20 @@ export const keeperAngle: ScenarioDef = {
   ],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle];
+/** the ANGLED shot: a striker in the channel, the keeper shading his near
+ * post. The striker finishes ACROSS goal (the far corner — the longer dive,
+ * the open side); the near post is the keeper's and rarely concedes. */
+export const shotAngle: ScenarioDef = {
+  version: 1,
+  name: 'shot-angle',
+  description: 'A striker shoots from the left channel; the keeper covers his near post, so the striker goes across goal to the far corner. Judge near-post cover and the across-goal finish.',
+  durationTicks: 50,
+  bodies: [
+    { id: 'striker', team: 'home', pos: { x: 88, y: 24 }, attributes: { ...outfield, passing: 16 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    { id: 'keeper', team: 'away', pos: { x: 103.5, y: 33 }, attributes: gloves, keeper: true },
+  ],
+  ball: { carrier: 'striker' },
+  script: [],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle];
