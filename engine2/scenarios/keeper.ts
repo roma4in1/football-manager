@@ -121,4 +121,35 @@ export const keeperSweeper: ScenarioDef = {
   ],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper];
+/** the CORNER — claims & punches: a hanging corner drops into the goal-area
+ * crowd. The keeper attacks it through his own defenders ("keeper's!") —
+ * CLAIMING it clean when he can hold it, PUNCHING it clear when it is too hot
+ * or contested in the air. His hands out-reach every head (2.8 m vs the 2.5 m
+ * leap), which is exactly why the box is his. */
+export const cornerCross: ScenarioDef = {
+  version: 1,
+  name: 'corner-cross',
+  description: 'A hanging corner drops into a crowded goal area; the keeper attacks it through the bodies — a clean CLAIM when he can hold it, a PUNCH clear when contested. Judge the command of his box.',
+  durationTicks: 80,
+  bodies: [
+    { id: 'taker', team: 'home', pos: { x: 104.5, y: 1 }, attributes: { ...outfield, passing: 18 } },
+    // the near-post attacker attacking the drop, his marker with him
+    { id: 'att', team: 'home', pos: { x: 98.5, y: 30.5 }, attributes: { ...outfield, strength: 14 }, brain: 'onBall' },
+    { id: 'marker', team: 'away', pos: { x: 97.5, y: 31.5 }, attributes: { ...outfield, strength: 14 } },
+    // a second pair holding the far post area
+    { id: 'att2', team: 'home', pos: { x: 95, y: 37 }, attributes: outfield, brain: 'onBall' },
+    { id: 'd2', team: 'away', pos: { x: 94.5, y: 36 }, attributes: outfield },
+    { id: 'keeper', team: 'away', pos: { x: 104, y: 33.5 }, attributes: gloves, keeper: true },
+  ],
+  ball: { carrier: 'taker' },
+  kicks: [
+    // a HANGING corner into the heart of the goal area (steep, solver-powered)
+    { atTick: 8, bodyId: 'taker', kick: { target: { x: 100.5, y: 30 }, speedMps: solveLoftSpeed(29.3, 38), loftDeg: 38 } },
+  ],
+  script: [
+    { atTick: 9, bodyId: 'att', command: { type: 'chaseBall', regime: 'sprint' } },
+    { atTick: 9, bodyId: 'marker', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross];

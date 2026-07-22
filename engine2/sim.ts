@@ -51,6 +51,9 @@ export class Sim {
   /** tick a keeper first SAW the live shot — the dive starts after his
    * reaction (keeperReactTicks); before it he holds his angle */
   private readonly keeperShotSeen = new Map<string, number>();
+  /** keepers ATTACKING a ball this tick (the sweep, the claim run) — they
+   * sprint full tilt; the shuffle's face-lock is for POSITIONING only */
+  private readonly keeperAttacking = new Set<string>();
   /** goals conceded — a ball crossing either goal line between the posts,
    * under the bar. The minimal seam L7 acceptance needs (saved vs beaten);
    * restarts stay L8's. `against` is the team whose goal it crossed. */
@@ -334,7 +337,7 @@ export class Sim {
       // (facing locked, the shuffle tax on speed); a long relocation — the
       // sweep, a big retreat — turns and runs like anyone
       let face: Vec2 | undefined;
-      if (this.keepers.has(body.id) && !isCarrier) {
+      if (this.keepers.has(body.id) && !isCarrier && !this.keeperAttacking.has(body.id)) {
         const kt = (body.command.type === 'chaseBall' ? live : undefined) ?? currentTarget(body);
         const goDist = kt ? Math.hypot(kt.x - body.pos.x, kt.y - body.pos.y) : 0;
         if (goDist <= BALL.keeperShuffleMaxM) face = { x: this.ball.pos.x, y: this.ball.pos.y };
@@ -902,9 +905,25 @@ export class Sim {
     if (this.keepers.size === 0) return;
     for (const id of this.keepers) {
       const k = this.byId.get(id);
-      if (!k || this.ball.carrierId === id) continue; // with the ball he's a player
+      if (!k) continue;
+      this.keeperAttacking.delete(id);
       const sign = attackSign(k.team);
       const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+      if (this.ball.carrierId === id) {
+        // with the ball INSIDE his box he holds it (distribution is later);
+        // OUTSIDE it he is a defender under pressure — the sweep's ending is
+        // a FIRST-TIME clear upfield, not a gather-and-carry against a runner
+        const outsideBox = Math.abs(this.ball.pos.x - own.x) > GOAL.boxDepthM ||
+          Math.abs(this.ball.pos.y - GOAL.centerY) > GOAL.boxHalfWidthM;
+        if (outsideBox) {
+          const upAng = (sign > 0 ? 0 : Math.PI) +
+            this.rng.gauss(0, 0.3, this.tick, id, 'k-clear');
+          kickBall(this.ball, { x: k.pos.x + Math.cos(upAng) * 30, y: k.pos.y + Math.sin(upAng) * 30 },
+            16, 25, id, this.tick);
+          this.actionLabels.set(id, 'keeper-clear');
+        }
+        continue;
+      }
       // the DIVE: a live shot at his goal — after his reaction, he attacks the
       // shot's LINE (its closest point to him) flat out; corners beat the
       // reaction, straight ones don't (why placement matters). A shot is
@@ -952,11 +971,32 @@ export class Sim {
         const dPredGoal = Math.hypot(pred.x - own.x, pred.y - own.y);
         if (Math.min(dBallGoal, dPredGoal) < BALL.keeperSweepChaseM) {
           const kD = Math.hypot(this.ball.pos.x - k.pos.x, this.ball.pos.y - k.pos.y);
-          const mateNearer = this.bodies.some((m) => m.team === k.team && m.id !== k.id &&
+          // an airborne ball dropping INSIDE HIS BOX is HIS — "keeper's!":
+          // he attacks a cross through his own defenders; deference to a
+          // nearer mate applies only to ground balls outside his command
+          const hisBall = this.ball.phase === 'airborne' &&
+            Math.abs(pred.x - own.x) <= GOAL.boxDepthM &&
+            Math.abs(pred.y - GOAL.centerY) <= GOAL.boxHalfWidthM;
+          const mateNearer = !hisBall && this.bodies.some((m) => m.team === k.team && m.id !== k.id &&
             Math.hypot(this.ball.pos.x - m.pos.x, this.ball.pos.y - m.pos.y) < kD - 1);
           if (!mateNearer) {
             if (kD <= 1.2) {
-              // on it — the final step; claims/saves resolve the pickup
+              this.keeperAttacking.add(id); // full tilt — no shuffle on an attack
+              // OUTSIDE his box, arriving on a loose low ball, the sweep ends
+              // in a FIRST-TIME boot upfield — no gather (hands are illegal
+              // and a bouncing gather loses the race to the arriving runner)
+              const outsideBox = Math.abs(this.ball.pos.x - own.x) > GOAL.boxDepthM ||
+                Math.abs(this.ball.pos.y - GOAL.centerY) > GOAL.boxHalfWidthM;
+              if (outsideBox && kD <= TECH.kickReachM && this.ball.z <= BALL.keeperBootMaxZ &&
+                (this.ball.kickerId !== id || this.tick >= this.ball.kickerLockUntilTick)) {
+                const upAng = (sign > 0 ? 0 : Math.PI) +
+                  this.rng.gauss(0, 0.3, this.tick, id, 'k-boot');
+                kickBall(this.ball, { x: k.pos.x + Math.cos(upAng) * 30, y: k.pos.y + Math.sin(upAng) * 30 },
+                  16, 25, id, this.tick);
+                this.actionLabels.set(id, 'keeper-clear');
+                continue;
+              }
+              // inside the box: claims/saves resolve the pickup
               if (k.command.type !== 'chaseBall') this.assign(k, { type: 'chaseBall', regime: 'sprint' });
               continue;
             } else {
@@ -971,10 +1011,15 @@ export class Sim {
                 spin: this.ball.spin, phase: this.ball.phase,
                 carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
               };
+              // a CROSS in his box he attacks at HANDS' height mid-descent —
+              // the earliest claimable point, UPSTREAM of the leapers (aiming
+              // at the ground landing always arrived downstream of the header
+              // contest: the near-post flick beat him to every corner)
+              const zCatch = hisBall ? BALL.keeperClaimMaxZ : BALL.headMinZ;
               let target: Vec2 = { x: this.ball.pos.x, y: this.ball.pos.y };
               for (let i = 1; i <= 30; i++) {
                 stepBall(c);
-                if (c.z < BALL.headMinZ) {
+                if (c.z < zCatch) {
                   const dK = Math.hypot(c.pos.x - k.pos.x, c.pos.y - k.pos.y);
                   target = { x: c.pos.x, y: c.pos.y };
                   if (dK / vcap + 0.15 <= i * DT) break; // he beats the ball there
@@ -987,6 +1032,7 @@ export class Sim {
               const dTargGoal = Math.hypot(target.x - own.x, target.y - own.y);
               const dKGoal = Math.hypot(k.pos.x - own.x, k.pos.y - own.y);
               if (dTargGoal >= dKGoal - 1) {
+                this.keeperAttacking.add(id); // full tilt — no shuffle on an attack
                 const cur = k.command.type === 'moveTo' ? k.command.target : null;
                 if (!cur || Math.hypot(cur.x - target.x, cur.y - target.y) > 0.3) {
                   this.assign(k, { type: 'moveTo', target, regime: 'sprint' });
@@ -1063,16 +1109,48 @@ export class Sim {
       if (k.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
       const sign = attackSign(k.team);
       const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
-      // only a ball threatening HIS goal: near it, travelling toward it, under
-      // the bar's height (over it, it is going over anyway)
-      const dGoal = Math.hypot(ball.pos.x - own.x, ball.pos.y - own.y);
-      if (dGoal > BALL.keeperEngageM) continue;
-      if (ball.vel.x * (own.x - ball.pos.x) <= 0) continue; // moving away
-      if (ball.z > GOAL.barZ) continue;
       // HANDS ARE LEGAL ONLY IN HIS BOX — outside it he is an outfielder
       // (feet: the ordinary claim machinery collects for him out there)
       if (Math.abs(ball.pos.x - own.x) > GOAL.boxDepthM ||
         Math.abs(ball.pos.y - GOAL.centerY) > GOAL.boxHalfWidthM) continue;
+      const dGoal = Math.hypot(ball.pos.x - own.x, ball.pos.y - own.y);
+      const towardGoal = ball.vel.x * (own.x - ball.pos.x) > 0;
+      const shotLike = dGoal <= BALL.keeperEngageM && towardGoal && ball.z <= GOAL.barZ;
+      if (!shotLike) {
+        // the CROSS in his box — a corner, a whipped ball ACROSS the face
+        // (not toward his line, so no shot gate catches it). His hands rule
+        // the air: CLAIM (hold) what he can get to and hold; too hot, or
+        // contested in the air at height, he PUNCHES it clear — distance
+        // over control.
+        if (ball.phase !== 'airborne' || ball.z > BALL.keeperClaimMaxZ) continue;
+        const { d: dc, at: atc } = this.sweptApproach(k, from);
+        if (dc > BALL.keeperClaimReachM) continue;
+        const canHold = speed <= BALL.keeperCatchBase + BALL.keeperCatchTouch * k.attributes.firstTouch;
+        const contested = this.bodies.some((o) => o.team !== k.team &&
+          Math.hypot(o.pos.x - ball.pos.x, o.pos.y - ball.pos.y) <= BALL.keeperPunchContestM);
+        if (!canHold || (contested && ball.z >= BALL.keeperPunchMinZ)) {
+          // PUNCH — a fist through it, high and far upfield, with scatter
+          ball.pos = { x: atc.x, y: atc.y };
+          const upAng = (sign > 0 ? 0 : Math.PI) +
+            this.rng.gauss(0, BALL.keeperPunchScatterRad, this.tick, k.id, 'punch');
+          kickBall(ball, { x: atc.x + Math.cos(upAng) * 25, y: atc.y + Math.sin(upAng) * 25 },
+            BALL.keeperPunchSpeed, BALL.keeperPunchLoftDeg, k.id, this.tick);
+          this.actionLabels.set(k.id, 'punch');
+        } else {
+          // CLAIMED — the cross is his, held
+          ball.pos = { x: atc.x, y: atc.y };
+          ball.z = 0;
+          ball.vz = 0;
+          ball.spin = 0;
+          ball.vel = { x: 0, y: 0 };
+          ball.phase = 'carried';
+          ball.carrierId = k.id;
+          ball.kickerId = null;
+          this.completeChases(k.team);
+          this.actionLabels.set(k.id, 'claim');
+        }
+        return; // one pair of hands per tick
+      }
       // the SPREAD: point-blank — the SHOOTER right on top of him (the 1v1
       // smother) — he makes himself BIG, arms and legs wide. Gated on the
       // kicker's distance, not the ball's (the ball is always close when a

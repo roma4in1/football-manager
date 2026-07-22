@@ -137,22 +137,48 @@ test('the 1v1 RUSH: a striker clean through meets a keeper at the edge of his bo
   assert.ok(dealt >= 8, `the early rush wins most 1v1s (${dealt}/12) — the striker's chip/round-him are the future counters`);
 });
 
-test('the SWEEPER: a high line with play upfield, and the ball in behind is swept up before the runner', () => {
+test('the SWEEPER: a high line with play upfield, and the ball in behind is DEALT WITH before the runner', () => {
+  const keeperActs = new Set(['keeper-clear', 'save-catch', 'claim', 'punch', 'header-clear']);
   let highLine = 0;
-  let swept = 0;
+  let dealt = 0;
   for (let s = 0; s < 12; s++) {
     const sim = new Sim(scenarioByName('keeper-sweeper'), `sw-${s}`);
     let out = '';
     for (let t = 0; t < 90; t++) {
-      sim.step();
+      const f = sim.step();
       const k = sim.bodies.find((b) => b.id === 'keeper')!;
       if (t === 19 && 105 - k.pos.x >= 10) highLine++; // the position is SITUATIONAL, never fixed
-      if (!out && sim.ball.carrierId === 'keeper') { out = 'keeper'; swept++; }
+      const ka = f.bodies.find((b) => b.id === 'keeper')?.action;
+      // the sweep's job is FIRST CONTACT — the danger dealt with (a first-time
+      // boot clear, a catch, a claim); retaining possession is a bonus
+      if (!out && (sim.ball.carrierId === 'keeper' || (ka && keeperActs.has(ka)))) { out = 'keeper'; dealt++; }
       if (!out && sim.ball.carrierId === 'runner') out = 'runner';
     }
   }
   assert.ok(highLine >= 10, `with play far upfield he holds a HIGH line, ≥10 m off his goal (${highLine}/12)`);
-  assert.ok(swept >= 9, `he sweeps the ball in behind before the runner arrives (${swept}/12)`);
+  assert.ok(dealt >= 9, `he deals with the ball in behind before the runner (${dealt}/12)`);
+});
+
+test('the CORNER: the keeper commands his box — claims or punches the hanging cross through the crowd', () => {
+  let keeperFirst = 0;
+  let punches = 0;
+  let claims = 0;
+  for (let s = 0; s < 16; s++) {
+    const sim = new Sim(scenarioByName('corner-cross'), `cn-${s}`);
+    let out = '';
+    for (let t = 0; t < 80; t++) {
+      const f = sim.step();
+      const ka = f.bodies.find((b) => b.id === 'keeper')?.action;
+      if (!out && ka === 'claim') { out = 'claim'; claims++; keeperFirst++; }
+      if (!out && ka === 'punch') { out = 'punch'; punches++; keeperFirst++; }
+      if (!out && f.bodies.find((b) => b.id !== 'keeper' && b.action?.startsWith('header'))) out = 'header';
+    }
+    // the seam stays honest under the corner chaos
+    for (const g of sim.goals) assert.ok(Math.abs(g.y - GOAL.centerY) <= GOAL.mouthHalfWidthM);
+  }
+  assert.ok(keeperFirst >= 8, `the keeper attacks the cross through the bodies and gets there first (${keeperFirst}/16)`);
+  assert.ok(punches >= 3, `contested in the air, he PUNCHES clear (${punches})`);
+  void claims; // a clean claim is the uncontested case — present when the crowd thins
 });
 
 test('the SHUFFLE: repositioning, the keeper stays square to the ball — he never shows it his back', () => {

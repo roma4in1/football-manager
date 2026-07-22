@@ -140,6 +140,20 @@ export const BALL = {
    * himself BIG — arms and legs wide add effective blocking reach */
   keeperSpreadBonusM: 0.45,
   keeperSpreadRangeM: 6,
+  /** CLAIMS & PUNCHES: a cross dropping in his box is HIS — hands above every
+   * head (claim ceiling beats the header band's 2.5). He CLAIMS (holds) what
+   * he can get to and hold; too hot to hold, or contested in the air at
+   * height, he PUNCHES it clear — distance over control. */
+  keeperClaimMaxZ: 2.8,
+  keeperClaimReachM: 1.3, // horizontal, on top of the swept approach
+  keeperPunchContestM: 2.0, // an opponent this near the ball makes it a punch
+  keeperPunchMinZ: 1.4, // below this he gathers/dives on it, he doesn't punch
+  keeperPunchSpeed: 15,
+  keeperPunchLoftDeg: 35,
+  keeperPunchScatterRad: 0.4,
+  /** the sweep's first-time BOOT outside his box takes a bouncing ball up to
+   * a half-volley height — a 0.5 m gate razor-missed every hop */
+  keeperBootMaxZ: 1.2,
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
