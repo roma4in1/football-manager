@@ -3,6 +3,22 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The held ball is untouchable; distribution completes L7
+
+Builder rule: no tackle exists against a keeper with the ball in his hands.
+`keeperHolding` (set by a catch, a claim, or an in-box pickup) gates
+resolveTackles off; the pinch already can't reach a glued ball. Immunity ends
+at his release. Then DISTRIBUTION, the last L7 sub-phase: after a ~0.8 s
+settle, the nearest OPEN mate whose throw survives the ARRIVAL RACE gets a
+fast flat throw to feet; nobody open → the long punt. Two findings: a static
+lane check cannot see a MOVING presser (the chasing striker ran down every
+"clear-at-release" throw — passCompletion, the outfield's own race model, is
+the judge); and a throw must ARRIVE WITH PACE (rollLaunchForArrival) — the
+first cut died in the middle third as a 50/50. Pinned: held 12/12 never
+dispossessed, throw→open man 12/12, marked man never, all-marked → punt 8/8
+past x70. L7 sub-phases all present: positioning, shot-stopping, situational
+depth, the shuffle, claims & punches, distribution. 86/86.
+
 ## 2026-07-22 — Claims & punches: the keeper commands his box on corners
 
 Builder ask: a corner where the keeper claims or punches. The structural gap:
