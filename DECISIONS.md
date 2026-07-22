@@ -3,6 +3,22 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — Receivers come TO the ball; hands-in-box, forward sweeps, the spread
+
+Builder round: (1) receivers were timing the meet — slow, set, stand, watch it
+in (the judged wait-for-it-backwards). The on-line early phase now ADVANCES
+along the path toward the ball at a controlled 2.4 m/s (the final stride
+unchanged) — a receiver 24 m out advances 3.5 m to meet the pass; all pinned
+receives hold. (2) The keeper's HANDS are legal only in his box
+(GOAL.boxDepthM 16.5 / boxHalfWidthM 20.16) — outside it resolveSaves stands
+down and the claim machinery collects with his feet; and a sweep goes FORWARD
+only — a ball rolling behind him is a RETREAT via the ladder, not a backward
+"sweep" guarding the roll's resting spot. (3) The SPREAD: with the SHOOTER
+inside 6 m (the 1v1 smother) he makes himself big, +0.45 m reach — gated on
+the KICKER's distance, because gating on the ball's (always small at save
+time) spread him against every drive and shut the far post (11 goals → 0 →
+back to 11 once corrected). 83/83.
+
 ## 2026-07-22 — The keeper's shuffle: square to the ball, never his back
 
 Builder: a keeper shuffles sideways / backpedals facing the ball; he doesn't
