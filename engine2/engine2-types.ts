@@ -55,6 +55,10 @@ export interface BodyInit {
   /** L4: this body runs the on-ball decision loop when it has (or is sent)
    * the ball. Bodies without a brain follow their script only. */
   brain?: 'onBall';
+  /** L7: this body is his team's GOALKEEPER — he self-positions on the
+   * ball–goal line (angle play, depth) and stops shots (catch or parry). A
+   * keeper drives his own movement; scenario scripts should not command him. */
+  keeper?: boolean;
   /** L4 instruction surface (spec: instructions bias the choice) */
   instructions?: { risk?: number; objective?: 'keep' | 'score'; lineHeight?: number; pressing?: number };
 }

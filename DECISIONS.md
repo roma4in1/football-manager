@@ -3,6 +3,223 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The chip + the 1v1 equilibrium (pounce/delay)
+
+The chip over an advanced keeper, and the counter-craft that keeps the 1v1
+honest. The CHIP: adaptive loft (flattest of 24/30/38° clearing his CLAIM —
+gate 3.4 m = 2.8 hands + ~0.6 parabola-vs-drag error; 2.6 got it caught
+mid-flight), only when he is CLEARLY late home (backpedal > flight + 0.25 — a
+tying keeper catches the drop), priced as a real chance scaled by the mouth's
+angular openness (xGHere-anchoring never fired — xG counts the keeper the chip
+bypasses; a flat price had the byline winger chipping a sliver). Shots carry
+loftDeg now. The KEEPER: the chip READ (a ball arcing over him → sprint home to
+contest the drop) and POUNCE vs DELAY — rushing 11 m out vs a controlled ball
+lost 15/16 to the chip and nothing recovers a good chip from there, so the
+craft is not to be there: rush only on the HEAVY TOUCH (> 1.6 m), else hold
+~6 m, stay big. Pinned equilibrium: stranded 12 m out → CONCEDES (placed past
+or chipped — placing past a stranded keeper is usually the right finish);
+playing it properly → DEALS WITH IT (the remaining striker conversion is
+round-the-keeper, L5e — next). 90/90.
+
+## 2026-07-22 — The looping throw: over-arm, near the halfway line
+
+Builder: throws are flat OR looping, reaching much further. The over-arm LOOP
+covers 32–48 m with a football-logical niche: released FROM THE HANDS
+(immunity intact — no drop window), it is the PRESSED keeper's long option;
+unpressed, the composed drop-kick keeps that range. Two findings: (1) launched
+from the grass, the 35° arc passed through head height exactly where the
+presser stood — he nodded the fresh throw back at goal; an over-arm throw
+RELEASES HIGH (z 2.3, above a standing leap). (2) The 24 m/s arm cap was too
+timid against real drag (a 41 m loop needs 25.4, solver-measured; elite
+release is 25–30 and real keepers hit 50–60 m) — cap 29, reaching ~48 m.
+keeper-loop-throw: 12/12 looped and received, apex 9.5 m, zero steals while
+held. Distribution now: flat throw → loop throw (pressed) / drop-kick
+(unpressed) → aimed counter punt → long punt. 89/89.
+
+## 2026-07-22 — The aimed counter punt + the ground-kick menu
+
+Builder: keepers kick from their hands AT areas/runners for counters; ground
+kicks are grass cutters or pinged passes. (1) The punt is now AIMED: the most
+advanced open mate (≥15 m upfield, unmarked) is led by the punt's hang time —
+a flatter 28° ball into his run; nobody upfield → the generic long punt. The
+punt's honest carry (~50 m) drops deep counters into the runner's path
+(keeper-counter: aimed 12/12, collected 12/12). (2) The ground-kick menu is
+DERIVED from the pitch's friction, not invented: a roll dies by ~20 m, the
+grass cutter (26 m/s @ 5°, hops < 5 cm) carries pace to ~30, the pinged 16°
+ball owns 30+ — a probe showed even a 26 m/s cutter under 8 m/s by 24 m, so a
+40 m grass cutter cannot exist on dry grass. Drop-pass picks by range. 88/88.
+
+## 2026-07-22 — Drop to feet: the keeper plays the build-up pass
+
+Builder ask: the option to drop the held ball and play a pass. Distribution is
+three-way: throw (open ≤ 32 m) → DROP + PASS (open 32–50 m, nobody within
+8 m) → punt. The drop is honest — ball down = immunity OFF (tackleable), so he
+only drops unpressed and picks it straight back up if a presser closes in
+during the beat. Delivery is distance-appropriate: a weighted roll ≤ 30 m; a
+driven 16° ball beyond (dry grass kills a rolled ball by ~38 m; a flat 8°
+delivery needed an uncontrollable ~40 m/s rocket). Gate finding: passCompletion
+is a ROLLING race model and rated the clear 37 m lane near-zero (a rolled ball
+arrives dead there) — a flighted ball's honest gate is the arrival race AT THE
+LANDING (aerialCompletion), as the cross/switch already use. keeper-buildup:
+drop 12/12, pass 12/12, the far CB receives 10/12. 87/87.
+
+## 2026-07-22 — The held ball is untouchable; distribution completes L7
+
+Builder rule: no tackle exists against a keeper with the ball in his hands.
+`keeperHolding` (set by a catch, a claim, or an in-box pickup) gates
+resolveTackles off; the pinch already can't reach a glued ball. Immunity ends
+at his release. Then DISTRIBUTION, the last L7 sub-phase: after a ~0.8 s
+settle, the nearest OPEN mate whose throw survives the ARRIVAL RACE gets a
+fast flat throw to feet; nobody open → the long punt. Two findings: a static
+lane check cannot see a MOVING presser (the chasing striker ran down every
+"clear-at-release" throw — passCompletion, the outfield's own race model, is
+the judge); and a throw must ARRIVE WITH PACE (rollLaunchForArrival) — the
+first cut died in the middle third as a 50/50. Pinned: held 12/12 never
+dispossessed, throw→open man 12/12, marked man never, all-marked → punt 8/8
+past x70. L7 sub-phases all present: positioning, shot-stopping, situational
+depth, the shuffle, claims & punches, distribution. 86/86.
+
+## 2026-07-22 — Claims & punches: the keeper commands his box on corners
+
+Builder ask: a corner where the keeper claims or punches. The structural gap:
+resolveSaves only engaged balls travelling TOWARD his line — a corner whipped
+ACROSS the face was untouchable by his hands. Now an airborne ball dropping in
+his box that isn't a shot is CLAIMED (held) when he can get there and hold it,
+PUNCHED clear (fist, upfield, distance over control) when too hot or contested
+in the air (opponent ≤ 2 m, ball ≥ 1.4 m). His claim ceiling (2.8 m)
+out-reaches every head — why the box is his. Three findings en route:
+
+- **"Keeper's!"** — the sweep-chase no longer defers to a nearer teammate on a
+  cross dropping in his box; he attacks it through his own defenders.
+- **Attack at HANDS' height, upstream**: targeting the ground landing put him
+  downstream of the header contest and the near-post flick beat him to every
+  corner (1/16). Attacking the earliest claimable point mid-descent → 11/16
+  keeper-first (the flick honestly steals ~5 — that is corner football).
+- **The first-time BOOT** outside his box (hands illegal there): an arriving
+  low ball is cleared first-time upfield at half-volley height
+  (keeperBootMaxZ 1.2 — a 0.5 m gate razor-missed every hop and left a weak
+  standing header at the runner's feet). The SWEEPER test is redefined by
+  FIRST CONTACT: the sweep's job is the danger dealt with, not possession
+  (14/16). Attack-runs are exempt from the shuffle's face-lock.
+
+corner-cross pinned: keeper-first ≥ 8, punches present, the goal seam honest
+under the chaos. 84/84. Keeper distribution (throw/roll/kick choices) remains
+the last L7 sub-phase.
+
+## 2026-07-22 — Receivers come TO the ball; hands-in-box, forward sweeps, the spread
+
+Builder round: (1) receivers were timing the meet — slow, set, stand, watch it
+in (the judged wait-for-it-backwards). The on-line early phase now ADVANCES
+along the path toward the ball at a controlled 2.4 m/s (the final stride
+unchanged) — a receiver 24 m out advances 3.5 m to meet the pass; all pinned
+receives hold. (2) The keeper's HANDS are legal only in his box
+(GOAL.boxDepthM 16.5 / boxHalfWidthM 20.16) — outside it resolveSaves stands
+down and the claim machinery collects with his feet; and a sweep goes FORWARD
+only — a ball rolling behind him is a RETREAT via the ladder, not a backward
+"sweep" guarding the roll's resting spot. (3) The SPREAD: with the SHOOTER
+inside 6 m (the 1v1 smother) he makes himself big, +0.45 m reach — gated on
+the KICKER's distance, because gating on the ball's (always small at save
+time) spread him against every drive and shut the far post (11 goals → 0 →
+back to 11 once corrected). 83/83.
+
+## 2026-07-22 — The keeper's shuffle: square to the ball, never his back
+
+Builder: a keeper shuffles sideways / backpedals facing the ball; he doesn't
+turn and run for small repositioning. FACE-LOCK became an L1 capability
+(`StepOptions.face`): facing tracks a point instead of the travel heading, and
+movement pays the shuffle tax (full speed toward the faced point → 0.45 of it
+straight back, interpolated by angle). Opt-in per call — nil blast radius. The
+sim face-locks a keeper whose current move is ≤ 7 m (`keeperShuffleMaxM`);
+longer relocations (the sweep, a big retreat) turn and run, then square up.
+Measured: mirroring a crossing carrier, worst facing-off-ball 2°, zero ticks
+back-shown; all keeper outcomes identical — the shuffle is HOW he moves, not
+what he does. 83/83.
+
+## 2026-07-22 — The keeper's position is SITUATIONAL: 1v1 rush, sweeper, hands-before-head
+
+Builder round: 1v1 → the keeper meets it at the middle/edge of his box;
+possession → a sweeper's high line. Position is never fixed.
+
+- **The depth ladder** (`keeperPhase`): dive (live shot) → **1v1 rush** (lone
+  opponent through, no defender goal-side, read EARLY from 45 m — at 30 he was
+  mid-rush when the shot came; out to 13 m, the smother = the pinch/save duel
+  at his arrival) → **sweeper** (own possession or play far upfield → high
+  line to 16 m) → base angle play. The frame-shadow clamp widens with depth.
+- **A shot is mouth-bound AND imminent** (< 1.3 s to the line): a 55 m
+  diagonal crossing the mouth's extrapolation is a ball to SWEEP — it was
+  making him retreat-and-dive while the runner ran onto it.
+- **The sweep is a RACE, not a receive**: the generic chase's receive machine
+  stood him politely on the line while the bounce drifted past his reach. He
+  attacks the earliest ground point on the predicted path he can beat the ball
+  to; inside 1.2 m the claim machinery takes over.
+- **HANDS BEFORE HEAD** — the ordering principle a trace exposed: resolveSaves
+  runs before resolveHeaders. The header contest was making the keeper weakly
+  NOD a catchable dropping ball straight to the arriving runner (sweeps went
+  1/16 → 16/16 on this one change). Above the catch ceiling the ball still
+  falls to the header contest — that is the punch. Saves no-op without
+  keepers, so nil blast radius.
+- **Parries turn WIDE** (keeperParryWideRad 0.7): a central palm-back teed up
+  the runner. The catch gathers up to ~13.9 m/s (keeperCatchBase 9).
+
+keeper-1v1: out 11.4 m, 15/16 dealt with — the striker's counters (the chip
+over the rushing keeper, going round him) are the parked L5e-duel/chip work;
+reported as a tension, not tuned away. keeper-sweeper: high line + sweep
+16/16. shot-save / shot-angle / keeper-angle gained a recovering goal-side
+defender each so they keep testing SHOT-STOPPING and base angle play (a lone
+striker is now, correctly, a 1v1 and a different scenario). 82/82.
+
+## 2026-07-22 — Keeper craft: near-post cover, closing down, across-goal + the in-stride strike
+
+Builder round on the fresh keeper: goals visible in the workbench (bright
+mouths + posts + net box); the keeper guards a NEAR-POST-shaded line (shade
+scales with the ball's angle — you don't get beaten at your near post) and
+CLOSES DOWN as the ball nears (depth 1.2→5 m by keeperCloseGain; the cone
+narrows toward the striker, the chip over him is the deferred price); strikers
+finish ACROSS goal from angles (shotAcrossBonus on the far corner's clear-lane
+score — the near post is the keeper's, across is the open side).
+
+The measurement caught a real mechanics bug beneath the keeper stats: a
+driving striker's decided shot only released with the ball inside his 0.9 m
+CONTROL disc, but a 6.8 m/s drive rides the ball ~1.7 m ahead — he chased his
+own touch for 1.1 s and "shot" point-blank into the gloves. A pending kick now
+releases at kickReachM (1.1 m) when aligned: the FIRST-TIME strike in stride.
+
+Retune after: with shade + closing-down doing the positioning work, the 1.35 m
+static reach double-covered the mouth (angled far-post NEVER scored) — reach
+back to 1.1, react 0.2 s. Central: 73% on-target saves. Angled: 10 save /
+6 goal / 4 wide — 20/20 aims across, EVERY goal far post, near post never
+concedes (pinned by the shot-angle test). 80/80.
+
+## 2026-07-22 — L7 sub-phase 1: the keeper (angle, dive, catch/parry) + the goal seam
+
+The first L7 tenant, on the xyz footing the block established. Attributes map
+deliberately onto the outfield schema (agility ≈ reflexes/dive, firstTouch ≈
+handling) — no schema change.
+
+- **Angle play** (`keeperPhase`): a `keeper: true` body self-positions on the
+  ball–goal line at `keeperDepthM`, clamped to the frame's shadow; mirrors a
+  carrier across the box at 0.44 m avg off-line. He owns his own movement —
+  scenario scripts should not command him.
+- **The dive**: on a live shot he attacks the shot's LINE flat out after a
+  0.1 s reaction. His accel-limited travel + reach vs the corner's offset is a
+  genuine knife-edge — placed corners beat him, central shots don't.
+- **The save** (`resolveSaves`, headers → SAVES → chest → block → claim): a
+  holdable ball (speed ≤ 8+0.35·firstTouch, z ≤ 2.2) is CAUGHT and held (he
+  becomes the carrier); a stinger is PARRIED wide of the mouth, scrubbed 0.35.
+- **Keeper-beating placement** (the noted L7 hook): decide's shot aims just
+  inside the corner with the clearer lane, not the center — a center shot is a
+  shot at the keeper. All prior shot scenarios hold.
+- **The goal seam**: an end-line crossing between the posts under the bar
+  (`GOAL.barZ` 2.44) is recorded to `sim.goals` (interpolated on the swept
+  path) before the ball goes dead. The saved-vs-beaten measurement; restarts
+  stay L8's.
+
+shot-save (17 m unpressured, placed): 9 save / 8 goal / 3 wide over 20 seeds —
+~53% on-target save rate; the dial is keeperReachBaseM (1.35) and
+keeperReactTicks (1). keeperReachAgility stayed 0.035 — a 0.045 probe moved
+NOTHING (the dive's travel binds, not the static radius), so it was reverted.
+Later sub-phases: claims/punches on crosses, distribution, sweeping. 79/79.
+
 ## 2026-07-21 — Delivery decisions: the AI crosses, switches, cuts back (+ accuracy)
 
 The aerial mechanics were inert — decide.ts chose only a ground pass and one

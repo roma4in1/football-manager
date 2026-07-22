@@ -76,6 +76,9 @@ export const KIN = {
   approachGain: 1.2,
   /** facing turns toward the velocity direction at this rate (rad/s) */
   facingTurnRate: 7.0,
+  /** face-locked (shuffling) speed factor moving straight BACKWARD; sideways
+   * interpolates between this and full forward speed */
+  shuffleBackFactor: 0.45,
   /** stance: 'turning' when the commanded heading is off by more than this */
   turningStanceRad: 0.35,
   /** carrying the ball is SLOWER than running free (the L2 judgment note):
@@ -121,6 +124,12 @@ export function currentTarget(body: BodyState, external?: Vec2 | null): Vec2 | n
 }
 
 export interface StepOptions {
+  /** FACE-LOCK (the keeper's shuffle): facing stays on this point instead of
+   * the travel heading — he shuffles sideways / backpedals square to the ball,
+   * never showing it his back. Movement pays the shuffle tax: full speed
+   * ahead, slower sideways, slowest straight back (shuffleBackFactor). Long
+   * relocations should NOT face-lock — a keeper turns and runs for those. */
+  face?: Vec2 | null;
   /** chaseBall's live target (the intercept point) */
   external?: Vec2 | null;
   /** steering override: pursue THIS point while keeping the command intact —
@@ -164,11 +173,15 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
   const brake = brakePeakMps2(body.attributes.acceleration);
   const grip = lateralGripMps2(body.attributes.agility, body.attributes.balance);
 
+  const face = opts.face ?? null;
+  const faceAng = face ? Math.atan2(face.y - body.pos.y, face.x - body.pos.x) : null;
+
   if (target === null) {
     // hold: bleed residual speed with the brake, settle, rotate to any
-    // commanded facing
+    // commanded facing (a face-lock outranks — square to the ball)
     decayToStop(body, brake);
-    if (c.type === 'hold' && c.facing !== undefined) rotateFacing(body, c.facing);
+    if (faceAng !== null) rotateFacing(body, faceAng);
+    else if (c.type === 'hold' && c.facing !== undefined) rotateFacing(body, c.facing);
     else if (body.speed > KIN.settleSpeedMps) rotateFacing(body, Math.atan2(body.vel.y, body.vel.x));
     body.stance = body.speed > KIN.settleSpeedMps ? 'moving' : 'settled';
     if (!body.arrived) {
@@ -210,6 +223,13 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
     if (opts.carrySpeedCapMps !== undefined) cap = Math.min(cap, opts.carrySpeedCapMps);
   }
   if (opts.speedCapMps !== undefined) cap = Math.min(cap, Math.max(opts.speedCapMps, 0.6));
+  // the SHUFFLE tax: face-locked movement away from the facing is slower —
+  // full speed toward the ball, a sidestep in between, slowest straight back
+  if (faceAng !== null) {
+    const wantAng = Math.atan2(target.y - body.pos.y, target.x - body.pos.x);
+    const off = Math.abs(normalizeAngle(wantAng - faceAng));
+    cap *= 1 - (1 - KIN.shuffleBackFactor) * (off / Math.PI);
+  }
 
   // ── desired speed: regime cap, shaved by arrival braking and by turn need ─
   let desired = cap;
@@ -267,7 +287,8 @@ export function stepBody(body: BodyState, tick: number, opts: StepOptions = {}):
   body.pos = { x: body.pos.x + body.vel.x * DT, y: body.pos.y + body.vel.y * DT };
   body.regime = regime;
   body.stance = misalignAbs > KIN.turningStanceRad ? 'turning' : speed > KIN.settleSpeedMps ? 'moving' : 'settled';
-  if (speed > KIN.settleSpeedMps) rotateFacing(body, heading);
+  if (faceAng !== null) rotateFacing(body, faceAng); // square to the ball, moving or not
+  else if (speed > KIN.settleSpeedMps) rotateFacing(body, heading);
 }
 
 function decayToStop(body: BodyState, brake: number): void {

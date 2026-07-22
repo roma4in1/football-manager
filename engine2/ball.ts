@@ -92,6 +92,95 @@ export const BALL = {
   blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not deflected
   blockDeflectKeep: 0.35, // an OPPONENT'S block scrubs most of the pace off
   collisionDeflectKeep: 0.55, // a teammate not defending caroms more pace on
+  /** L7 KEEPER — the save on the same xyz footing as the block, but with a
+   * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
+   * with firstTouch (a clean catch vs a parry). Attributes are the outfield
+   * schema deliberately: agility ≈ reflexes/dive, firstTouch ≈ handling. */
+  /** CLOSING DOWN: the keeper comes OUT toward the shooter as the ball nears —
+   * the shot cone narrows toward the striker, so standing further up it leaves
+   * less to cover each side (the chip over him is the price; L7-later). Far
+   * ball → near his line; a striker bearing down → out to ~7 m. */
+  keeperDepthMinM: 1.2,
+  keeperDepthMaxM: 5,
+  keeperCloseGain: 0.2, // metres of depth per metre the ball closes inside ~28 m
+  /** the 1v1 RUSH: a lone opponent through on goal (no defending teammate
+   * goal-side) — the keeper comes OUT to the penalty-spot / edge-of-box range
+   * to smother the chance before it sharpens; the existing pinch/save duel
+   * machinery is the smother itself once he arrives. */
+  keeperRushMaxM: 13,
+  /** with the ball AT THE STRIKER'S FEET he holds this depth instead — stay
+   * big, delay; the rush is for the heavy touch (the smother window) */
+  keeperDelayDepthM: 6,
+  /** the SWEEPER: in possession (or with play far upfield) the keeper holds a
+   * HIGH line off his goal, sweeping the space behind his defence — his
+   * position is situational, never fixed. Depth scales with the ball's
+   * distance from his goal, up to the cap. */
+  keeperSweepGain: 0.3,
+  keeperSweepMaxM: 16,
+  /** a loose ball dying in his defensive zone with no mate nearer — he leaves
+   * his line and CLAIMS it (the sweep itself) */
+  keeperSweepChaseM: 26,
+  /** NEAR-POST cover: he shades his spot toward the post on the ball's side —
+   * you do not get beaten at your near post; the across-goal shot (far post,
+   * the longer dive) is the one that beats him. Shade scales with the ball's
+   * angle off centre, zero for a central shooter. */
+  keeperNearPostShadeM: 1.2,
+  keeperReachBaseM: 1.1,
+  keeperReachAgility: 0.035, // agility 20 → 2.05 m dive radius
+  keeperCatchBase: 9, // catchable ball speed floor...
+  keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~13.9 m/s)
+  keeperCatchMaxZ: 2.2, // a stinger above this is parried, not held
+  keeperParryKeep: 0.35, // a parry scrubs the shot's pace like a block
+  /** a parry is turned WIDE of the play, not pushed straight back out — a
+   * central palm-back tees up the arriving runner (the sweeper finding) */
+  keeperParryWideRad: 0.7,
+  keeperEngageM: 22, // he deals with balls THREATENING his goal, not midfield
+  keeperReactTicks: 2, // 0.2 s before the dive tracks the shot's line
+  /** within this far to go he SHUFFLES — square to the ball, never showing it
+   * his back; a longer relocation (a sweep, a big retreat) turns and runs */
+  keeperShuffleMaxM: 7,
+  /** the SPREAD: point-blank (a 1v1 smother, a close-range block) he makes
+   * himself BIG — arms and legs wide add effective blocking reach */
+  keeperSpreadBonusM: 0.45,
+  keeperSpreadRangeM: 6,
+  /** CLAIMS & PUNCHES: a cross dropping in his box is HIS — hands above every
+   * head (claim ceiling beats the header band's 2.5). He CLAIMS (holds) what
+   * he can get to and hold; too hot to hold, or contested in the air at
+   * height, he PUNCHES it clear — distance over control. */
+  keeperClaimMaxZ: 2.8,
+  keeperClaimReachM: 1.3, // horizontal, on top of the swept approach
+  keeperPunchContestM: 2.0, // an opponent this near the ball makes it a punch
+  keeperPunchMinZ: 1.4, // below this he gathers/dives on it, he doesn't punch
+  keeperPunchSpeed: 15,
+  keeperPunchLoftDeg: 35,
+  keeperPunchScatterRad: 0.4,
+  /** the sweep's first-time BOOT outside his box takes a bouncing ball up to
+   * a half-volley height — a 0.5 m gate razor-missed every hop */
+  keeperBootMaxZ: 1.2,
+  /** DISTRIBUTION: held ball → a beat to settle, then the nearest OPEN mate
+   * with a clean lane gets the fast flat THROW; nobody open → the PUNT long
+   * upfield. (The full L4 EV is the outfield's; a keeper's choice is simpler.) */
+  keeperHoldTicks: 8, // ~0.8 s settle before he releases
+  keeperThrowMinM: 6,
+  keeperThrowMaxM: 32,
+  keeperThrowLoftDeg: 3, // flat and fast — a rolled/side-arm ball to feet
+  keeperPuntSpeed: 27,
+  keeperPuntLoftDeg: 38,
+  keeperPuntScatterRad: 0.25,
+  /** DROP TO FEET: beyond throw range but inside kick range, an open mate is
+   * reached by dropping the held ball and playing a GROUND PASS — the modern
+   * build-up. At his feet the immunity is OFF (honestly tackleable), so he
+   * only drops with no presser near, and picks it back up if one closes in. */
+  keeperKickMaxM: 50,
+  keeperDropTicks: 3, // the beat between the drop and the strike
+  keeperDropSafeM: 8, // no opponent within this → safe to put it down
+  /** the LOOPING throw: over-arm, arcing, reaching near the halfway line —
+   * and released FROM THE HANDS (no drop window, immunity intact), so it is
+   * the PRESSED keeper's long option; unpressed, the composed drop-kick has
+   * more range and pace. Capped by a human arm, not a boot. */
+  keeperLoopThrowMaxM: 48,
+  keeperLoopThrowSpeedMax: 29, // an elite arm — reaches ~48 m at 35°
+  keeperLoopThrowLoftDeg: 35,
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
