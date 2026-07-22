@@ -3,6 +3,21 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The looping throw: over-arm, near the halfway line
+
+Builder: throws are flat OR looping, reaching much further. The over-arm LOOP
+covers 32–48 m with a football-logical niche: released FROM THE HANDS
+(immunity intact — no drop window), it is the PRESSED keeper's long option;
+unpressed, the composed drop-kick keeps that range. Two findings: (1) launched
+from the grass, the 35° arc passed through head height exactly where the
+presser stood — he nodded the fresh throw back at goal; an over-arm throw
+RELEASES HIGH (z 2.3, above a standing leap). (2) The 24 m/s arm cap was too
+timid against real drag (a 41 m loop needs 25.4, solver-measured; elite
+release is 25–30 and real keepers hit 50–60 m) — cap 29, reaching ~48 m.
+keeper-loop-throw: 12/12 looped and received, apex 9.5 m, zero steals while
+held. Distribution now: flat throw → loop throw (pressed) / drop-kick
+(unpressed) → aimed counter punt → long punt. 89/89.
+
 ## 2026-07-22 — The aimed counter punt + the ground-kick menu
 
 Builder: keepers kick from their hands AT areas/runners for counters; ground
