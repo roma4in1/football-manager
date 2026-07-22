@@ -1546,24 +1546,33 @@ export class Sim {
     const zCap = nearGoal ? BALL.headMaxZ : BALL.claimMaxZ;
     if (airborne) {
       // the FIRST point at catchable height and DESCENDING — the drop for a
-      // loft, immediately for a flat cross that never climbs above zCap. Scanned
-      // FINE and taken EARLIEST: a fast descent crosses the 0.5 m window between
-      // coarse samples and by the low sample it has already bounced (vz>0), so
-      // the old coarse+nearest scan skipped the real drop and targeted the
-      // post-bounce ROLL — walking the receiver clean past it to the sideline.
-      let prevZ = this.ball.z;
-      for (let t = 0.05; t <= 6.0; t += 0.05) {
-        const s = predictBallState(this.ball, t);
+      // loft, immediately for a flat cross that never climbs above zCap. Taken
+      // EARLIEST at every physics tick: a fast descent crosses the 0.5 m window
+      // in ONE tick and by the next it has bounced (vz>0), so the old
+      // coarse+nearest scan skipped the real drop and targeted the post-bounce
+      // ROLL — walking the receiver clean past it to the sideline. ONE clone
+      // stepped incrementally (a fresh predictBallState per sample re-simulates
+      // the whole flight each time; DT is the true resolution anyway).
+      const c: BallState = {
+        pos: { ...this.ball.pos }, z: this.ball.z, vel: { ...this.ball.vel }, vz: this.ball.vz,
+        spin: this.ball.spin, phase: 'airborne', carrierId: null, kickerId: null,
+        kickerLockUntilTick: 0, touchParity: false,
+      };
+      let prevZ = c.z;
+      for (let i = 1; i <= 60; i++) {
+        stepBall(c);
         // catchable height AND coming down to him: descending (flat cross that
         // never climbs above zCap) OR just crossed DOWN through zCap (a steep
         // drop the sample catches only after it has bounced, vz>0)
-        if (s.z <= zCap && (s.vz <= 0.2 || prevZ > zCap)) {
-          const d = Math.hypot(s.pos.x - body.pos.x, s.pos.y - body.pos.y);
-          near = { p: s.pos, d, t };
-          meet = { p: s.pos, tStar: t }; // he runs to the drop whether or not he'll beat it
+        if (c.z <= zCap && (c.vz <= 0.2 || prevZ > zCap)) {
+          const p = { x: c.pos.x, y: c.pos.y };
+          const t = i * DT;
+          const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
+          near = { p, d, t };
+          meet = { p, tStar: t }; // he runs to the drop whether or not he'll beat it
           break;
         }
-        prevZ = s.z;
+        prevZ = c.z;
       }
     } else {
       for (let t = 0.2; t <= 6.0; t += 0.2) {

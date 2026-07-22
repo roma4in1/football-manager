@@ -915,6 +915,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         // OUT-COMPETES the loft here and the cross into the box, and whether a
         // curl-to-feet should beat a cross-to-head or a loft-over is a real EV
         // calibration + scenario-isolation question. Deferred, not forced.
+        // AND: solveCurl fixes DIRECTION only — the integration must pick speed
+        // by roll reach (rollLaunchForArrival), not a flat constant: a 17 m/s
+        // ball dies at ~31 m (dry-grass friction + drag), silently short beyond.
       }
     }
     // ── the CROSS: a wide, advanced carrier whips an aerial ball into the box
@@ -962,10 +965,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     if (!keep) {
       const cy = PITCH.width / 2;
       const carrierSide = Math.sign(here.y - cy);
-      const loftDeg = DECIDE.switchFloatLoftDeg;
-      const land = leadByHang(loftDeg);
+      // gate on the MAN before paying for the flight solve — leadByHang runs
+      // two loft solves, wasted on every mate who isn't far-wide
       const farWide = carrierSide !== 0 && Math.sign(mate.pos.y - cy) === -carrierSide &&
         Math.abs(mate.pos.y - cy) >= DECIDE.switchWideM && Math.abs(here.y - cy) >= DECIDE.switchWideM;
+      const loftDeg = DECIDE.switchFloatLoftDeg;
+      const land = farWide ? leadByHang(loftDeg) : here;
       const dSwitch = Math.hypot(land.x - here.x, land.y - here.y);
       if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
         const speedS = solveLoftSpeed(dSwitch, loftDeg);

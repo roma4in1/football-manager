@@ -352,7 +352,13 @@ export function loftFlightTimeS(speed: number, loftDeg: number): number {
  * Magnus bend carries it OFF the straight line, so to ARRIVE at `target` you
  * aim off and let it curve back. Binary-search the launch heading whose spun
  * endpoint lands on the target's range. +spin bends +y, so the aim sits to the
- * −y side. Returns the point to strike toward (at the target's distance). */
+ * −y side. Returns the point to strike toward (at the target's distance).
+ *
+ * CONTRACT — direction only. The solver zeroes the PERPENDICULAR miss; RANGE is
+ * the caller's job: `speedMps` must roll `dist` (dry-grass friction + v²-drag
+ * kill a 17 m/s ball in ~31 m — audited: at d=44 the ball dies 13 m short, ON
+ * the line, direction still correct). A curl decision must pick speed by roll
+ * reach (rollLaunchForArrival / rollDistance) before calling this. */
 export function solveCurl(from: Vec2, target: Vec2, spin: number, speedMps: number): Vec2 {
   const dx = target.x - from.x, dy = target.y - from.y;
   const dist = Math.max(Math.hypot(dx, dy), 1e-6);
