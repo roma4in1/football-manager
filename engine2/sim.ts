@@ -326,7 +326,17 @@ export class Sim {
         }
         this.liveTargets.set(body.id, live);
       }
+      // the keeper's SHUFFLE: short repositioning stays square to the ball
+      // (facing locked, the shuffle tax on speed); a long relocation — the
+      // sweep, a big retreat — turns and runs like anyone
+      let face: Vec2 | undefined;
+      if (this.keepers.has(body.id) && !isCarrier) {
+        const kt = (body.command.type === 'chaseBall' ? live : undefined) ?? currentTarget(body);
+        const goDist = kt ? Math.hypot(kt.x - body.pos.x, kt.y - body.pos.y) : 0;
+        if (goDist <= BALL.keeperShuffleMaxM) face = { x: this.ball.pos.x, y: this.ball.pos.y };
+      }
       stepBody(body, this.tick, {
+        face,
         external: body.command.type === 'chaseBall' ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,

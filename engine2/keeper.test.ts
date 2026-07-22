@@ -155,6 +155,22 @@ test('the SWEEPER: a high line with play upfield, and the ball in behind is swep
   assert.ok(swept >= 9, `he sweeps the ball in behind before the runner arrives (${swept}/12)`);
 });
 
+test('the SHUFFLE: repositioning, the keeper stays square to the ball — he never shows it his back', () => {
+  const sim = new Sim(scenarioByName('keeper-angle'), `ka-0`);
+  let worstOff = 0;
+  let moved = false;
+  for (let t = 0; t < 90; t++) {
+    sim.step();
+    const k = sim.bodies.find((b) => b.id === 'keeper')!;
+    if (k.speed > 0.5) moved = true;
+    const toBall = Math.atan2(sim.ball.pos.y - k.pos.y, sim.ball.pos.x - k.pos.x);
+    const off = Math.abs(((toBall - k.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    if (t > 15) worstOff = Math.max(worstOff, off);
+  }
+  assert.ok(moved, 'he genuinely moves while tracking (a standing keeper proves nothing)');
+  assert.ok(worstOff < Math.PI / 4, `facing stays on the ball while he shuffles (worst ${(worstOff * 180 / Math.PI).toFixed(0)}°)`);
+});
+
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
   const def: ScenarioDef = {

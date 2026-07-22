@@ -133,6 +133,9 @@ export const BALL = {
   keeperParryWideRad: 0.7,
   keeperEngageM: 22, // he deals with balls THREATENING his goal, not midfield
   keeperReactTicks: 2, // 0.2 s before the dive tracks the shot's line
+  /** within this far to go he SHUFFLES — square to the ball, never showing it
+   * his back; a longer relocation (a sweep, a big retreat) turns and runs */
+  keeperShuffleMaxM: 7,
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
