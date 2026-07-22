@@ -20,6 +20,7 @@ import knockPast from './knock-past.ts';
 import { l4Scenarios } from './l4-decisions.ts';
 import { aerialScenarios } from './aerial.ts';
 import { curveScenarios } from './curve.ts';
+import { keeperScenarios } from './keeper.ts';
 
 export const SCENARIOS: readonly ScenarioDef[] = [
   // L1 — movement (regression set)
@@ -34,6 +35,8 @@ export const SCENARIOS: readonly ScenarioDef[] = [
   ...aerialScenarios,
   // L-curve — the Magnus bend
   ...curveScenarios,
+  // L7 — the goalkeeper
+  ...keeperScenarios,
 ];
 
 export const scenarioByName = (name: string): ScenarioDef => {

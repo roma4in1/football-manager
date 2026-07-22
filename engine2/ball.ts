@@ -92,6 +92,19 @@ export const BALL = {
   blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not deflected
   blockDeflectKeep: 0.35, // an OPPONENT'S block scrubs most of the pace off
   collisionDeflectKeep: 0.55, // a teammate not defending caroms more pace on
+  /** L7 KEEPER — the save on the same xyz footing as the block, but with a
+   * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
+   * with firstTouch (a clean catch vs a parry). Attributes are the outfield
+   * schema deliberately: agility ≈ reflexes/dive, firstTouch ≈ handling. */
+  keeperDepthM: 3.5, // off his line toward the ball (angle play depth)
+  keeperReachBaseM: 1.35,
+  keeperReachAgility: 0.035, // agility 20 → 2.05 m dive radius
+  keeperCatchBase: 8, // catchable ball speed floor...
+  keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~12.9 m/s)
+  keeperCatchMaxZ: 2.2, // a stinger above this is parried, not held
+  keeperParryKeep: 0.35, // a parry scrubs the shot's pace like a block
+  keeperEngageM: 22, // he deals with balls THREATENING his goal, not midfield
+  keeperReactTicks: 1, // 0.1 s before the dive tracks the shot's line
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,

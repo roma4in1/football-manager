@@ -22,6 +22,7 @@ import { KIN, regimeCapMps } from './kinematics.ts';
 export const GOAL = {
   mouthHalfWidthM: 3.66,
   centerY: PITCH.width / 2,
+  barZ: 2.44, // crossbar — a ball over it is not a goal (and not saveable)
 } as const;
 
 export interface PlayInstructions {
@@ -729,7 +730,22 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // clear chance is shot, not driven past (the breakaway property)
   const xGHere = !keep && dGoal <= DECIDE.shootRangeM ? xG(here, team, bodies.filter((b) => b.id !== carrier.id)) : 0;
   if (!keep && dGoal <= DECIDE.shootRangeM) {
-    options.push({ kind: 'shoot', dest: g, speedMps: DECIDE.shotSpeedMps, utility: xGHere });
+    // KEEPER-BEATING placement (L7): a shot at the CENTER is a shot at the
+    // keeper — aim just inside the corner whose lane is clearer of bodies
+    let dest = g;
+    let bestClear = -1;
+    for (const side of [-1, 1] as const) {
+      const c = { x: g.x, y: GOAL.centerY + side * (GOAL.mouthHalfWidthM - 0.6) };
+      let clear = Infinity;
+      for (const o of opponents) {
+        const ldx = c.x - here.x, ldy = c.y - here.y;
+        const len2 = ldx * ldx + ldy * ldy;
+        const t = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((o.pos.x - here.x) * ldx + (o.pos.y - here.y) * ldy) / len2));
+        clear = Math.min(clear, Math.hypot(o.pos.x - (here.x + ldx * t), o.pos.y - (here.y + ldy * t)));
+      }
+      if (clear > bestClear) { bestClear = clear; dest = c; }
+    }
+    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere });
   }
 
   // PASS — each teammate, at a lead point if he is moving

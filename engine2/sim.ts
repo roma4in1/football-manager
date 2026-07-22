@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, predictBall, predictBallState, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { attackSign, decide, DECIDE, goalCenter, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { attackSign, decide, DECIDE, GOAL, goalCenter, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -46,6 +46,15 @@ export class Sim {
   /** L4: bodies that run the on-ball decision loop, their instructions,
    * their current intent, and the action label shown in the workbench */
   private readonly brains = new Set<string>();
+  /** L7: goalkeeper bodies — they self-position (angle play) and stop shots */
+  private readonly keepers = new Set<string>();
+  /** tick a keeper first SAW the live shot — the dive starts after his
+   * reaction (keeperReactTicks); before it he holds his angle */
+  private readonly keeperShotSeen = new Map<string, number>();
+  /** goals conceded — a ball crossing either goal line between the posts,
+   * under the bar. The minimal seam L7 acceptance needs (saved vs beaten);
+   * restarts stay L8's. `against` is the team whose goal it crossed. */
+  readonly goals: { tick: number; against: 'home' | 'away'; y: number; z: number }[] = [];
   private readonly instructions = new Map<string, PlayInstructions>();
   private readonly intents = new Map<string, Intent>();
   private readonly actionLabels = new Map<string, string>();
@@ -117,6 +126,7 @@ export class Sim {
     }
     for (const b of def.bodies) {
       if (b.brain === 'onBall') this.brains.add(b.id);
+      if (b.keeper) this.keepers.add(b.id);
       if (b.instructions) this.instructions.set(b.id, { ...b.instructions });
       this.homes.set(b.id, { ...b.pos });
     }
@@ -169,6 +179,10 @@ export class Sim {
     // 1b. L4 — the on-ball decision loop (after scripts: a scripted re-target
     // on a brainless body stands; the carrier's OWN command is decision-owned)
     this.decidePhase();
+
+    // 1c. L7 — keepers self-position on the ball–goal line (after decide so a
+    // keeper with the ball at his feet is decision- or script-owned that tick)
+    this.keeperPhase();
 
     // 2. bodies move; chaseBall runs to the INTERCEPT point (players
     // anticipate where a ball is going, they don't chase its tail), and a
@@ -431,7 +445,22 @@ export class Sim {
     // a ball over any boundary is DEAD where it crossed (restarts are L8's;
     // until then it must not roll to infinity — the L4 shot exposed this).
     // Drill BOUNDS count as boundaries too (positional grids).
+    // L7 GOAL seam: a crossing of either END line between the posts, under the
+    // bar, is a GOAL — recorded (the save/beaten measurement) before the ball
+    // goes dead. Crossing point interpolated along this tick's swept path.
     const ob = this.bounds;
+    if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
+      (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length)) {
+      const lineX = this.ball.pos.x < 0 ? 0 : PITCH.length;
+      const dx = this.ball.pos.x - ballFrom.x;
+      const t = Math.abs(dx) < 1e-9 ? 1 : (lineX - ballFrom.x) / dx;
+      const yAt = ballFrom.y + (this.ball.pos.y - ballFrom.y) * Math.max(0, Math.min(1, t));
+      const zAt = zFrom + (this.ball.z - zFrom) * Math.max(0, Math.min(1, t));
+      if (Math.abs(yAt - GOAL.centerY) <= GOAL.mouthHalfWidthM && zAt <= GOAL.barZ) {
+        // the team DEFENDING this end conceded (home attacks +x, defends x=0)
+        this.goals.push({ tick: this.tick, against: lineX === 0 ? 'home' : 'away', y: yAt, z: zAt });
+      }
+    }
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
       (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length ||
         this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width ||
@@ -448,6 +477,7 @@ export class Sim {
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
     this.resolveHeaders(ballFrom);
+    this.resolveSaves(ballFrom);
     this.resolveChestControl(ballFrom, zFrom);
     this.resolveBlocks(ballFrom);
     this.resolveClaims(ballFrom);
@@ -840,6 +870,113 @@ export class Sim {
     ball.phase = 'carried';
     this.completeChases(w.team);
     this.actionLabels.set(w.id, 'chest');
+  }
+
+  /** L7 — ANGLE PLAY: the keeper holds the ball–goal line at depth, shading to
+   * the ball's angle, clamped to the frame's shadow. He owns his own movement. */
+  private keeperPhase(): void {
+    if (this.keepers.size === 0) return;
+    for (const id of this.keepers) {
+      const k = this.byId.get(id);
+      if (!k || this.ball.carrierId === id) continue; // with the ball he's a player
+      const sign = attackSign(k.team);
+      const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+      // the DIVE: a live shot at his goal — after his reaction, he attacks the
+      // shot's LINE (its closest point to him) flat out; corners beat the
+      // reaction, straight ones don't (why placement matters)
+      const shotThreat = this.ball.carrierId === null && this.ball.phase !== 'dead' &&
+        Math.hypot(this.ball.vel.x, this.ball.vel.y, this.ball.vz) >= BALL.blockMinSpeedMps &&
+        Math.hypot(this.ball.pos.x - own.x, this.ball.pos.y - own.y) <= BALL.keeperEngageM &&
+        this.ball.vel.x * (own.x - this.ball.pos.x) > 0 && this.ball.z <= GOAL.barZ;
+      if (shotThreat) {
+        const seen = this.keeperShotSeen.get(id) ?? this.tick;
+        this.keeperShotSeen.set(id, seen);
+        if (this.tick - seen >= BALL.keeperReactTicks) {
+          const vx = this.ball.vel.x, vy = this.ball.vel.y;
+          const v2 = Math.max(vx * vx + vy * vy, 1e-9);
+          const t = Math.max(0, ((k.pos.x - this.ball.pos.x) * vx + (k.pos.y - this.ball.pos.y) * vy) / v2);
+          const dive = { x: this.ball.pos.x + vx * t, y: this.ball.pos.y + vy * t };
+          const cur = k.command.type === 'moveTo' ? k.command.target : null;
+          if (!cur || Math.hypot(cur.x - dive.x, cur.y - dive.y) > 0.2) {
+            this.assign(k, { type: 'moveTo', target: dive, regime: 'sprint' });
+          }
+          continue;
+        }
+      } else {
+        this.keeperShotSeen.delete(id);
+      }
+      const bx = this.ball.pos.x - own.x;
+      const by = this.ball.pos.y - own.y;
+      const d = Math.max(Math.hypot(bx, by), 1e-6);
+      const depth = Math.min(BALL.keeperDepthM, Math.max(0.6, d - 1));
+      const spot = { x: own.x + (bx / d) * depth, y: own.y + (by / d) * depth };
+      // no point standing beyond the post line — the frame is what he guards
+      spot.y = Math.max(GOAL.centerY - GOAL.mouthHalfWidthM - 0.5,
+        Math.min(GOAL.centerY + GOAL.mouthHalfWidthM + 0.5, spot.y));
+      const cur = k.command.type === 'moveTo' ? k.command.target : null;
+      if (!cur || Math.hypot(cur.x - spot.x, cur.y - spot.y) > 0.3) {
+        const far = Math.hypot(k.pos.x - spot.x, k.pos.y - spot.y);
+        this.assign(k, { type: 'moveTo', target: spot, regime: far > 3 ? 'sprint' : 'run' });
+      }
+    }
+  }
+
+  /** L7 — the SAVE: a free ball THREATENING his goal, within his dive's xyz
+   * reach — CAUGHT (held, he becomes the carrier) when slow/low enough for his
+   * handling, else PARRIED wide of the mouth. The block's swept footing with a
+   * dive's reach (agility) and a catch (firstTouch as handling). Claims on
+   * crosses, distribution, and sweeping are later L7 sub-phases. */
+  private resolveSaves(from: Vec2): void {
+    const ball = this.ball;
+    if (ball.carrierId !== null || ball.phase === 'dead') return;
+    const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    if (speed < 3) return; // a dying ball is an ordinary claim
+    for (const id of this.keepers) {
+      const k = this.byId.get(id);
+      if (!k) continue;
+      if (k.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      const sign = attackSign(k.team);
+      const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+      // only a ball threatening HIS goal: near it, travelling toward it, under
+      // the bar's height (over it, it is going over anyway)
+      const dGoal = Math.hypot(ball.pos.x - own.x, ball.pos.y - own.y);
+      if (dGoal > BALL.keeperEngageM) continue;
+      if (ball.vel.x * (own.x - ball.pos.x) <= 0) continue; // moving away
+      if (ball.z > GOAL.barZ) continue;
+      const reach = BALL.keeperReachBaseM + BALL.keeperReachAgility * k.attributes.agility;
+      const { d, at } = this.sweptApproach(k, from);
+      if (d > reach) continue;
+      const catchable = speed <= BALL.keeperCatchBase + BALL.keeperCatchTouch * k.attributes.firstTouch &&
+        ball.z <= BALL.keeperCatchMaxZ;
+      ball.pos = { x: at.x, y: at.y };
+      ball.vz = 0;
+      ball.z = 0;
+      ball.spin = 0;
+      if (catchable) {
+        // held — his ball now
+        ball.vel = { x: 0, y: 0 };
+        ball.phase = 'carried';
+        ball.carrierId = k.id;
+        ball.kickerId = null;
+        this.completeChases(k.team);
+        this.actionLabels.set(k.id, 'save-catch');
+      } else {
+        // PARRY — pushed wide: outward from the goal centre through the
+        // contact (the dive's side), scrubbed like a block, with noise
+        const ang = Math.atan2(at.y - own.y, at.x - own.x) +
+          this.rng.gauss(0, 0.35, this.tick, k.id, 'parry');
+        const sp = speed * BALL.keeperParryKeep;
+        ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
+        ball.vz = sp * 0.25;
+        ball.z = 0.01;
+        ball.phase = 'airborne';
+        ball.carrierId = null;
+        ball.kickerId = k.id;
+        ball.kickerLockUntilTick = this.tick + 4;
+        this.actionLabels.set(k.id, 'save-parry');
+      }
+      return; // one pair of hands per tick
+    }
   }
 
   /** the 3-D COLLISION — interception in xyz, not xy: a DRIVEN airborne ball
