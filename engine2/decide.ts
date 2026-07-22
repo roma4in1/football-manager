@@ -25,6 +25,11 @@ import { KIN, regimeCapMps } from './kinematics.ts';
  * engaged (the no-man's band). They move together or not at all. */
 export const DUEL = {
   activeRangeM: 8, // a chaser this near an opponent carrier is IN the duel
+  /** activation LEADS the closing: a carrier driving at you at 6 m/s puts you
+   * in the duel from ~15 m — you start dropping and build goalward momentum
+   * BEFORE he arrives (a defender met flat-footed or stepping toward a
+   * full-pace attacker is the easiest man in football to pass) */
+  activeCloseGainS: 1.2,
   holdM: 2.0, // the jockey's hold distance, on the carrier→goal line
   arcLowM: 2.2, // the attacker's working arc (knock-and-go reads these)
   arcHighM: 2.7,
@@ -48,6 +53,12 @@ export const DUEL = {
    * repeated 27% tackles compound to inevitability over any crawl (16/16
    * defender wins vs elite close control — the July measurement). */
   staggerTicks: 8,
+  /** after the plant, the BEATEN window: he shadows (recover/jockey) but
+   * cannot re-ENGAGE — one beat buys real freedom (with cover a mate takes
+   * over; a lone man cannot both recover and immediately lunge again). This
+   * breaks the cycle-compounding that re-fronted every stagger into
+   * inevitability (close control through 1/16 without it). */
+  beatenTicks: 25,
   /** the KNOCK-AND-GO: the utility gain on the reclaim point's value — the
    * burst past a jockey is the attacker's half of the duel */
   knockGain: 1.2, // tempered — the chance-creation term carries the value

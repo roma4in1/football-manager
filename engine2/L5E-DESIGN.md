@@ -96,6 +96,20 @@ or not at all.
   stands: a proper keeper (delay, spread, pounce) deals with the 1v1; a
   stranded one is punished by placement/chip. Deferred with evidence.
 
+### Session finding: the front-on duel needs the attacker's BEAT vocabulary
+
+With the machine riding properly (momentum-aware activation, give-ground at a
+concede rate, engage-gated tackle AND pinch), the front-on attacker loses by
+COLLISION-STRIP — he drives into the riding body, the dribble coupling breaks,
+and the loose ball is claimed. Zero tackles needed; touch skill irrelevant
+(close 1/16, heavy 0/16). The pinch/tackle/touch-shorten knobs were each
+tried and measured — none is the answer, because the missing half is the
+ATTACKER'S BEAT: the arc around the arc-band, the angle-change at the hold
+boundary, the feint (this was always "L4's move" per the original drill). The
+old 12/16 through-pin encoded the pre-machine static defense and is retired;
+the head-on test pins engagement + the defensive win until the beat lands.
+Design the beat as a unit with the knock-and-go (they share the arc bands).
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each

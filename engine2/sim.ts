@@ -325,8 +325,15 @@ export class Sim {
           // well out — a single threshold FLAPS (charge → bounce → charge),
           // thrashing a rotating bearing (the judged 360°)
           const contact = gapBC <= BALL.controlRadiusM && (dToCar <= 1.9 || (containing && dToCar <= 2.6));
+          // activation LEADS the closing: a carrier driving AT this defender
+          // extends the duel range by his closing speed — the defender starts
+          // dropping early and meets him already moving goalward, never
+          // flat-footed or stepping INTO a full-pace attacker
+          const toMe0X = (body.pos.x - carrierB.pos.x) / Math.max(dToCar, 1e-6);
+          const toMe0Y = (body.pos.y - carrierB.pos.y) / Math.max(dToCar, 1e-6);
+          const closing0 = carrierB.vel.x * toMe0X + carrierB.vel.y * toMe0Y;
           const inDuel = carrierB.team !== body.team && !this.keepers.has(body.id) &&
-            dToCar <= DUEL.activeRangeM;
+            dToCar <= DUEL.activeRangeM + Math.max(0, closing0) * DUEL.activeCloseGainS;
           // the STAGGER outranks everything — a planted man is planted, even
           // in contact range (the contain was bypassing the beaten moment)
           const st0 = this.duels.get(body.id);
@@ -336,9 +343,10 @@ export class Sim {
             this.containBearing.delete(body.id);
           } else if (contact) {
             // contact IS engagement — promote the record so the tackle gate
-            // opens (a stale jockey record was blocking tackles forever)
+            // opens (a stale jockey record was blocking tackles forever) —
+            // unless he is in the BEATEN window (shadow, no lunge)
             const dr = this.duels.get(body.id);
-            if (dr) { dr.state = 'engage'; this.duels.set(body.id, dr); }
+            if (dr && this.tick >= (dr.beatenUntil ?? 0)) { dr.state = 'engage'; this.duels.set(body.id, dr); }
             let bearing = this.containBearing.get(body.id);
             if (bearing === undefined) {
               bearing = Math.atan2(body.pos.y - carrierB.pos.y, body.pos.x - carrierB.pos.x);
@@ -395,7 +403,8 @@ export class Sim {
                 }
               } else if (!duel.goalSide) {
                 duel.state = 'recover';
-              } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM) {
+              } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM &&
+                this.tick >= (duel.beatenUntil ?? 0)) {
                 duel.state = 'engage';
               } else {
                 // JOCKEY only while a square backpedal can hold the gap. Too
@@ -434,10 +443,21 @@ export class Sim {
                 // targeting the 2.0 m point directly meant a defender 6 m
                 // goal-side ran forward INTO the carrier (the invisible
                 // jockey): you GIVE GROUND square-on, you don't charge
-                const range = duel.state === 'track'
-                  ? Math.max(DUEL.holdM, Math.min(gdF - 0.5, DUEL.holdM))
-                  : Math.max(DUEL.holdM, Math.min(dToCar, gdF - 0.5));
+                // NEVER approach a closing carrier (an attacker passes a
+                // defender who is static or stepping toward him for free —
+                // builder judgment): concede ground at a controlled rate and
+                // let HIM close the gap to the hold; actively converge only
+                // on an escaping/parallel carrier.
+                const concede = closing0 > 0.5 ? 0.2 : 0.5;
+                const range = Math.max(DUEL.holdM, Math.min(dToCar - concede, gdF - 0.5));
                 live = { x: cfx + tgx * range, y: cfy + tgy * range };
+                if (duel.state === 'track' && closing0 > 0.5) {
+                  // the concede RATE is a speed: give ground at his pace minus
+                  // ~1.7 m/s so the gap closes toward the hold under control —
+                  // unbounded full-speed retreat was elastic (herded 20 m at a
+                  // constant 8 m gap, never engaging)
+                  timedCap = Math.min(timedCap ?? Infinity, Math.max(2.5, carrierB.speed - 1.7));
+                }
                 if (duel.state === 'jockey') {
                   // backpedal-capped, square to the ball (the L1 face-lock);
                   // TRACK is the full-speed escort — the cap alone donated a
@@ -655,7 +675,7 @@ export class Sim {
    * escort of a carrier at pace) / ENGAGE (the committed close, resolved by
    * the contain + tackle machinery inside 1.9 m). The pressure meter is the
    * patience: it fills with jockey time, spikes on a stopped carrier. */
-  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number }>();
+  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number }>();
   /** pre-movement positions this tick — claims sweep the ball's path in the
    * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
    * against his end position alone skips the reach window) */
@@ -711,6 +731,7 @@ export class Sim {
         st.state = 'staggered';
         st.pressure = 0;
         st.plantedUntil = this.tick + DUEL.staggerTicks;
+        st.beatenUntil = this.tick + DUEL.beatenTicks;
         this.duels.set(b.id, st);
         this.containBearing.delete(b.id);
         this.actionLabels.set(b.id, 'staggered');
@@ -1676,6 +1697,14 @@ export class Sim {
       // — the possession ping-pong the level audit measured (a genuinely
       // loose ball, carrierId null, is unaffected: teammates DO collect it).
       if (carrier && b.team === carrier.team) continue;
+      // the DUEL owns its resolutions (L5E): a jockeying/tracking duelist no
+      // more pinches than he tackles — the steal belongs to ENGAGE. The ride
+      // was a free strip outside the machine (close control lost 15/16
+      // head-on with ZERO tackles rolled).
+      if (carrier) {
+        const pd = this.duels.get(b.id);
+        if (pd && pd.state !== 'engage') continue;
+      }
       const { d, at } = segNearest(b);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
