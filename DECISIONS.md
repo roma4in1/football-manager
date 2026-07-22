@@ -3,6 +3,39 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The keeper's position is SITUATIONAL: 1v1 rush, sweeper, hands-before-head
+
+Builder round: 1v1 → the keeper meets it at the middle/edge of his box;
+possession → a sweeper's high line. Position is never fixed.
+
+- **The depth ladder** (`keeperPhase`): dive (live shot) → **1v1 rush** (lone
+  opponent through, no defender goal-side, read EARLY from 45 m — at 30 he was
+  mid-rush when the shot came; out to 13 m, the smother = the pinch/save duel
+  at his arrival) → **sweeper** (own possession or play far upfield → high
+  line to 16 m) → base angle play. The frame-shadow clamp widens with depth.
+- **A shot is mouth-bound AND imminent** (< 1.3 s to the line): a 55 m
+  diagonal crossing the mouth's extrapolation is a ball to SWEEP — it was
+  making him retreat-and-dive while the runner ran onto it.
+- **The sweep is a RACE, not a receive**: the generic chase's receive machine
+  stood him politely on the line while the bounce drifted past his reach. He
+  attacks the earliest ground point on the predicted path he can beat the ball
+  to; inside 1.2 m the claim machinery takes over.
+- **HANDS BEFORE HEAD** — the ordering principle a trace exposed: resolveSaves
+  runs before resolveHeaders. The header contest was making the keeper weakly
+  NOD a catchable dropping ball straight to the arriving runner (sweeps went
+  1/16 → 16/16 on this one change). Above the catch ceiling the ball still
+  falls to the header contest — that is the punch. Saves no-op without
+  keepers, so nil blast radius.
+- **Parries turn WIDE** (keeperParryWideRad 0.7): a central palm-back teed up
+  the runner. The catch gathers up to ~13.9 m/s (keeperCatchBase 9).
+
+keeper-1v1: out 11.4 m, 15/16 dealt with — the striker's counters (the chip
+over the rushing keeper, going round him) are the parked L5e-duel/chip work;
+reported as a tension, not tuned away. keeper-sweeper: high line + sweep
+16/16. shot-save / shot-angle / keeper-angle gained a recovering goal-side
+defender each so they keep testing SHOT-STOPPING and base angle play (a lone
+striker is now, correctly, a 1v1 and a different scenario). 82/82.
+
 ## 2026-07-22 — Keeper craft: near-post cover, closing down, across-goal + the in-stride strike
 
 Builder round on the fresh keeper: goals visible in the workbench (bright
