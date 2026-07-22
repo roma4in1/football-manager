@@ -3,6 +3,36 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — L7 sub-phase 1: the keeper (angle, dive, catch/parry) + the goal seam
+
+The first L7 tenant, on the xyz footing the block established. Attributes map
+deliberately onto the outfield schema (agility ≈ reflexes/dive, firstTouch ≈
+handling) — no schema change.
+
+- **Angle play** (`keeperPhase`): a `keeper: true` body self-positions on the
+  ball–goal line at `keeperDepthM`, clamped to the frame's shadow; mirrors a
+  carrier across the box at 0.44 m avg off-line. He owns his own movement —
+  scenario scripts should not command him.
+- **The dive**: on a live shot he attacks the shot's LINE flat out after a
+  0.1 s reaction. His accel-limited travel + reach vs the corner's offset is a
+  genuine knife-edge — placed corners beat him, central shots don't.
+- **The save** (`resolveSaves`, headers → SAVES → chest → block → claim): a
+  holdable ball (speed ≤ 8+0.35·firstTouch, z ≤ 2.2) is CAUGHT and held (he
+  becomes the carrier); a stinger is PARRIED wide of the mouth, scrubbed 0.35.
+- **Keeper-beating placement** (the noted L7 hook): decide's shot aims just
+  inside the corner with the clearer lane, not the center — a center shot is a
+  shot at the keeper. All prior shot scenarios hold.
+- **The goal seam**: an end-line crossing between the posts under the bar
+  (`GOAL.barZ` 2.44) is recorded to `sim.goals` (interpolated on the swept
+  path) before the ball goes dead. The saved-vs-beaten measurement; restarts
+  stay L8's.
+
+shot-save (17 m unpressured, placed): 9 save / 8 goal / 3 wide over 20 seeds —
+~53% on-target save rate; the dial is keeperReachBaseM (1.35) and
+keeperReactTicks (1). keeperReachAgility stayed 0.035 — a 0.045 probe moved
+NOTHING (the dive's travel binds, not the static radius), so it was reverted.
+Later sub-phases: claims/punches on crosses, distribution, sweeping. 79/79.
+
 ## 2026-07-21 — Delivery decisions: the AI crosses, switches, cuts back (+ accuracy)
 
 The aerial mechanics were inert — decide.ts chose only a ground pass and one
