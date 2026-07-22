@@ -25,7 +25,7 @@ import {
   type ScenarioDef,
   type Vec2,
 } from './engine2-types.ts';
-import { BALL, kickBall, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
 import { aerialCompletion, attackSign, decide, DECIDE, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
@@ -952,13 +952,15 @@ export class Sim {
             if (m) {
               const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
               const lead = { x: m.pos.x + m.vel.x * 0.4, y: m.pos.y + m.vel.y * 0.4 };
-              // dry grass kills a rolled ball by ~38 m — beyond ~30 the pass
-              // is a DRIVEN LOW ball: flighted flat, landing short, skidding
-              // the last metres in with pace
+              // the ground-kick MENU, honestly derived from this pitch's
+              // friction: a weighted roll dies by ~20 m; the low GRASS CUTTER
+              // (5°, skimming) carries pace to ~30; beyond that only the
+              // PINGED 16° driven ball arrives alive (a rolled ball is dead by
+              // 38, and an 8° delivery needed an uncontrollable rocket)
               if (dm > 30) {
-                // ~16°: a real driven pass — 8° needed a ~40 m/s rocket to
-                // carry, which no first touch survives
                 kickBall(this.ball, lead, solveLoftSpeed(Math.max(6, dm - 5), 16), 16, id, this.tick);
+              } else if (dm > 20) {
+                kickBall(this.ball, lead, 26, 5, id, this.tick); // the grass cutter
               } else {
                 kickBall(this.ball, lead, Math.max(8, Math.min(19, rollLaunchForArrival(5, dm))), 0, id, this.tick);
               }
@@ -1040,15 +1042,43 @@ export class Sim {
             this.keeperDropPass = { keeperId: id, mateId: kickable.mate.id, strikeTick: this.tick + BALL.keeperDropTicks };
             this.actionLabels.set(id, 'drop');
           } else {
-            // the PUNT — high and long upfield
-            const upAng = (sign > 0 ? 0 : Math.PI) +
-              this.rng.gauss(0, BALL.keeperPuntScatterRad, this.tick, id, 'punt');
-            const target = {
-              x: k.pos.x + Math.cos(upAng) * 55,
-              y: Math.max(8, Math.min(PITCH.width - 8, k.pos.y + Math.sin(upAng) * 55)),
-            };
-            kickBall(this.ball, target, BALL.keeperPuntSpeed, BALL.keeperPuntLoftDeg, id, this.tick);
-            this.actionLabels.set(id, 'punt');
+            // the PUNT — kicked from the hands, AIMED: the most advanced OPEN
+            // mate (a runner breaking for the counter) is led by the punt's
+            // hang time; only with nobody upfield does it go long to space
+            let counter: { mate: BodyState; d: number } | null = null;
+            for (const m of this.bodies) {
+              if (m.team !== k.team || m.id === id) continue;
+              const up = (m.pos.x - k.pos.x) * sign;
+              if (up < 15) continue; // a counter target is genuinely upfield
+              const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
+              if (dm > 68) continue;
+              const open = !this.bodies.some((o) => o.team !== k.team &&
+                Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 5);
+              if (!open) continue;
+              if (!counter || up > (counter.mate.pos.x - k.pos.x) * sign) counter = { mate: m, d: dm };
+            }
+            if (counter) {
+              // a flatter, faster punt for the counter — led into the run
+              const spd0 = solveLoftSpeed(counter.d, 28);
+              const hang = loftFlightTimeS(spd0, 28);
+              const lead = {
+                x: counter.mate.pos.x + counter.mate.vel.x * hang,
+                y: Math.max(4, Math.min(PITCH.width - 4, counter.mate.pos.y + counter.mate.vel.y * hang)),
+              };
+              const dLead = Math.hypot(lead.x - k.pos.x, lead.y - k.pos.y);
+              kickBall(this.ball, lead, Math.min(32, solveLoftSpeed(dLead, 28)), 28, id, this.tick);
+              this.intendedReceiverId = counter.mate.id;
+              this.actionLabels.set(id, 'punt');
+            } else {
+              const upAng = (sign > 0 ? 0 : Math.PI) +
+                this.rng.gauss(0, BALL.keeperPuntScatterRad, this.tick, id, 'punt');
+              const target = {
+                x: k.pos.x + Math.cos(upAng) * 55,
+                y: Math.max(8, Math.min(PITCH.width - 8, k.pos.y + Math.sin(upAng) * 55)),
+              };
+              kickBall(this.ball, target, BALL.keeperPuntSpeed, BALL.keeperPuntLoftDeg, id, this.tick);
+              this.actionLabels.set(id, 'punt');
+            }
           }
         }
         continue;

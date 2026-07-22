@@ -199,4 +199,30 @@ export const keeperBuildup: ScenarioDef = {
   script: [],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup];
+/** the COUNTER punt: the keeper kicks FROM HIS HANDS at a specific target —
+ * the runner breaking upfield — led by the punt's hang time. Near mates are
+ * marked; the counter is on. */
+export const keeperCounter: ScenarioDef = {
+  version: 1,
+  name: 'keeper-counter',
+  description: 'Holding the ball with a runner breaking upfield, the keeper punts from his hands INTO the run — aimed and led, launching the counter. Judge the target choice and the lead.',
+  durationTicks: 100,
+  bodies: [
+    { id: 'keeper', team: 'away', pos: { x: 103, y: 34 }, attributes: gloves, keeper: true },
+    // near mates marked — no throw, no short build-up
+    { id: 'fb', team: 'away', pos: { x: 92, y: 50 }, attributes: outfield, brain: 'onBall' },
+    { id: 'm1', team: 'home', pos: { x: 91, y: 49 }, attributes: outfield },
+    { id: 'cm', team: 'away', pos: { x: 90, y: 30 }, attributes: outfield, brain: 'onBall' },
+    { id: 'm2', team: 'home', pos: { x: 89, y: 29 }, attributes: outfield },
+    // the RUNNER breaking upfield (away attacks −x) with a trailing defender
+    { id: 'runner', team: 'away', pos: { x: 55, y: 30 }, attributes: { ...outfield, pace: 15 }, brain: 'onBall' },
+    { id: 'chaser', team: 'home', pos: { x: 61, y: 31 }, attributes: outfield },
+  ],
+  ball: { carrier: 'keeper' },
+  script: [
+    { atTick: 2, bodyId: 'runner', command: { type: 'moveTo', target: { x: 22, y: 26 }, regime: 'sprint' } },
+    { atTick: 4, bodyId: 'chaser', command: { type: 'moveTo', target: { x: 28, y: 28 }, regime: 'sprint' } },
+  ],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup, keeperCounter];

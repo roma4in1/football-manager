@@ -282,6 +282,23 @@ test('the DROP TO FEET: unpressed with the open man beyond throw range, he puts 
   assert.ok(received >= 8, `the far centre-back receives the build-up pass (${received}/12)`);
 });
 
+test('the COUNTER punt: kicked from the hands AT the breaking runner, led into his run', () => {
+  let aimed = 0;
+  let collected = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('keeper-counter'), `kc-${s}`);
+    let saw = false;
+    for (let t = 0; t < 100; t++) {
+      const f = sim.step();
+      if (!saw && f.bodies.find((b) => b.id === 'keeper' && b.action === 'punt')) saw = true;
+      if (saw && sim.ball.carrierId === 'runner') { collected++; break; }
+    }
+    if (saw) aimed++;
+  }
+  assert.ok(aimed >= 10, `with a runner breaking, the punt launches the counter (${aimed}/12)`);
+  assert.ok(collected >= 8, `the led punt finds the runner in stride (${collected}/12)`);
+});
+
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
   const def: ScenarioDef = {
