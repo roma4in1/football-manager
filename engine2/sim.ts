@@ -335,6 +335,10 @@ export class Sim {
             live = undefined;
             this.containBearing.delete(body.id);
           } else if (contact) {
+            // contact IS engagement — promote the record so the tackle gate
+            // opens (a stale jockey record was blocking tackles forever)
+            const dr = this.duels.get(body.id);
+            if (dr) { dr.state = 'engage'; this.duels.set(body.id, dr); }
             let bearing = this.containBearing.get(body.id);
             if (bearing === undefined) {
               bearing = Math.atan2(body.pos.y - carrierB.pos.y, body.pos.x - carrierB.pos.x);
@@ -372,6 +376,10 @@ export class Sim {
               // STOPPED carrier invites the lunge; cover behind emboldens
               let fill = DT / DUEL.pressureFillS;
               if (carrierB.speed < 0.8) fill *= DUEL.pressureStoppedFactor;
+              // a carrier DRIVING AT YOUR GOAL cannot be waited out — urgency
+              // scales with his goalward closing speed
+              const gwSp = (carrierB.vel.x * (ownG.x - carrierB.pos.x) + carrierB.vel.y * (ownG.y - carrierB.pos.y)) / Math.max(gdC, 1e-6);
+              fill *= 1 + Math.max(0, gwSp) / 3;
               if (this.bodies.some((m) => m.team === body.team && m.id !== body.id &&
                 Math.hypot(m.pos.x - carrierB.pos.x, m.pos.y - carrierB.pos.y) < DUEL.dCoverM)) {
                 fill *= DUEL.pressureSupportFactor;
@@ -389,24 +397,47 @@ export class Sim {
                 duel.state = 'recover';
               } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM) {
                 duel.state = 'engage';
-              } else if (duel.state === 'track') {
-                duel.state = carrierB.speed < DUEL.trackExitMps ? 'jockey' : 'track';
               } else {
-                duel.state = carrierB.speed > DUEL.trackEnterMps ? 'track' : 'jockey';
+                // JOCKEY only while a square backpedal can hold the gap. Too
+                // hot — the carrier escaping at pace OR closing faster than
+                // ~3 m/s (a taxed backpedal is ~2-2.5) — and the hips TURN:
+                // TRACK, running the give-ground line at full speed, squaring
+                // up again when the closing calms. That alternation IS the
+                // visible jockey dance.
+                const toMeX = (body.pos.x - carrierB.pos.x) / Math.max(dToCar, 1e-6);
+                const toMeY = (body.pos.y - carrierB.pos.y) / Math.max(dToCar, 1e-6);
+                const closingSp = carrierB.vel.x * toMeX + carrierB.vel.y * toMeY;
+                if (duel.state === 'track') {
+                  duel.state = carrierB.speed < DUEL.trackExitMps && closingSp < 2.6 ? 'jockey' : 'track';
+                } else {
+                  duel.state = carrierB.speed > DUEL.trackEnterMps || closingSp > 3.2 ? 'track' : 'jockey';
+                }
               }
               this.duels.set(body.id, duel);
-              // targets
-              const tgx = (ownG.x - carrierB.pos.x) / Math.max(gdC, 1e-6);
-              const tgy = (ownG.y - carrierB.pos.y) / Math.max(gdC, 1e-6);
+              // targets — computed from the carrier's PROJECTED position
+              // (0.4 s ahead): the jockey LEADS the retreat, matching the
+              // advance instead of spooling up after the gap has crashed
+              const cfx = carrierB.pos.x + carrierB.vel.x * 0.4;
+              const cfy = carrierB.pos.y + carrierB.vel.y * 0.4;
+              const gdF = Math.max(Math.hypot(cfx - ownG.x, cfy - ownG.y), 1e-6);
+              const tgx = (ownG.x - cfx) / gdF;
+              const tgy = (ownG.y - cfy) / gdF;
               if (duel.state === 'engage') {
                 live = { x: this.ball.pos.x, y: this.ball.pos.y }; // commit — the contain takes it at 1.9
               } else if (duel.state === 'recover') {
                 // never duel from the wrong side: cut the path AHEAD to regain it
-                const ahead = Math.min(DUEL.recoverAheadM, gdC * 0.5);
-                live = { x: carrierB.pos.x + tgx * ahead, y: carrierB.pos.y + tgy * ahead };
+                const ahead = Math.min(DUEL.recoverAheadM, gdF * 0.5);
+                live = { x: cfx + tgx * ahead, y: cfy + tgy * ahead };
               } else {
-                // JOCKEY / TRACK: the hold point on the carrier→goal line
-                live = { x: carrierB.pos.x + tgx * DUEL.holdM, y: carrierB.pos.y + tgy * DUEL.holdM };
+                // JOCKEY / TRACK: on the carrier→goal line at the CURRENT
+                // range, closing to the hold only as the carrier advances —
+                // targeting the 2.0 m point directly meant a defender 6 m
+                // goal-side ran forward INTO the carrier (the invisible
+                // jockey): you GIVE GROUND square-on, you don't charge
+                const range = duel.state === 'track'
+                  ? Math.max(DUEL.holdM, Math.min(gdF - 0.5, DUEL.holdM))
+                  : Math.max(DUEL.holdM, Math.min(dToCar, gdF - 0.5));
+                live = { x: cfx + tgx * range, y: cfy + tgy * range };
                 if (duel.state === 'jockey') {
                   // backpedal-capped, square to the ball (the L1 face-lock);
                   // TRACK is the full-speed escort — the cap alone donated a
@@ -662,6 +693,11 @@ export class Sim {
       if (b.id === carrier.id || b.team === carrier.team) continue;
       if (b.command.type !== 'chaseBall') continue; // intent to win the ball
       if ((this.tackleCooldown.get(b.id) ?? -1) > this.tick) continue;
+      // a DUELIST tackles only from ENGAGE — the committed close. Proximity
+      // alone lunged on contact and skipped the jockey entirely (the machine
+      // never got to be seen; bodies without a duel record tackle as before)
+      const dst = this.duels.get(b.id);
+      if (dst && dst.state !== 'engage') continue;
       const reach = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
       if (reach > TECH.tackleReachM) continue;
       this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
