@@ -3,6 +3,19 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The aimed counter punt + the ground-kick menu
+
+Builder: keepers kick from their hands AT areas/runners for counters; ground
+kicks are grass cutters or pinged passes. (1) The punt is now AIMED: the most
+advanced open mate (≥15 m upfield, unmarked) is led by the punt's hang time —
+a flatter 28° ball into his run; nobody upfield → the generic long punt. The
+punt's honest carry (~50 m) drops deep counters into the runner's path
+(keeper-counter: aimed 12/12, collected 12/12). (2) The ground-kick menu is
+DERIVED from the pitch's friction, not invented: a roll dies by ~20 m, the
+grass cutter (26 m/s @ 5°, hops < 5 cm) carries pace to ~30, the pinged 16°
+ball owns 30+ — a probe showed even a 26 m/s cutter under 8 m/s by 24 m, so a
+40 m grass cutter cannot exist on dry grass. Drop-pass picks by range. 88/88.
+
 ## 2026-07-22 — Drop to feet: the keeper plays the build-up pass
 
 Builder ask: the option to drop the held ball and play a pass. Distribution is
