@@ -3,6 +3,19 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The keeper's shuffle: square to the ball, never his back
+
+Builder: a keeper shuffles sideways / backpedals facing the ball; he doesn't
+turn and run for small repositioning. FACE-LOCK became an L1 capability
+(`StepOptions.face`): facing tracks a point instead of the travel heading, and
+movement pays the shuffle tax (full speed toward the faced point → 0.45 of it
+straight back, interpolated by angle). Opt-in per call — nil blast radius. The
+sim face-locks a keeper whose current move is ≤ 7 m (`keeperShuffleMaxM`);
+longer relocations (the sweep, a big retreat) turn and run, then square up.
+Measured: mirroring a crossing carrier, worst facing-off-ball 2°, zero ticks
+back-shown; all keeper outcomes identical — the shuffle is HOW he moves, not
+what he does. 83/83.
+
 ## 2026-07-22 — The keeper's position is SITUATIONAL: 1v1 rush, sweeper, hands-before-head
 
 Builder round: 1v1 → the keeper meets it at the middle/edge of his box;
