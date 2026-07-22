@@ -3,6 +3,28 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — Keeper craft: near-post cover, closing down, across-goal + the in-stride strike
+
+Builder round on the fresh keeper: goals visible in the workbench (bright
+mouths + posts + net box); the keeper guards a NEAR-POST-shaded line (shade
+scales with the ball's angle — you don't get beaten at your near post) and
+CLOSES DOWN as the ball nears (depth 1.2→5 m by keeperCloseGain; the cone
+narrows toward the striker, the chip over him is the deferred price); strikers
+finish ACROSS goal from angles (shotAcrossBonus on the far corner's clear-lane
+score — the near post is the keeper's, across is the open side).
+
+The measurement caught a real mechanics bug beneath the keeper stats: a
+driving striker's decided shot only released with the ball inside his 0.9 m
+CONTROL disc, but a 6.8 m/s drive rides the ball ~1.7 m ahead — he chased his
+own touch for 1.1 s and "shot" point-blank into the gloves. A pending kick now
+releases at kickReachM (1.1 m) when aligned: the FIRST-TIME strike in stride.
+
+Retune after: with shade + closing-down doing the positioning work, the 1.35 m
+static reach double-covered the mouth (angled far-post NEVER scored) — reach
+back to 1.1, react 0.2 s. Central: 73% on-target saves. Angled: 10 save /
+6 goal / 4 wide — 20/20 aims across, EVERY goal far post, near post never
+concedes (pinned by the shot-angle test). 80/80.
+
 ## 2026-07-22 — L7 sub-phase 1: the keeper (angle, dive, catch/parry) + the goal seam
 
 The first L7 tenant, on the xyz footing the block established. Attributes map
