@@ -15,7 +15,7 @@
  */
 
 import { PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
-import { rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
+import { loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
@@ -43,7 +43,7 @@ export interface PlayInstructions {
 
 export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
-  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
+  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number }
   | { kind: 'shield'; utility: number }
   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
@@ -126,6 +126,23 @@ export const DECIDE = {
   loftChipDeg: 42,
   aerialControlBase: 0.5,
   aerialControlTouchGain: 0.02,
+  /** the CROSS: a wide, advanced carrier whips an aerial ball into the box for
+   * an attacker's run — a DRIVEN (fast, flat) or FLOATED (high, hang-time)
+   * delivery, both solved to land on his run. Fires from wide + advanced into a
+   * box target; unlike the loft it needs no blocked lane — the cross IS the
+   * ball into the danger zone. The EV picks driven vs floated by who completes. */
+  crossWideM: 13, // carrier at least this far off centre (a flank position)
+  crossAdvanceM: 32, // and within this of the byline (the attacking flank)
+  crossBoxM: 20, // the landing this near the opp goal, and central (the box)
+  crossDrivenLoftDeg: 16,
+  crossFloatLoftDeg: 34,
+  /** the SWITCH of play (passing.md #7): a long FLOATED aerial from one flank
+   * to a wide mate on the FAR side — over the congested middle, into the space
+   * an overload left. Fires wide → far-wide at range; a hang-time ball he runs
+   * onto. Escapes a compact/overloaded side the ground ball can't cross. */
+  switchWideM: 13,
+  switchMinM: 30,
+  switchFloatLoftDeg: 38,
   /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
@@ -864,16 +881,17 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const dLoft = Math.hypot(landing.x - here.x, landing.y - here.y);
       // a defender parked in the DIRECT ground lane (mid-flight) — the loft's
       // whole reason to exist; over him the air ball is clean
-      let blockerT = 0;
-      const laneBlocked = dLoft >= 10 && dLoft <= 44 && inBounds(landing, 0.8) && opponents.some((o) => {
-        const t = ((o.pos.x - here.x) * (landing.x - here.x) + (o.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
-        if (t <= 0.12 || t >= 0.92) return false;
-        const px = here.x + t * (landing.x - here.x);
-        const py = here.y + t * (landing.y - here.y);
-        if (Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2) { blockerT = Math.max(blockerT, t); return true; }
-        return false;
-      });
-      if (laneBlocked) {
+      const laneBlocker = (dLoft >= 10 && dLoft <= 44 && inBounds(landing, 0.8))
+        ? opponents.find((o) => {
+            const t = ((o.pos.x - here.x) * (landing.x - here.x) + (o.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
+            if (t <= 0.12 || t >= 0.92) return false;
+            const px = here.x + t * (landing.x - here.x);
+            const py = here.y + t * (landing.y - here.y);
+            return Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2;
+          }) ?? null
+        : null;
+      if (laneBlocker) {
+        const blockerT = ((laneBlocker.pos.x - here.x) * (landing.x - here.x) + (laneBlocker.pos.y - here.y) * (landing.y - here.y)) / (dLoft * dLoft);
         // clear the blocker's HEAD: a near defender (early in the flight)
         // needs a steeper CHIP so the ball is already up; a far one (a deep
         // line) is cleared by the flatter, faster DRIVEN loft
@@ -890,6 +908,81 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const uL = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCa * pvL - (1 - pCa) * turnoverW * pvL) + uProgL) * meetsL;
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
+        }
+        // NOTE: the CURL AROUND (a trivela ground ball bent around this blocker,
+        // via solveCurl) belongs here too — validated in isolation (bends clear
+        // and reaches the man 12/12) — but as a fully-controllable ground ball it
+        // OUT-COMPETES the loft here and the cross into the box, and whether a
+        // curl-to-feet should beat a cross-to-head or a loft-over is a real EV
+        // calibration + scenario-isolation question. Deferred, not forced.
+        // AND: solveCurl fixes DIRECTION only — the integration must pick speed
+        // by roll reach (rollLaunchForArrival), not a flat constant: a 17 m/s
+        // ball dies at ~31 m (dry-grass friction + drag), silently short beyond.
+      }
+    }
+    // ── the CROSS: a wide, advanced carrier whips an aerial ball into the box
+    // for a mate attacking it — DRIVEN (fast, flat) or FLOATED (hang-time),
+    // both solved to land on his run. No blocked lane required — the cross IS
+    // the ball into the danger zone; the EV picks the delivery that completes. ─
+    // lead a receiver by the DELIVERY'S hang time — a long float hangs while he
+    // runs on, so aim where he'll BE on the drop, not where he stood when struck
+    const leadByHang = (loftDeg: number): Vec2 => {
+      let t: Vec2 = { x: mate.pos.x + mate.vel.x * 0.3, y: mate.pos.y + mate.vel.y * 0.3 };
+      for (let it = 0; it < 2; it++) {
+        const d = Math.hypot(t.x - here.x, t.y - here.y);
+        const tF = loftFlightTimeS(solveLoftSpeed(d, loftDeg), loftDeg);
+        t = { x: mate.pos.x + mate.vel.x * tF, y: mate.pos.y + mate.vel.y * tF };
+      }
+      return t;
+    };
+    if (!keep) {
+      const sign = attackSign(carrier.team);
+      const wide = Math.abs(here.y - PITCH.width / 2) >= DECIDE.crossWideM;
+      const advanced = (sign > 0 ? PITCH.length - here.x : here.x) <= DECIDE.crossAdvanceM;
+      if (wide && advanced) {
+        for (const loftDeg of [DECIDE.crossDrivenLoftDeg, DECIDE.crossFloatLoftDeg]) {
+          const cross = leadByHang(loftDeg);
+          const intoBox = (sign > 0 ? PITCH.length - cross.x : cross.x) <= DECIDE.crossBoxM &&
+            Math.abs(cross.y - PITCH.width / 2) < 20;
+          const dCross = Math.hypot(cross.x - here.x, cross.y - here.y);
+          if (!intoBox || dCross < 8 || !inBounds(cross, 0.8)) continue;
+          const speedC = solveLoftSpeed(dCross, loftDeg);
+          const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+          const pCc = aerialCompletion(cross, mate, opponents) * ctrl;
+          let pvC = value(cross, mate.id);
+          pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+          const uProgC = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvC - pvHere);
+          const meetsC = pCc >= passFloor ? 1 : 0.25 + 0.45 * risk;
+          const uC = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCc * pvC - (1 - pCc) * turnoverW * pvC) + uProgC) * meetsC;
+          if (!bestPass || uC > bestPass.utility) {
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg };
+          }
+        }
+      }
+    }
+    // ── the SWITCH of play: a long FLOATED aerial to a wide mate on the FAR
+    // flank, over the congested middle — wide → far-wide, at range. ──────────
+    if (!keep) {
+      const cy = PITCH.width / 2;
+      const carrierSide = Math.sign(here.y - cy);
+      // gate on the MAN before paying for the flight solve — leadByHang runs
+      // two loft solves, wasted on every mate who isn't far-wide
+      const farWide = carrierSide !== 0 && Math.sign(mate.pos.y - cy) === -carrierSide &&
+        Math.abs(mate.pos.y - cy) >= DECIDE.switchWideM && Math.abs(here.y - cy) >= DECIDE.switchWideM;
+      const loftDeg = DECIDE.switchFloatLoftDeg;
+      const land = farWide ? leadByHang(loftDeg) : here;
+      const dSwitch = Math.hypot(land.x - here.x, land.y - here.y);
+      if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
+        const speedS = solveLoftSpeed(dSwitch, loftDeg);
+        const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+        const pCs = aerialCompletion(land, mate, opponents) * ctrl;
+        let pvS = value(land, mate.id);
+        pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+        const uProgS = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvS - pvHere);
+        const meetsS = pCs >= passFloor ? 1 : 0.25 + 0.45 * risk;
+        const uS = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCs * pvS - (1 - pCs) * turnoverW * pvS) + uProgS) * meetsS;
+        if (!bestPass || uS > bestPass.utility) {
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg };
         }
       }
     }

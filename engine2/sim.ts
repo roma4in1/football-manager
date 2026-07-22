@@ -88,7 +88,7 @@ export class Sim {
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
-  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number }>();
+  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number; spin?: number }>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -157,6 +157,9 @@ export class Sim {
 
   /** advance one tick; returns the full-rate frame for it */
   step(): Frame {
+    // action labels are per-tick — clear them up front so brain-less scenarios
+    // (which skip decidePhase) don't carry a stale header/block/handball label
+    this.actionLabels.clear();
     // 1. scripted re-targets (replace the current command, keep the queue)
     const events = this.atTick.get(this.tick);
     if (events) {
@@ -423,6 +426,7 @@ export class Sim {
     // 4. carry coupling, then free-ball physics
     this.coupleCarry();
     const ballFrom = { x: this.ball.pos.x, y: this.ball.pos.y };
+    const zFrom = this.ball.z; // pre-step height — the chest touch is a SWEPT z crossing
     stepBall(this.ball);
     // a ball over any boundary is DEAD where it crossed (restarts are L8's;
     // until then it must not roll to infinity — the L4 shot exposed this).
@@ -443,7 +447,9 @@ export class Sim {
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
-    this.resolveHeaders();
+    this.resolveHeaders(ballFrom);
+    this.resolveChestControl(ballFrom, zFrom);
+    this.resolveBlocks(ballFrom);
     this.resolveClaims(ballFrom);
 
     // L5d bookkeeping: possession flips arm the counterpress window; a
@@ -563,7 +569,7 @@ export class Sim {
     })();
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
-      kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick);
+      kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick, pending.spin ?? 0);
       if (pending.receiverId) {
         this.intendedReceiverId = pending.receiverId;
         this.lastGiveTick.set(carrier.id, this.tick);
@@ -700,13 +706,32 @@ export class Sim {
    * goal clears it upfield; an ATTACKER near the opponent goal heads at goal;
    * otherwise a knock-DOWN drops it at his feet to control. This is what makes
    * a loft OVER a defender honest — one standing under it heads it away. */
-  private resolveHeaders(): void {
+  /** closest horizontal approach of a body to the ball's swept path this tick,
+   * in the body's own frame so a fast ball can't tunnel past his reach between
+   * ticks. Shared by the header and the collision — one detection model. */
+  private sweptApproach(body: BodyState, from: Vec2): { d: number; at: Vec2 } {
+    const ball = this.ball;
+    const prev = this.prevPos.get(body.id) ?? body.pos;
+    const fx = from.x - (body.pos.x - prev.x);
+    const fy = from.y - (body.pos.y - prev.y);
+    const dx = ball.pos.x - fx;
+    const dy = ball.pos.y - fy;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((body.pos.x - fx) * dx + (body.pos.y - fy) * dy) / len2));
+    const at = { x: fx + dx * t, y: fy + dy * t };
+    return { d: Math.hypot(body.pos.x - at.x, body.pos.y - at.y), at };
+  }
+
+  private resolveHeaders(from: Vec2): void {
     const ball = this.ball;
     if (ball.phase !== 'airborne' || ball.z < BALL.headMinZ || ball.z > BALL.headMaxZ) return;
     let best: { body: BodyState; score: number } | null = null;
     for (const body of this.bodies) {
       if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
-      const d = Math.hypot(body.pos.x - ball.pos.x, body.pos.y - ball.pos.y);
+      // SWEPT reach, like the collision — a fast ball can't tunnel past the
+      // leap between ticks (else a rocket at head height reads as a scrambled
+      // block instead of the clean header a man standing under it wins)
+      const d = this.sweptApproach(body, from).d;
       if (d > BALL.headReachM) continue;
       if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue; // can't leap to it
       const score = -d + 0.08 * body.attributes.strength + 0.05 * body.attributes.agility +
@@ -715,10 +740,14 @@ export class Sim {
     }
     if (!best) return;
     const w = best.body;
-    // the header REDIRECTS the ball's pace — power from the BALL, a small
-    // strength term from the neck. A fast cross → a powerful header.
+    // the header REDIRECTS the ball's pace — power from the BALL, plus a
+    // strength term the header EARNS by attacking the ball: his approach/leap
+    // speed into it. A passive nod under a weak lob adds almost nothing; a
+    // committed header drives through it. A fast cross → a powerful header
+    // whichever way, because the ball's pace dominates.
     const incoming = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
-    const headed = incoming * BALL.headRedirect + BALL.headPlayerPower * (w.attributes.strength / 20);
+    const attack = Math.max(BALL.headPassiveFloor, Math.min(1, w.speed / BALL.headAttackRefMps));
+    const headed = incoming * BALL.headRedirect + BALL.headPlayerPower * (w.attributes.strength / 20) * attack;
     const sign = attackSign(w.team);
     const ownGoal = { x: sign > 0 ? 0 : PITCH.length, y: PITCH.width / 2 };
     const oppGoal = goalCenter(w.team);
@@ -745,6 +774,127 @@ export class Sim {
       ball.kickerId = null;
       ball.vel = { x: sign * incoming * BALL.headKnockCushion, y: this.rng.gauss(0, 1, this.tick, w.id, 'head-knock') };
     }
+  }
+
+  /** CHEST / THIGH control — the 0.5–0.9 m gap between the ground first touch
+   * and the header. A receiver GOING FOR a fast airborne ball takes it on the
+   * chest: a good touch cushions it down to his feet (control), a poor one
+   * (fast / high / pressured) BOUNCES OFF him loose. This is the receive's
+   * middle band — distinct from the header (a deliberate leap, ≥0.9 m), the
+   * collision (a PASSIVE obstacle caroming it), and the ground first touch
+   * (≤0.5 m). Only a man attacking the ball — the intended man or a chaser —
+   * reaches to control it; a passer merely in the way still caroms (collision).
+   * Runs after the header, before the collision, so the receiver's touch beats
+   * an obstacle's carom on the same ball. */
+  private resolveChestControl(from: Vec2, zFrom: number): void {
+    const ball = this.ball;
+    if (ball.phase === 'dead' || ball.phase === 'carried') return;
+    // the ball's z-path this tick CROSSED the chest band — at 10 Hz a fast ball
+    // spans it in one tick (rising or falling through), so an instantaneous-z
+    // gate never catches it; the swept crossing does. Only a FAST ball is a
+    // chest challenge — a slow drop is let fall and controlled on the ground.
+    const zLo = Math.min(zFrom, ball.z);
+    const zHi = Math.max(zFrom, ball.z);
+    const crossedChest = zLo < BALL.headMinZ && zHi > BALL.claimMaxZ;
+    const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    if (!crossedChest || speed < BALL.blockMinSpeedMps) return;
+    let best: { body: BodyState; d: number; at: Vec2 } | null = null;
+    for (const body of this.bodies) {
+      if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      // only a man ATTACKING the ball chests it — the intended man or a chaser
+      if (body.id !== this.intendedReceiverId && body.command.type !== 'chaseBall') continue;
+      const { d, at } = this.sweptApproach(body, from);
+      if (d > BALL.controlRadiusM) continue;
+      if (!best || d < best.d) best = { body, d, at };
+    }
+    if (!best) return;
+    const w = best.body;
+    const ballSpeed = Math.hypot(ball.vel.x - w.vel.x, ball.vel.y - w.vel.y);
+    const rawSpeed = Math.hypot(ball.vel.x, ball.vel.y);
+    const arrivalDir = rawSpeed > 0.1 ? Math.atan2(ball.vel.y, ball.vel.x) : w.facing;
+    const pressured = this.bodies.some((o) => o.team !== w.team &&
+      Math.hypot(o.pos.x - w.pos.x, o.pos.y - w.pos.y) <= TECH.touchPressureRangeM);
+    // the first touch, judged at CHEST height (the band midpoint — the ball
+    // swept through it this tick even if it ended at his feet). resolveFirstTouch
+    // makes a higher, faster ball harder, so a driven pass to the chest pops more
+    const chestZ = (BALL.claimMaxZ + BALL.headMinZ) / 2;
+    const touch = resolveFirstTouch(
+      this.rng, this.tick, w.id, w.attributes, arrivalDir, ballSpeed, chestZ, pressured, w.speed,
+    );
+    ball.pos = { x: best.at.x, y: best.at.y };
+    ball.vz = 0;
+    ball.z = 0;
+    if (touch.pop) {
+      // it BOUNCES OFF his chest — a failed control, loose and low; he cannot
+      // instantly re-claim his own miss (the same refractory the ground pop uses)
+      ball.carrierId = null;
+      ball.phase = 'rolling';
+      ball.vel = touch.vel;
+      ball.kickerId = w.id;
+      ball.kickerLockUntilTick = this.tick + 8;
+      this.actionLabels.set(w.id, 'chest-miss');
+      return;
+    }
+    // CUSHIONED down to his feet — controlled
+    ball.carrierId = w.id;
+    ball.phase = 'carried';
+    this.completeChases(w.team);
+    this.actionLabels.set(w.id, 'chest');
+  }
+
+  /** the 3-D COLLISION — interception in xyz, not xy: a DRIVEN airborne ball
+   * (a shot, a cross, a driven pass) that passes through a body deflects off
+   * him; one flighted OVER his reach clears. Reach is PER-PLAYER — the same
+   * jump the header uses (headStandM + headJumpPerStr·strength), so a stronger
+   * man reaches higher. An OPPONENT in the way is a BLOCK; a teammate who is
+   * not the intended man is an accidental COLLISION (a hard ball caroms off
+   * him). Only the intended receiver is exempt — he is controlling it, not
+   * deflecting his own ball. A slow ball is controlled/headed, not deflected.
+   * Runs after the deliberate header, before the ground claim. (The keeper — a
+   * higher reach and a catch — is L7; the HANDBALL ruling belongs to the Fouls
+   * layer, and cannot be a pure-geometry hook here: a ball merely passing OVER
+   * a man's head is not a handball, only one his arm deliberately plays is —
+   * that needs intent, not a reach test. The per-player reach below is the
+   * foundation that layer will build on.) */
+  private resolveBlocks(from: Vec2): void {
+    const ball = this.ball;
+    if (ball.phase !== 'airborne' || ball.z > BALL.headMaxZ) return; // above any reach → clears
+    const speed = Math.hypot(ball.vel.x, ball.vel.y, ball.vz);
+    if (speed < BALL.blockMinSpeedMps) return; // slow enough to be controlled/headed
+    const kicker = ball.kickerId ? this.byId.get(ball.kickerId) : undefined;
+    const kickerTeam = kicker?.team;
+    let best: { body: BodyState; d: number; at: Vec2 } | null = null;
+    for (const body of this.bodies) {
+      if (body.id === ball.kickerId && this.tick < ball.kickerLockUntilTick) continue;
+      if (body.id === this.intendedReceiverId) continue; // the intended man controls it
+      // a teammate ATTACKING the ball (chasing it — a striker onto a cross) is
+      // RECEIVING it, not an obstacle; he heads/controls it, he doesn't carom
+      if (body.team === kickerTeam && body.command.type === 'chaseBall') continue;
+      // PER-PLAYER vertical reach — the same leap the header gates on; a ball
+      // above his head passes over (only an arm would reach it — a handball,
+      // which is the Fouls layer's call, not here)
+      if (ball.z > BALL.headStandM + BALL.headJumpPerStr * body.attributes.strength) continue;
+      const { d, at } = this.sweptApproach(body, from);
+      if (d > BALL.controlRadiusM) continue;
+      if (!best || d < best.d) best = { body, d, at };
+    }
+    if (!best) return;
+    // a BLOCK (opponent, deliberate) or a COLLISION (teammate, accidental) —
+    // both deflect loose, but a body not trying to block scrubs less pace off
+    const isCollision = kickerTeam !== undefined && best.body.team === kickerTeam;
+    const keep = isCollision ? BALL.collisionDeflectKeep : BALL.blockDeflectKeep;
+    const ang = Math.atan2(ball.vel.y, ball.vel.x) + Math.PI +
+      this.rng.gauss(0, 0.8, this.tick, best.body.id, 'block');
+    const sp = speed * keep;
+    ball.pos = { x: best.at.x, y: best.at.y };
+    ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
+    ball.vz = sp * 0.3;
+    ball.phase = 'airborne';
+    ball.carrierId = null;
+    ball.kickerId = best.body.id;
+    ball.kickerLockUntilTick = this.tick + 4;
+    ball.spin = 0;
+    this.actionLabels.set(best.body.id, isCollision ? 'collision' : 'block');
   }
 
   private resolveClaims(from: Vec2): void {
@@ -929,7 +1079,6 @@ export class Sim {
    * a brain never enter here — scripts own them entirely. */
   private decidePhase(): void {
     if (this.brains.size === 0) return;
-    this.actionLabels.clear();
     // the receive reflex ends when ANYONE ends up with the ball
     if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
     for (const id of this.brains) {
@@ -1278,7 +1427,7 @@ export class Sim {
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
-            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' ? (intent.loftDeg ?? 0) : 0, id, this.tick);
+            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' ? (intent.spin ?? 0) : 0);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
@@ -1293,6 +1442,7 @@ export class Sim {
               dest: intent.dest,
               speedMps: intent.speedMps,
               ...(intent.kind === 'pass' && intent.loftDeg ? { loftDeg: intent.loftDeg } : {}),
+              ...(intent.kind === 'pass' && intent.spin ? { spin: intent.spin } : {}),
               ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
             });
             if (body.command.type !== 'chaseBall') {
@@ -1394,16 +1544,44 @@ export class Sim {
     // on a "receive" point is the header band near a goal, knee height else.
     const nearGoal = Math.min(body.pos.x, PITCH.length - body.pos.x) < 20;
     const zCap = nearGoal ? BALL.headMaxZ : BALL.claimMaxZ;
-    for (let t = 0.2; t <= 6.0; t += 0.2) {
-      const s = predictBallState(this.ball, t);
-      const p = s.pos;
-      // an AIRBORNE ball is only a receive point where it is DESCENDING and
-      // within reach height — a higher mid-flight point is over his head;
-      // running to it lets the ball sail past and land behind him
-      if (airborne && (s.z > zCap || s.vz > 0.2)) continue;
-      const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
-      if (!near || d < near.d) near = { p, d, t };
-      if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
+    if (airborne) {
+      // the FIRST point at catchable height and DESCENDING — the drop for a
+      // loft, immediately for a flat cross that never climbs above zCap. Taken
+      // EARLIEST at every physics tick: a fast descent crosses the 0.5 m window
+      // in ONE tick and by the next it has bounced (vz>0), so the old
+      // coarse+nearest scan skipped the real drop and targeted the post-bounce
+      // ROLL — walking the receiver clean past it to the sideline. ONE clone
+      // stepped incrementally (a fresh predictBallState per sample re-simulates
+      // the whole flight each time; DT is the true resolution anyway).
+      const c: BallState = {
+        pos: { ...this.ball.pos }, z: this.ball.z, vel: { ...this.ball.vel }, vz: this.ball.vz,
+        spin: this.ball.spin, phase: 'airborne', carrierId: null, kickerId: null,
+        kickerLockUntilTick: 0, touchParity: false,
+      };
+      let prevZ = c.z;
+      for (let i = 1; i <= 60; i++) {
+        stepBall(c);
+        // catchable height AND coming down to him: descending (flat cross that
+        // never climbs above zCap) OR just crossed DOWN through zCap (a steep
+        // drop the sample catches only after it has bounced, vz>0)
+        if (c.z <= zCap && (c.vz <= 0.2 || prevZ > zCap)) {
+          const p = { x: c.pos.x, y: c.pos.y };
+          const t = i * DT;
+          const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
+          near = { p, d, t };
+          meet = { p, tStar: t }; // he runs to the drop whether or not he'll beat it
+          break;
+        }
+        prevZ = c.z;
+      }
+    } else {
+      for (let t = 0.2; t <= 6.0; t += 0.2) {
+        const s = predictBallState(this.ball, t);
+        const p = s.pos;
+        const d = Math.hypot(p.x - body.pos.x, p.y - body.pos.y);
+        if (!near || d < near.d) near = { p, d, t };
+        if (!meet && 0.3 + d / vcap <= t) meet = { p, tStar: t };
+      }
     }
     const far = predictBall(this.ball, 6);
     return {

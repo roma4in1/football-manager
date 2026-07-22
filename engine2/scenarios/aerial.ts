@@ -117,4 +117,140 @@ export const crossHeader: ScenarioDef = {
   ],
 };
 
-export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader];
+/** the 3-D BLOCK: a driven ball at BODY height is blocked by a defender in the
+ * path (interception is xyz) — the same ball flighted OVER his reach clears.
+ * The `loftDeg` here keeps it at ~1.3 m through the defender; raise it and the
+ * ball sails over him untouched. */
+export const drivenBlock: ScenarioDef = {
+  version: 1,
+  name: 'driven-block',
+  description: 'A driven ball at body height is BLOCKED by a defender standing in its path (xyz interception); a ball flighted over his reach would clear. Judge the 3-D block.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'shooter', team: 'home', pos: { x: 66, y: 34 }, attributes: passer },
+    // a defender square in the path — the ball at body height hits him
+    { id: 'defender', team: 'away', pos: { x: 76, y: 34 }, attributes: passer },
+  ],
+  ball: { carrier: 'shooter' },
+  kicks: [
+    // a hard, near-flat drive that is ~1.3 m high as it reaches the defender
+    { atTick: 8, bodyId: 'shooter', kick: { target: { x: 100, y: 34 }, speedMps: 24, loftDeg: 10 } },
+  ],
+  script: [],
+};
+
+/** the COLLISION: a hard driven ball caroms off a TEAMMATE who is in the path
+ * but is not the intended man — not a block (he's not defending), an accidental
+ * carom that keeps more of the pace on. Same geometry as driven-block, but the
+ * body in the way wears the kicker's colours. */
+export const teammateCollision: ScenarioDef = {
+  version: 1,
+  name: 'teammate-collision',
+  description: 'A hard driven ball caroms off a teammate standing in its path — an accidental collision, not a block. Judge that a teammate is not immune to a ball he is in the way of.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'shooter', team: 'home', pos: { x: 66, y: 34 }, attributes: passer },
+    // a TEAMMATE square in the path — the hard ball caroms off him
+    { id: 'mate', team: 'home', pos: { x: 76, y: 34 }, attributes: passer },
+  ],
+  ball: { carrier: 'shooter' },
+  kicks: [
+    { atTick: 8, bodyId: 'shooter', kick: { target: { x: 100, y: 34 }, speedMps: 24, loftDeg: 10 } },
+  ],
+  script: [],
+};
+
+/** CHEST control: a fast ball drops onto a receiver at CHEST height (~0.8 m,
+ * the gap between the ground first touch and the header). Going for it, he
+ * either cushions it down to his feet (control) or it BOUNCES OFF him loose (a
+ * failed control) — the first touch judged at chest height, a hard ball popping
+ * more. A receiver with a moderate touch shows both. */
+export const chestControl: ScenarioDef = {
+  version: 1,
+  name: 'chest-control',
+  description: 'A fast ball drops onto a receiver at chest height; going for it he cushions it down or it bounces off him loose. Judge the chest touch — control vs a failed touch that caroms.',
+  durationTicks: 70,
+  bodies: [
+    { id: 'passer', team: 'home', pos: { x: 40, y: 34 }, attributes: passer },
+    // a moderate first touch (11) so a hard chest ball sometimes pops
+    { id: 'receiver', team: 'home', pos: { x: 56, y: 34 }, attributes: { ...passer, firstTouch: 11 }, brain: 'onBall' },
+  ],
+  ball: { carrier: 'passer' },
+  kicks: [
+    // a hard clipped ball dropping through chest height at the receiver
+    { atTick: 2, bodyId: 'passer', kick: { target: { x: 80, y: 34 }, speedMps: 18, loftDeg: 20 } },
+  ],
+  script: [
+    { atTick: 3, bodyId: 'receiver', command: { type: 'chaseBall', regime: 'run' } },
+  ],
+};
+
+/** the CROSS DECISION: a wide, advanced carrier with a striker attacking the
+ * box should CHOOSE to whip an aerial cross in — not carry into the corner or
+ * force a ground ball through the defence. The delivery mechanic exists
+ * (crossHeader); this exercises the EV that picks it. */
+export const crossDecision: ScenarioDef = {
+  version: 1,
+  name: 'cross-decision',
+  description: 'A wide, advanced carrier with a striker in the box chooses to whip an aerial cross in rather than carry into the corner. Judge the DECISION to cross.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'winger', team: 'home', pos: { x: 98, y: 55 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // a striker attacking the centre of the box
+    { id: 'striker', team: 'home', pos: { x: 99, y: 37 }, attributes: { ...passer, strength: 15 }, brain: 'onBall' },
+    // a defender on the ground lane between winger and striker (the air is open)
+    { id: 'cb', team: 'away', pos: { x: 98, y: 46 }, attributes: passer },
+    // a defender closing the winger — carrying on is not free
+    { id: 'fb', team: 'away', pos: { x: 96, y: 54 }, attributes: passer },
+  ],
+  ball: { carrier: 'winger' },
+  script: [],
+};
+
+/** the SWITCH DECISION: a carrier wide on one flank, his only outlet a wide
+ * mate on the FAR side with the middle congested, should FLOAT a long ball
+ * across rather than force it through the crowd or carry into pressure. */
+export const switchDecision: ScenarioDef = {
+  version: 1,
+  name: 'switch-decision',
+  description: 'A carrier wide on one flank floats a long ball to a wide mate on the far side, over a congested middle. Judge the DECISION to switch play.',
+  durationTicks: 70,
+  bodies: [
+    { id: 'lm', team: 'home', pos: { x: 55, y: 12 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // the only outlet — a wide mate in space on the far flank
+    { id: 'rm', team: 'home', pos: { x: 62, y: 56 }, attributes: passer, brain: 'onBall' },
+    // the middle is congested — the ground ball across never arrives
+    { id: 'd1', team: 'away', pos: { x: 58, y: 30 }, attributes: passer },
+    { id: 'd2', team: 'away', pos: { x: 60, y: 38 }, attributes: passer },
+    { id: 'd3', team: 'away', pos: { x: 56, y: 24 }, attributes: passer },
+    // the left flank AHEAD is walled — carrying on is dead
+    { id: 'd4', team: 'away', pos: { x: 61, y: 13 }, attributes: passer },
+    { id: 'd5', team: 'away', pos: { x: 64, y: 18 }, attributes: passer },
+    // and one pressing the carrier from behind
+    { id: 'd6', team: 'away', pos: { x: 53, y: 14 }, attributes: passer },
+  ],
+  ball: { carrier: 'lm' },
+  script: [],
+};
+
+/** the CUTBACK: a carrier at the byline pulls the ball BACK to a mate at the
+ * penalty spot — passing.md #21, the highest-quality chance. It needs no new
+ * candidate: the ground pass + the chance-creation (xG) term already values a
+ * ball to a man in a shooting position over a tight-angle shot. This pins it. */
+export const cutbackDecision: ScenarioDef = {
+  version: 1,
+  name: 'cutback-decision',
+  description: 'A carrier at the byline pulls the ball back to a striker at the penalty spot rather than forcing a tight-angle shot. Judge the DECISION to cut it back.',
+  durationTicks: 50,
+  bodies: [
+    { id: 'winger', team: 'home', pos: { x: 103, y: 48 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // a striker at the penalty spot (11 m out, central) — the high-xG cutback
+    { id: 'striker', team: 'home', pos: { x: 94, y: 34 }, attributes: passer, brain: 'onBall' },
+    { id: 'cb', team: 'away', pos: { x: 99, y: 40 }, attributes: passer },
+    { id: 'fb', team: 'away', pos: { x: 104, y: 52 }, attributes: passer },
+  ],
+  ball: { carrier: 'winger' },
+  script: [],
+};
+
+export const aerialScenarios: ScenarioDef[] = [aerialThrough, aerialChip, aerialContest, crossHeader, drivenBlock, teammateCollision, chestControl, crossDecision, switchDecision, cutbackDecision];

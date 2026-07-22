@@ -83,16 +83,30 @@ export const BALL = {
   headMinZ: 0.9,
   headMaxZ: 2.5,
   headReachM: 1.5, // horizontal reach to leap for it
+  /** 3-D COLLISION: a body in the path of a DRIVEN airborne ball deflects it if
+   * it passes through his reach — feet up to the leap the header uses
+   * (headStandM + headJumpPerStr·strength), so reach is PER-PLAYER. This makes
+   * interception xyz, not xy: a shot/cross at body height hits the man in the
+   * way; one flighted OVER his reach clears. A leaping header (above) is the
+   * deliberate version; this is the reactive deflection. */
+  blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not deflected
+  blockDeflectKeep: 0.35, // an OPPONENT'S block scrubs most of the pace off
+  collisionDeflectKeep: 0.55, // a teammate not defending caroms more pace on
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
   /** a header REDIRECTS the ball's pace — the power comes mostly from the BALL,
-   * not the neck: headed speed = incoming·headRedirect + headPlayerPower·(str/20).
-   * So a header off a fast cross flies, one off a floated lob is weak. A
-   * defensive header CLEARS (lofted, far, upfield, wide direction noise); an
-   * attacking one is driven at goal; else a knock-DOWN cushions the pace out. */
+   * not the neck: headed = incoming·headRedirect + headPlayerPower·(str/20)·attack.
+   * So a header off a fast cross flies, one off a floated lob is weak. The
+   * player term is EARNED by attacking the ball — his approach/leap speed into
+   * it (attack = clamp(speed/ref, floor, 1)); a passive nod under a weak lob
+   * generates almost nothing, a committed header drives through it. A defensive
+   * header CLEARS (lofted, far, upfield); an attacking one is driven at goal;
+   * else a knock-DOWN cushions the pace out. */
   headRedirect: 0.7,
   headPlayerPower: 5,
+  headAttackRefMps: 5, // approach speed for a FULL player contribution
+  headPassiveFloor: 0.2, // a standing header still snaps the neck a little
   headClearLoftDeg: 34,
   headClearScatterRad: 0.35,
   headKnockCushion: 0.2, // a controlled header down keeps only this of the pace
@@ -296,8 +310,17 @@ export function solveLoftSpeed(dist: number, loftDeg: number): number {
       pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * cos, y: 0 }, vz: speed * sin, spin: 0,
       phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
     };
-    for (let i = 0; i < 600 && b.phase === 'airborne'; i++) stepBall(b);
-    return b.pos.x; // first-bounce (landing) distance
+    // the FIRST ground contact — where the ball DROPS onto the receiver, not
+    // where it comes to rest after bouncing on. A loft/cross/switch is aimed to
+    // land ON its man; solving for the post-bounce roll made every one undershoot
+    let wasUp = false;
+    for (let i = 0; i < 600; i++) {
+      stepBall(b);
+      if (b.z > 0.1) wasUp = true;
+      if (wasUp && b.z <= 0.02) break; // first descent back to the turf
+      if (b.phase !== 'airborne') break;
+    }
+    return b.pos.x;
   };
   let lo = 8, hi = 42;
   for (let i = 0; i < 26; i++) {
@@ -305,6 +328,64 @@ export function solveLoftSpeed(dist: number, loftDeg: number): number {
     if (landsAt(mid) < dist) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
+}
+
+/** seconds to the FIRST ground contact (the HANG TIME) for a loft of `speed`
+ * at `loftDeg` — so a moving receiver can be led by where he'll be on the
+ * drop, not where he stood when it was struck (a long float hangs ~3 s). */
+export function loftFlightTimeS(speed: number, loftDeg: number): number {
+  const loft = (loftDeg * Math.PI) / 180;
+  const b: BallState = {
+    pos: { x: 0, y: 0 }, z: 0.01, vel: { x: speed * Math.cos(loft), y: 0 }, vz: speed * Math.sin(loft), spin: 0,
+    phase: 'airborne', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  let wasUp = false;
+  for (let i = 0; i < 600; i++) {
+    stepBall(b);
+    if (b.z > 0.1) wasUp = true;
+    if ((wasUp && b.z <= 0.02) || b.phase !== 'airborne') return (i + 1) * DT;
+  }
+  return 600 * DT;
+}
+
+/** AIM point for a curling GROUND ball: struck at `speedMps` with `spin`, the
+ * Magnus bend carries it OFF the straight line, so to ARRIVE at `target` you
+ * aim off and let it curve back. Binary-search the launch heading whose spun
+ * endpoint lands on the target's range. +spin bends +y, so the aim sits to the
+ * −y side. Returns the point to strike toward (at the target's distance).
+ *
+ * CONTRACT — direction only. The solver zeroes the PERPENDICULAR miss; RANGE is
+ * the caller's job: `speedMps` must roll `dist` (dry-grass friction + v²-drag
+ * kill a 17 m/s ball in ~31 m — audited: at d=44 the ball dies 13 m short, ON
+ * the line, direction still correct). A curl decision must pick speed by roll
+ * reach (rollLaunchForArrival / rollDistance) before calling this. */
+export function solveCurl(from: Vec2, target: Vec2, spin: number, speedMps: number): Vec2 {
+  const dx = target.x - from.x, dy = target.y - from.y;
+  const dist = Math.max(Math.hypot(dx, dy), 1e-6);
+  const dir = Math.atan2(dy, dx);
+  const cdir = Math.cos(dir), sdir = Math.sin(dir);
+  // signed perpendicular offset (relative to the direct line) of where the
+  // spun ball crosses the target's range — target itself is at perp 0
+  const perpMiss = (h: number): number => {
+    const b: BallState = {
+      pos: { x: from.x, y: from.y }, z: 0, vel: { x: Math.cos(h) * speedMps, y: Math.sin(h) * speedMps }, vz: 0, spin,
+      phase: 'rolling', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+    };
+    for (let i = 0; i < 400; i++) {
+      stepBall(b);
+      const proj = (b.pos.x - from.x) * cdir + (b.pos.y - from.y) * sdir;
+      if (proj >= dist || Math.hypot(b.vel.x, b.vel.y) < 0.3) break;
+    }
+    return -(b.pos.x - from.x) * sdir + (b.pos.y - from.y) * cdir; // +spin → +y → >0
+  };
+  // perpMiss increases with h; bracket ±0.8 rad and bisect to perp 0
+  let lo = dir - 0.8, hi = dir + 0.8;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (perpMiss(mid) > 0) hi = mid; else lo = mid;
+  }
+  const h = (lo + hi) / 2;
+  return { x: from.x + Math.cos(h) * dist, y: from.y + Math.sin(h) * dist };
 }
 
 /** apex height of a lofted flight (for the decision's "does it clear him?"). */

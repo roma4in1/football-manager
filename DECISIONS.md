@@ -3,6 +3,117 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-21 — Delivery decisions: the AI crosses, switches, cuts back (+ accuracy)
+
+The aerial mechanics were inert — decide.ts chose only a ground pass and one
+chip-over-a-block. Now the delivery STYLE emerges from the geometry, each
+candidate scored by the shared aerialCompletion×value − risk EV (passing.md).
+
+- **Cross** — a WIDE, ADVANCED carrier with a mate attacking the box generates a
+  driven/floated aerial into it (no blocked lane needed — the cross IS the ball
+  into the danger zone). 12/12.
+- **Switch** — a WALLED-IN wide carrier floats a long ball to a far-flank mate
+  over the congested middle; when the flank is OPEN he still carries. 12/12.
+- **Cutback** — emergent, no new candidate: the ground pass + the chance-creation
+  (xG) term already values a ball to the penalty spot over a tight-angle shot.
+  Pinned as a regression floor.
+- **Spin** threaded end-to-end (pass Intent → kickBall), inert until the curl.
+
+**Accuracy (the builder's key note — "reach their intended locations").** Three
+linked bugs, all confusing the FIRST drop with the post-BOUNCE settle:
+(1) solveLoftSpeed solved for the roll distance, so every loft first-landed SHORT
+and bounced the rest (a 44 m switch dropped at 27 m) — now solves first contact;
+(2) no flight-time lead — a long float hangs ~3 s while the receiver runs on, so
+leadByHang() leads by the delivery's hang time (loftFlightTimeS); (3) the
+receiver's interceptPoint scanned coarse and filtered vz>0.2, so a fast descent
+crossed the catch window between samples (already bounced, vz>0) and it chased
+the post-bounce ROLL to the sideline — now fine-scans for the first descending
+catch point OR a downward zCap crossing. Cross lands 0.5 m from the striker,
+switch 0.6 m from the far mate (was 8.9 m).
+
+**Curl DEFERRED.** solveCurl (the 2-D Magnus aim solver — aim off, bend back)
+is built and validated (arrives ~1 m; bends around a blocker and reaches the man
+12/12 in isolation). But wired in, a fully-controllable ground curl OUT-COMPETES
+the loft and the cross into the box wherever a lane is blocked — whether
+curl-to-feet should beat cross-to-head / loft-over is a real EV-calibration +
+scenario-isolation question, not a constant to force. Solver kept as the
+foundation. On feat/engine2-delivery-decisions; 75/75.
+
+## 2026-07-21 — Chest control: the receive's middle band (a swept-z crossing)
+
+Builder question: when is a teammate COLLISION used vs a teammate trying to
+control the pass and failing? The answer exposed a gap — a receiver going for a
+fast ball at CHEST height (0.5–0.9 m, between the ground first touch ≤0.5 and the
+header ≥0.9) had no outcome: he wasn't a passive obstacle (collision) and
+resolveClaims wouldn't fire that high, so the ball tunnelled through him.
+
+- **`resolveChestControl`** (after the header, before the collision): a man
+  ATTACKING the ball — the intended man or a chaser — takes a fast ball on the
+  chest via `resolveFirstTouch` judged at chest height. A good touch cushions it
+  to his feet (`chest`); a poor one BOUNCES OFF loose (`chest-miss`). Distinct
+  from the collision (a passive body caroming it) and a clean miss.
+- **The 10 Hz finding:** a ground-launched ball crosses the 0.4 m chest band in
+  ~ONE tick (always rising/falling through it, never dwelling), so an
+  instantaneous-z gate never fires — measured 0 across every config. The gate is
+  a SWEPT-z crossing: did the ball's z-path span the band this tick (`zFrom`
+  captured before `stepBall`). Gated to FAST balls only (≥ `blockMinSpeedMps`), so
+  a slow drop is still let fall and controlled on the ground — aerial-through /
+  chip untouched.
+
+chest-control scenario: cushioned 11/16, bounced-off 3/16. Only side effect:
+cross-header's ~3 low-cross seeds (dipping below the 0.9 m header floor) now
+chest the ball instead of caroming. 71/71.
+
+## 2026-07-21 — 3-D interception (xyz block/collision) + the Fouls-layer brief
+
+Builder question: when heading, does the ball stay up or drop — and does a
+keeper save / defender block in xyz or just xy? It should be xyz. Then: a hard
+pass that hits a teammate — a collision, not a block? Should reach depend on
+height + jump? And once bodies deflect balls, how are HANDBALLS determined?
+
+- **The 3-D collision (shipped):** interception is now height-aware.
+  `resolveBlocks` (after the deliberate header, before the ground claim)
+  deflects a DRIVEN airborne ball (> `blockMinSpeedMps` 9) that passes through a
+  body's PER-PLAYER reach — `headStandM + headJumpPerStr·strength`, the same leap
+  the header uses, so a stronger man reaches higher. A ball flighted OVER the
+  reach clears. This fills the z-gap the banded body-ball model left: ground
+  claim caught z≤0.5, header 0.9–2.5, and a driven ball at body height
+  between/above tunnelled straight through defenders.
+- **Block vs collision:** an OPPONENT in the path is a `block` (deliberate, keep
+  0.35); a teammate merely in the way is an accidental `collision` (keep 0.55).
+  Exempt — they RECEIVE, not carom — the intended receiver AND a teammate
+  CHASING the ball (a striker onto a cross; `command.type==='chaseBall'`). The
+  ground game is structurally untouched: a flat pass is `rolling`, and the block
+  only sees `airborne` balls.
+- **One detection model:** the header used a POINT test, the collision a SWEPT
+  test, so a fast head-height ball tunnelled the header's point per tick and read
+  as a scrambled block. Unified both on `sweptApproach` — a fast ball a man is
+  under is a clean header again.
+- **Handball — explored, measured, DEFERRED (stop-rule).** Built the arm-band
+  hook (a reach band above natural head reach, up to a raised arm) and it
+  OVERFIRES at the foundation: geometric presence in the arm zone ≠ the arm
+  playing the ball. A ball merely passing OVER a player's head — a loft rising
+  over a runner, a dropping cross a striker stands near — flagged as a handball.
+  A dropping-vs-escaping lookahead (even movement-aware, extrapolating the
+  chaser) did NOT close it: the missing signal is INTENT, not geometry. Reverted
+  the detection; kept the per-player reach it stands on.
+
+**The Fouls-layer brief (L8+).** Handball is the first tenant of an officiating
+layer, not a geometry hook. It needs: (1) INTENT — was the arm deliberately or
+unnaturally played into the ball, vs a ball passing over a still silhouette;
+(2) arm-position/silhouette state the body model doesn't carry today; (3) the
+whistle / free-kick / penalty / advantage / restart machinery — there are NO
+fouls in the engine yet; (4) the keeper-in-box exception (legal arms, an L7
+concern). It builds on the xyz per-player reach now in place. The same layer
+will own offside-as-an-OFFENCE (distinct from the L-agent trap) and
+fouls / tackles-from-behind. Until then `resolveBlocks` documents the deferral.
+
+Also fixed en route: `actionLabels.clear()` sat behind `decidePhase`'s
+brain-less early return, so brain-less scenarios (`driven-block`) carried a
+STALE header/block label for ticks after the event; moved to the top of
+`step()` so labels are per-tick. Scenarios: `driven-block`,
+`teammate-collision`. 70/70; all ground rates pinned.
+
 ## 2026-07-21 — Header power comes from the BALL; the cross is whipped from the by-line
 
 Builder judgment: a crosser works from closer to the touchline with faster
