@@ -3,6 +3,33 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — Claims & punches: the keeper commands his box on corners
+
+Builder ask: a corner where the keeper claims or punches. The structural gap:
+resolveSaves only engaged balls travelling TOWARD his line — a corner whipped
+ACROSS the face was untouchable by his hands. Now an airborne ball dropping in
+his box that isn't a shot is CLAIMED (held) when he can get there and hold it,
+PUNCHED clear (fist, upfield, distance over control) when too hot or contested
+in the air (opponent ≤ 2 m, ball ≥ 1.4 m). His claim ceiling (2.8 m)
+out-reaches every head — why the box is his. Three findings en route:
+
+- **"Keeper's!"** — the sweep-chase no longer defers to a nearer teammate on a
+  cross dropping in his box; he attacks it through his own defenders.
+- **Attack at HANDS' height, upstream**: targeting the ground landing put him
+  downstream of the header contest and the near-post flick beat him to every
+  corner (1/16). Attacking the earliest claimable point mid-descent → 11/16
+  keeper-first (the flick honestly steals ~5 — that is corner football).
+- **The first-time BOOT** outside his box (hands illegal there): an arriving
+  low ball is cleared first-time upfield at half-volley height
+  (keeperBootMaxZ 1.2 — a 0.5 m gate razor-missed every hop and left a weak
+  standing header at the runner's feet). The SWEEPER test is redefined by
+  FIRST CONTACT: the sweep's job is the danger dealt with, not possession
+  (14/16). Attack-runs are exempt from the shuffle's face-lock.
+
+corner-cross pinned: keeper-first ≥ 8, punches present, the goal seam honest
+under the chaos. 84/84. Keeper distribution (throw/roll/kick choices) remains
+the last L7 sub-phase.
+
 ## 2026-07-22 — Receivers come TO the ball; hands-in-box, forward sweeps, the spread
 
 Builder round: (1) receivers were timing the meet — slow, set, stand, watch it
