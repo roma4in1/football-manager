@@ -171,6 +171,13 @@ export const BALL = {
   keeperKickMaxM: 50,
   keeperDropTicks: 3, // the beat between the drop and the strike
   keeperDropSafeM: 8, // no opponent within this → safe to put it down
+  /** the LOOPING throw: over-arm, arcing, reaching near the halfway line —
+   * and released FROM THE HANDS (no drop window, immunity intact), so it is
+   * the PRESSED keeper's long option; unpressed, the composed drop-kick has
+   * more range and pace. Capped by a human arm, not a boot. */
+  keeperLoopThrowMaxM: 48,
+  keeperLoopThrowSpeedMax: 29, // an elite arm — reaches ~48 m at 35°
+  keeperLoopThrowLoftDeg: 35,
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,

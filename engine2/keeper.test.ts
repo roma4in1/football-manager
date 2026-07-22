@@ -299,6 +299,30 @@ test('the COUNTER punt: kicked from the hands AT the breaking runner, led into h
   assert.ok(collected >= 8, `the led punt finds the runner in stride (${collected}/12)`);
 });
 
+test('the LOOPING throw: pressed, he arcs an over-arm throw ~40 m to the open man — from the hands, immune', () => {
+  let looped = 0;
+  let received = 0;
+  let apex = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('keeper-loop-throw'), `lt-${s}`);
+    let saw = false;
+    let violated = false;
+    for (let t = 0; t < 90; t++) {
+      const f = sim.step();
+      const ka = f.bodies.find((b) => b.id === 'keeper')?.action;
+      if (ka === 'loop-throw') saw = true;
+      // the hands stay immune right up to the release, even under press
+      if (!saw && sim.ball.carrierId !== 'keeper') violated = true;
+      if (saw) apex = Math.max(apex, sim.ball.z);
+      if (saw && sim.ball.carrierId === 'w') { received++; break; }
+    }
+    if (saw && !violated) looped++;
+  }
+  assert.ok(looped >= 10, `pressed, the over-arm loop launches — held immune until release (${looped}/12)`);
+  assert.ok(received >= 9, `the arc drops to the open man ~40 m out (${received}/12)`);
+  assert.ok(apex > 5, `it is a genuine LOOP, arcing over the press (apex ${apex.toFixed(1)} m)`);
+});
+
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
   const def: ScenarioDef = {

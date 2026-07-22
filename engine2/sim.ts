@@ -1002,13 +1002,32 @@ export class Sim {
             if (passCompletion(k.pos, m.pos, spd, opps, dm, m, 14) < 0.72) continue;
             if (!best || dm < best.d) best = { mate: m, d: dm };
           }
-          // beyond throw range: an open mate a KICK can reach — worth putting
-          // the ball down for, but only with nobody near (at his feet the
-          // immunity is off)
+          // beyond flat-throw range, two long options split by PRESSURE: the
+          // LOOPING over-arm throw (from the hands — immunity intact, the
+          // pressed keeper's reach, near the halfway line) and the drop-kick
+          // (unpressed — composed, more range and pace)
+          const safe = !this.bodies.some((o) => o.team !== k.team &&
+            Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < BALL.keeperDropSafeM);
+          let loop: { mate: BodyState; d: number } | null = null;
+          if (!best && !safe) {
+            for (const m of this.bodies) {
+              if (m.team !== k.team || m.id === id) continue;
+              const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
+              if (dm <= BALL.keeperThrowMaxM || dm > BALL.keeperLoopThrowMaxM) continue;
+              if (solveLoftSpeed(dm, BALL.keeperLoopThrowLoftDeg) > BALL.keeperLoopThrowSpeedMax) continue;
+              const marked = this.bodies.some((o) => o.team !== k.team &&
+                Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
+              if (marked) continue;
+              const landing = {
+                x: m.pos.x - ((m.pos.x - k.pos.x) / dm) * 3,
+                y: m.pos.y - ((m.pos.y - k.pos.y) / dm) * 3,
+              };
+              if (aerialCompletion(landing, m, opps) < 0.6) continue;
+              if (!loop || dm < loop.d) loop = { mate: m, d: dm };
+            }
+          }
           let kickable: { mate: BodyState; d: number } | null = null;
-          if (!best) {
-            const safe = !this.bodies.some((o) => o.team !== k.team &&
-              Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < BALL.keeperDropSafeM);
+          if (!best && !loop) {
             if (safe) {
               for (const m of this.bodies) {
                 if (m.team !== k.team || m.id === id) continue;
@@ -1037,6 +1056,19 @@ export class Sim {
             kickBall(this.ball, lead, Math.max(8, Math.min(16, rollLaunchForArrival(5, best.d))), BALL.keeperThrowLoftDeg, id, this.tick);
             this.intendedReceiverId = best.mate.id;
             this.actionLabels.set(id, 'throw');
+          } else if (loop) {
+            // the LOOPING throw — over-arm, arcing to the far man, released
+            // from the hands under press
+            const lead = { x: loop.mate.pos.x + loop.mate.vel.x * 0.6, y: loop.mate.pos.y + loop.mate.vel.y * 0.6 };
+            const dl = Math.hypot(lead.x - k.pos.x, lead.y - k.pos.y);
+            kickBall(this.ball, lead, Math.min(BALL.keeperLoopThrowSpeedMax, solveLoftSpeed(dl, BALL.keeperLoopThrowLoftDeg)),
+              BALL.keeperLoopThrowLoftDeg, id, this.tick);
+            // an over-arm throw RELEASES HIGH (~2.3 m): launched from the
+            // grass, the arc passed through head height exactly where the
+            // presser stood — he nodded the fresh throw straight back at goal
+            this.ball.z = 2.3;
+            this.intendedReceiverId = loop.mate.id;
+            this.actionLabels.set(id, 'loop-throw');
           } else if (kickable) {
             // the DROP — ball to his feet (tackleable now), the pass follows
             this.keeperDropPass = { keeperId: id, mateId: kickable.mate.id, strikeTick: this.tick + BALL.keeperDropTicks };

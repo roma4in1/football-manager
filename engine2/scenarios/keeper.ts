@@ -225,4 +225,30 @@ export const keeperCounter: ScenarioDef = {
   ],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup, keeperCounter];
+/** the LOOPING throw: PRESSED (no time to put the ball down), near mates
+ * marked — the over-arm throw arcs to the open man ~40 m out, released from
+ * the hands with the immunity intact. Nearly the halfway line, by arm. */
+export const keeperLoopThrow: ScenarioDef = {
+  version: 1,
+  name: 'keeper-loop-throw',
+  description: 'Pressed with the near mates marked, the keeper launches an over-arm LOOPING throw to the open man ~40 m out — from the hands, immune until release. Judge the arc and the choice under press.',
+  durationTicks: 90,
+  bodies: [
+    { id: 'keeper', team: 'away', pos: { x: 103, y: 34 }, attributes: gloves, keeper: true },
+    // the press — inside the drop-safe radius: no time to put it down
+    { id: 'presser', team: 'home', pos: { x: 99, y: 35 }, attributes: outfield },
+    // near mates marked
+    { id: 'fb', team: 'away', pos: { x: 92, y: 50 }, attributes: outfield, brain: 'onBall' },
+    { id: 'm1', team: 'home', pos: { x: 91, y: 49 }, attributes: outfield },
+    { id: 'cm', team: 'away', pos: { x: 90, y: 30 }, attributes: outfield, brain: 'onBall' },
+    { id: 'm2', team: 'home', pos: { x: 89, y: 29 }, attributes: outfield },
+    // the open man, ~41 m — reachable by arm, arcing
+    { id: 'w', team: 'away', pos: { x: 63, y: 44 }, attributes: outfield, brain: 'onBall' },
+  ],
+  ball: { carrier: 'keeper' },
+  script: [
+    { atTick: 2, bodyId: 'presser', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup, keeperCounter, keeperLoopThrow];
