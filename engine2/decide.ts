@@ -50,7 +50,7 @@ export const DUEL = {
   staggerTicks: 8,
   /** the KNOCK-AND-GO: the utility gain on the reclaim point's value — the
    * burst past a jockey is the attacker's half of the duel */
-  knockGain: 2.2,
+  knockGain: 1.2, // tempered — the chance-creation term carries the value
 } as const;
 
 export const GOAL = {
@@ -726,6 +726,9 @@ export interface DecideInput {
   /** drill boundaries (positional grids): the EV never aims outside them
    * and weights balls to die inside */
   bounds?: { x0: number; y0: number; x1: number; y1: number };
+  /** the goalkeepers on the pitch — a knock past a KEEPER must clear hands,
+   * dive and sweep, not just feet (every striker knows who the keeper is) */
+  keepers?: ReadonlySet<string>;
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
@@ -783,6 +786,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // the longer dive and the open side — the finish coaches teach.
     let dest = g;
     let bestClear = -1;
+    let destClearRaw = Infinity; // the picked lane's HONEST clearance (no bonus)
     const offCentre = here.y - GOAL.centerY;
     for (const side of [-1, 1] as const) {
       const c = { x: g.x, y: GOAL.centerY + side * (GOAL.mouthHalfWidthM - 0.6) };
@@ -793,11 +797,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const t = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((o.pos.x - here.x) * ldx + (o.pos.y - here.y) * ldy) / len2));
         clear = Math.min(clear, Math.hypot(o.pos.x - (here.x + ldx * t), o.pos.y - (here.y + ldy * t)));
       }
+      const raw = clear;
       // the far post from an angled position earns the across-goal bonus
       if (Math.abs(offCentre) > 1.5 && side !== Math.sign(offCentre)) clear += DECIDE.shotAcrossBonus;
-      if (clear > bestClear) { bestClear = clear; dest = c; }
+      if (clear > bestClear) { bestClear = clear; dest = c; destClearRaw = raw; }
     }
-    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere });
+    // a lane THROUGH a body is mostly saved — the spread keeper a metre off
+    // the line eats the shot the EV was pricing at face xG (the 16/16-saved
+    // shot kept outbidding round-the-keeper)
+    const laneFactor = Math.max(0.3, Math.min(1, 0.3 + 0.7 * (destClearRaw - 0.6) / 1.4));
+    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor });
     // the CHIP (L7's counter): a keeper RUSHED OFF HIS LINE leaves the goal
     // open in z, not y — loft it over him, dropping under the bar. The guard
     // figure is the last opponent near the goal mouth; the chip exists only
@@ -1205,10 +1214,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   if (!keep) {
     const gdir = Math.atan2(g.y - here.y, g.x - here.x);
     let frontman: BodyState | null = null;
-    let fd = 6.0;
+    let fd = 8.0;
     for (const o of opponents) {
       const d = Math.hypot(o.pos.x - here.x, o.pos.y - here.y);
-      if (d > 6.0 || d < 0.8) continue;
+      if (d > 8.0 || d < 0.8) continue; // to 8: the touch-past-the-KEEPER is a long knock
       const ang = Math.abs((((Math.atan2(o.pos.y - here.y, o.pos.x - here.x) - gdir) + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
       if (ang > Math.PI / 3) continue;
       if (d < fd) { fd = d; frontman = o; }
@@ -1236,10 +1245,22 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const t = ((fm.pos.x - here.x) * (past.x - here.x) + (fm.pos.y - here.y) * (past.y - here.y)) / (dK * dK);
           const clear = Math.hypot(fm.pos.x - (here.x + (past.x - here.x) * t), fm.pos.y - (here.y + (past.y - here.y) * t));
           const beaten = fm.speed < 1.0; // planted (the stagger) — the moment
-          let pKnock = Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
+          // a KEEPER frontman collects with hands, dive and sweep — the berth
+          // must be far wider than a tackler's feet (the knock at a stranded
+          // keeper rolled straight into his gloves, measured 16/16)
+          const isKeeper = input.keepers?.has(fm.id) ?? false;
+          let pKnock = isKeeper
+            ? Math.max(0, Math.min(1, (clear - 1.6) / 1.4))
+            : Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
           if (beaten) pKnock = Math.min(1, pKnock + 0.3);
           const reclaim = { x: past.x + Math.cos(gdir) * 1.5, y: past.y + Math.sin(gdir) * 1.5 };
-          const uK = DECIDE.possessionDiscount * pKnock * Math.max(0, value(reclaim, carrier.id) - pvHere) * DUEL.knockGain;
+          // CHANCE CREATION, as passes price it: the reclaim past the beaten
+          // frontman is a shooting position — against a beaten KEEPER, an
+          // open net. Without this the knock lost to the very shot the set
+          // keeper saves 16/16 (round-the-keeper never fired).
+          const pvReclaim = value(reclaim, carrier.id) +
+            0.6 * xG(reclaim, carrier.team, bodies.filter((b) => b.id !== fm.id && b.id !== carrier.id));
+          const uK = DECIDE.possessionDiscount * pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain;
           if (uK > 0) options.push({ kind: 'knock', dest: past, speedMps: speed, utility: uK });
         }
       }

@@ -85,12 +85,16 @@ or not at all.
   within 12 m** is discounted ×0.45 — one lone jockey was repelling a carrier
   from half the pitch (a 16 s orbit, measured).
 - **ROUND-THE-KEEPER** (new, from the keeper arc): the delaying keeper IS a
-  lone jockey — same machine, same counter. The knock-and-go sideways-past a
-  spread keeper (who cannot use hands outside the ball's line and is
-  backpedal-slow laterally) is the striker's remaining 1v1 conversion. No
-  special case: if the knock-and-go reads "isolated defender + space behind"
-  it fires vs the keeper for free. Acceptance: the keeper-1v1 scenario's
-  save-rate drops from 12/12 to a realistic mix.
+  lone jockey — same machine, same counter. **Session finding (calibration):**
+  the knock is the WRONG tool at range against a keeper — a knock past hands,
+  dive and sweep rolled straight into his gloves 16/16 (the reclaim space is
+  HIS space). The knock is now KEEPER-AWARE (DecideInput.keepers; the berth
+  requirement roughly doubles), which suppresses the suicidal version. The
+  honest remaining conversion is the DRIBBLE-AROUND — a carry move past the
+  keeper's side (tight touches, not a self-pass), which belongs to the carry
+  vocabulary, not the knock. Until it exists, the pinned 1v1 equilibrium
+  stands: a proper keeper (delay, spread, pounce) deals with the 1v1; a
+  stranded one is punished by placement/chip. Deferred with evidence.
 
 ## 3. Loose-ball pursuit arbitration + separation
 

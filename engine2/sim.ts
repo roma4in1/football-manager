@@ -1833,6 +1833,7 @@ export class Sim {
               current: null,
               homes: this.homes,
               bounds: this.bounds,
+              keepers: this.keepers,
             });
             const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear' || ahead.kind === 'knock'
               ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
@@ -2112,6 +2113,7 @@ export class Sim {
           homes: this.homes,
           bounds: this.bounds,
           runners: this.runningLine,
+          keepers: this.keepers,
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
             const rp = this.runPhase.get(rid);
             const rb = this.byId.get(rid)!;
