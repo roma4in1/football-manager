@@ -23,6 +23,9 @@ export const GOAL = {
   mouthHalfWidthM: 3.66,
   centerY: PITCH.width / 2,
   barZ: 2.44, // crossbar — a ball over it is not a goal (and not saveable)
+  /** the penalty area — where the keeper's HANDS are legal */
+  boxDepthM: 16.5,
+  boxHalfWidthM: 20.16,
 } as const;
 
 export interface PlayInstructions {

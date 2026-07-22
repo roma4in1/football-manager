@@ -267,7 +267,6 @@ export class Sim {
             if (!onLine && icept.lineDist <= 1.2) onLine = true;
             else if (onLine && icept.lineDist > 1.8) onLine = false;
             this.receiveOnLine.set(body.id, onLine);
-            const vcap = Math.max(regimeCapMps(body.attributes.pace, body.command.regime), 0.5);
             if (!onLine) {
               live = icept.pNear;
               // brake in when the meet is still ahead in TIME — or when the
@@ -287,11 +286,16 @@ export class Sim {
               live = { x: icept.pNear.x + (ux / un) * 0.5, y: icept.pNear.y + (uy / un) * 0.5 };
               timedCap = 2.4;
             } else {
-              live = icept.pMeet;
-              const d = Math.hypot(live.x - body.pos.x, live.y - body.pos.y);
-              const need = d / Math.max(icept.tMeet, 0.2);
-              if (need < vcap * 0.95) timedCap = Math.max(need, 0.6);
-              if (d <= 0.5) standing = true;
+              // EARLY on the line: COME TO the ball — advance along the path
+              // toward it at a controlled pace. Timing the meet (slow, set,
+              // stand, watch it in) was the judged wait-for-it-backwards: a
+              // receiver shortens the pass, he doesn't spectate it. The final
+              // stride above takes over as the ball arrives.
+              const ux = this.ball.pos.x - body.pos.x;
+              const uy = this.ball.pos.y - body.pos.y;
+              const un = Math.hypot(ux, uy) || 1;
+              live = { x: body.pos.x + (ux / un) * 2.0, y: body.pos.y + (uy / un) * 2.0 };
+              timedCap = 2.4; // controlled — meeting a pass is not charging it
             }
           }
         }
@@ -954,6 +958,7 @@ export class Sim {
             if (kD <= 1.2) {
               // on it — the final step; claims/saves resolve the pickup
               if (k.command.type !== 'chaseBall') this.assign(k, { type: 'chaseBall', regime: 'sprint' });
+              continue;
             } else {
               // the sweep is a RACE, not a receive — the generic chase's
               // receive machine stands on the line and waits (a receiver's
@@ -975,12 +980,21 @@ export class Sim {
                   if (dK / vcap + 0.15 <= i * DT) break; // he beats the ball there
                 }
               }
-              const cur = k.command.type === 'moveTo' ? k.command.target : null;
-              if (!cur || Math.hypot(cur.x - target.x, cur.y - target.y) > 0.3) {
-                this.assign(k, { type: 'moveTo', target, regime: 'sprint' });
+              // a sweep goes FORWARD — out toward the play, where he collects
+              // (his box's hands, or feet beyond it). A ball rolling BEHIND
+              // him is not a sweep: fall through to the ladder and RETREAT
+              // (angle play walks him back goal-side, square to the ball).
+              const dTargGoal = Math.hypot(target.x - own.x, target.y - own.y);
+              const dKGoal = Math.hypot(k.pos.x - own.x, k.pos.y - own.y);
+              if (dTargGoal >= dKGoal - 1) {
+                const cur = k.command.type === 'moveTo' ? k.command.target : null;
+                if (!cur || Math.hypot(cur.x - target.x, cur.y - target.y) > 0.3) {
+                  this.assign(k, { type: 'moveTo', target, regime: 'sprint' });
+                }
+                continue;
               }
+              // behind him → not a sweep: fall through to the ladder (retreat)
             }
-            continue;
           }
         }
       }
@@ -1055,7 +1069,18 @@ export class Sim {
       if (dGoal > BALL.keeperEngageM) continue;
       if (ball.vel.x * (own.x - ball.pos.x) <= 0) continue; // moving away
       if (ball.z > GOAL.barZ) continue;
-      const reach = BALL.keeperReachBaseM + BALL.keeperReachAgility * k.attributes.agility;
+      // HANDS ARE LEGAL ONLY IN HIS BOX — outside it he is an outfielder
+      // (feet: the ordinary claim machinery collects for him out there)
+      if (Math.abs(ball.pos.x - own.x) > GOAL.boxDepthM ||
+        Math.abs(ball.pos.y - GOAL.centerY) > GOAL.boxHalfWidthM) continue;
+      // the SPREAD: point-blank — the SHOOTER right on top of him (the 1v1
+      // smother) — he makes himself BIG, arms and legs wide. Gated on the
+      // kicker's distance, not the ball's (the ball is always close when a
+      // save resolves; gating on it spread him against every 17 m drive).
+      const kicker = ball.kickerId ? this.byId.get(ball.kickerId) : undefined;
+      const spread = kicker && Math.hypot(kicker.pos.x - k.pos.x, kicker.pos.y - k.pos.y) <= BALL.keeperSpreadRangeM
+        ? BALL.keeperSpreadBonusM : 0;
+      const reach = BALL.keeperReachBaseM + BALL.keeperReachAgility * k.attributes.agility + spread;
       const { d, at } = this.sweptApproach(k, from);
       if (d > reach) continue;
       const catchable = speed <= BALL.keeperCatchBase + BALL.keeperCatchTouch * k.attributes.firstTouch &&

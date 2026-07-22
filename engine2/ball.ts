@@ -136,6 +136,10 @@ export const BALL = {
   /** within this far to go he SHUFFLES — square to the ball, never showing it
    * his back; a longer relocation (a sweep, a big retreat) turns and runs */
   keeperShuffleMaxM: 7,
+  /** the SPREAD: point-blank (a 1v1 smother, a close-range block) he makes
+   * himself BIG — arms and legs wide add effective blocking reach */
+  keeperSpreadBonusM: 0.45,
+  keeperSpreadRangeM: 6,
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
