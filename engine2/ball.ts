@@ -108,6 +108,9 @@ export const BALL = {
    * to smother the chance before it sharpens; the existing pinch/save duel
    * machinery is the smother itself once he arrives. */
   keeperRushMaxM: 13,
+  /** with the ball AT THE STRIKER'S FEET he holds this depth instead — stay
+   * big, delay; the rush is for the heavy touch (the smother window) */
+  keeperDelayDepthM: 6,
   /** the SWEEPER: in possession (or with play far upfield) the keeper holds a
    * HIGH line off his goal, sweeping the space behind his defence — his
    * position is situational, never fixed. Depth scales with the ball's

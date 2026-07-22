@@ -1150,13 +1150,33 @@ export class Sim {
       } else {
         this.keeperShotSeen.delete(id);
       }
+      // the CHIP READ: a ball ARCING OVER HIM toward his goal — above the bar
+      // right now (so no shot gate sees it) but dropping at the mouth. He
+      // turns and SPRINTS for his line to contest the drop; the save races it.
+      const dBallGoal = Math.hypot(this.ball.pos.x - own.x, this.ball.pos.y - own.y);
+      const ballCarrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+      if (ballCarrier === undefined && this.ball.phase === 'airborne' &&
+        this.ball.z > GOAL.barZ && this.ball.vel.x * (own.x - this.ball.pos.x) > 0) {
+        const kickerB = this.ball.kickerId ? this.byId.get(this.ball.kickerId) : undefined;
+        if (kickerB && kickerB.team !== k.team) {
+          const chipPred = predictBall(this.ball, 2.5);
+          const dPredMouth = Math.hypot(chipPred.x - own.x, chipPred.y - own.y);
+          if (dPredMouth < 8) {
+            this.keeperAttacking.add(id); // a flat-out backpedal race, no shuffle
+            const spot = { x: own.x + (sign > 0 ? 0.8 : -0.8), y: GOAL.centerY };
+            const cur = k.command.type === 'moveTo' ? k.command.target : null;
+            if (!cur || Math.hypot(cur.x - spot.x, cur.y - spot.y) > 0.3) {
+              this.assign(k, { type: 'moveTo', target: spot, regime: 'sprint' });
+            }
+            continue;
+          }
+        }
+      }
       // the SWEEP-CHASE: a free ball IN (or dropping into) his zone that is
       // not a shot — the through ball in behind, the loose roll. He leaves his
       // line and attacks it; interceptPoint drives him to the drop and
       // resolveClaims/resolveSaves do the pickup. Gated on the PREDICTED ball
       // (waiting for it to slow or arrive gave the runner a 2 s head start).
-      const dBallGoal = Math.hypot(this.ball.pos.x - own.x, this.ball.pos.y - own.y);
-      const ballCarrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
       if (ballCarrier === undefined && this.ball.phase !== 'dead') {
         const pred = predictBall(this.ball, 2.0);
         const dPredGoal = Math.hypot(pred.x - own.x, pred.y - own.y);
@@ -1259,7 +1279,19 @@ export class Sim {
       const oneVsOne = oppHasBall && d < 45 && goalSideMates === 0;
       let depth: number;
       if (oneVsOne) {
-        depth = Math.min(Math.max(d - 7, BALL.keeperCloseGain * (28 - d), BALL.keeperDepthMinM), BALL.keeperRushMaxM);
+        // POUNCE vs DELAY — the real 1v1 craft: rush hard only when the ball
+        // is AWAY from the striker's feet (a heavy touch, the smother
+        // window). At his feet, HOLD ~6 m: stay big, delay — from there the
+        // backpedal beats the chip, and from 11 m out nothing does (the chip
+        // finding: a keeper that far out cannot recover a good chip, so the
+        // craft is not to be there while the striker is in control).
+        const cGap = ballCarrier
+          ? Math.hypot(this.ball.pos.x - ballCarrier.pos.x, this.ball.pos.y - ballCarrier.pos.y)
+          : 99;
+        const pounce = ballCarrier === undefined || cGap > 1.6;
+        depth = pounce
+          ? Math.min(Math.max(d - 7, BALL.keeperCloseGain * (28 - d), BALL.keeperDepthMinM), BALL.keeperRushMaxM)
+          : Math.min(Math.max(BALL.keeperCloseGain * (28 - d), BALL.keeperDepthMinM), BALL.keeperDelayDepthM);
       } else if (ownHasBall || d > 45) {
         depth = Math.min(Math.max(BALL.keeperSweepGain * (d - 18), BALL.keeperDepthMinM), BALL.keeperSweepMaxM);
       } else {
@@ -1984,7 +2016,7 @@ export class Sim {
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
-            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' ? (intent.spin ?? 0) : 0);
+            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' ? (intent.spin ?? 0) : 0);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
@@ -1998,7 +2030,7 @@ export class Sim {
             this.pendingKicks.set(id, {
               dest: intent.dest,
               speedMps: intent.speedMps,
-              ...(intent.kind === 'pass' && intent.loftDeg ? { loftDeg: intent.loftDeg } : {}),
+              ...((intent.kind === 'pass' || intent.kind === 'shoot') && intent.loftDeg ? { loftDeg: intent.loftDeg } : {}),
               ...(intent.kind === 'pass' && intent.spin ? { spin: intent.spin } : {}),
               ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
             });

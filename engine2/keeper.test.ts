@@ -323,6 +323,31 @@ test('the LOOPING throw: pressed, he arcs an over-arm throw ~40 m to the open ma
   assert.ok(apex > 5, `it is a genuine LOOP, arcing over the press (apex ${apex.toFixed(1)} m)`);
 });
 
+test('a STRANDED keeper is PUNISHED — and a delaying one is not (the 1v1 equilibrium)', () => {
+  // caught 12 m off his line: the striker finishes past him (placed or chipped)
+  let punished = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('keeper-chip'), `kp-${s}`);
+    for (let t = 0; t < 60; t++) {
+      sim.step();
+      if (sim.goals.length) { punished++; break; }
+    }
+  }
+  assert.ok(punished >= 9, `caught 12 m out, he concedes (${punished}/12)`);
+  // the SAME striker against a keeper playing the 1v1 properly (delay, stay
+  // big, pounce the touch) is dealt with — position is the difference
+  let dealt = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('keeper-1v1'), `kv-${s}`);
+    for (let t = 0; t < 70; t++) {
+      const f = sim.step();
+      const ka = f.bodies.find((b) => b.id === 'keeper')?.action;
+      if (ka === 'save-catch' || ka === 'save-parry' || sim.ball.carrierId === 'keeper') { dealt++; break; }
+    }
+  }
+  assert.ok(dealt >= 8, `delaying and staying big, he deals with the 1v1 (${dealt}/12)`);
+});
+
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
   const def: ScenarioDef = {

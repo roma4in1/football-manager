@@ -48,7 +48,7 @@ export interface PlayInstructions {
 export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
   | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
-  | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number }
+  | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
   | { kind: 'shield'; utility: number }
   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
 
@@ -151,6 +151,11 @@ export const DECIDE = {
    * score earns this bonus — the keeper shades his near post, so across him is
    * the open side (and the longer dive). Central shooters have no "across". */
   shotAcrossBonus: 0.8,
+  /** the CHIP over a rushed-out keeper — the 1v1's counter. The utility bonus
+   * scales with how far OFF HIS LINE the guard is (4 m → 0, 12 m → full). */
+  chipLoftDeg: 38,
+  chipBaseValue: 0.45, // an uncoverable chip ≈ a half-chance at worst
+  chipKeeperOutGain: 0.25,
   /** the DRIVE credit for an UNPRESSURED carrier (progression valued like a
    * pass's) and the pressure ceiling under which it applies */
   driveGain: 1.2,
@@ -758,6 +763,57 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       if (clear > bestClear) { bestClear = clear; dest = c; }
     }
     options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere });
+    // the CHIP (L7's counter): a keeper RUSHED OFF HIS LINE leaves the goal
+    // open in z, not y — loft it over him, dropping under the bar. The guard
+    // figure is the last opponent near the goal mouth; the chip exists only
+    // when he is genuinely out (≥4 m) and the parabola clears his leap.
+    const guard = opponents
+      .filter((o) => Math.hypot(o.pos.x - g.x, o.pos.y - g.y) < 16)
+      .sort((a, b) => Math.hypot(a.pos.x - g.x, a.pos.y - g.y) - Math.hypot(b.pos.x - g.x, b.pos.y - g.y))[0];
+    if (guard) {
+      const kOut = Math.hypot(guard.pos.x - g.x, guard.pos.y - g.y);
+      // his distance ALONG the shot line (the chip must clear him mid-flight)
+      const sdx = g.x - here.x, sdy = g.y - here.y;
+      const sLen = Math.max(Math.hypot(sdx, sdy), 1e-6);
+      const tG = ((guard.pos.x - here.x) * sdx + (guard.pos.y - here.y) * sdy) / (sLen * sLen);
+      const dK = tG * sLen;
+      const R = dGoal + 0.8; // land it just over the line
+      if (kOut >= 4 && tG > 0.05 && tG < 0.95) {
+        // the chip's loft ADAPTS — as FLAT as still clears the guard's leap
+        // (parabolic height at him: x·tanθ·(1−x/R)). A steep chip from range
+        // hangs so long even a stranded keeper walks home under it; the long
+        // chip is a flatter, faster lob.
+        for (const L of [24, 30, DECIDE.chipLoftDeg]) {
+          const zAtGuard = dK > 0.5 && dK < R
+            ? dK * Math.tan((L * Math.PI) / 180) * (1 - dK / R)
+            : 0;
+          // clear his CLAIM (hands, 2.8 m) not just his head — and the
+          // parabola runs ~0.6 m above the real dragged flight, so the gate
+          // carries both: a 2.6 gate got the chip CAUGHT mid-flight at 2.7
+          if (zAtGuard <= 3.4) continue; // this loft does not clear his reach
+          // ...and only when the guard CANNOT get home before the drop: the
+          // chip is a race between his backpedal and the ball's hang. A
+          // keeper holding 6 m recovers a chip every time (measured 16/16);
+          // one caught out cannot.
+          const spdChip = solveLoftSpeed(R, L);
+          const tFlight = loftFlightTimeS(spdChip, L);
+          const tGuardHome = kOut / Math.max(regimeCapMps(guard.attributes.pace, 'sprint'), 1) + 0.4;
+          if (tGuardHome > tFlight + 0.25) { // he must be CLEARLY late — a tying keeper catches the drop
+            // an UNCOVERABLE chip is priced as the real chance it is —
+            // anchoring it to xGHere undervalued it into never firing (xG
+            // counts the very keeper the chip bypasses). Scaled by the
+            // mouth's ANGULAR openness from here: a flat price had the
+            // byline winger chipping a sliver instead of crossing.
+            const a1 = Math.atan2(GOAL.centerY - GOAL.mouthHalfWidthM - here.y, g.x - here.x);
+            const a2 = Math.atan2(GOAL.centerY + GOAL.mouthHalfWidthM - here.y, g.x - here.x);
+            const openness = Math.min(1, Math.abs(a2 - a1) / 0.35);
+            const uChip = (DECIDE.chipBaseValue + DECIDE.chipKeeperOutGain * Math.min(1, (kOut - 4) / 8)) * openness;
+            options.push({ kind: 'shoot', dest: g, speedMps: spdChip, loftDeg: L, utility: uChip });
+          }
+          break; // flattest clearing loft judged; steeper only hangs longer
+        }
+      }
+    }
   }
 
   // PASS — each teammate, at a lead point if he is moving

@@ -251,4 +251,22 @@ export const keeperLoopThrow: ScenarioDef = {
   ],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup, keeperCounter, keeperLoopThrow];
+/** the STRANDED keeper is PUNISHED: caught 12 m off his line, the striker
+ * finishes past him — placed along the ground where the mouth is open, or
+ * CHIPPED over his backpedal when the ground lanes are covered (the chip
+ * exists only when it clears his claim AND he is clearly late home). The
+ * point pinned here: being caught out concedes, one way or the other. */
+export const keeperChip: ScenarioDef = {
+  version: 1,
+  name: 'keeper-chip',
+  description: 'The keeper is caught 12 m off his line; the striker punishes him — placed past on the ground, or chipped over the backpedal. Judge that stranded = beaten.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'striker', team: 'home', pos: { x: 86, y: 34 }, attributes: { ...outfield, passing: 16 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    { id: 'keeper', team: 'away', pos: { x: 93, y: 34 }, attributes: gloves, keeper: true },
+  ],
+  ball: { carrier: 'striker' },
+  script: [],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution, keeperBuildup, keeperCounter, keeperLoopThrow, keeperChip];
