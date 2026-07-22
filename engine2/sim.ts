@@ -25,10 +25,10 @@ import {
   type ScenarioDef,
   type Vec2,
 } from './engine2-types.ts';
-import { BALL, kickBall, predictBall, predictBallState, stepBall, type BallState } from './ball.ts';
+import { BALL, kickBall, predictBall, predictBallState, rollLaunchForArrival, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { attackSign, decide, DECIDE, GOAL, goalCenter, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { attackSign, decide, DECIDE, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -54,6 +54,11 @@ export class Sim {
   /** keepers ATTACKING a ball this tick (the sweep, the claim run) — they
    * sprint full tilt; the shuffle's face-lock is for POSITIONING only */
   private readonly keeperAttacking = new Set<string>();
+  /** the keeper HOLDING the ball in his hands (a catch, a claim, a pickup in
+   * his box) — UNTOUCHABLE: no tackle, no pinch, until he releases it */
+  private keeperHolding: string | null = null;
+  /** tick the hold began — distribution follows after a settle */
+  private keeperHeldSince = 0;
   /** goals conceded — a ball crossing either goal line between the posts,
    * under the bar. The minimal seam L7 acceptance needs (saved vs beaten);
    * restarts stay L8's. `against` is the team whose goal it crossed. */
@@ -185,6 +190,7 @@ export class Sim {
 
     // 1c. L7 — keepers self-position on the ball–goal line (after decide so a
     // keeper with the ball at his feet is decision- or script-owned that tick)
+    if (this.keeperHolding && this.ball.carrierId !== this.keeperHolding) this.keeperHolding = null;
     this.keeperPhase();
 
     // 2. bodies move; chaseBall runs to the INTERCEPT point (players
@@ -553,6 +559,9 @@ export class Sim {
   private resolveTackles(): void {
     const carrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
     if (!carrier) return;
+    // a keeper with the ball IN HIS HANDS is untouchable — no tackle exists
+    // against a held ball (the pinch already cannot reach a glued ball)
+    if (this.keeperHolding === carrier.id) return;
     const gap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
     if (gap > BALL.controlRadiusM) return; // a running touch is the pinch's domain
     for (const b of this.bodies) {
@@ -910,9 +919,8 @@ export class Sim {
       const sign = attackSign(k.team);
       const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
       if (this.ball.carrierId === id) {
-        // with the ball INSIDE his box he holds it (distribution is later);
-        // OUTSIDE it he is a defender under pressure — the sweep's ending is
-        // a FIRST-TIME clear upfield, not a gather-and-carry against a runner
+        // OUTSIDE his box he is a defender under pressure — the sweep's
+        // ending is a FIRST-TIME clear upfield, not a gather-and-carry
         const outsideBox = Math.abs(this.ball.pos.x - own.x) > GOAL.boxDepthM ||
           Math.abs(this.ball.pos.y - GOAL.centerY) > GOAL.boxHalfWidthM;
         if (outsideBox) {
@@ -921,6 +929,54 @@ export class Sim {
           kickBall(this.ball, { x: k.pos.x + Math.cos(upAng) * 30, y: k.pos.y + Math.sin(upAng) * 30 },
             16, 25, id, this.tick);
           this.actionLabels.set(id, 'keeper-clear');
+          continue;
+        }
+        // INSIDE his box a settled ball at his feet is PICKED UP — held in
+        // both hands he is untouchable (no tackle exists against a held ball)
+        if (this.keeperHolding !== id) {
+          this.keeperHolding = id;
+          this.keeperHeldSince = this.tick;
+        }
+        if (k.command.type !== 'hold') this.assign(k, { type: 'hold' });
+        // DISTRIBUTION: a beat to settle, then the nearest OPEN mate with a
+        // clean lane gets the fast flat THROW; nobody open → the PUNT long
+        if (this.tick - this.keeperHeldSince >= BALL.keeperHoldTicks) {
+          // the throw must SURVIVE moving opponents, not just a static lane —
+          // a pressing striker ran down every "clear-at-release" throw. The
+          // arrival-race model (passCompletion) is the honest judge.
+          const opps = this.bodies.filter((o) => o.team !== k.team);
+          let best: { mate: BodyState; d: number } | null = null;
+          for (const m of this.bodies) {
+            if (m.team !== k.team || m.id === id) continue;
+            const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
+            if (dm < BALL.keeperThrowMinM || dm > BALL.keeperThrowMaxM) continue;
+            const marked = this.bodies.some((o) => o.team !== k.team &&
+              Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
+            if (marked) continue;
+            // a throw ARRIVES with pace — weighted like a real pass, not a
+            // lob that dies in the middle third as a 50/50 with the presser
+            const spd = Math.max(8, Math.min(16, rollLaunchForArrival(5, dm)));
+            if (passCompletion(k.pos, m.pos, spd, opps, dm, m, 14) < 0.72) continue;
+            if (!best || dm < best.d) best = { mate: m, d: dm };
+          }
+          this.keeperHolding = null;
+          if (best) {
+            // the THROW — flat, fast, to feet, weighted by range
+            const lead = { x: best.mate.pos.x + best.mate.vel.x * 0.4, y: best.mate.pos.y + best.mate.vel.y * 0.4 };
+            kickBall(this.ball, lead, Math.max(8, Math.min(16, rollLaunchForArrival(5, best.d))), BALL.keeperThrowLoftDeg, id, this.tick);
+            this.intendedReceiverId = best.mate.id;
+            this.actionLabels.set(id, 'throw');
+          } else {
+            // the PUNT — high and long upfield
+            const upAng = (sign > 0 ? 0 : Math.PI) +
+              this.rng.gauss(0, BALL.keeperPuntScatterRad, this.tick, id, 'punt');
+            const target = {
+              x: k.pos.x + Math.cos(upAng) * 55,
+              y: Math.max(8, Math.min(PITCH.width - 8, k.pos.y + Math.sin(upAng) * 55)),
+            };
+            kickBall(this.ball, target, BALL.keeperPuntSpeed, BALL.keeperPuntLoftDeg, id, this.tick);
+            this.actionLabels.set(id, 'punt');
+          }
         }
         continue;
       }
@@ -1146,6 +1202,8 @@ export class Sim {
           ball.phase = 'carried';
           ball.carrierId = k.id;
           ball.kickerId = null;
+          this.keeperHolding = k.id;
+          this.keeperHeldSince = this.tick;
           this.completeChases(k.team);
           this.actionLabels.set(k.id, 'claim');
         }
@@ -1173,6 +1231,8 @@ export class Sim {
         ball.phase = 'carried';
         ball.carrierId = k.id;
         ball.kickerId = null;
+        this.keeperHolding = k.id;
+        this.keeperHeldSince = this.tick;
         this.completeChases(k.team);
         this.actionLabels.set(k.id, 'save-catch');
       } else {

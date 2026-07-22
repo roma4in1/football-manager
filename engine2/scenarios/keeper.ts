@@ -152,4 +152,28 @@ export const cornerCross: ScenarioDef = {
   ],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross];
+/** DISTRIBUTION: the keeper has the ball in his hands, a striker pressing him
+ * — who cannot touch a held ball. He settles a beat, then throws FLAT to the
+ * open full-back, not the marked midfielder; with nobody open he punts long. */
+export const keeperDistribution: ScenarioDef = {
+  version: 1,
+  name: 'keeper-distribution',
+  description: 'The keeper holds the ball under press (untouchable in his hands), then distributes: a fast flat throw to the OPEN man, ignoring the marked one. Judge the hold, the immunity, and the choice.',
+  durationTicks: 60,
+  bodies: [
+    { id: 'keeper', team: 'away', pos: { x: 103, y: 34 }, attributes: gloves, keeper: true },
+    // an open full-back wide — the right ball
+    { id: 'fb', team: 'away', pos: { x: 92, y: 52 }, attributes: outfield, brain: 'onBall' },
+    // a marked midfielder — the wrong ball
+    { id: 'cm', team: 'away', pos: { x: 90, y: 30 }, attributes: outfield, brain: 'onBall' },
+    { id: 'marker', team: 'home', pos: { x: 89, y: 29 }, attributes: outfield },
+    // a striker pressing the keeper — he can harass, he cannot touch
+    { id: 'striker', team: 'home', pos: { x: 98, y: 34 }, attributes: outfield },
+  ],
+  ball: { carrier: 'keeper' },
+  script: [
+    { atTick: 2, bodyId: 'striker', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper, cornerCross, keeperDistribution];

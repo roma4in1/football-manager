@@ -197,6 +197,64 @@ test('the SHUFFLE: repositioning, the keeper stays square to the ball — he nev
   assert.ok(worstOff < Math.PI / 4, `facing stays on the ball while he shuffles (worst ${(worstOff * 180 / Math.PI).toFixed(0)}°)`);
 });
 
+test('the HELD ball is untouchable, and DISTRIBUTION finds the open man, never the marked one', () => {
+  let cleanHolds = 0;
+  let toOpen = 0;
+  let toMarked = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('keeper-distribution'), `kd-${s}`);
+    let released = false;
+    let violated = false;
+    for (let t = 0; t < 60; t++) {
+      const f = sim.step();
+      const ka = f.bodies.find((b) => b.id === 'keeper')?.action;
+      if (ka === 'throw' || ka === 'punt') released = true;
+      // NOBODY takes the ball off a keeper holding it in his hands — the
+      // first change of carrier must be his own release
+      if (!released && sim.ball.carrierId !== 'keeper') violated = true;
+      if (released && sim.ball.carrierId === 'fb') { toOpen++; break; }
+      if (released && sim.ball.carrierId === 'cm') { toMarked++; break; }
+    }
+    if (!violated) cleanHolds++;
+  }
+  assert.equal(cleanHolds, 12, `the held ball is NEVER taken — no tackle exists against hands (${cleanHolds}/12)`);
+  assert.ok(toOpen >= 10, `the throw finds the OPEN full-back with pace (${toOpen}/12)`);
+  assert.equal(toMarked, 0, `the marked man never gets the ball thrown at his marker (${toMarked})`);
+});
+
+test('nobody open → the PUNT, high and long upfield', () => {
+  const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
+  const def: ScenarioDef = {
+    version: 1,
+    name: 'punt-inline',
+    description: 'both mates marked tight — the keeper punts long',
+    durationTicks: 60,
+    bodies: [
+      { id: 'keeper', team: 'away', pos: { x: 103, y: 34 }, attributes: { ...outfield, agility: 15, firstTouch: 14 }, keeper: true },
+      { id: 'fb', team: 'away', pos: { x: 92, y: 50 }, attributes: outfield },
+      { id: 'm1', team: 'home', pos: { x: 91, y: 49 }, attributes: outfield },
+      { id: 'cm', team: 'away', pos: { x: 90, y: 30 }, attributes: outfield },
+      { id: 'm2', team: 'home', pos: { x: 89, y: 29 }, attributes: outfield },
+    ],
+    ball: { carrier: 'keeper' },
+    script: [],
+  };
+  let punted = 0;
+  let farEnough = 0;
+  for (let s = 0; s < 8; s++) {
+    const sim = new Sim(def, `pt-${s}`);
+    let saw = false;
+    for (let t = 0; t < 60; t++) {
+      const f = sim.step();
+      if (f.bodies.find((b) => b.id === 'keeper' && b.action === 'punt')) saw = true;
+      if (saw && sim.ball.pos.x < 70) { farEnough++; break; }
+    }
+    if (saw) punted++;
+  }
+  assert.ok(punted >= 7, `with every mate marked, he punts (${punted}/8)`);
+  assert.ok(farEnough >= 6, `the punt carries deep upfield, past x70 (${farEnough}/8)`);
+});
+
 test('the goal seam is honest: a ball crossing OUTSIDE the posts is no goal', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
   const def: ScenarioDef = {

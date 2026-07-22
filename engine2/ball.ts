@@ -154,6 +154,16 @@ export const BALL = {
   /** the sweep's first-time BOOT outside his box takes a bouncing ball up to
    * a half-volley height — a 0.5 m gate razor-missed every hop */
   keeperBootMaxZ: 1.2,
+  /** DISTRIBUTION: held ball → a beat to settle, then the nearest OPEN mate
+   * with a clean lane gets the fast flat THROW; nobody open → the PUNT long
+   * upfield. (The full L4 EV is the outfield's; a keeper's choice is simpler.) */
+  keeperHoldTicks: 8, // ~0.8 s settle before he releases
+  keeperThrowMinM: 6,
+  keeperThrowMaxM: 32,
+  keeperThrowLoftDeg: 3, // flat and fast — a rolled/side-arm ball to feet
+  keeperPuntSpeed: 27,
+  keeperPuntLoftDeg: 38,
+  keeperPuntScatterRad: 0.25,
   headStandM: 1.9,
   headJumpPerStr: 0.03, // strength 20 → +0.6 m → 2.5 m reach
   headContestNoise: 0.9,
