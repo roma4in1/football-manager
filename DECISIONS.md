@@ -3,6 +3,20 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — Drop to feet: the keeper plays the build-up pass
+
+Builder ask: the option to drop the held ball and play a pass. Distribution is
+three-way: throw (open ≤ 32 m) → DROP + PASS (open 32–50 m, nobody within
+8 m) → punt. The drop is honest — ball down = immunity OFF (tackleable), so he
+only drops unpressed and picks it straight back up if a presser closes in
+during the beat. Delivery is distance-appropriate: a weighted roll ≤ 30 m; a
+driven 16° ball beyond (dry grass kills a rolled ball by ~38 m; a flat 8°
+delivery needed an uncontrollable ~40 m/s rocket). Gate finding: passCompletion
+is a ROLLING race model and rated the clear 37 m lane near-zero (a rolled ball
+arrives dead there) — a flighted ball's honest gate is the arrival race AT THE
+LANDING (aerialCompletion), as the cross/switch already use. keeper-buildup:
+drop 12/12, pass 12/12, the far CB receives 10/12. 87/87.
+
 ## 2026-07-22 — The held ball is untouchable; distribution completes L7
 
 Builder rule: no tackle exists against a keeper with the ball in his hands.
