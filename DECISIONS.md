@@ -3,6 +3,24 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-22 — The chip + the 1v1 equilibrium (pounce/delay)
+
+The chip over an advanced keeper, and the counter-craft that keeps the 1v1
+honest. The CHIP: adaptive loft (flattest of 24/30/38° clearing his CLAIM —
+gate 3.4 m = 2.8 hands + ~0.6 parabola-vs-drag error; 2.6 got it caught
+mid-flight), only when he is CLEARLY late home (backpedal > flight + 0.25 — a
+tying keeper catches the drop), priced as a real chance scaled by the mouth's
+angular openness (xGHere-anchoring never fired — xG counts the keeper the chip
+bypasses; a flat price had the byline winger chipping a sliver). Shots carry
+loftDeg now. The KEEPER: the chip READ (a ball arcing over him → sprint home to
+contest the drop) and POUNCE vs DELAY — rushing 11 m out vs a controlled ball
+lost 15/16 to the chip and nothing recovers a good chip from there, so the
+craft is not to be there: rush only on the HEAVY TOUCH (> 1.6 m), else hold
+~6 m, stay big. Pinned equilibrium: stranded 12 m out → CONCEDES (placed past
+or chipped — placing past a stranded keeper is usually the right finish);
+playing it properly → DEALS WITH IT (the remaining striker conversion is
+round-the-keeper, L5e — next). 90/90.
+
 ## 2026-07-22 — The looping throw: over-arm, near the halfway line
 
 Builder: throws are flat OR looping, reaching much further. The over-arm LOOP
