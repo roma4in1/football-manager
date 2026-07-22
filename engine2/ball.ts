@@ -103,6 +103,20 @@ export const BALL = {
   keeperDepthMinM: 1.2,
   keeperDepthMaxM: 5,
   keeperCloseGain: 0.2, // metres of depth per metre the ball closes inside ~28 m
+  /** the 1v1 RUSH: a lone opponent through on goal (no defending teammate
+   * goal-side) — the keeper comes OUT to the penalty-spot / edge-of-box range
+   * to smother the chance before it sharpens; the existing pinch/save duel
+   * machinery is the smother itself once he arrives. */
+  keeperRushMaxM: 13,
+  /** the SWEEPER: in possession (or with play far upfield) the keeper holds a
+   * HIGH line off his goal, sweeping the space behind his defence — his
+   * position is situational, never fixed. Depth scales with the ball's
+   * distance from his goal, up to the cap. */
+  keeperSweepGain: 0.3,
+  keeperSweepMaxM: 16,
+  /** a loose ball dying in his defensive zone with no mate nearer — he leaves
+   * his line and CLAIMS it (the sweep itself) */
+  keeperSweepChaseM: 26,
   /** NEAR-POST cover: he shades his spot toward the post on the ball's side —
    * you do not get beaten at your near post; the across-goal shot (far post,
    * the longer dive) is the one that beats him. Shade scales with the ball's
@@ -110,10 +124,13 @@ export const BALL = {
   keeperNearPostShadeM: 1.2,
   keeperReachBaseM: 1.1,
   keeperReachAgility: 0.035, // agility 20 → 2.05 m dive radius
-  keeperCatchBase: 8, // catchable ball speed floor...
-  keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~12.9 m/s)
+  keeperCatchBase: 9, // catchable ball speed floor...
+  keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~13.9 m/s)
   keeperCatchMaxZ: 2.2, // a stinger above this is parried, not held
   keeperParryKeep: 0.35, // a parry scrubs the shot's pace like a block
+  /** a parry is turned WIDE of the play, not pushed straight back out — a
+   * central palm-back tees up the arriving runner (the sweeper finding) */
+  keeperParryWideRad: 0.7,
   keeperEngageM: 22, // he deals with balls THREATENING his goal, not midfield
   keeperReactTicks: 2, // 0.2 s before the dive tracks the shot's line
   headStandM: 1.9,

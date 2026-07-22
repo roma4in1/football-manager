@@ -7,6 +7,7 @@
  * sweeping are later sub-phases; the goal seam makes saved-vs-beaten honest.
  */
 import type { ScenarioDef } from '../engine2-types.ts';
+import { solveLoftSpeed } from '../ball.ts';
 
 const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 16, passing: 17, tackling: 12, strength: 12, stamina: 12 };
 // agility ≈ reflexes/dive (reach 1.2 + 0.035·15 ≈ 1.7 m), firstTouch ≈ handling
@@ -24,6 +25,10 @@ export const shotSave: ScenarioDef = {
   bodies: [
     // an unpressured striker in range — the L4 shoot fires by itself
     { id: 'striker', team: 'home', pos: { x: 88, y: 34 }, attributes: { ...outfield, passing: 16 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // a recovering defender goal-side (off the shot lanes) — this is a
+    // SHOT-STOPPING scenario, not a clean breakaway; without him the keeper
+    // correctly reads a 1v1 and rushes instead of setting for the shot
+    { id: 'cb', team: 'away', pos: { x: 93, y: 40 }, attributes: outfield },
     { id: 'keeper', team: 'away', pos: { x: 103.5, y: 34 }, attributes: gloves, keeper: true },
   ],
   ball: { carrier: 'striker' },
@@ -39,6 +44,10 @@ export const keeperAngle: ScenarioDef = {
   durationTicks: 90,
   bodies: [
     { id: 'carrier', team: 'home', pos: { x: 86, y: 16 }, attributes: outfield },
+    // a goal-side defender keeps this BASE angle play (a lone crossing carrier
+    // is a 1v1 and the keeper rushes — from 12 m out the swinging line outruns
+    // his lateral sprint, which is honest but a different scenario)
+    { id: 'cb', team: 'away', pos: { x: 96, y: 34 }, attributes: outfield },
     { id: 'keeper', team: 'away', pos: { x: 102, y: 34 }, attributes: gloves, keeper: true },
   ],
   ball: { carrier: 'carrier' },
@@ -58,10 +67,58 @@ export const shotAngle: ScenarioDef = {
   durationTicks: 50,
   bodies: [
     { id: 'striker', team: 'home', pos: { x: 88, y: 24 }, attributes: { ...outfield, passing: 16 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    // a recovering defender goal-side, away from both shot lanes — keeps this
+    // a shot-stopping scenario (a lone striker is a 1v1 and the keeper rushes)
+    { id: 'cb', team: 'away', pos: { x: 93, y: 43 }, attributes: outfield },
     { id: 'keeper', team: 'away', pos: { x: 103.5, y: 33 }, attributes: gloves, keeper: true },
   ],
   ball: { carrier: 'striker' },
   script: [],
 };
 
-export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle];
+/** the 1v1 RUSH: a striker clean through with nobody back — the keeper does
+ * not wait on his line; he comes out to penalty-spot / edge-of-box range to
+ * smother the chance while it is still forming. The duel at his arrival (the
+ * pinch, the save at the feet) is the smother. */
+export const keeper1v1: ScenarioDef = {
+  version: 1,
+  name: 'keeper-1v1',
+  description: 'A striker is clean through with nobody back. The keeper rushes out toward the edge of his box to smother the 1v1 rather than waiting on his line. Judge how far he comes and the duel at his arrival.',
+  durationTicks: 70,
+  bodies: [
+    { id: 'striker', team: 'home', pos: { x: 74, y: 34 }, attributes: { ...outfield, pace: 15 }, brain: 'onBall', instructions: { risk: 0.6 } },
+    { id: 'keeper', team: 'away', pos: { x: 103.5, y: 34 }, attributes: gloves, keeper: true },
+  ],
+  ball: { carrier: 'striker' },
+  script: [],
+};
+
+/** the SWEEPER: play is far upfield, so the keeper holds a HIGH line well off
+ * his goal — and when a long ball is played in behind his defence for a
+ * runner, he is already positioned to sweep it up before the chance exists. */
+export const keeperSweeper: ScenarioDef = {
+  version: 1,
+  name: 'keeper-sweeper',
+  description: 'With play far upfield the keeper pushes to a high line; a long ball is played in behind for a runner and the keeper sweeps it up before the chance forms. Judge the high line and the sweep.',
+  durationTicks: 90,
+  bodies: [
+    { id: 'playmaker', team: 'home', pos: { x: 30, y: 34 }, attributes: { ...outfield, passing: 18 } },
+    // the runner who attacks the space in behind
+    { id: 'runner', team: 'home', pos: { x: 55, y: 40 }, attributes: { ...outfield, pace: 15 }, brain: 'onBall' },
+    // the away line is HIGH (squeezed up) — the space behind is the keeper's
+    { id: 'cb', team: 'away', pos: { x: 57, y: 31 }, attributes: outfield },
+    { id: 'keeper', team: 'away', pos: { x: 103.5, y: 34 }, attributes: gloves, keeper: true },
+  ],
+  ball: { carrier: 'playmaker' },
+  kicks: [
+    // the long ball in behind the high line, dropping ~x85 for the runner —
+    // powered by the solver so it genuinely lands in the space (an underhit
+    // ball died at x85 after bouncing and made the race a fiction)
+    { atTick: 20, bodyId: 'playmaker', kick: { target: { x: 85, y: 36 }, speedMps: solveLoftSpeed(55, 21), loftDeg: 21 } },
+  ],
+  script: [
+    { atTick: 21, bodyId: 'runner', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};
+
+export const keeperScenarios: ScenarioDef[] = [shotSave, keeperAngle, shotAngle, keeper1v1, keeperSweeper];

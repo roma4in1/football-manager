@@ -476,8 +476,12 @@ export class Sim {
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
     // moves 1.6 m per tick and would otherwise tunnel through a claimant's
     // control disc without ever interacting
-    this.resolveHeaders(ballFrom);
+    // the keeper's HANDS come before anyone's head — he never heads a ball he
+    // can hold (a dropping sweep was being weakly nodded into the arriving
+    // runner by the header contest); above his catch ceiling the ball falls
+    // through to the header contest, which is his punch
     this.resolveSaves(ballFrom);
+    this.resolveHeaders(ballFrom);
     this.resolveChestControl(ballFrom, zFrom);
     this.resolveBlocks(ballFrom);
     this.resolveClaims(ballFrom);
@@ -889,11 +893,22 @@ export class Sim {
       const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
       // the DIVE: a live shot at his goal — after his reaction, he attacks the
       // shot's LINE (its closest point to him) flat out; corners beat the
-      // reaction, straight ones don't (why placement matters)
+      // reaction, straight ones don't (why placement matters). A shot is
+      // MOUTH-BOUND: its line crosses the goal plane between the posts — a
+      // fast through ball rolling for the corner is a ball to SWEEP, not dive at
+      const towardGoal = this.ball.vel.x * (own.x - this.ball.pos.x) > 0;
+      const yAtGoal = towardGoal && Math.abs(this.ball.vel.x) > 0.5
+        ? this.ball.pos.y + this.ball.vel.y * ((own.x - this.ball.pos.x) / this.ball.vel.x)
+        : Infinity;
+      // ...and IMMINENT: reaching the goal line within ~1.3 s. A 55 m diagonal
+      // whose line happens to cross the mouth is a ball to sweep, not a shot.
+      const tToGoal = towardGoal && Math.abs(this.ball.vel.x) > 0.5
+        ? (own.x - this.ball.pos.x) / this.ball.vel.x : Infinity;
       const shotThreat = this.ball.carrierId === null && this.ball.phase !== 'dead' &&
         Math.hypot(this.ball.vel.x, this.ball.vel.y, this.ball.vz) >= BALL.blockMinSpeedMps &&
         Math.hypot(this.ball.pos.x - own.x, this.ball.pos.y - own.y) <= BALL.keeperEngageM &&
-        this.ball.vel.x * (own.x - this.ball.pos.x) > 0 && this.ball.z <= GOAL.barZ;
+        towardGoal && this.ball.z <= GOAL.barZ && tToGoal < 1.3 &&
+        Math.abs(yAtGoal - GOAL.centerY) <= GOAL.mouthHalfWidthM + 1.2;
       if (shotThreat) {
         const seen = this.keeperShotSeen.get(id) ?? this.tick;
         this.keeperShotSeen.set(id, seen);
@@ -911,6 +926,54 @@ export class Sim {
       } else {
         this.keeperShotSeen.delete(id);
       }
+      // the SWEEP-CHASE: a free ball IN (or dropping into) his zone that is
+      // not a shot — the through ball in behind, the loose roll. He leaves his
+      // line and attacks it; interceptPoint drives him to the drop and
+      // resolveClaims/resolveSaves do the pickup. Gated on the PREDICTED ball
+      // (waiting for it to slow or arrive gave the runner a 2 s head start).
+      const dBallGoal = Math.hypot(this.ball.pos.x - own.x, this.ball.pos.y - own.y);
+      const ballCarrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+      if (ballCarrier === undefined && this.ball.phase !== 'dead') {
+        const pred = predictBall(this.ball, 2.0);
+        const dPredGoal = Math.hypot(pred.x - own.x, pred.y - own.y);
+        if (Math.min(dBallGoal, dPredGoal) < BALL.keeperSweepChaseM) {
+          const kD = Math.hypot(this.ball.pos.x - k.pos.x, this.ball.pos.y - k.pos.y);
+          const mateNearer = this.bodies.some((m) => m.team === k.team && m.id !== k.id &&
+            Math.hypot(this.ball.pos.x - m.pos.x, this.ball.pos.y - m.pos.y) < kD - 1);
+          if (!mateNearer) {
+            if (kD <= 1.2) {
+              // on it — the final step; claims/saves resolve the pickup
+              if (k.command.type !== 'chaseBall') this.assign(k, { type: 'chaseBall', regime: 'sprint' });
+            } else {
+              // the sweep is a RACE, not a receive — the generic chase's
+              // receive machine stands on the line and waits (a receiver's
+              // politeness) while the bounce drifts past his reach. Attack the
+              // EARLIEST ground point on the ball's future path he can beat
+              // the ball to, re-read every tick.
+              const vcap = Math.max(regimeCapMps(k.attributes.pace, 'sprint'), 0.5);
+              const c: BallState = {
+                pos: { ...this.ball.pos }, z: this.ball.z, vel: { ...this.ball.vel }, vz: this.ball.vz,
+                spin: this.ball.spin, phase: this.ball.phase,
+                carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+              };
+              let target: Vec2 = { x: this.ball.pos.x, y: this.ball.pos.y };
+              for (let i = 1; i <= 30; i++) {
+                stepBall(c);
+                if (c.z < BALL.headMinZ) {
+                  const dK = Math.hypot(c.pos.x - k.pos.x, c.pos.y - k.pos.y);
+                  target = { x: c.pos.x, y: c.pos.y };
+                  if (dK / vcap + 0.15 <= i * DT) break; // he beats the ball there
+                }
+              }
+              const cur = k.command.type === 'moveTo' ? k.command.target : null;
+              if (!cur || Math.hypot(cur.x - target.x, cur.y - target.y) > 0.3) {
+                this.assign(k, { type: 'moveTo', target, regime: 'sprint' });
+              }
+            }
+            continue;
+          }
+        }
+      }
       // NEAR-POST cover: the guarded line runs from the ball to a point shaded
       // toward the post on the ball's side — beaten at the near post is a
       // keeper's sin; the across-goal ball (the long dive) is the honest one
@@ -919,17 +982,39 @@ export class Sim {
       const bx = this.ball.pos.x - anchor.x;
       const by = this.ball.pos.y - anchor.y;
       const d = Math.max(Math.hypot(bx, by), 1e-6);
-      // CLOSING DOWN: come out toward the shooter as the ball nears — the cone
-      // narrows toward him, so depth buys coverage (the chip is L7-later)
-      const depth = Math.min(
-        Math.max(BALL.keeperDepthMinM, BALL.keeperCloseGain * (28 - d)),
-        BALL.keeperDepthMaxM,
-        Math.max(0.6, d - 1),
-      );
+      // the DEPTH is SITUATIONAL — never a fixed post:
+      //  · 1v1 RUSH: a lone opponent through (no defending teammate goal-side)
+      //    → out to penalty-spot / edge-of-box range to smother it early;
+      //  · SWEEPER: own team in possession, or play far upfield → a HIGH line
+      //    off his goal, sweeping the space behind the defence;
+      //  · else the base angle play, closing down as the ball nears.
+      const oppHasBall = ballCarrier !== undefined && ballCarrier.team !== k.team;
+      const ownHasBall = ballCarrier !== undefined && ballCarrier.team === k.team;
+      const goalSideMates = this.bodies.filter((m) => m.team === k.team && m.id !== k.id &&
+        Math.hypot(m.pos.x - own.x, m.pos.y - own.y) < d - 1).length;
+      // the breakaway is read EARLY (a lone carrier bearing down from 40 m IS
+      // the 1v1) — triggering only inside 30 left the keeper mid-rush when the
+      // shot came
+      const oneVsOne = oppHasBall && d < 45 && goalSideMates === 0;
+      let depth: number;
+      if (oneVsOne) {
+        depth = Math.min(Math.max(d - 7, BALL.keeperCloseGain * (28 - d), BALL.keeperDepthMinM), BALL.keeperRushMaxM);
+      } else if (ownHasBall || d > 45) {
+        depth = Math.min(Math.max(BALL.keeperSweepGain * (d - 18), BALL.keeperDepthMinM), BALL.keeperSweepMaxM);
+      } else {
+        // CLOSING DOWN: come out toward the shooter as the ball nears — the
+        // cone narrows toward him, so depth buys coverage (the chip is later)
+        depth = Math.min(
+          Math.max(BALL.keeperDepthMinM, BALL.keeperCloseGain * (28 - d)),
+          BALL.keeperDepthMaxM,
+        );
+      }
+      depth = Math.min(depth, Math.max(0.6, d - 1));
       const spot = { x: anchor.x + (bx / d) * depth, y: anchor.y + (by / d) * depth };
-      // no point standing beyond the post line — the frame is what he guards
-      spot.y = Math.max(GOAL.centerY - GOAL.mouthHalfWidthM - 0.5,
-        Math.min(GOAL.centerY + GOAL.mouthHalfWidthM + 0.5, spot.y));
+      // near his line he stays in the frame's shadow; further out the guard
+      // cone widens with depth (a hard clamp at 16 m would drag him off-line)
+      const yRoom = GOAL.mouthHalfWidthM + 0.5 + depth * 0.45;
+      spot.y = Math.max(GOAL.centerY - yRoom, Math.min(GOAL.centerY + yRoom, spot.y));
       const cur = k.command.type === 'moveTo' ? k.command.target : null;
       if (!cur || Math.hypot(cur.x - spot.x, cur.y - spot.y) > 0.3) {
         const far = Math.hypot(k.pos.x - spot.x, k.pos.y - spot.y);
@@ -978,9 +1063,19 @@ export class Sim {
         this.completeChases(k.team);
         this.actionLabels.set(k.id, 'save-catch');
       } else {
-        // PARRY — pushed wide: outward from the goal centre through the
-        // contact (the dive's side), scrubbed like a block, with noise
+        // PARRY — turned WIDE: outward through the contact, then rotated away
+        // from the centre axis toward the flank (a central palm straight back
+        // out tees up the arriving runner — the sweeper finding). Side = the
+        // contact's side of goal; dead-central picks the side away from the
+        // nearest opponent.
+        let side = Math.sign(at.y - own.y);
+        if (side === 0 || Math.abs(at.y - own.y) < 0.3) {
+          const opp = this.bodies.filter((b) => b.team !== k.team)
+            .sort((a, b2) => Math.hypot(a.pos.x - at.x, a.pos.y - at.y) - Math.hypot(b2.pos.x - at.x, b2.pos.y - at.y))[0];
+          side = opp ? -Math.sign(opp.pos.y - at.y) || 1 : 1;
+        }
         const ang = Math.atan2(at.y - own.y, at.x - own.x) +
+          side * BALL.keeperParryWideRad +
           this.rng.gauss(0, 0.35, this.tick, k.id, 'parry');
         const sp = speed * BALL.keeperParryKeep;
         ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
