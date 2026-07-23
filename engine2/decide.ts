@@ -19,6 +19,51 @@ import { loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistan
 import { KIN, regimeCapMps } from './kinematics.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
+/** L5E — the duel state machine's numbers (design: L5E-DESIGN.md). The
+ * distance bands are solved JOINTLY: hold < arcLow < engage <= arcHigh — the
+ * July build died because these were tuned separately and nothing ever
+ * engaged (the no-man's band). They move together or not at all. */
+export const DUEL = {
+  activeRangeM: 8, // a chaser this near an opponent carrier is IN the duel
+  /** activation LEADS the closing: a carrier driving at you at 6 m/s puts you
+   * in the duel from ~15 m — you start dropping and build goalward momentum
+   * BEFORE he arrives (a defender met flat-footed or stepping toward a
+   * full-pace attacker is the easiest man in football to pass) */
+  activeCloseGainS: 1.2,
+  holdM: 2.0, // the jockey's hold distance, on the carrier→goal line
+  arcLowM: 2.2, // the attacker's working arc (knock-and-go reads these)
+  arcHighM: 2.7,
+  engageM: 2.6, // commit range — inside the attacker's arc, one step from hold
+  trackEnterMps: 4.5, // carrier at pace → full-speed goal-side TRACK...
+  trackExitMps: 3.5, // ...back to JOCKEY only when he slows (hysteresis)
+  jockeyCapMps: 4.5, // the backpedal/shuffle cap while jockeying
+  recoverAheadM: 3, // the cut-off point ahead of a carrier you're trailing
+  goalSideEnterM: 0.2, // side hysteresis: gain the side clearly...
+  goalSideExitM: 0.8, // ...lose it only clearly
+  /** the patience meter: pressure fills over ~3.5 s of pure jockey (waiting
+   * is hoping for support; support may never come), faster on a STOPPED
+   * carrier (the lunge invitation) and with cover behind */
+  pressureFillS: 3.5,
+  pressureStoppedFactor: 3,
+  pressureSupportFactor: 1.8,
+  dCoverM: 12,
+  engageEscapeM: 3.5, // the carrier breaks this far → the engage is over
+  pressureResetOnEscape: 0.3,
+  /** the failed lunge is the BEATEN moment: planted ~0.8 s. Without it,
+   * repeated 27% tackles compound to inevitability over any crawl (16/16
+   * defender wins vs elite close control — the July measurement). */
+  staggerTicks: 8,
+  /** after the plant, the BEATEN window: he shadows (recover/jockey) but
+   * cannot re-ENGAGE — one beat buys real freedom (with cover a mate takes
+   * over; a lone man cannot both recover and immediately lunge again). This
+   * breaks the cycle-compounding that re-fronted every stagger into
+   * inevitability (close control through 1/16 without it). */
+  beatenTicks: 25,
+  /** the KNOCK-AND-GO: the utility gain on the reclaim point's value — the
+   * burst past a jockey is the attacker's half of the duel */
+  knockGain: 1.2, // tempered — the chance-creation term carries the value
+} as const;
+
 export const GOAL = {
   mouthHalfWidthM: 3.66,
   centerY: PITCH.width / 2,
@@ -49,6 +94,7 @@ export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
   | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
+  | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
   | { kind: 'shield'; utility: number }
   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
 
@@ -691,6 +737,9 @@ export interface DecideInput {
   /** drill boundaries (positional grids): the EV never aims outside them
    * and weights balls to die inside */
   bounds?: { x0: number; y0: number; x1: number; y1: number };
+  /** the goalkeepers on the pitch — a knock past a KEEPER must clear hands,
+   * dive and sweep, not just feet (every striker knows who the keeper is) */
+  keepers?: ReadonlySet<string>;
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
@@ -748,6 +797,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // the longer dive and the open side — the finish coaches teach.
     let dest = g;
     let bestClear = -1;
+    let destClearRaw = Infinity; // the picked lane's HONEST clearance (no bonus)
     const offCentre = here.y - GOAL.centerY;
     for (const side of [-1, 1] as const) {
       const c = { x: g.x, y: GOAL.centerY + side * (GOAL.mouthHalfWidthM - 0.6) };
@@ -758,11 +808,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const t = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((o.pos.x - here.x) * ldx + (o.pos.y - here.y) * ldy) / len2));
         clear = Math.min(clear, Math.hypot(o.pos.x - (here.x + ldx * t), o.pos.y - (here.y + ldy * t)));
       }
+      const raw = clear;
       // the far post from an angled position earns the across-goal bonus
       if (Math.abs(offCentre) > 1.5 && side !== Math.sign(offCentre)) clear += DECIDE.shotAcrossBonus;
-      if (clear > bestClear) { bestClear = clear; dest = c; }
+      if (clear > bestClear) { bestClear = clear; dest = c; destClearRaw = raw; }
     }
-    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere });
+    // a lane THROUGH a body is mostly saved — the spread keeper a metre off
+    // the line eats the shot the EV was pricing at face xG (the 16/16-saved
+    // shot kept outbidding round-the-keeper)
+    const laneFactor = Math.max(0.3, Math.min(1, 0.3 + 0.7 * (destClearRaw - 0.6) / 1.4));
+    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor });
     // the CHIP (L7's counter): a keeper RUSHED OFF HIS LINE leaves the goal
     // open in z, not y — loft it over him, dropping under the bar. The guard
     // figure is the last opponent near the goal mouth; the chip exists only
@@ -951,7 +1006,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // back for it instead of running onto it (the judged drop-back). Once
       // he darts he leaves waitingRunners and the thread releases — the
       // one-two return still fires early because the returning man is darting.
-      const ridingWait = waitingRunners?.has(mate.id) ? 0.25 : 1;
+      // ...and the RELEASE GATE (L5E): even a darting runner is not yet a
+      // through-ball target until he is UP TO SPEED — the overhit tail came
+      // from balls played while the runner was still accelerating (measured:
+      // launch 13.6 past a striker at 3.5 m/s → overrun → dead). No weight
+      // constant fixes this; the release waits for the run.
+      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
+      const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
@@ -1161,6 +1222,67 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     kind: 'shield',
     utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * pvHere * 0.2) * (livePress ? 0.45 : 1),
   });
+
+  // the KNOCK-AND-GO (L5E): jockeyed by a FRONTMAN with space behind him —
+  // push the ball past his shoulder and RACE. The kick frees the ball from
+  // carry speed; the burst is how close control beats a re-fronting jockey
+  // (the machine + stagger let a defender perpetually re-front a carry-capped
+  // attacker — measured 2/16 through without this).
+  if (!keep) {
+    const gdir = Math.atan2(g.y - here.y, g.x - here.x);
+    let frontman: BodyState | null = null;
+    let fd = 8.0;
+    for (const o of opponents) {
+      const d = Math.hypot(o.pos.x - here.x, o.pos.y - here.y);
+      if (d > 8.0 || d < 0.8) continue; // to 8: the touch-past-the-KEEPER is a long knock
+      const ang = Math.abs((((Math.atan2(o.pos.y - here.y, o.pos.x - here.x) - gdir) + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      if (ang > Math.PI / 3) continue;
+      if (d < fd) { fd = d; frontman = o; }
+    }
+    if (frontman !== null) {
+      const fm: BodyState = frontman;
+      // space behind him: no second defender within 8 m goal-side of him
+      const behindClear = !opponents.some((o2) => o2.id !== fm.id &&
+        Math.hypot(o2.pos.x - fm.pos.x, o2.pos.y - fm.pos.y) < 8 &&
+        (o2.pos.x - fm.pos.x) * Math.cos(gdir) + (o2.pos.y - fm.pos.y) * Math.sin(gdir) > 0);
+      if (behindClear) {
+        // past the shoulder — the side AWAY from his offset off the line
+        const perp = gdir + Math.PI / 2;
+        const off = -(fm.pos.x - here.x) * Math.sin(gdir) + (fm.pos.y - here.y) * Math.cos(gdir);
+        const side = off > 0 ? -1 : 1;
+        const past = {
+          x: fm.pos.x + Math.cos(gdir) * 2.5 + Math.cos(perp) * side * 1.8,
+          y: fm.pos.y + Math.sin(gdir) * 2.5 + Math.sin(perp) * side * 1.8,
+        };
+        if (inBounds(past, 0.8)) {
+          const dK = Math.hypot(past.x - here.x, past.y - here.y);
+          const speed = rollLaunchForArrival(1.2, dK + 3); // dies ~3 m past — the reclaim
+          // clearance of the knock LINE past the frontman (defender-relative,
+          // the knock-past drill's too-tight lesson)
+          const t = ((fm.pos.x - here.x) * (past.x - here.x) + (fm.pos.y - here.y) * (past.y - here.y)) / (dK * dK);
+          const clear = Math.hypot(fm.pos.x - (here.x + (past.x - here.x) * t), fm.pos.y - (here.y + (past.y - here.y) * t));
+          const beaten = fm.speed < 1.0; // planted (the stagger) — the moment
+          // a KEEPER frontman collects with hands, dive and sweep — the berth
+          // must be far wider than a tackler's feet (the knock at a stranded
+          // keeper rolled straight into his gloves, measured 16/16)
+          const isKeeper = input.keepers?.has(fm.id) ?? false;
+          let pKnock = isKeeper
+            ? Math.max(0, Math.min(1, (clear - 1.6) / 1.4))
+            : Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
+          if (beaten) pKnock = Math.min(1, pKnock + 0.3);
+          const reclaim = { x: past.x + Math.cos(gdir) * 1.5, y: past.y + Math.sin(gdir) * 1.5 };
+          // CHANCE CREATION, as passes price it: the reclaim past the beaten
+          // frontman is a shooting position — against a beaten KEEPER, an
+          // open net. Without this the knock lost to the very shot the set
+          // keeper saves 16/16 (round-the-keeper never fired).
+          const pvReclaim = value(reclaim, carrier.id) +
+            0.6 * xG(reclaim, carrier.team, bodies.filter((b) => b.id !== fm.id && b.id !== carrier.id));
+          const uK = DECIDE.possessionDiscount * pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain;
+          if (uK > 0) options.push({ kind: 'knock', dest: past, speedMps: speed, utility: uK });
+        }
+      }
+    }
+  }
 
   // CLEAR — deep and pressured only: escape beats a forced turnover
   const ownProgress = attackSign(team) > 0 ? here.x / PITCH.length : 1 - here.x / PITCH.length;

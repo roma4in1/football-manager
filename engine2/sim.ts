@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, decide, DECIDE, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, decide, DECIDE, DUEL, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -108,7 +108,7 @@ export class Sim {
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
-  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number; spin?: number }>();
+  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number; spin?: number; knock?: boolean }>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -201,7 +201,37 @@ export class Sim {
     // anticipate where a ball is going, they don't chase its tail), and a
     // carrier whose touch ran beyond reach STEERS to fetch it — the route is
     // the intent, the ball is the path
+    // loose-ball claimant election (L5E arbitration)
+    if (this.ball.carrierId === null && this.ball.phase !== 'dead') {
+      for (const team of ['home', 'away'] as const) {
+        let best: { id: string; score: number } | null = null;
+        for (const b2 of this.bodies) {
+          if (b2.team !== team || b2.command.type !== 'chaseBall') continue;
+          const sc = Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) /
+            Math.max(regimeCapMps(b2.attributes.pace, 'sprint'), 1);
+          if (!best || sc < best.score) best = { id: b2.id, score: sc };
+        }
+        const cur = this.looseClaimant.get(team);
+        if (!best) this.looseClaimant.delete(team);
+        else if (!cur || cur.id === best.id ||
+          !this.bodies.some((b2) => b2.id === cur.id && b2.command.type === 'chaseBall') ||
+          best.score < cur.score - 0.3) {
+          this.looseClaimant.set(team, best);
+        } else {
+          // the incumbent holds — refresh his score
+          const inc = this.bodies.find((b2) => b2.id === cur.id)!;
+          this.looseClaimant.set(team, {
+            id: cur.id,
+            score: Math.hypot(this.ball.pos.x - inc.pos.x, this.ball.pos.y - inc.pos.y) /
+              Math.max(regimeCapMps(inc.attributes.pace, 'sprint'), 1),
+          });
+        }
+      }
+    } else {
+      this.looseClaimant.clear();
+    }
     this.liveTargets.clear();
+    this.supportSides.clear();
     this.prevPos.clear();
     for (const body of this.bodies) {
       this.prevPos.set(body.id, { x: body.pos.x, y: body.pos.y });
@@ -217,6 +247,7 @@ export class Sim {
       let standing = false;
       let timedCap: number | undefined;
       let brakeIntoLine = false;
+      let duelFace: Vec2 | undefined; // the jockey squares to the ball
       if (body.command.type === 'chaseBall' || fetching) {
         const icept = this.interceptPoint(body);
         live = icept.pMeet;
@@ -312,10 +343,42 @@ export class Sim {
             }
           }
         }
-        // CONTAIN at contact: a hunter already within lunging reach of a
-        // GLUED ball stands his ground and works the tackle cooldown —
-        // driving on converts to tangential slide around the carrier's
-        // collision disc (the judged 360° orbit)
+        // loose-ball SUPPORT (L5E arbitration): the non-claimant does not
+        // race his own mate onto the ball — he takes an offset spot to the
+        // side, an outlet instead of a second pair of feet in the same yard
+        if (body.command.type === 'chaseBall' && this.ball.carrierId === null) {
+          const cl = this.looseClaimant.get(body.team);
+          if (cl && cl.id !== body.id) {
+            const claimant = this.byId.get(cl.id);
+            if (claimant) {
+              const lx = this.ball.pos.x - claimant.pos.x;
+              const ly = this.ball.pos.y - claimant.pos.y;
+              const ln = Math.hypot(lx, ly) || 1;
+              // the side of the claimant→ball line this supporter is on
+              const sside = Math.sign(-(body.pos.x - claimant.pos.x) * (ly / ln) +
+                (body.pos.y - claimant.pos.y) * (lx / ln)) || 1;
+              const dClaim = Math.hypot(body.pos.x - claimant.pos.x, body.pos.y - claimant.pos.y);
+              let off = dClaim < 1.8 ? 6 : 4; // stacked bodies separate harder
+              // DISTINCT spots: the second supporter on the same natural side
+              // flips; a third extends — no twin runs
+              const taken = this.supportSides.get(body.team) ?? [];
+              let useSide = sside;
+              if (taken.includes(useSide)) {
+                if (!taken.includes(-useSide)) useSide = -useSide;
+                else off += 3.5;
+              }
+              taken.push(useSide);
+              this.supportSides.set(body.team, taken);
+              live = {
+                x: this.ball.pos.x - (ly / ln) * useSide * off,
+                y: this.ball.pos.y + (lx / ln) * useSide * off,
+              };
+            }
+          }
+        }
+        // the DUEL (L5E) wraps the judged contain: RECOVER/JOCKEY/TRACK own
+        // the 2–8 m shell; ENGAGE commits the close; and inside 1.9 m the
+        // contain-at-contact (the 360-orbit fix) stands exactly as judged.
         if (body.command.type === 'chaseBall' && this.ball.carrierId !== null && !isCarrier) {
           const carrierB = this.byId.get(this.ball.carrierId)!;
           const gapBC = Math.hypot(this.ball.pos.x - carrierB.pos.x, this.ball.pos.y - carrierB.pos.y);
@@ -324,8 +387,29 @@ export class Sim {
           // hysteresis: enter the press close-in, leave only when knocked
           // well out — a single threshold FLAPS (charge → bounce → charge),
           // thrashing a rotating bearing (the judged 360°)
-          const engage = gapBC <= BALL.controlRadiusM && (dToCar <= 1.9 || (containing && dToCar <= 2.6));
-          if (engage) {
+          const contact = gapBC <= BALL.controlRadiusM && (dToCar <= 1.9 || (containing && dToCar <= 2.6));
+          // activation LEADS the closing: a carrier driving AT this defender
+          // extends the duel range by his closing speed — the defender starts
+          // dropping early and meets him already moving goalward, never
+          // flat-footed or stepping INTO a full-pace attacker
+          const toMe0X = (body.pos.x - carrierB.pos.x) / Math.max(dToCar, 1e-6);
+          const toMe0Y = (body.pos.y - carrierB.pos.y) / Math.max(dToCar, 1e-6);
+          const closing0 = carrierB.vel.x * toMe0X + carrierB.vel.y * toMe0Y;
+          const inDuel = carrierB.team !== body.team && !this.keepers.has(body.id) &&
+            dToCar <= DUEL.activeRangeM + Math.max(0, closing0) * DUEL.activeCloseGainS;
+          // the STAGGER outranks everything — a planted man is planted, even
+          // in contact range (the contain was bypassing the beaten moment)
+          const st0 = this.duels.get(body.id);
+          if (st0?.state === 'staggered' && this.tick < (st0.plantedUntil ?? 0)) {
+            standing = true;
+            live = undefined;
+            this.containBearing.delete(body.id);
+          } else if (contact) {
+            // contact IS engagement — promote the record so the tackle gate
+            // opens (a stale jockey record was blocking tackles forever) —
+            // unless he is in the BEATEN window (shadow, no lunge)
+            const dr = this.duels.get(body.id);
+            if (dr && this.tick >= (dr.beatenUntil ?? 0)) { dr.state = 'engage'; this.duels.set(body.id, dr); }
             let bearing = this.containBearing.get(body.id);
             if (bearing === undefined) {
               bearing = Math.atan2(body.pos.y - carrierB.pos.y, body.pos.x - carrierB.pos.x);
@@ -339,14 +423,127 @@ export class Sim {
             if (Math.hypot(body.pos.x - live.x, body.pos.y - live.y) <= 0.45) standing = true;
           } else {
             this.containBearing.delete(body.id);
+            if (inDuel) {
+              const duel = this.duels.get(body.id) ?? { state: 'jockey' as const, pressure: 0, goalSide: false };
+              if (duel.state === 'staggered') {
+                if (this.tick < (duel.plantedUntil ?? 0)) {
+                  standing = true; // planted — beaten, and it must cost
+                  live = undefined;
+                  this.duels.set(body.id, duel);
+                } else {
+                  duel.state = duel.goalSide ? 'jockey' : 'recover';
+                  duel.pressure = 0;
+                }
+              }
+              if (duel.state !== 'staggered') {
+              const ownG = { x: attackSign(body.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+              const gdC = Math.hypot(carrierB.pos.x - ownG.x, carrierB.pos.y - ownG.y);
+              const gdD = Math.hypot(body.pos.x - ownG.x, body.pos.y - ownG.y);
+              // side hysteresis: gain the side clearly, lose it only clearly
+              duel.goalSide = duel.goalSide
+                ? gdD <= gdC + DUEL.goalSideExitM
+                : gdD <= gdC - DUEL.goalSideEnterM;
+              // the patience meter — waiting is hoping for support; a
+              // STOPPED carrier invites the lunge; cover behind emboldens
+              let fill = DT / DUEL.pressureFillS;
+              if (carrierB.speed < 0.8) fill *= DUEL.pressureStoppedFactor;
+              // a carrier DRIVING AT YOUR GOAL cannot be waited out — urgency
+              // scales with his goalward closing speed
+              const gwSp = (carrierB.vel.x * (ownG.x - carrierB.pos.x) + carrierB.vel.y * (ownG.y - carrierB.pos.y)) / Math.max(gdC, 1e-6);
+              fill *= 1 + Math.max(0, gwSp) / 3;
+              if (this.bodies.some((m) => m.team === body.team && m.id !== body.id &&
+                Math.hypot(m.pos.x - carrierB.pos.x, m.pos.y - carrierB.pos.y) < DUEL.dCoverM)) {
+                fill *= DUEL.pressureSupportFactor;
+              }
+              duel.pressure = Math.min(1, duel.pressure + fill);
+              // counterpress is innate aggression — no patience
+              if (this.actionLabels.get(body.id) === 'counterpress') duel.pressure = Math.max(duel.pressure, 0.9);
+              // transitions
+              if (duel.state === 'engage') {
+                if (dToCar > DUEL.engageEscapeM) {
+                  duel.state = duel.goalSide ? 'jockey' : 'recover';
+                  duel.pressure = DUEL.pressureResetOnEscape;
+                }
+              } else if (!duel.goalSide) {
+                duel.state = 'recover';
+              } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM &&
+                this.tick >= (duel.beatenUntil ?? 0)) {
+                duel.state = 'engage';
+              } else {
+                // JOCKEY only while a square backpedal can hold the gap. Too
+                // hot — the carrier escaping at pace OR closing faster than
+                // ~3 m/s (a taxed backpedal is ~2-2.5) — and the hips TURN:
+                // TRACK, running the give-ground line at full speed, squaring
+                // up again when the closing calms. That alternation IS the
+                // visible jockey dance.
+                const toMeX = (body.pos.x - carrierB.pos.x) / Math.max(dToCar, 1e-6);
+                const toMeY = (body.pos.y - carrierB.pos.y) / Math.max(dToCar, 1e-6);
+                const closingSp = carrierB.vel.x * toMeX + carrierB.vel.y * toMeY;
+                if (duel.state === 'track') {
+                  duel.state = carrierB.speed < DUEL.trackExitMps && closingSp < 2.6 ? 'jockey' : 'track';
+                } else {
+                  duel.state = carrierB.speed > DUEL.trackEnterMps || closingSp > 3.2 ? 'track' : 'jockey';
+                }
+              }
+              this.duels.set(body.id, duel);
+              // targets — computed from the carrier's PROJECTED position
+              // (0.4 s ahead): the jockey LEADS the retreat, matching the
+              // advance instead of spooling up after the gap has crashed
+              const cfx = carrierB.pos.x + carrierB.vel.x * 0.4;
+              const cfy = carrierB.pos.y + carrierB.vel.y * 0.4;
+              const gdF = Math.max(Math.hypot(cfx - ownG.x, cfy - ownG.y), 1e-6);
+              const tgx = (ownG.x - cfx) / gdF;
+              const tgy = (ownG.y - cfy) / gdF;
+              if (duel.state === 'engage') {
+                live = { x: this.ball.pos.x, y: this.ball.pos.y }; // commit — the contain takes it at 1.9
+              } else if (duel.state === 'recover') {
+                // never duel from the wrong side: cut the path AHEAD to regain it
+                const ahead = Math.min(DUEL.recoverAheadM, gdF * 0.5);
+                live = { x: cfx + tgx * ahead, y: cfy + tgy * ahead };
+              } else {
+                // JOCKEY / TRACK: on the carrier→goal line at the CURRENT
+                // range, closing to the hold only as the carrier advances —
+                // targeting the 2.0 m point directly meant a defender 6 m
+                // goal-side ran forward INTO the carrier (the invisible
+                // jockey): you GIVE GROUND square-on, you don't charge
+                // NEVER approach a closing carrier (an attacker passes a
+                // defender who is static or stepping toward him for free —
+                // builder judgment): concede ground at a controlled rate and
+                // let HIM close the gap to the hold; actively converge only
+                // on an escaping/parallel carrier.
+                const concede = closing0 > 0.5 ? 0.2 : 0.5;
+                const range = Math.max(DUEL.holdM, Math.min(dToCar - concede, gdF - 0.5));
+                live = { x: cfx + tgx * range, y: cfy + tgy * range };
+                if (duel.state === 'track' && closing0 > 0.5) {
+                  // the concede RATE is a speed: give ground at his pace minus
+                  // ~1.7 m/s so the gap closes toward the hold under control —
+                  // unbounded full-speed retreat was elastic (herded 20 m at a
+                  // constant 8 m gap, never engaging)
+                  timedCap = Math.min(timedCap ?? Infinity, Math.max(2.5, carrierB.speed - 1.7));
+                }
+                if (duel.state === 'jockey') {
+                  // backpedal-capped, square to the ball (the L1 face-lock);
+                  // TRACK is the full-speed escort — the cap alone donated a
+                  // permanent 4 m trail vs a carrier at pace
+                  timedCap = Math.min(timedCap ?? Infinity, DUEL.jockeyCapMps);
+                  duelFace = { x: this.ball.pos.x, y: this.ball.pos.y };
+                  if (Math.hypot(body.pos.x - live.x, body.pos.y - live.y) <= 0.4) standing = true;
+                }
+              }
+              } // end !staggered
+            } else {
+              this.duels.delete(body.id);
+            }
           }
+        } else {
+          this.duels.delete(body.id);
         }
-        this.liveTargets.set(body.id, live);
+        if (live !== undefined) this.liveTargets.set(body.id, live);
       }
       // the keeper's SHUFFLE: short repositioning stays square to the ball
       // (facing locked, the shuffle tax on speed); a long relocation — the
       // sweep, a big retreat — turns and runs like anyone
-      let face: Vec2 | undefined;
+      let face: Vec2 | undefined = duelFace;
       if (this.keepers.has(body.id) && !isCarrier && !this.keeperAttacking.has(body.id)) {
         const kt = (body.command.type === 'chaseBall' ? live : undefined) ?? currentTarget(body);
         const goDist = kt ? Math.hypot(kt.x - body.pos.x, kt.y - body.pos.y) : 0;
@@ -362,6 +559,9 @@ export class Sim {
         brakeAtTarget: timedCap !== undefined || brakeIntoLine,
         speedCapMps: timedCap,
       });
+      // bodies stay on the park (L5E bounds): the playing area clamps them
+      body.pos.x = Math.max(0.2, Math.min(PITCH.length - 0.2, body.pos.x));
+      body.pos.y = Math.max(0.2, Math.min(PITCH.width - 0.2, body.pos.y));
       if (standing) {
         // a set receiver watches the ball in — a BRAIN receiver takes it on
         // the HALF-TURN: body opened between the incoming ball and his
@@ -476,6 +676,15 @@ export class Sim {
     // bar, is a GOAL — recorded (the save/beaten measurement) before the ball
     // goes dead. Crossing point interpolated along this tick's swept path.
     const ob = this.bounds;
+    // a CARRIED ball over a line is out too (L5E bounds): dribbling across
+    // the touchline/grid edge does not keep the play alive — strip and kill
+    if (this.ball.phase !== 'dead' && this.ball.carrierId !== null &&
+      (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length ||
+        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width ||
+        (ob !== undefined && (this.ball.pos.x < ob.x0 || this.ball.pos.x > ob.x1 ||
+          this.ball.pos.y < ob.y0 || this.ball.pos.y > ob.y1)))) {
+      this.ball.carrierId = null;
+    }
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
       (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length)) {
       const lineX = this.ball.pos.x < 0 ? 0 : PITCH.length;
@@ -535,6 +744,22 @@ export class Sim {
   /** contain bearings anchor when a press starts — re-deriving them each
    * tick is a feedback loop that walks the presser around the carrier */
   private readonly containBearing = new Map<string, number>();
+  /** L5E — the duel state machine (design: L5E-DESIGN.md): per-defender state
+   * vs the carrier he confronts. RECOVER (regain the side) / JOCKEY (hold
+   * goal-side, capped, square to the ball) / TRACK (full-speed goal-side
+   * escort of a carrier at pace) / ENGAGE (the committed close, resolved by
+   * the contain + tackle machinery inside 1.9 m). The pressure meter is the
+   * patience: it fills with jockey time, spikes on a stopped carrier. */
+  /** L5E — loose-ball pursuit arbitration: ONE claimant per team per loose
+   * ball (earliest arrival, 0.3 s re-election hysteresis); everyone else
+   * SUPPORTS at an offset and stacked bodies separate. Two teammates racing
+   * the same loose ball ended 0.7 m apart and each then intercepted the
+   * other's pass to a third man (the corner flap's residual). */
+  private readonly looseClaimant = new Map<'home' | 'away', { id: string; score: number }>();
+  /** support sides taken this tick — two supporters must NOT share a spot
+   * (both computed the same natural side and made twin runs, judged) */
+  private readonly supportSides = new Map<'home' | 'away', number[]>();
+  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number }>();
   /** pre-movement positions this tick — claims sweep the ball's path in the
    * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
    * against his end position alone skips the reach window) */
@@ -572,13 +797,32 @@ export class Sim {
       if (b.id === carrier.id || b.team === carrier.team) continue;
       if (b.command.type !== 'chaseBall') continue; // intent to win the ball
       if ((this.tackleCooldown.get(b.id) ?? -1) > this.tick) continue;
+      // a DUELIST tackles only from ENGAGE — the committed close. Proximity
+      // alone lunged on contact and skipped the jockey entirely (the machine
+      // never got to be seen; bodies without a duel record tackle as before)
+      const dst = this.duels.get(b.id);
+      if (dst && dst.state !== 'engage') continue;
       const reach = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
       if (reach > TECH.tackleReachM) continue;
       this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
       const winP = tackleWinProbability(b.attributes, carrier.attributes) /
         (1 + TECH.tackleCarrierSpeedFactor * carrier.speed);
-      if (this.rng.chance(winP, this.tick, b.id, 'tackle')) {
-        // knocked loose AWAY from the carrier, scattered
+      // the failed lunge is the BEATEN moment (L5E): planted, and the
+      // carrier's window to break past is real — without it the same 27%
+      // tackle re-rolls into inevitability over any crawl
+      if (!this.rng.chance(winP, this.tick, b.id, 'tackle')) {
+        const st = this.duels.get(b.id) ?? { state: 'staggered' as const, pressure: 0, goalSide: false };
+        st.state = 'staggered';
+        st.pressure = 0;
+        st.plantedUntil = this.tick + DUEL.staggerTicks;
+        st.beatenUntil = this.tick + DUEL.beatenTicks;
+        this.duels.set(b.id, st);
+        this.containBearing.delete(b.id);
+        this.actionLabels.set(b.id, 'staggered');
+        continue;
+      }
+      {
+        // the WON tackle: knocked loose AWAY from the carrier, scattered
         const away = Math.atan2(this.ball.pos.y - carrier.pos.y + (b.pos.y - carrier.pos.y) * -1,
           this.ball.pos.x - carrier.pos.x + (b.pos.x - carrier.pos.x) * -1);
         const dir = away + this.rng.gauss(0, TECH.tackleKnockScatterRad, this.tick, b.id, 'tackle-dir');
@@ -646,7 +890,7 @@ export class Sim {
       }
       this.pendingKicks.delete(carrier.id);
       this.intents.delete(carrier.id);
-      this.assign(carrier, { type: 'hold' });
+      this.assign(carrier, pending.knock ? { type: 'chaseBall', regime: 'sprint' } : { type: 'hold' });
       return;
     }
     // a GATHERING carrier (chaseBall) traps the ball dead instead of touching
@@ -1537,6 +1781,14 @@ export class Sim {
       // — the possession ping-pong the level audit measured (a genuinely
       // loose ball, carrierId null, is unaffected: teammates DO collect it).
       if (carrier && b.team === carrier.team) continue;
+      // the DUEL owns its resolutions (L5E): a jockeying/tracking duelist no
+      // more pinches than he tackles — the steal belongs to ENGAGE. The ride
+      // was a free strip outside the machine (close control lost 15/16
+      // head-on with ZERO tackles rolled).
+      if (carrier) {
+        const pd = this.duels.get(b.id);
+        if (pd && pd.state !== 'engage') continue;
+      }
       const { d, at } = segNearest(b);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
@@ -1694,8 +1946,9 @@ export class Sim {
               current: null,
               homes: this.homes,
               bounds: this.bounds,
+              keepers: this.keepers,
             });
-            const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear'
+            const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear' || ahead.kind === 'knock'
               ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
               : ahead.kind === 'carry'
                 ? Math.atan2(ahead.target.y - body.pos.y, ahead.target.x - body.pos.x)
@@ -1973,6 +2226,7 @@ export class Sim {
           homes: this.homes,
           bounds: this.bounds,
           runners: this.runningLine,
+          keepers: this.keepers,
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
             const rp = this.runPhase.get(rid);
             const rb = this.byId.get(rid)!;
@@ -2002,6 +2256,7 @@ export class Sim {
           break;
         case 'pass':
         case 'shoot':
+        case 'knock':
         case 'clear': {
           this.actionLabels.set(id, intent.kind === 'pass' ? `pass→${intent.receiverId}` : intent.kind);
           const reach = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
@@ -2023,7 +2278,9 @@ export class Sim {
             }
             this.intents.delete(id);
             this.pendingKicks.delete(id);
-            this.assign(body, { type: 'hold' });
+            // the KNOCK's second half is the GO — sprint after your own push
+            // (the kick freed the ball from carry speed; now win the race)
+            this.assign(body, intent.kind === 'knock' ? { type: 'chaseBall', regime: 'sprint' } : { type: 'hold' });
           } else {
             // mid-touch: release ON THE NEXT TOUCH (coupleCarry fires it) —
             // and close the gap meanwhile
@@ -2033,6 +2290,7 @@ export class Sim {
               ...((intent.kind === 'pass' || intent.kind === 'shoot') && intent.loftDeg ? { loftDeg: intent.loftDeg } : {}),
               ...(intent.kind === 'pass' && intent.spin ? { spin: intent.spin } : {}),
               ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
+              ...(intent.kind === 'knock' ? { knock: true } : {}),
             });
             if (body.command.type !== 'chaseBall') {
               this.assign(body, { type: 'chaseBall', regime: 'run' });

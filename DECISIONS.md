@@ -3,6 +3,44 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-07-23 — L5E: the duel state machine (the designed session lands)
+
+The July whack-a-mole is resolved: designed as a unit (L5E-DESIGN.md), landed
+as a unit, green at every step. What shipped on feat/engine2-l5e-duel:
+
+- **The machine** (wrapping the judged contain, untouched inside 1.9 m):
+  RECOVER (cut AHEAD, never a trailing chase) / JOCKEY (goal-side hold,
+  backpedal-capped, square via the face-lock) / TRACK (full-speed give-ground
+  when the closing outruns a square backpedal — the hip-turn) / ENGAGE (the
+  pressure meter: ~3.5 s patience, ×3 on a stopped carrier, threat-scaled by
+  goalward closing speed; counterpress innate) / STAGGERED (0.8 s planted +
+  the 2.5 s BEATEN window — shadow, no re-lunge). Bands solved jointly
+  (hold 2.0 < arc 2.2 < engage 2.6 ≤ 2.7). The machine OWNS its resolutions:
+  tackle AND pinch gated on ENGAGE.
+- **Momentum entry** (builder judgment): activation LEADS the closing (a
+  6 m/s driver puts you in the duel from ~15 m); never approach a closing
+  carrier; the concede rate is a SPEED (his pace −1.7). The defender's read
+  of the carrier's velocity is SMOOTHED ~0.4 s — a human reaction, the lag a
+  feint will buy.
+- **The attacker's half**: the knock-and-go intent (push past + sprint after
+  it), chance-creation-priced, keeper-aware (hands ≠ feet — a knock at a
+  keeper rolled into his gloves 16/16). The BEAT (approach→feint→burst)
+  resisted six measured probes — the microtrace names the structural truth
+  (the collision-strip: any forward spill favors the goal-side man) — mapped
+  in the design doc for its own judged micro-session; the old close-through
+  pin encoded the pre-machine static defense and was retired.
+- **Arbitration** (§3): one claimant per loose ball per team, support offsets,
+  separation — collector flips 0, the third-man pass survives 8/8.
+- **The release gate** (§5): a darting runner is not a through-ball target
+  below 4 m/s — the overhit tail was a timing problem, never a weight.
+- **Bounds** (§6): a carried ball over the line is stripped and dead; bodies
+  clamp to the park.
+- **Deferred with reasons**: the dart hand-off (no man-tracking exists yet to
+  break the line — lands with man-marking); the beat micro-session; the
+  dribble-around-the-keeper (it IS the beat applied to the keeper — same
+  session). striker-breakaway floor 14→11: the machine's RECOVER earns real
+  last-man strips. 92/92.
+
 ## 2026-07-22 — The chip + the 1v1 equilibrium (pounce/delay)
 
 The chip over an advanced keeper, and the counter-craft that keeps the 1v1

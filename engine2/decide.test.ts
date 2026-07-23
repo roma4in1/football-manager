@@ -82,8 +82,11 @@ test('striker-breakaway: through on goal he SHOOTS — construction, not role (1
     if (shot) shots++;
     assert.equal(backwardPassInRange, false, `l4-${s}: passed backward from the chance`);
   }
-  // the shortfall seeds are the chaser honestly winning the ball first
-  assert.ok(shots >= 14, `the striker shoots when he has the chance (${shots}/16)`);
+  // the shortfall seeds are the chaser honestly winning the ball first —
+  // and under the L5E machine he no longer trails: RECOVER cuts the path
+  // AHEAD, regains goal-side, and the strip is earned (last-man recovery
+  // tackles are real football). The floor reflects the smarter defense.
+  assert.ok(shots >= 11, `the striker shoots when he has the chance (${shots}/16)`);
 });
 
 test('risk dial: the instruction picks the TARGET — safe outlet vs through ball (16 seeds each)', () => {
