@@ -2158,7 +2158,11 @@ export class Sim {
               const label = di.kind === 'cover' ? 'cover' : di.kind === 'mark' ? 'mark' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
               const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
               if (d > 1.2) {
-                this.assign(body, { type: 'moveTo', target: di.target, regime: d > 8 ? 'run' : 'jog' });
+                // an URGENT mark (his man darting goalward) tracks at pace
+                // from the anticipatory station — jogging the chase was the
+                // judged too-late-by-momentum
+                const regime = di.kind === 'mark' && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
+                this.assign(body, { type: 'moveTo', target: di.target, regime });
                 this.shapeHolding.add(id);
                 this.actionLabels.set(id, label);
               } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {

@@ -57,6 +57,16 @@ export const DUEL = {
    * and shaded BALL-side to sit against the lane (I.13) */
   markGoalSideM: 1.8,
   markBallShadeM: 0.9,
+  /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
+   * momentum rule applied to marking): a marker who steps toward his
+   * man is too late on the dart by momentum alone. The station DROPS
+   * goal-side with the man's goalward speed (the buffer IS the
+   * anticipation, and retreating with the rising threat gives the
+   * marker goalward momentum BEFORE the race), and the ball-shade
+   * FADES with it — contest the feet ball on a static outlet, concede
+   * feet and deny in-behind on a runner. */
+  markDropGainS: 0.8,
+  markShadeFadeMps: 3,
   engageEscapeM: 3.5, // the carrier breaks this far → the engage is over
   pressureResetOnEscape: 0.3,
   /** the failed lunge is the BEATEN moment: planted ~0.8 s. Without it,
@@ -758,7 +768,7 @@ export type DefenseIntent =
   | { kind: 'press'; approach: Vec2 | null; label: 'press' | 'counterpress' }
   | { kind: 'delay'; hold: Vec2 }
   | { kind: 'cover'; target: Vec2 }
-  | { kind: 'mark'; target: Vec2 }
+  | { kind: 'mark'; target: Vec2; urgent: boolean }
   | { kind: 'interceptLane'; target: Vec2 }
   | { kind: 'holdShape'; target: Vec2 };
 
@@ -856,12 +866,24 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // the ball — behind-only marking watched 7-8/8 passes arrive freely
     // (the marker stood behind the receiver, contesting neither the lane
     // nor the touch)
+    // the anticipation is AFFORDED by cover (builder physics, gated by
+    // the measured trade): with a line behind you, drop off and ride the
+    // run; as the LONE cover you stay touch-tight and gamble — the
+    // ungated drop vacated the middle and the shorthanded 2v2 collapsed
+    // 0/8 → 8/8 through
+    const anticipate = covers.length > 1;
     const markSpot = (o: BodyState): Vec2 => {
       const md = Math.hypot(og.x - o.pos.x, og.y - o.pos.y) || 1;
       const bd = Math.hypot(carrier.pos.x - o.pos.x, carrier.pos.y - o.pos.y) || 1;
+      // the run threat: his speed TOWARD my goal — the station drops with
+      // it and the ball-shade fades (the anticipatory mark: never caught
+      // leaning forward when the dart comes)
+      const gws = anticipate ? Math.max(0, (o.vel.x * (og.x - o.pos.x) + o.vel.y * (og.y - o.pos.y)) / md) : 0;
+      const depth2 = DUEL.markGoalSideM + gws * DUEL.markDropGainS;
+      const shade = DUEL.markBallShadeM * Math.max(0, 1 - gws / DUEL.markShadeFadeMps);
       return {
-        x: o.pos.x + ((og.x - o.pos.x) / md) * DUEL.markGoalSideM + ((carrier.pos.x - o.pos.x) / bd) * DUEL.markBallShadeM,
-        y: o.pos.y + ((og.y - o.pos.y) / md) * DUEL.markGoalSideM + ((carrier.pos.y - o.pos.y) / bd) * DUEL.markBallShadeM,
+        x: o.pos.x + ((og.x - o.pos.x) / md) * depth2 + ((carrier.pos.x - o.pos.x) / bd) * shade,
+        y: o.pos.y + ((og.y - o.pos.y) / md) * depth2 + ((carrier.pos.y - o.pos.y) / bd) * shade,
       };
     };
     // duty assignment: MARKS first (danger order), behind-cover is the
@@ -884,7 +906,11 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     };
     for (const m of marks) {
       if (!free.size) break;
-      if (claim(markSpot(m.o)) === defender.id) return { kind: 'mark', target: markSpot(m.o) };
+      if (claim(markSpot(m.o)) === defender.id) {
+        const md2 = Math.hypot(og.x - m.o.pos.x, og.y - m.o.pos.y) || 1;
+        const gws2 = (m.o.vel.x * (og.x - m.o.pos.x) + m.o.vel.y * (og.y - m.o.pos.y)) / md2;
+        return { kind: 'mark', target: markSpot(m.o), urgent: gws2 > 3 };
+      }
     }
     if (free.size && claim(behind) === defender.id) return { kind: 'cover', target: behind };
     const spot = pressCoverSpots(carrier, bodies, [...free]).get(defender.id);

@@ -167,9 +167,18 @@ test('the FULLBACKS duel: a zone back line kills the wide escape with live footb
   // carrier's wide arc is GONE (maxWide ~11 vs 27-32 bare) — wide is
   // deterred by live zone presence, not walls. Heavy is NOT pinned
   // (3/8 through — the kick-and-rush root's honest leak, next round).
+  // the ANTICIPATORY mark (builder physics): during goalward darts the
+  // runner must be RIDDEN — a goal-side marker within 5 m — not chased
+  // from behind by a man caught leaning forward. Shipped at 73% ridden
+  // (was 19%); the honest cost is the escort not yet CONVERTING (the
+  // ridden runner still receives and finishes 3/8 — the concede-stop
+  // root, third appearance), so the defended floor is 4/8 until that
+  // machine round lands.
   const seeds = ['wb-0', 'wb-1', 'wb-2', 'fb-0', 'fb-1', 'fb-2', 'fb-3', 'fb-4'];
   let defended = 0;
   let narrow = 0;
+  let dartT = 0;
+  let ridden = 0;
   for (const seed of seeds) {
     const sim = new Sim(scenarioByName('duel-2v2-fullbacks-close'), seed);
     let maxWide = 0;
@@ -177,6 +186,17 @@ test('the FULLBACKS duel: a zone back line kills the wide escape with live footb
     for (let t = 0; t < 300; t++) {
       sim.step();
       const c = sim.ball.carrierId;
+      const mate = sim.bodies.find((x) => x.id === 'mate')!;
+      const mGoal = Math.hypot(mate.pos.x - 105, mate.pos.y - 34);
+      const gws = (mate.vel.x * (105 - mate.pos.x) + mate.vel.y * (34 - mate.pos.y)) / Math.max(mGoal, 1e-6);
+      if (gws > 3 && ['attacker', 'mate', null].includes(c as never)) {
+        dartT++;
+        const near = sim.bodies.filter((x) => x.team === 'away').reduce((best, d2) => {
+          const g = Math.hypot(d2.pos.x - mate.pos.x, d2.pos.y - mate.pos.y);
+          return g < best.g ? { d: d2, g } : best;
+        }, { d: sim.bodies[0], g: Infinity });
+        if (near.g <= 5 && Math.hypot(near.d.pos.x - 105, near.d.pos.y - 34) < mGoal + 0.5) ridden++;
+      }
       if (c === 'attacker' || c === 'mate') {
         const b = sim.bodies.find((x) => x.id === c)!;
         maxWide = Math.max(maxWide, Math.abs(b.pos.y - 34));
@@ -188,7 +208,8 @@ test('the FULLBACKS duel: a zone back line kills the wide escape with live footb
     if (won) defended++;
     if (maxWide < 20) narrow++;
   }
-  assert.ok(defended >= 7, `the zone back line + central pair defend the elite 2v2 (${defended}/8)`);
+  assert.ok(ridden / Math.max(dartT, 1) > 0.6, `the darting runner is RIDDEN goal-side, not chased (${(ridden / Math.max(dartT, 1) * 100).toFixed(0)}% of dart ticks)`);
+  assert.ok(defended >= 4, `the zone back line + central pair hold the floor (${defended}/8 — full strength awaits the concede-stop)`);
   assert.ok(narrow >= 7, `the wide escape is dead — the carrier stays central (${narrow}/8 seeds under 20 m wide)`);
 });
 

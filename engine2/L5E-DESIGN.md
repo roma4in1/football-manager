@@ -346,7 +346,22 @@ breaking, break it toward whichever intent most degrades the carrier's top
    concede-stop. The knock-instead-of-through judgment did NOT reproduce
    on wb-0..2 (no knock/beat labels at past-the-man moments; the fast
    carry may read as a knock-on, or it was another seed — ask which).
-7. Roles as weight vectors (Part V ↔ roles.md).
+7. **The ANTICIPATORY mark (builder physics, Jul 23 — SHIPPED)**: the
+   duel's momentum rule applied to marking. The station drops goal-side
+   with the man's goalward speed (markDropGainS 0.8 — the buffer is the
+   anticipation, and retreating with the rising threat gives goalward
+   momentum BEFORE the race); the ball-shade fades with threat (concede
+   feet, deny in-behind); urgent marks track at sprint. GATED on a spare
+   existing (covers > 1): the LONE cover stays touch-tight — ungated,
+   the shorthanded 2v2 collapsed 0/8→8/8 through. Measured: the darting
+   runner is RIDDEN (goal-side marker ≤5 m) 73% of dart ticks vs 19%
+   before; the 2v1/2v2-covered pins hold untouched. The honest cost,
+   pinned as a 4/8 floor: the ESCORT DOES NOT CONVERT — the ridden
+   runner still receives and finishes 3/8 (wb-2/fb-1/fb-3, north seam
+   y≈40) because the rider never makes a play on the arriving ball. The
+   concede-stop round (third naming) is what turns the ride into a
+   defense; the builder judges the trade live in duel-2v2-fullbacks-*.
+8. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
