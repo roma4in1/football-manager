@@ -47,6 +47,11 @@ export const DUEL = {
   pressureStoppedFactor: 3,
   pressureSupportFactor: 1.8,
   dCoverM: 12,
+  /** II.7 — the second man's spot BEHIND the press, on the carrier→goal
+   * line (deep enough to meet the carry-around, inside dCoverM so the
+   * presser's patience feels the support), shaded to the arc side */
+  coverBehindM: 6,
+  coverShadeM: 1.5,
   engageEscapeM: 3.5, // the carrier breaks this far → the engage is over
   pressureResetOnEscape: 0.3,
   /** the failed lunge is the BEATEN moment: planted ~0.8 s. Without it,
@@ -804,13 +809,38 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const dn = Math.hypot(dx, dy) || 1;
     return { kind: 'delay', hold: { x: carrier.pos.x + (dx / dn) * 4.5, y: carrier.pos.y + (dy / dn) * 4.5 } };
   }
-  // a PRESSING UNIT's non-engaged members take distinct assignments over
-  // the carrier's ranked options (principles IV: second man covers);
-  // LINE units (pressing ≤ 0.3) keep L5c shape
+  // a PRESSING UNIT's non-engaged members take distinct assignments
+  // (principles IV: second man covers) — and the FIRST cover duty is
+  // II.7: protect BEHIND the press. A single pass or carry-around breaks
+  // a press nobody stands behind (the covered-duel arc: the old leftover
+  // rule compacted the second man toward the BALL — ball-watching, Part
+  // VI — and the attacker rounded the pair). The second man sits on the
+  // carrier→goal line behind the presser, shaded to the carrier's arc
+  // side; lane spots only claim the men beyond him.
+  // LINE units (pressing ≤ 0.3) keep L5c shape.
   if (pressing > 0.3 && firstIsEngaged) {
-    const coverIds = unit.filter((b) => b.id !== nearest.id && b.id !== defender.id).map((b) => b.id)
-      .concat([defender.id]).filter((bid) => bid !== nearest.id);
-    const spot = pressCoverSpots(carrier, bodies, coverIds).get(defender.id);
+    const covers = unit.filter((b) => b.id !== nearest.id);
+    const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+    const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
+    const gd = Math.hypot(og.x - cf.x, og.y - cf.y) || 1;
+    const tg = { x: (og.x - cf.x) / gd, y: (og.y - cf.y) / gd };
+    // shade toward the side the carrier is arcing to
+    const perp = { x: -tg.y, y: tg.x };
+    const side = Math.sign(carrier.vel.x * perp.x + carrier.vel.y * perp.y) || 1;
+    const depth = Math.min(DUEL.coverBehindM, gd - 0.5);
+    const behind = {
+      x: cf.x + tg.x * depth + perp.x * side * DUEL.coverShadeM,
+      y: cf.y + tg.y * depth + perp.y * side * DUEL.coverShadeM,
+    };
+    // the man for the behind spot: whichever cover is nearest it (sticky
+    // enough — the geometry moves smoothly with the carrier)
+    const behindId = covers.reduce((best, b) => {
+      const d = Math.hypot(b.pos.x - behind.x, b.pos.y - behind.y);
+      return d < best.d ? { id: b.id, d } : best;
+    }, { id: '', d: Infinity }).id;
+    if (behindId === defender.id) return { kind: 'cover', target: behind };
+    const laneIds = covers.filter((b) => b.id !== behindId).map((b) => b.id);
+    const spot = pressCoverSpots(carrier, bodies, laneIds).get(defender.id);
     if (spot) return { kind: 'cover', target: spot };
   } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
     const lane = shadowSpot(defender, carrier, bodies);
