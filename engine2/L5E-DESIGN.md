@@ -319,7 +319,34 @@ breaking, break it toward whichever intent most degrades the carrier's top
    concede-stop is machine-core and globally priced: it is the NEXT
    measured round, with the workbench open and the builder judging
    duel-2v2-covered-* / duel-3v2-spare-close live.
-6. Roles as weight vectors (Part V ↔ roles.md).
+6. **The SHARPNESS round (builder judgments, Jul 23 — quantified, fixes
+   measured, REVERTED; the designed LIVE round)**. The builder watched
+   duel-2v2-fullbacks-close and judged: defenders collapse onto the ball;
+   nobody marks the runner; the attacker knocks on instead of playing the
+   through ball; "more hertz maybe". Quantified on wb-0..2: 3+ defenders
+   within 6 m of the ball 11-16% of ticks; the darting mate FREE (>5 m
+   from any defender) 38-52% of his darting ticks, avg gap 5.0-5.3 m.
+   **Hertz is NOT the lever** (measured): reconsiderTicks is already 3
+   (0.3 s); at 1 (10 Hz) collapse improves (16→1%) but the free runner
+   WORSENS (41-52→52-67%) — faster updates to a trailing jog-target just
+   thrash the claims. Three structural fixes built and measured, EACH
+   broke a load-bearing accident:
+   - mark tracks (leading spot + sprint + sticky memory): runner-free
+     drops to 30-41% BUT the fullbacks defended rate halves 8/8→4/8
+     (the dragged marker weakens the outlet deny);
+   - shadow dedup (one man per lane): kills the collapse (0%) BUT the
+     lane-bunching had been accidentally blocking the center — the
+     carrier walks through and shoots;
+   - the tuck-in (line man fills unstaffed behind-duty): restores the
+     center BUT reshuffles the election mid-flight and the outlet deny
+     breaks (the mate receives, 1-2, goal).
+   The defensive coordination is now a genuinely coupled system at the
+   edge of probe-tuning. NEXT: the live round — workbench open, these
+   three dials one at a time under the builder's eye, alongside the
+   concede-stop. The knock-instead-of-through judgment did NOT reproduce
+   on wb-0..2 (no knock/beat labels at past-the-man moments; the fast
+   carry may read as a knock-on, or it was another seed — ask which).
+7. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
