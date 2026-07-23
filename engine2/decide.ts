@@ -52,6 +52,11 @@ export const DUEL = {
    * presser's patience feels the support), shaded to the arc side */
   coverBehindM: 6,
   coverShadeM: 1.5,
+  /** the mark's L (I.1): goal-side of his man, a stride off — close
+   * enough to press the touch, goal-side enough to never be run past —
+   * and shaded BALL-side to sit against the lane (I.13) */
+  markGoalSideM: 1.8,
+  markBallShadeM: 0.9,
   engageEscapeM: 3.5, // the carrier breaks this far → the engage is over
   pressureResetOnEscape: 0.3,
   /** the failed lunge is the BEATEN moment: planted ~0.8 s. Without it,
@@ -753,6 +758,7 @@ export type DefenseIntent =
   | { kind: 'press'; approach: Vec2 | null; label: 'press' | 'counterpress' }
   | { kind: 'delay'; hold: Vec2 }
   | { kind: 'cover'; target: Vec2 }
+  | { kind: 'mark'; target: Vec2 }
   | { kind: 'interceptLane'; target: Vec2 }
   | { kind: 'holdShape'; target: Vec2 };
 
@@ -832,15 +838,56 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       x: cf.x + tg.x * depth + perp.x * side * DUEL.coverShadeM,
       y: cf.y + tg.y * depth + perp.y * side * DUEL.coverShadeM,
     };
-    // the man for the behind spot: whichever cover is nearest it (sticky
-    // enough — the geometry moves smoothly with the carrier)
-    const behindId = covers.reduce((best, b) => {
-      const d = Math.hypot(b.pos.x - behind.x, b.pos.y - behind.y);
-      return d < best.d ? { id: b.id, d } : best;
-    }, { id: '', d: Infinity }).id;
-    if (behindId === defender.id) return { kind: 'cover', target: behind };
-    const laneIds = covers.filter((b) => b.id !== behindId).map((b) => b.id);
-    const spot = pressCoverSpots(carrier, bodies, laneIds).get(defender.id);
+    // the MARK duties (principles IV third defender: watch runners — the
+    // match-shaped-scenes finding: one unmarked outlet undoes the whole
+    // press, 5-7/8 through in the 2v2 probe): free opponents ranked by
+    // the same danger the lane logic prices
+    const others = bodies.filter((b) => b.team === defender.team);
+    const marks = bodies
+      .filter((o) => o.team === carrier.team && o.id !== carrier.id)
+      .map((o) => {
+        const dist0 = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+        const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, others, dist0, o);
+        return { o, danger: open * (0.4 + posValue(o.pos, carrier.team)) };
+      })
+      .filter((m) => m.danger > 0.05)
+      .sort((a, b) => b.danger - a.danger);
+    // the mark's L (I.1 + I.13): goal-side of the man AND shaded toward
+    // the ball — behind-only marking watched 7-8/8 passes arrive freely
+    // (the marker stood behind the receiver, contesting neither the lane
+    // nor the touch)
+    const markSpot = (o: BodyState): Vec2 => {
+      const md = Math.hypot(og.x - o.pos.x, og.y - o.pos.y) || 1;
+      const bd = Math.hypot(carrier.pos.x - o.pos.x, carrier.pos.y - o.pos.y) || 1;
+      return {
+        x: o.pos.x + ((og.x - o.pos.x) / md) * DUEL.markGoalSideM + ((carrier.pos.x - o.pos.x) / bd) * DUEL.markBallShadeM,
+        y: o.pos.y + ((og.y - o.pos.y) / md) * DUEL.markGoalSideM + ((carrier.pos.y - o.pos.y) / bd) * DUEL.markBallShadeM,
+      };
+    };
+    // duty assignment: MARKS first (danger order), behind-cover is the
+    // SPARE man's job. With no spare, defense is man-for-man — the 1v1s
+    // are accepted (a blended neither-duty spot defended nothing: the
+    // measured 2v2 midpoint made the leak WORSE, 5-7/8 → 7-8/8). II.5's
+    // press→cover→balance chain needs a third man to exist; zonal
+    // balance-over-marking arrives with the L6 marking scheme.
+    const free = new Set(covers.map((b) => b.id));
+    const claim = (spot: Vec2): string => {
+      let best = '';
+      let bd = Infinity;
+      for (const id of free) {
+        const b = covers.find((x) => x.id === id)!;
+        const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+        if (d < bd) { bd = d; best = id; }
+      }
+      free.delete(best);
+      return best;
+    };
+    for (const m of marks) {
+      if (!free.size) break;
+      if (claim(markSpot(m.o)) === defender.id) return { kind: 'mark', target: markSpot(m.o) };
+    }
+    if (free.size && claim(behind) === defender.id) return { kind: 'cover', target: behind };
+    const spot = pressCoverSpots(carrier, bodies, [...free]).get(defender.id);
     if (spot) return { kind: 'cover', target: spot };
   } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
     const lane = shadowSpot(defender, carrier, bodies);

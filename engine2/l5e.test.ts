@@ -95,6 +95,34 @@ test('the COVERED DUEL defends honestly: ride + goal-side cover + herd wide + th
   }
 });
 
+test('the MARK denies the outlet: in the 2v2 the marked mate never receives, and the mark is visible', () => {
+  // the mark intent's own pin — the STABLE claim across every tuning of
+  // the mark spot (goal-side, ball-shade): the outlet pass is priced out
+  // or dies. Deliberately narrow: who wins the ensuing 1v1 carry is the
+  // OPEN question (the concede-that-never-stops, the named next machine
+  // item) and is NOT pinned here.
+  const seeds = ['wb-0', 'wb-1', 'wb-2', 'mk-0', 'mk-1', 'mk-2', 'mk-3', 'mk-4'];
+  for (const name of ['duel-2v2-covered-close', 'duel-2v2-covered-heavy']) {
+    let denied = 0;
+    let marked = 0;
+    for (const seed of seeds) {
+      const sim = new Sim(scenarioByName(name), seed);
+      let received = false;
+      let labeled = false;
+      for (let t = 0; t < 300; t++) {
+        const f = sim.step();
+        if (f.bodies.some((b) => b.id === 'def2' && b.action === 'mark')) labeled = true;
+        if (sim.ball.carrierId === 'mate') received = true;
+        if (sim.ball.carrierId?.startsWith('def') || sim.ball.phase === 'dead') break;
+      }
+      if (!received) denied++;
+      if (labeled) marked++;
+    }
+    assert.ok(denied >= 7, `${name}: the marked outlet never receives (${denied}/8 denied)`);
+    assert.ok(marked >= 7, `${name}: the mark is VISIBLE on def2 (${marked}/8 seeds show the label)`);
+  }
+});
+
 test('bounds: a CARRIED ball over the line is out, and bodies stay on the park', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 14, passing: 15, tackling: 12, strength: 12, stamina: 12 };
   const sim = new Sim({

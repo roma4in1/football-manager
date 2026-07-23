@@ -305,7 +305,21 @@ breaking, break it toward whichever intent most degrades the carrier's top
    duels are actually decided — the pinch election/reach and
    tackleWinProbability's surrounding gates — a coupled change needing
    its own builder round (it re-prices every touch duel in open play).
-5. Roles as weight vectors (Part V ↔ roles.md).
+5. The MARK intent (builder round, Jul 23 — after the match-shaped rule):
+   duty election marks-first, behind-cover is the SPARE man's job (no
+   spare → man-for-man; a blended neither-duty spot measured WORSE,
+   5-7/8 → 7-8/8 through). The mark's L: goal-side markGoalSideM 1.8 +
+   ball-shade markBallShadeM 0.9 (behind-only marking watched 7-8/8
+   passes arrive). **Pinned: the outlet deny (8/8 both skills) + the
+   visible mark.** NOT pinned: the ensuing 1v1 carry endgame — the
+   shapes swing wildly per dial (2v2 elite 0/8↔8/8 through, heavy the
+   inverse) because once the pass is dead everything reduces to the
+   carry vs the retreating rider, and **the machine never STOPS
+   conceding** — the kick-and-rush root, third appearance. That
+   concede-stop is machine-core and globally priced: it is the NEXT
+   measured round, with the workbench open and the builder judging
+   duel-2v2-covered-* / duel-3v2-spare-close live.
+6. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
@@ -336,6 +350,13 @@ his run state — the L5b run cycle coupled to the pass release.
 
 ## 6. Ground rules carried in from the brief
 
+- **Match-shaped scenes (builder rule, Jul 23)**: a DECISION-level scene
+  must give every brain a match-shaped option set — an outlet, a recovery
+  threat, or both. Empty stages only pin EXECUTORS. Found the hard way:
+  the covered 2v1 read 0/16 through while the attacker was merely priced
+  into running wide (no outlet, stalling costless); one added mate flipped
+  it to 5-7/8 through because no intent MARKED him. An empty drill can
+  flatter both sides at once.
 - Both duel sides are brains in every scenario.
 - `shieldUtility` re-lands at ≈ 0.014 (0.03 froze carriers at kickoff).
 - Carried-ball bounds: dribbling over a grid/pitch line goes dead; bodies

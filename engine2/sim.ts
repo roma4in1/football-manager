@@ -2155,7 +2155,7 @@ export class Sim {
               this.actionLabels.set(id, 'delay');
             } else {
               this.pressingIds.delete(id);
-              const label = di.kind === 'cover' ? 'cover' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
+              const label = di.kind === 'cover' ? 'cover' : di.kind === 'mark' ? 'mark' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
               const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
               if (d > 1.2) {
                 this.assign(body, { type: 'moveTo', target: di.target, regime: d > 8 ? 'run' : 'jog' });

@@ -88,6 +88,44 @@ export const coveredDuelScenarios: ScenarioDef[] = [
   coveredDuel('duel-2v1-covered-close', 17), coveredDuel('duel-2v1-covered-heavy', 5),
 ];
 
+/** L5E — MATCH-SHAPED duels (the builder's rule: decision scenes need a
+ * real option set; the empty 2v1 flattered both sides at once). The 2v2:
+ * the attacker has an outlet — def2 must MARK him (goal-side + ball-
+ * shade, the L) or one pass undoes the press. The 3v2: a spare man
+ * exists — press, mark, AND cover-behind all staffed. Judge: the mark's
+ * L-shape on the outlet, the denied pass, and — honestly — the carry
+ * still winning too often once the pass is dead: the retreating machine
+ * never STOPS conceding (the kick-and-rush root, the next machine item). */
+const matchDuel = (name: string, dribbling: number, spare: boolean): ScenarioDef => ({
+  version: 1,
+  name,
+  description: `Attacker (dribbling ${dribbling}) + an outlet mate vs ${spare ? 'THREE defenders (press + mark + cover-behind — the spare-man chain)' : 'two defenders (press + mark — man-for-man, no spare)'}. Judge the mark's L on the outlet (goal-side, ball-shaded), the denied pass, and where the carry endgame leaks.`,
+  durationTicks: 300,
+  bodies: [
+    { id: 'attacker', team: 'home', pos: { x: 62, y: 34 }, brain: 'onBall',
+      attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, firstTouch: 12, passing: 14, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'mate', team: 'home', pos: { x: 66, y: 22 }, brain: 'onBall',
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 13, firstTouch: 13, passing: 14, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def1', team: 'away', pos: { x: 74, y: 34 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def2', team: 'away', pos: { x: 84, y: 30 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    ...(spare ? [{ id: 'def3', team: 'away' as const, pos: { x: 88, y: 38 }, facing: Math.PI, brain: 'onBall' as const,
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } }] : []),
+  ],
+  ball: { carrier: 'attacker' },
+  script: [],
+});
+
+export const matchDuelScenarios: ScenarioDef[] = [
+  matchDuel('duel-2v2-covered-close', 17, false),
+  matchDuel('duel-2v2-covered-heavy', 5, false),
+  matchDuel('duel-3v2-spare-close', 17, true),
+];
+
 export const weave: ScenarioDef = {
   version: 1,
   name: 'dribble-weave',
