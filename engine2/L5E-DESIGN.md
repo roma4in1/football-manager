@@ -223,6 +223,67 @@ ever designed.
 Acceptance: the covered duel (above) defends honestly; the beat is then
 measured against a competent defense; pressScore retires into decideDefense.
 
+### The principles pass (reference/defensive_principles.md, Jul 23)
+
+The builder's reference doc gives the brain its spine. What it settles:
+
+**Part III's decision hierarchy IS the scorer.** decideDefense evaluates the
+nine questions in order — goal threat? goal side? teammate pressing? cover?
+mark? intercept? delay? tackle? recover shape — as TIERED scores, not if-else:
+a live higher tier dominates, attributes/tactics/roles modulate within a tier.
+The intent set, mapped to the doc:
+
+| intent | principle | today's machinery (what it absorbs) |
+|---|---|---|
+| `recover` | I.1, I.12 (goal side; if beaten, sprint) | machine RECOVER state |
+| `press` | IV first defender: pressure, slow, FORCE direction | election + pressApproach |
+| `contain` | I.2/I.3, II.13 (delay > diving in; control distance) | machine JOCKEY/TRACK |
+| `cover` | IV second defender + **II.7 protect BEHIND the press** | pressCoverSpots (lane-only — see hole below) |
+| `balance` | IV third defender: dangerous space, watch runners | nothing (new) |
+| `mark` | I.8 (ball AND man) | the deferred dart hand-off lands here |
+| `interceptLane` | I.9, I.13 | shadowSpot |
+| `holdShape` | II.10 (shape > chasing) | shapeSpot |
+
+**FORCE DIRECTION is an output, not an intent** (I.4, II.2, II.8): press and
+contain emit a steer — toward touchline, toward the cover man, away from
+center. The contain bearing and the give-ground line take the bias. This is
+the named missing counter from the kick-and-rush finding ("cover/angling"),
+and it turns the covered duel from two independent defenders into a TRAP:
+the ride forces the cut into the second man.
+
+**The cover hole, named by II.7**: pressCoverSpots stands men ON pass lanes at
+t=0.45 — nobody protects the space behind a beaten presser. "Single pass →
+defensive line broken" is exactly the covered-duel outflank (16/16 through).
+The cover spot becomes a blend: deny the best lane AND sit goal-side behind
+the presser at the depth that closes the carry-around.
+
+**Attributes → dials, per principle**: I.3 control distance (agility/balance →
+holdM/engage tighter); I.2+I.10 delay-vs-dive (tackling, and the `aggression`
+schema candidate → pressure fill + engage threshold); I.12 recover (pace →
+concede rate; a slow defender drops earlier). Part V's role priorities are
+roles.md's weight vectors verbatim (CB cover/aerial/organize, FB wide/delay,
+DM screen/intercept, W track/double, ST initiate/block).
+
+**Part VI is the regression anti-checklist** — each mistake is an engine
+failure we have already met: diving in = the pre-machine charge; chasing the
+ball = the chaseBall gate; pressing without support = the 2v1 sail-through;
+ball watching = trailing the lateral cut. New pins should quote it.
+
+**Philosophy line for the scorer**: "reduce the opponent's options until they
+are forced into a low-quality decision" — the defender's EV is the negative
+of the attacker's best option. Tier scores approximate this; when a tie needs
+breaking, break it toward whichever intent most degrades the carrier's top
+`evaluateOptions` entry.
+
+**Execution order (one measured change at a time):**
+1. decideDefense skeleton + machine OWNERSHIP: the elected presser belongs to
+   the machine from election (not from chaseBall range) — behavior-preserving
+   refactor first, full suite green.
+2. Cover-behind-the-press spot (II.7) — the covered duel's outflank closes.
+3. Force-direction steer in the ride (I.4/II.2).
+4. Attribute dials.
+5. Roles as weight vectors (Part V ↔ roles.md).
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
