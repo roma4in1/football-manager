@@ -278,10 +278,33 @@ breaking, break it toward whichever intent most degrades the carrier's top
 **Execution order (one measured change at a time):**
 1. decideDefense skeleton + machine OWNERSHIP: the elected presser belongs to
    the machine from election (not from chaseBall range) — behavior-preserving
-   refactor first, full suite green.
+   refactor first, full suite green. **DONE** (97717564 bit-identical
+   extraction; b1ab9139 ownership — outcome-neutral enabler, ride texture
+   only: heavy close-ticks 39.9→12.8, the face-park gone).
 2. Cover-behind-the-press spot (II.7) — the covered duel's outflank closes.
-3. Force-direction steer in the ride (I.4/II.2).
-4. Attribute dials.
+   **DONE** (38b827a6): probe 16/16 through → 0/16 close, 1/16 heavy; the
+   win is herd-to-flank + strip. Pinned as duel-2v1-covered-close/heavy
+   (f5f3d775, act-one signatures, wb seeds leading).
+3. Force-direction steer in the ride (I.4/II.2). **DEFERRED (stop-rule)**:
+   the herd EMERGED from the cover geometry alone (maxWide 27–32 every
+   seed) and the covered duel sits at ceiling — no measurable headroom;
+   vs a lone retreating man route-one is legitimately real. Revisit when
+   a drill shows a middle-lane leak the cover alone doesn't close.
+4. Attribute dials — **BUILT, MEASURED, REVERTED (stop-rule)**. duelDials
+   (tackling→fill, agility+balance→jockey cap, agility→engage clamped in
+   the joint bands, pace→concede lag), anchored no-op-at-neutral, wired
+   into the machine. Measurement: ZERO split anywhere the machine decides
+   a duel — the covered duel strips at t128 with IDENTICAL trajectories
+   for stopper (18/16/16), neutral, and statue (6/9/9) pairs, because
+   duels are decided by the PINCH/RACE machinery, which reads no dials;
+   a lone defender loses to a brained attacker at every quality (kick-
+   and-rush, accepted). The one place the fill dial acted was striker-
+   breakaway — where it broke the pinned floor (11→8 shots: the tackling-
+   14 chaser engage-tackled half the clean breakaways). No benefit, one
+   cost → reverted. THE REAL SEAM: defender attributes must enter where
+   duels are actually decided — the pinch election/reach and
+   tackleWinProbability's surrounding gates — a coupled change needing
+   its own builder round (it re-prices every touch duel in open play).
 5. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
