@@ -201,6 +201,35 @@ export class Sim {
     // anticipate where a ball is going, they don't chase its tail), and a
     // carrier whose touch ran beyond reach STEERS to fetch it — the route is
     // the intent, the ball is the path
+    // loose-ball claimant election (L5E arbitration)
+    if (this.ball.carrierId === null && this.ball.phase !== 'dead') {
+      for (const team of ['home', 'away'] as const) {
+        let best: { id: string; score: number } | null = null;
+        for (const b2 of this.bodies) {
+          if (b2.team !== team || b2.command.type !== 'chaseBall') continue;
+          const sc = Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) /
+            Math.max(regimeCapMps(b2.attributes.pace, 'sprint'), 1);
+          if (!best || sc < best.score) best = { id: b2.id, score: sc };
+        }
+        const cur = this.looseClaimant.get(team);
+        if (!best) this.looseClaimant.delete(team);
+        else if (!cur || cur.id === best.id ||
+          !this.bodies.some((b2) => b2.id === cur.id && b2.command.type === 'chaseBall') ||
+          best.score < cur.score - 0.3) {
+          this.looseClaimant.set(team, best);
+        } else {
+          // the incumbent holds — refresh his score
+          const inc = this.bodies.find((b2) => b2.id === cur.id)!;
+          this.looseClaimant.set(team, {
+            id: cur.id,
+            score: Math.hypot(this.ball.pos.x - inc.pos.x, this.ball.pos.y - inc.pos.y) /
+              Math.max(regimeCapMps(inc.attributes.pace, 'sprint'), 1),
+          });
+        }
+      }
+    } else {
+      this.looseClaimant.clear();
+    }
     this.liveTargets.clear();
     this.prevPos.clear();
     for (const body of this.bodies) {
@@ -310,6 +339,29 @@ export class Sim {
               const un = Math.hypot(ux, uy) || 1;
               live = { x: body.pos.x + (ux / un) * 2.0, y: body.pos.y + (uy / un) * 2.0 };
               timedCap = 2.4; // controlled — meeting a pass is not charging it
+            }
+          }
+        }
+        // loose-ball SUPPORT (L5E arbitration): the non-claimant does not
+        // race his own mate onto the ball — he takes an offset spot to the
+        // side, an outlet instead of a second pair of feet in the same yard
+        if (body.command.type === 'chaseBall' && this.ball.carrierId === null) {
+          const cl = this.looseClaimant.get(body.team);
+          if (cl && cl.id !== body.id) {
+            const claimant = this.byId.get(cl.id);
+            if (claimant) {
+              const lx = this.ball.pos.x - claimant.pos.x;
+              const ly = this.ball.pos.y - claimant.pos.y;
+              const ln = Math.hypot(lx, ly) || 1;
+              // the side of the claimant→ball line this supporter is on
+              const sside = Math.sign(-(body.pos.x - claimant.pos.x) * (ly / ln) +
+                (body.pos.y - claimant.pos.y) * (lx / ln)) || 1;
+              const dClaim = Math.hypot(body.pos.x - claimant.pos.x, body.pos.y - claimant.pos.y);
+              const off = dClaim < 1.8 ? 6 : 4; // stacked bodies separate harder
+              live = {
+                x: this.ball.pos.x - (ly / ln) * sside * off,
+                y: this.ball.pos.y + (lx / ln) * sside * off,
+              };
             }
           }
         }
@@ -496,6 +548,9 @@ export class Sim {
         brakeAtTarget: timedCap !== undefined || brakeIntoLine,
         speedCapMps: timedCap,
       });
+      // bodies stay on the park (L5E bounds): the playing area clamps them
+      body.pos.x = Math.max(0.2, Math.min(PITCH.length - 0.2, body.pos.x));
+      body.pos.y = Math.max(0.2, Math.min(PITCH.width - 0.2, body.pos.y));
       if (standing) {
         // a set receiver watches the ball in — a BRAIN receiver takes it on
         // the HALF-TURN: body opened between the incoming ball and his
@@ -610,6 +665,15 @@ export class Sim {
     // bar, is a GOAL — recorded (the save/beaten measurement) before the ball
     // goes dead. Crossing point interpolated along this tick's swept path.
     const ob = this.bounds;
+    // a CARRIED ball over a line is out too (L5E bounds): dribbling across
+    // the touchline/grid edge does not keep the play alive — strip and kill
+    if (this.ball.phase !== 'dead' && this.ball.carrierId !== null &&
+      (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length ||
+        this.ball.pos.y < 0 || this.ball.pos.y > PITCH.width ||
+        (ob !== undefined && (this.ball.pos.x < ob.x0 || this.ball.pos.x > ob.x1 ||
+          this.ball.pos.y < ob.y0 || this.ball.pos.y > ob.y1)))) {
+      this.ball.carrierId = null;
+    }
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
       (this.ball.pos.x < 0 || this.ball.pos.x > PITCH.length)) {
       const lineX = this.ball.pos.x < 0 ? 0 : PITCH.length;
@@ -675,6 +739,12 @@ export class Sim {
    * escort of a carrier at pace) / ENGAGE (the committed close, resolved by
    * the contain + tackle machinery inside 1.9 m). The pressure meter is the
    * patience: it fills with jockey time, spikes on a stopped carrier. */
+  /** L5E — loose-ball pursuit arbitration: ONE claimant per team per loose
+   * ball (earliest arrival, 0.3 s re-election hysteresis); everyone else
+   * SUPPORTS at an offset and stacked bodies separate. Two teammates racing
+   * the same loose ball ended 0.7 m apart and each then intercepted the
+   * other's pass to a third man (the corner flap's residual). */
+  private readonly looseClaimant = new Map<'home' | 'away', { id: string; score: number }>();
   private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number }>();
   /** pre-movement positions this tick — claims sweep the ball's path in the
    * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing

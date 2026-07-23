@@ -1006,7 +1006,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // back for it instead of running onto it (the judged drop-back). Once
       // he darts he leaves waitingRunners and the thread releases — the
       // one-two return still fires early because the returning man is darting.
-      const ridingWait = waitingRunners?.has(mate.id) ? 0.25 : 1;
+      // ...and the RELEASE GATE (L5E): even a darting runner is not yet a
+      // through-ball target until he is UP TO SPEED — the overhit tail came
+      // from balls played while the runner was still accelerating (measured:
+      // launch 13.6 past a striker at 3.5 m/s → overrun → dead). No weight
+      // constant fixes this; the release waits for the run.
+      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
+      const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };

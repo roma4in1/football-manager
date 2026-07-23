@@ -80,3 +80,24 @@ export const weave: ScenarioDef = {
     },
   ],
 };
+
+/** L5E — loose-ball pursuit ARBITRATION: two stacked teammates race the same
+ * loose ball. ONE claims (earliest arrival), the other takes a support offset
+ * out of the lane — so the collector's pass to the THIRD man is not eaten by
+ * his own twin (the corner flap's residual, measured and killed). */
+export const looseArbitration: ScenarioDef = {
+  version: 1,
+  name: 'l5e-loose-arbitration',
+  description: 'Two stacked teammates race one loose ball; one claims, the other offsets as an outlet, and the pass to the third man survives. Judge the arbitration and the separation.',
+  durationTicks: 100,
+  bodies: [
+    { id: 't1', team: 'home', pos: { x: 40, y: 34 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 14, passing: 15, tackling: 12, strength: 12, stamina: 12 }, brain: 'onBall' },
+    { id: 't2', team: 'home', pos: { x: 40.8, y: 34.5 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 14, passing: 15, tackling: 12, strength: 12, stamina: 12 }, brain: 'onBall' },
+    { id: 'mid', team: 'home', pos: { x: 55, y: 34 }, attributes: { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 14, passing: 15, tackling: 12, strength: 12, stamina: 12 }, brain: 'onBall' },
+  ],
+  ball: { pos: { x: 48, y: 33 } },
+  script: [
+    { atTick: 2, bodyId: 't1', command: { type: 'chaseBall', regime: 'sprint' } },
+    { atTick: 2, bodyId: 't2', command: { type: 'chaseBall', regime: 'sprint' } },
+  ],
+};

@@ -12,7 +12,7 @@ import { dribbleScenarios } from './dribble.ts';
 import struckBall from './struck-ball.ts';
 import looseBallRace from './loose-ball-race.ts';
 import carryTurn from './carry-turn.ts';
-import { duelScenarios, weave } from './duel-1v1.ts';
+import { duelScenarios, looseArbitration, weave } from './duel-1v1.ts';
 import { firstTouchScenarios } from './first-touch.ts';
 import { firstTouchRunScenarios, firstTouchAngleScenarios } from './first-touch-run.ts';
 import { tackleScenarios } from './tackle-duel.ts';
@@ -35,6 +35,8 @@ export const SCENARIOS: readonly ScenarioDef[] = [
   ...aerialScenarios,
   // L-curve — the Magnus bend
   ...curveScenarios,
+  // L5E — the duel machine's own pins
+  looseArbitration,
   // L7 — the goalkeeper
   ...keeperScenarios,
 ];
