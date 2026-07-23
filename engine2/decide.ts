@@ -736,6 +736,92 @@ export const pressApproach = (
   return { x: carrier.pos.x + (lx / ln) * 1.4, y: carrier.pos.y + (ly / ln) * 1.4 };
 };
 
+/** L5E — the DEFENSIVE BRAIN (reference/defensive_principles.md): Part
+ * III's decision hierarchy, run per defender per reconsider tick — is my
+ * teammate already pressing? should I press? delay? cover? sit on the
+ * lane? recover shape? — returning an INTENT the sim executes (and the
+ * duel machine rides, for the presser). This skeleton extracts the
+ * inline chain the sim grew, verbatim; the principles' refinements
+ * (cover-behind-the-press, force direction, attribute dials, role
+ * weights) land on it one measured change at a time. */
+export type DefenseIntent =
+  | { kind: 'press'; approach: Vec2 | null; label: 'press' | 'counterpress' }
+  | { kind: 'delay'; hold: Vec2 }
+  | { kind: 'cover'; target: Vec2 }
+  | { kind: 'interceptLane'; target: Vec2 }
+  | { kind: 'holdShape'; target: Vec2 };
+
+export interface DefenseInput {
+  defender: BodyState;
+  carrier: BodyState;
+  bodies: readonly BodyState[];
+  ball: BallState;
+  instructions: PlayInstructions;
+  /** the defending UNIT: eligible brains on this team, defender included */
+  unit: readonly BodyState[];
+  /** the first-defender election's memory — who pressed last tick */
+  pressingIds: ReadonlySet<string>;
+  /** inside the transition window and near the ball (innate aggression) */
+  inCounterpress: boolean;
+  /** the carrier's first touches — press the touch (defensive.md) */
+  justReceived: boolean;
+  homes: ReadonlyMap<string, Vec2>;
+}
+
+export const decideDefense = (input: DefenseInput): DefenseIntent => {
+  const { defender, carrier, bodies, ball, instructions, unit, pressingIds, inCounterpress, justReceived, homes } = input;
+  const pressing = instructions.pressing ?? 0;
+  // FIRST-DEFENDER election (principles IV: ONE man pressures the ball):
+  // nearest eligible — STICKY for the incumbent unless clearly beaten
+  // (flapping first/second made both look like ball-chasers)
+  let nearest = unit.reduce((best, b) => {
+    const d = Math.hypot(carrier.pos.x - b.pos.x, carrier.pos.y - b.pos.y);
+    return d < best.d ? { id: b.id, d } : best;
+  }, { id: '', d: Infinity });
+  const incumbent = unit.find((b) => pressingIds.has(b.id));
+  if (incumbent && incumbent.id !== nearest.id) {
+    const di = Math.hypot(carrier.pos.x - incumbent.pos.x, carrier.pos.y - incumbent.pos.y);
+    if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent.id, d: di };
+  }
+  const iAmFirst = nearest.id === defender.id;
+  const score = pressScore(defender, carrier, bodies, justReceived, pressing);
+  const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
+  const firstIsEngaged = pressingIds.has(nearest.id) || (iAmFirst && pressNow);
+  const dCar = Math.hypot(carrier.pos.x - defender.pos.x, carrier.pos.y - defender.pos.y);
+  if (pressNow) {
+    // the CURVED approach: close from the denied lane's side (pressing.md:
+    // a straight chase leaves the lane open); the last 3 m are the
+    // machine's hunt (contain + tackles need the chase)
+    const approach = dCar > 3 && !inCounterpress ? pressApproach(defender, carrier, bodies) : null;
+    return { kind: 'press', approach, label: inCounterpress ? 'counterpress' : 'press' };
+  }
+  if (iAmFirst && pressing > 0 && dCar < 11) {
+    // the DELAY stance (principles I.2: winning time beats winning the
+    // ball): hold off goal-side ~4.5 m — slow the attack, await the trigger
+    const gx = attackSign(defender.team) > 0 ? 0 : PITCH.length;
+    const dx = gx - carrier.pos.x;
+    const dy = GOAL.centerY - carrier.pos.y;
+    const dn = Math.hypot(dx, dy) || 1;
+    return { kind: 'delay', hold: { x: carrier.pos.x + (dx / dn) * 4.5, y: carrier.pos.y + (dy / dn) * 4.5 } };
+  }
+  // a PRESSING UNIT's non-engaged members take distinct assignments over
+  // the carrier's ranked options (principles IV: second man covers);
+  // LINE units (pressing ≤ 0.3) keep L5c shape
+  if (pressing > 0.3 && firstIsEngaged) {
+    const coverIds = unit.filter((b) => b.id !== nearest.id && b.id !== defender.id).map((b) => b.id)
+      .concat([defender.id]).filter((bid) => bid !== nearest.id);
+    const spot = pressCoverSpots(carrier, bodies, coverIds).get(defender.id);
+    if (spot) return { kind: 'cover', target: spot };
+  } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
+    const lane = shadowSpot(defender, carrier, bodies);
+    if (lane) return { kind: 'interceptLane', target: lane };
+  }
+  return {
+    kind: 'holdShape',
+    target: shapeSpot(defender, bodies, ball, homes, unit.map((b) => b.id), instructions.lineHeight ?? 0.5),
+  };
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];

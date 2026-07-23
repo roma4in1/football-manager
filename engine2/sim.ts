@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, decide, DECIDE, DUEL, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -2111,60 +2111,34 @@ export class Sim {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
             const inCounterpress = this.tick - lostAt <= 60 &&
               Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15;
-            const pressing = this.instructions.get(id)?.pressing ?? 0;
-            const justReceived = this.tick - this.carrierSince <= 8;
-            // first-defender election: the nearest eligible defending brain
-            const defBrains = [...this.brains].filter((bid) => {
+            // the DEFENSIVE BRAIN (decide.ts): the sim gathers the unit,
+            // the brain runs the hierarchy, the sim EXECUTES the intent
+            // (and the duel machine rides what press decides)
+            const unit = [...this.brains].filter((bid) => {
               const b2 = this.byId.get(bid)!;
               return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
                 (this.instructions.get(bid)?.objective) !== 'keep';
+            }).map((bid) => this.byId.get(bid)!);
+            const di = decideDefense({
+              defender: body, carrier: carrierBody, bodies: this.bodies, ball: this.ball,
+              instructions: this.instructions.get(id) ?? {}, unit,
+              pressingIds: this.pressingIds, inCounterpress,
+              justReceived: this.tick - this.carrierSince <= 8, homes: this.homes,
             });
-            let nearest = defBrains.reduce((best, bid) => {
-              const b2 = this.byId.get(bid)!;
-              const d2 = Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y);
-              return d2 < best.d ? { id: bid, d: d2 } : best;
-            }, { id: '', d: Infinity });
-            // STICKY election: the engaged presser keeps the job unless he
-            // is clearly beaten (flapping first/second made both look like
-            // ball-chasers — the judged no-coordination)
-            const incumbent = defBrains.find((bid) => this.pressingIds.has(bid));
-            if (incumbent && incumbent !== nearest.id) {
-              const bi = this.byId.get(incumbent)!;
-              const di = Math.hypot(carrierBody.pos.x - bi.pos.x, carrierBody.pos.y - bi.pos.y);
-              if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent, d: di };
-            }
-            const iAmFirst = nearest.id === id;
-            const score = pressScore(body, carrierBody, this.bodies, justReceived, pressing);
-            const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
-            const firstIsEngaged = this.pressingIds.has(nearest.id) || (iAmFirst && pressNow);
-            if (pressNow) {
-              // the CURVED approach: close from the denied lane's side
-              // (pressing.md: a straight chase leaves the lane open); the
-              // last 3 m are the L3 hunt (contain + tackles need the chase)
-              const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
-              if (dCar > 3 && !inCounterpress) {
-                const ap = pressApproach(body, carrierBody, this.bodies);
-                this.assign(body, { type: 'moveTo', target: ap, regime: 'sprint' });
+            if (di.kind === 'press') {
+              if (di.approach) {
+                this.assign(body, { type: 'moveTo', target: di.approach, regime: 'sprint' });
               } else if (body.command.type !== 'chaseBall') {
                 this.assign(body, { type: 'chaseBall', regime: 'sprint' });
               }
               this.pressingIds.add(id);
               this.shapeHolding.delete(id);
-              this.actionLabels.set(id, inCounterpress ? 'counterpress' : 'press');
-            } else if (iAmFirst && pressing > 0 &&
-              Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 11) {
-              // the DELAY stance (pressing.md's passive band): hold off
-              // goal-side ~4.5 m — slow the attack, wait for the trigger
+              this.actionLabels.set(id, di.label);
+            } else if (di.kind === 'delay') {
               this.pressingIds.delete(id);
-              const gSign = body.team === 'home' ? 1 : -1;
-              const gx = gSign > 0 ? 0 : PITCH.length;
-              const dx = gx - carrierBody.pos.x;
-              const dy = 34 - carrierBody.pos.y;
-              const dn = Math.hypot(dx, dy) || 1;
-              const hold = { x: carrierBody.pos.x + (dx / dn) * 4.5, y: carrierBody.pos.y + (dy / dn) * 4.5 };
-              const dh = Math.hypot(hold.x - body.pos.x, hold.y - body.pos.y);
+              const dh = Math.hypot(di.hold.x - body.pos.x, di.hold.y - body.pos.y);
               if (dh > 1.2) {
-                this.assign(body, { type: 'moveTo', target: hold, regime: dh > 7 ? 'run' : 'jog' });
+                this.assign(body, { type: 'moveTo', target: di.hold, regime: dh > 7 ? 'run' : 'jog' });
                 this.shapeHolding.add(id);
               } else if (body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
@@ -2172,30 +2146,10 @@ export class Sim {
               this.actionLabels.set(id, 'delay');
             } else {
               this.pressingIds.delete(id);
-              // a PRESSING UNIT's non-engaged members take distinct
-              // assignments over the carrier's ranked options (a line-shape
-              // fallback stacked all four at one depth — the judged
-              // overlaps); LINE units (pressing ≤ 0.3) keep L5c shape
-              let target: Vec2 | null = null;
-              let label = 'shape';
-              if (pressing > 0.3 && firstIsEngaged) {
-                const coverIds = defBrains.filter((bid) => bid !== nearest.id && bid !== id)
-                  .concat([id]).filter((bid) => bid !== nearest.id);
-                const spots = pressCoverSpots(carrierBody, this.bodies, coverIds);
-                target = spots.get(id) ?? null;
-                label = 'cover';
-              } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
-                target = shadowSpot(body, carrierBody, this.bodies);
-                label = 'shadow';
-              }
-              if (!target) {
-                target = shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
-                  this.instructions.get(id)?.lineHeight ?? 0.5);
-                label = 'shape';
-              }
-              const d = Math.hypot(target.x - body.pos.x, target.y - body.pos.y);
+              const label = di.kind === 'cover' ? 'cover' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
+              const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
               if (d > 1.2) {
-                this.assign(body, { type: 'moveTo', target, regime: d > 8 ? 'run' : 'jog' });
+                this.assign(body, { type: 'moveTo', target: di.target, regime: d > 8 ? 'run' : 'jog' });
                 this.shapeHolding.add(id);
                 this.actionLabels.set(id, label);
               } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
