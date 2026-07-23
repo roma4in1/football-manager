@@ -138,6 +138,36 @@ the micro-session:**
    not an EV bonus. Build it as a small attacker-side state (APPROACH →
    FEINT → BURST) in its own session, judged in the workbench per step.
 
+**Third exploration (Jul 23) — the beat scaffold built, findings, reverted to
+a patch (patches/beat-scaffold.patch has the full working code: the beat
+intent, the approach→feint→burst executor, the free-run pricing, the
+live-rider knock discount). What it established:**
+
+- **THE DRILL WAS A SCRIPT**: the front-duel attacker had no brain — every
+  attacker-side EV lever ever probed (knock, beat, collision tax, isolation)
+  was DEAD CODE in the drill built to show it. "Both duel sides must be
+  brains" was the brief's ground rule §6, unapplied. With a brain, the knock
+  fires 8/8 immediately.
+- **KICK-AND-RUSH IS REAL**: a brained HEAVY-feet attacker knocks past the
+  backpedaling rider 16/16 — the knock needs no touch skill and the
+  give-ground machine cannot turn fast enough to catch the race. Real
+  football agrees (route one works vs a lone retreating man); the missing
+  counter is defensive: cover/angling, and a concede that STOPS (a defender
+  who won't backpedal forever), not more attacker nerfs.
+- **PRICING IS GLOBAL**: the free-run bonus made wall-pass carriers knock
+  past their wall — every duel-pricing term reshapes ALL open play. The
+  micro-session must run the full suite per dial, and the beat/knock pricing
+  needs a context gate (a genuine LAST-man/free-run situation, not any
+  frontman).
+- **The beat itself never outranked** carry/knock in any probe — its EV story
+  (the manufactured knock) needs the knock's live-rider discount AND the
+  free-run context to be top — i.e., the three pieces only work as a set,
+  with the defensive concede-stop landing alongside. One coupled unit, again.
+- The pinch's engage-gate INVERTED the skill split (heavy's long touches
+  became safe) and never helped close control — the pinch stays ungated; the
+  close-control deficit is the COLLISION, whose true fix is the beat's
+  APPROACH phase (slow into the arc).
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
