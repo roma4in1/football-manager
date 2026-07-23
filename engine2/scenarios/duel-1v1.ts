@@ -57,6 +57,37 @@ export const duelScenarios: ScenarioDef[] = [
   frontDuel('duel-1v1-front-close', 17), frontDuel('duel-1v1-front-heavy', 5),
 ];
 
+/** L5E — the COVERED DUEL (the defensive-brain acceptance): a brained
+ * attacker in the attacker's half vs a brained presser with a brained
+ * second man BEHIND him (defensive_principles II.5/II.7: press → cover).
+ * Real football forces duels with cover, not corridors. Watch: the
+ * presser's give-ground ride (never the face-park), the cover man holding
+ * the carrier→goal line — and the pair HERDING the attacker to the flank,
+ * where the strip comes. The old leftover rule dragged the second man
+ * ball-side and the attacker rounded the pair 16/16. */
+const coveredDuel = (name: string, dribbling: number): ScenarioDef => ({
+  version: 1,
+  name,
+  description: `Attacker (dribbling ${dribbling}) with a brain vs an elected presser + a cover man protecting BEHIND the press (principles II.7). Judge the ride, the goal-side cover, and the herd to the flank — danger through the middle should die.`,
+  durationTicks: 300, // 30 s
+  bodies: [
+    { id: 'attacker', team: 'home', pos: { x: 62, y: 34 }, brain: 'onBall',
+      attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def1', team: 'away', pos: { x: 74, y: 34 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def2', team: 'away', pos: { x: 84, y: 30 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+  ],
+  ball: { carrier: 'attacker' },
+  script: [],
+});
+
+export const coveredDuelScenarios: ScenarioDef[] = [
+  coveredDuel('duel-2v1-covered-close', 17), coveredDuel('duel-2v1-covered-heavy', 5),
+];
+
 export const weave: ScenarioDef = {
   version: 1,
   name: 'dribble-weave',

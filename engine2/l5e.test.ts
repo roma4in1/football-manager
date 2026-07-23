@@ -55,6 +55,46 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
   assert.ok(bracketed >= 7, `the supporters take DISTINCT spots, no twin runs (${bracketed}/8 bracketed)`);
 });
 
+test('the COVERED DUEL defends honestly: ride + goal-side cover + herd wide + the strip (both skill levels)', () => {
+  // the defensive-brain acceptance (L5E-DESIGN: principles pass). Act ONE
+  // only — kickoff to the first defender possession; after the strip the
+  // drill's second act (counterpress, retake) is its own story. Visible
+  // signatures, wb seeds leading (the pinning discipline):
+  //   the defense WINS (a strip happens), danger never enters shooting
+  //   range (<16 m of the mouth), the pair HERDS the carrier wide off the
+  //   central axis, the presser visibly RIDES (inside 3 m), and the
+  //   second man holds the carrier→goal line (II.7), not the ball side.
+  const seeds = ['wb-0', 'wb-1', 'wb-2', 'cd-0', 'cd-1', 'cd-2', 'cd-3', 'cd-4'];
+  for (const name of ['duel-2v1-covered-close', 'duel-2v1-covered-heavy']) {
+    let honest = 0;
+    for (const seed of seeds) {
+      const sim = new Sim(scenarioByName(name), seed);
+      let minGoal = Infinity;
+      let maxWide = 0;
+      let ride = 0;
+      let goalSide = 0;
+      let ticks = 0;
+      let stripped = false;
+      for (let t = 0; t < 300; t++) {
+        sim.step();
+        const att = sim.bodies.find((b) => b.id === 'attacker')!;
+        const d1 = sim.bodies.find((b) => b.id === 'def1')!;
+        const d2 = sim.bodies.find((b) => b.id === 'def2')!;
+        const c = sim.ball.carrierId;
+        if (c === 'def1' || c === 'def2') { stripped = true; break; }
+        ticks++;
+        minGoal = Math.min(minGoal, Math.hypot(att.pos.x - 105, att.pos.y - 34));
+        maxWide = Math.max(maxWide, Math.abs(att.pos.y - 34));
+        if (Math.hypot(att.pos.x - d1.pos.x, att.pos.y - d1.pos.y) < 3) ride++;
+        if (d2.pos.x > att.pos.x) goalSide++;
+        if (sim.ball.phase === 'dead') break;
+      }
+      if (stripped && minGoal > 16 && maxWide > 20 && ride >= 3 && goalSide / Math.max(ticks, 1) > 0.5) honest++;
+    }
+    assert.ok(honest >= 7, `${name}: the covered pair defends honestly (strip, no danger, herd, ride, II.7 cover) — ${honest}/8`);
+  }
+});
+
 test('bounds: a CARRIED ball over the line is out, and bodies stay on the park', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 14, passing: 15, tackling: 12, strength: 12, stamina: 12 };
   const sim = new Sim({
