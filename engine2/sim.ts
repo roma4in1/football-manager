@@ -231,6 +231,7 @@ export class Sim {
       this.looseClaimant.clear();
     }
     this.liveTargets.clear();
+    this.supportSides.clear();
     this.prevPos.clear();
     for (const body of this.bodies) {
       this.prevPos.set(body.id, { x: body.pos.x, y: body.pos.y });
@@ -357,10 +358,20 @@ export class Sim {
               const sside = Math.sign(-(body.pos.x - claimant.pos.x) * (ly / ln) +
                 (body.pos.y - claimant.pos.y) * (lx / ln)) || 1;
               const dClaim = Math.hypot(body.pos.x - claimant.pos.x, body.pos.y - claimant.pos.y);
-              const off = dClaim < 1.8 ? 6 : 4; // stacked bodies separate harder
+              let off = dClaim < 1.8 ? 6 : 4; // stacked bodies separate harder
+              // DISTINCT spots: the second supporter on the same natural side
+              // flips; a third extends — no twin runs
+              const taken = this.supportSides.get(body.team) ?? [];
+              let useSide = sside;
+              if (taken.includes(useSide)) {
+                if (!taken.includes(-useSide)) useSide = -useSide;
+                else off += 3.5;
+              }
+              taken.push(useSide);
+              this.supportSides.set(body.team, taken);
               live = {
-                x: this.ball.pos.x - (ly / ln) * sside * off,
-                y: this.ball.pos.y + (lx / ln) * sside * off,
+                x: this.ball.pos.x - (ly / ln) * useSide * off,
+                y: this.ball.pos.y + (lx / ln) * useSide * off,
               };
             }
           }
@@ -745,6 +756,9 @@ export class Sim {
    * the same loose ball ended 0.7 m apart and each then intercepted the
    * other's pass to a third man (the corner flap's residual). */
   private readonly looseClaimant = new Map<'home' | 'away', { id: string; score: number }>();
+  /** support sides taken this tick — two supporters must NOT share a spot
+   * (both computed the same natural side and made twin runs, judged) */
+  private readonly supportSides = new Map<'home' | 'away', number[]>();
   private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number }>();
   /** pre-movement positions this tick — claims sweep the ball's path in the
    * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
