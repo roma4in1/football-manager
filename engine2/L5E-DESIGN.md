@@ -357,6 +357,14 @@ his run state — the L5b run cycle coupled to the pass release.
   into running wide (no outlet, stalling costless); one added mate flipped
   it to 5-7/8 through because no intent MARKED him. An empty drill can
   flatter both sides at once.
+- **Channel drills (builder direction, same day)**: to exercise the
+  TAKE-ON without match cast, funnel with BOUNDS — never with static
+  sentinel bodies, which measured invisible to the carry EV (identical
+  trajectories at every cone layout; only the touchline exists for the
+  carrier). The 24 m channel is the calibrated width: elite beats 8/8,
+  heavy 0/8, lateral vocabulary alive; 16 m sterilizes (heavy pinball),
+  32 m leaves wide cheap. Carry-pricing body-blindness at range is
+  itself a recorded observation for a future carry-EV round.
 - Both duel sides are brains in every scenario.
 - `shieldUtility` re-lands at ≈ 0.014 (0.03 froze carriers at kickoff).
 - Carried-ball bounds: dribbling over a grid/pitch line goes dead; bodies
