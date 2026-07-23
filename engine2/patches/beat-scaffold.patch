@@ -1,0 +1,205 @@
+diff --git a/engine2/decide.ts b/engine2/decide.ts
+index 23bacf37..008068c0 100644
+--- a/engine2/decide.ts
++++ b/engine2/decide.ts
+@@ -62,6 +62,15 @@ export const DUEL = {
+   /** the KNOCK-AND-GO: the utility gain on the reclaim point's value — the
+    * burst past a jockey is the attacker's half of the duel */
+   knockGain: 1.2, // tempered — the chance-creation term carries the value
++  /** the BEAT sequence (approach→feint→burst) — the manufactured knock:
++   * when the lane past a SET rider is closed, the feint on his smoothed-read
++   * lag opens it. Priced like the knock it becomes, times the feint's
++   * success (attacker agility+dribbling vs the defender's agility). */
++  beatFeintBase: 0.5,
++  beatFeintSkill: 0.5,
++  /** past the last man, unmarked: a free run at goal is worth far more than
++   * the ground it stands on */
++  freeRunBonus: 0.1,
+ } as const;
+ 
+ export const GOAL = {
+@@ -95,6 +104,7 @@ export type Intent =
+   | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
+   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
+   | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
++  | { kind: 'beat'; dest: Vec2; side: number; utility: number }
+   | { kind: 'shield'; utility: number }
+   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
+ 
+@@ -1270,15 +1280,44 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
+             ? Math.max(0, Math.min(1, (clear - 1.6) / 1.4))
+             : Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
+           if (beaten) pKnock = Math.min(1, pKnock + 0.3);
++          // vs a LIVE rider the geometric clearance lies — he moves WITH you
++          // and covers the push (knock fired 8/8 and converted ~0: the knock
++          // is the PLANTED man's punishment; the live rider is the BEAT's)
++          else pKnock *= 0.3;
+           const reclaim = { x: past.x + Math.cos(gdir) * 1.5, y: past.y + Math.sin(gdir) * 1.5 };
+           // CHANCE CREATION, as passes price it: the reclaim past the beaten
+           // frontman is a shooting position — against a beaten KEEPER, an
+           // open net. Without this the knock lost to the very shot the set
+           // keeper saves 16/16 (round-the-keeper never fired).
+-          const pvReclaim = value(reclaim, carrier.id) +
++          let pvReclaim = value(reclaim, carrier.id) +
+             0.6 * xG(reclaim, carrier.team, bodies.filter((b) => b.id !== fm.id && b.id !== carrier.id));
++          // past the LAST man with nobody covering, the reclaim is a FREE RUN
++          // — the brief's isolation principle priced: without it, beating the
++          // man was worth six meters of grass (uB ~0.008) and the EV never
++          // tried (the beat fired 0/8 in the drill built to show it)
++          const freeRun = !opponents.some((o2) => o2.id !== fm.id &&
++        Math.hypot(o2.pos.x - reclaim.x, o2.pos.y - reclaim.y) < 15 &&
++        Math.hypot(o2.pos.x - g.x, o2.pos.y - g.y) < Math.hypot(reclaim.x - g.x, reclaim.y - g.y) + 2);
++          if (freeRun) pvReclaim += DUEL.freeRunBonus;
+           const uK = DECIDE.possessionDiscount * pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain;
+           if (uK > 0) options.push({ kind: 'knock', dest: past, speedMps: speed, utility: uK });
++          // the BEAT — the manufactured knock: the lane past a SET rider is
++          // closed (pKnock low) but the FEINT on his ~0.4 s smoothed read
++          // opens it. A sequenced move (approach→feint→burst) the executor
++          // runs; here it is priced as the knock it becomes, times the
++          // feint's skill-scaled success. Not vs a keeper (his counter is the
++          // same move but the burst berth stays hands-wide).
++          // the split: the KNOCK beats a PLANTED man (the stagger's window);
++          // the BEAT beats a LIVE rider — his smoothed read lags the feint.
++          // (fm.speed<3 never matched a TRACK-state rider giving ground at
++          // 4-6 m/s, and geometric pKnock overestimates vs a man moving WITH
++          // you — both gates were written for a jockey that never appears.)
++          if (!isKeeper && !beaten && fd > 1.6 && fd < 6.5) {
++            const pFeint = Math.min(1, DUEL.beatFeintBase + DUEL.beatFeintSkill *
++              Math.max(0, ((carrier.attributes.agility + carrier.attributes.dribbling) / 2 - fm.attributes.agility) / 20));
++            const uB = DECIDE.possessionDiscount * pFeint * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain;
++            if (uB > 0) options.push({ kind: 'beat', dest: past, side, utility: uB });
++          }
+         }
+       }
+     }
+diff --git a/engine2/sim.ts b/engine2/sim.ts
+index ca5c4fd7..06c498fa 100644
+--- a/engine2/sim.ts
++++ b/engine2/sim.ts
+@@ -195,6 +195,7 @@ export class Sim {
+     // keeper with the ball at his feet is decision- or script-owned that tick)
+     if (this.keeperHolding && this.ball.carrierId !== this.keeperHolding) this.keeperHolding = null;
+     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
++    if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
+     this.keeperPhase();
+ 
+     // 2. bodies move; chaseBall runs to the INTERCEPT point (players
+@@ -554,7 +555,11 @@ export class Sim {
+         external: body.command.type === 'chaseBall' ? live : undefined,
+         steer: fetching ? live : undefined,
+         carrying: isCarrier,
+-        carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
++        carrySpeedCapMps: isCarrier
++          ? (this.beatExec?.carrierId === body.id && this.beatExec.phase === 'approach'
++            ? Math.min(this.dribbleArriveCap(body) ?? 4.2, 4.2)
++            : this.dribbleArriveCap(body))
++          : undefined,
+         stand: standing,
+         brakeAtTarget: timedCap !== undefined || brakeIntoLine,
+         speedCapMps: timedCap,
+@@ -756,6 +761,10 @@ export class Sim {
+    * the same loose ball ended 0.7 m apart and each then intercepted the
+    * other's pass to a third man (the corner flap's residual). */
+   private readonly looseClaimant = new Map<'home' | 'away', { id: string; score: number }>();
++  /** the BEAT in execution (L5E): approach (throttled, at the rider) →
++   * feint (a step to the FAKE side, selling it to his smoothed read) →
++   * burst (the knock through the real side). One carrier at a time. */
++  private beatExec: { carrierId: string; fmId: string; phase: 'approach' | 'feint' | 'burst'; side: number; until: number } | null = null;
+   /** support sides taken this tick — two supporters must NOT share a spot
+    * (both computed the same natural side and made twin runs, judged) */
+   private readonly supportSides = new Map<'home' | 'away', number[]>();
+@@ -1781,14 +1790,10 @@ export class Sim {
+       // — the possession ping-pong the level audit measured (a genuinely
+       // loose ball, carrierId null, is unaffected: teammates DO collect it).
+       if (carrier && b.team === carrier.team) continue;
+-      // the DUEL owns its resolutions (L5E): a jockeying/tracking duelist no
+-      // more pinches than he tackles — the steal belongs to ENGAGE. The ride
+-      // was a free strip outside the machine (close control lost 15/16
+-      // head-on with ZERO tackles rolled).
+-      if (carrier) {
+-        const pd = this.duels.get(b.id);
+-        if (pd && pd.state !== 'engage') continue;
+-      }
++      // (the pinch stays UNGATED: it is the rider's natural punishment of a
++      // long touch, not a lunge — engage-gating it made heavy feet's 2 m
++      // touches SAFE and inverted the skill split, while never helping close
++      // control, whose losses are collisions, not pinches. Measured both ways.)
+       const { d, at } = segNearest(b);
+       if (d > BALL.controlRadiusM) continue;
+       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
+@@ -2254,6 +2259,75 @@ export class Sim {
+           if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+           this.actionLabels.set(id, 'shield');
+           break;
++        case 'beat': {
++          this.actionLabels.set(id, 'beat');
++          const gdirB = Math.atan2(goalCenter(body.team).y - body.pos.y, goalCenter(body.team).x - body.pos.x);
++          const ex0 = this.beatExec?.carrierId === id ? this.beatExec : null;
++          let fmB: BodyState | undefined = ex0 ? this.byId.get(ex0.fmId) : undefined;
++          if (!fmB) {
++            let fdB = 8.0;
++            for (const o of this.bodies) {
++              if (o.team === body.team) continue;
++              const d0 = Math.hypot(o.pos.x - body.pos.x, o.pos.y - body.pos.y);
++              if (d0 > 8.0) continue;
++              const a0 = Math.abs((((Math.atan2(o.pos.y - body.pos.y, o.pos.x - body.pos.x) - gdirB) + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
++              if (a0 > Math.PI / 3) continue;
++              if (d0 < fdB) { fdB = d0; fmB = o; }
++            }
++          }
++          if (!fmB || this.ball.carrierId !== id) {
++            this.beatExec = null;
++            this.intents.delete(id);
++            break;
++          }
++          if (!ex0) this.beatExec = { carrierId: id, fmId: fmB.id, phase: 'approach', side: intent.side, until: 0 };
++          const st = this.beatExec!;
++          const dFm = Math.hypot(fmB.pos.x - body.pos.x, fmB.pos.y - body.pos.y);
++          if (dFm > 9) { // the duel dissolved — hand back to the EV
++            this.beatExec = null;
++            this.intents.delete(id);
++            break;
++          }
++          const perpB = gdirB + Math.PI / 2;
++          if (st.phase === 'approach') {
++            // throttled, straight AT the rider — arrive at the arc in control
++            const cur = body.command.type === 'moveTo' ? body.command.target : null;
++            if (!cur || Math.hypot(cur.x - fmB.pos.x, cur.y - fmB.pos.y) > 0.5) {
++              this.assign(body, { type: 'moveTo', target: { x: fmB.pos.x, y: fmB.pos.y }, regime: 'run' });
++            }
++            if (dFm <= 3.1) { st.phase = 'feint'; st.until = this.tick + 4; }
++          }
++          if (st.phase === 'feint') {
++            // the step to the FAKE side (opposite the burst) — his smoothed
++            // read follows it; the lag is the lane
++            const fx = body.pos.x + Math.cos(gdirB) * 0.8 + Math.cos(perpB) * -st.side * 1.7;
++            const fy = body.pos.y + Math.sin(gdirB) * 0.8 + Math.sin(perpB) * -st.side * 1.7;
++            const cur = body.command.type === 'moveTo' ? body.command.target : null;
++            if (!cur || Math.hypot(cur.x - fx, cur.y - fy) > 0.6) {
++              this.assign(body, { type: 'moveTo', target: { x: fx, y: fy }, regime: 'run' });
++            }
++            if (this.tick >= st.until) st.phase = 'burst';
++          }
++          if (st.phase === 'burst') {
++            // the knock through the REAL side, geometry read at burst time —
++            // the pending-kick machinery strikes it on the next touch and the
++            // knock flag turns the follow-through into the sprint
++            const past = {
++              x: fmB.pos.x + Math.cos(gdirB) * 2.4 + Math.cos(perpB) * st.side * 1.9,
++              y: fmB.pos.y + Math.sin(gdirB) * 2.4 + Math.sin(perpB) * st.side * 1.9,
++            };
++            const dP = Math.hypot(past.x - body.pos.x, past.y - body.pos.y);
++            this.pendingKicks.set(id, {
++              dest: past,
++              speedMps: Math.max(7, Math.min(15, rollLaunchForArrival(1.2, dP + 3))),
++              knock: true,
++            });
++            if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
++            this.beatExec = null;
++            this.intents.delete(id);
++          }
++          break;
++        }
+         case 'pass':
+         case 'shoot':
+         case 'knock':
