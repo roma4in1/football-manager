@@ -773,7 +773,7 @@ export class Sim {
   /** the BEAT in execution (L5E): approach (throttled, at the rider) →
    * feint (a step to the FAKE side, selling it to his smoothed read) →
    * burst (the knock through the real side). One carrier at a time. */
-  private beatExec: { carrierId: string; fmId: string; phase: 'approach' | 'feint' | 'burst'; side: number; until: number } | null = null;
+  private beatExec: { carrierId: string; fmId: string; phase: 'approach' | 'feint' | 'burst'; side: number; until: number; lastD?: number; stall?: number } | null = null;
   /** support sides taken this tick — two supporters must NOT share a spot
    * (both computed the same natural side and made twin runs, judged) */
   private readonly supportSides = new Map<'home' | 'away', number[]>();
@@ -2198,7 +2198,11 @@ export class Sim {
       this.receiveOpenDir.delete(id);
       this.bendReceive.delete(id); // carrier now — the run is received
       let intent = this.intents.get(id) ?? null;
-      if (!intent || this.tick % DECIDE.reconsiderTicks === 0) {
+      // a feint/burst in flight is a COMMITTED move — no re-pricing of
+      // the geometry the fake itself just changed (the EV was killing
+      // every feint half-made); only the approach is abortable
+      const beatCommitted = this.beatExec?.carrierId === id && this.beatExec.phase !== 'approach';
+      if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
           carrier: body,
           bodies: this.bodies,
@@ -2224,6 +2228,10 @@ export class Sim {
         });
         this.intents.set(id, intent);
       }
+      // a stale beatExec outlived its intent and its APPROACH THROTTLE
+      // kept braking the carrier at 4.2 for the rest of the run (the
+      // sluggish post-beat carry, found instrumenting the channel)
+      if (this.beatExec?.carrierId === id && intent.kind !== 'beat') this.beatExec = null;
       switch (intent.kind) {
         case 'carry':
           this.pendingKicks.delete(id);
@@ -2242,6 +2250,25 @@ export class Sim {
           const gdirB = Math.atan2(goalCenter(body.team).y - body.pos.y, goalCenter(body.team).x - body.pos.x);
           const ex0 = this.beatExec?.carrierId === id ? this.beatExec : null;
           let fmB: BodyState | undefined = ex0 ? this.byId.get(ex0.fmId) : undefined;
+          if (!fmB) {
+            // the man to beat is the RIDER — the defender whose duel
+            // machine runs against me (jockey/track/engage; his hold IS
+            // the closable 2-2.6 m). The goalward cone alone locked onto
+            // the RECEDING COVER — 6 m off by construction, never
+            // closable to the feint trigger — while the rider at 2 m sat
+            // outside the cone (the verified approach-only defect).
+            let rdB = 8.0;
+            for (const [rid, rst] of this.duels) {
+              // only a PLANTED man is not worth beating (run past him);
+              // a recovering rider at 2 m is still the man to beat —
+              // excluding recover re-selected the receding cover
+              if (rst.state === 'staggered') continue;
+              const rb = this.byId.get(rid);
+              if (!rb || rb.team === body.team) continue;
+              const d0 = Math.hypot(rb.pos.x - body.pos.x, rb.pos.y - body.pos.y);
+              if (d0 < rdB) { rdB = d0; fmB = rb; }
+            }
+          }
           if (!fmB) {
             let fdB = 8.0;
             for (const o of this.bodies) {
@@ -2273,7 +2300,16 @@ export class Sim {
             if (!cur || Math.hypot(cur.x - fmB.pos.x, cur.y - fmB.pos.y) > 0.5) {
               this.assign(body, { type: 'moveTo', target: { x: fmB.pos.x, y: fmB.pos.y }, regime: 'run' });
             }
-            if (dFm <= 3.1) { st.phase = 'feint'; st.until = this.tick + 4; }
+            // the STALL break: a conceding rider (jockey cap 4.5) can
+            // out-backpedal the throttled approach (4.2) forever — the
+            // 3.1 m arc never arrives. Real take-ons end the standoff
+            // from just outside the tackle arc: gap under 5.5 and no
+            // longer closing → the move is NOW.
+            const closingRate = (st.lastD ?? dFm) - dFm;
+            st.lastD = dFm;
+            if (dFm < 5.5 && closingRate < 0.06) st.stall = (st.stall ?? 0) + 1;
+            else st.stall = 0;
+            if (dFm <= 3.1 || (st.stall ?? 0) >= 4) { st.phase = 'feint'; st.until = this.tick + 4; }
           }
           if (st.phase === 'feint') {
             // the step to the FAKE side (opposite the burst) — his smoothed

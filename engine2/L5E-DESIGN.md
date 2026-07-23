@@ -361,7 +361,28 @@ breaking, break it toward whichever intent most degrades the carrier's top
    y≈40) because the rider never makes a play on the arriving ball. The
    concede-stop round (third naming) is what turns the ride into a
    defense; the builder judges the trade live in duel-2v2-fullbacks-*.
-8. Roles as weight vectors (Part V ↔ roles.md).
+8. **The concede-stop REFUTED + the beat executor FIXED (Jul 23)**. The
+   "concede that STOPS" (standM 16, the retreat floor at the box edge)
+   was built and measured DEAD in every geometry: concede-as-speed
+   already ended the elastic backpedal, and today's duels are decided at
+   contact or in recover — the rider is never herded past ~16 m even
+   without a floor. The thrice-named root decomposes honestly: (a) an
+   equal-pace rider beaten at contact = accepted football; (b) the
+   through-ball photo-finish (the ball reaches the trailing receiver
+   first, goal-side marker or not; the early block is priced unreachable
+   by the 0.3 s reaction margin) = plausible football, recorded for a
+   possible chase-machinery round; (c) the BEAT EXECUTOR defects — now
+   fixed: the frontman prefers the RIDER (any duel record except
+   staggered; the cone had locked onto the receding cover), a stall-
+   break ends the approach standoff (gap <5.5 m and not closing → move
+   NOW), a stale beatExec no longer throttles the post-beat carry at
+   4.2 (found instrumenting the channel), and a feint/burst in flight is
+   a COMMITTED move (the EV re-pricing the fake's own geometry killed
+   every feint half-made). The full sequence now runs 8/8 in the channel
+   (approach→feint→burst-knock at the rider, elite only) and mostly
+   LOSES to the covered contact — correct for the drill; the beat's
+   winning stage is open space and the keeper round-around (next arc).
+9. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
