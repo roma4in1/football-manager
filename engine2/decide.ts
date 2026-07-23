@@ -47,6 +47,26 @@ export const DUEL = {
   pressureStoppedFactor: 3,
   pressureSupportFactor: 1.8,
   dCoverM: 12,
+  /** II.7 — the second man's spot BEHIND the press, on the carrier→goal
+   * line (deep enough to meet the carry-around, inside dCoverM so the
+   * presser's patience feels the support), shaded to the arc side */
+  coverBehindM: 6,
+  coverShadeM: 1.5,
+  /** the mark's L (I.1): goal-side of his man, a stride off — close
+   * enough to press the touch, goal-side enough to never be run past —
+   * and shaded BALL-side to sit against the lane (I.13) */
+  markGoalSideM: 1.8,
+  markBallShadeM: 0.9,
+  /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
+   * momentum rule applied to marking): a marker who steps toward his
+   * man is too late on the dart by momentum alone. The station DROPS
+   * goal-side with the man's goalward speed (the buffer IS the
+   * anticipation, and retreating with the rising threat gives the
+   * marker goalward momentum BEFORE the race), and the ball-shade
+   * FADES with it — contest the feet ball on a static outlet, concede
+   * feet and deny in-behind on a runner. */
+  markDropGainS: 0.8,
+  markShadeFadeMps: 3,
   engageEscapeM: 3.5, // the carrier breaks this far → the engage is over
   pressureResetOnEscape: 0.3,
   /** the failed lunge is the BEATEN moment: planted ~0.8 s. Without it,
@@ -62,6 +82,15 @@ export const DUEL = {
   /** the KNOCK-AND-GO: the utility gain on the reclaim point's value — the
    * burst past a jockey is the attacker's half of the duel */
   knockGain: 1.2, // tempered — the chance-creation term carries the value
+  /** the BEAT sequence (approach→feint→burst) — the manufactured knock:
+   * when the lane past a SET rider is closed, the feint on his smoothed-read
+   * lag opens it. Priced like the knock it becomes, times the feint's
+   * success (attacker agility+dribbling vs the defender's agility). */
+  beatFeintBase: 0.5,
+  beatFeintSkill: 0.5,
+  /** past the last man, unmarked: a free run at goal is worth far more than
+   * the ground it stands on */
+  freeRunBonus: 0.1,
 } as const;
 
 export const GOAL = {
@@ -95,6 +124,7 @@ export type Intent =
   | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
   | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
+  | { kind: 'beat'; dest: Vec2; side: number; utility: number }
   | { kind: 'shield'; utility: number }
   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
 
@@ -726,6 +756,175 @@ export const pressApproach = (
   return { x: carrier.pos.x + (lx / ln) * 1.4, y: carrier.pos.y + (ly / ln) * 1.4 };
 };
 
+/** L5E — the DEFENSIVE BRAIN (reference/defensive_principles.md): Part
+ * III's decision hierarchy, run per defender per reconsider tick — is my
+ * teammate already pressing? should I press? delay? cover? sit on the
+ * lane? recover shape? — returning an INTENT the sim executes (and the
+ * duel machine rides, for the presser). This skeleton extracts the
+ * inline chain the sim grew, verbatim; the principles' refinements
+ * (cover-behind-the-press, force direction, attribute dials, role
+ * weights) land on it one measured change at a time. */
+export type DefenseIntent =
+  | { kind: 'press'; approach: Vec2 | null; label: 'press' | 'counterpress' }
+  | { kind: 'delay'; hold: Vec2 }
+  | { kind: 'cover'; target: Vec2 }
+  | { kind: 'mark'; target: Vec2; urgent: boolean }
+  | { kind: 'interceptLane'; target: Vec2 }
+  | { kind: 'holdShape'; target: Vec2 };
+
+export interface DefenseInput {
+  defender: BodyState;
+  carrier: BodyState;
+  bodies: readonly BodyState[];
+  ball: BallState;
+  instructions: PlayInstructions;
+  /** the defending UNIT: eligible brains on this team, defender included */
+  unit: readonly BodyState[];
+  /** the first-defender election's memory — who pressed last tick */
+  pressingIds: ReadonlySet<string>;
+  /** inside the transition window and near the ball (innate aggression) */
+  inCounterpress: boolean;
+  /** the carrier's first touches — press the touch (defensive.md) */
+  justReceived: boolean;
+  homes: ReadonlyMap<string, Vec2>;
+}
+
+export const decideDefense = (input: DefenseInput): DefenseIntent => {
+  const { defender, carrier, bodies, ball, instructions, unit, pressingIds, inCounterpress, justReceived, homes } = input;
+  const pressing = instructions.pressing ?? 0;
+  // FIRST-DEFENDER election (principles IV: ONE man pressures the ball):
+  // nearest eligible — STICKY for the incumbent unless clearly beaten
+  // (flapping first/second made both look like ball-chasers)
+  let nearest = unit.reduce((best, b) => {
+    const d = Math.hypot(carrier.pos.x - b.pos.x, carrier.pos.y - b.pos.y);
+    return d < best.d ? { id: b.id, d } : best;
+  }, { id: '', d: Infinity });
+  const incumbent = unit.find((b) => pressingIds.has(b.id));
+  if (incumbent && incumbent.id !== nearest.id) {
+    const di = Math.hypot(carrier.pos.x - incumbent.pos.x, carrier.pos.y - incumbent.pos.y);
+    if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent.id, d: di };
+  }
+  const iAmFirst = nearest.id === defender.id;
+  const score = pressScore(defender, carrier, bodies, justReceived, pressing);
+  const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
+  const firstIsEngaged = pressingIds.has(nearest.id) || (iAmFirst && pressNow);
+  const dCar = Math.hypot(carrier.pos.x - defender.pos.x, carrier.pos.y - defender.pos.y);
+  if (pressNow) {
+    // the CURVED approach: close from the denied lane's side (pressing.md:
+    // a straight chase leaves the lane open); the last 3 m are the
+    // machine's hunt (contain + tackles need the chase)
+    const approach = dCar > 3 && !inCounterpress ? pressApproach(defender, carrier, bodies) : null;
+    return { kind: 'press', approach, label: inCounterpress ? 'counterpress' : 'press' };
+  }
+  if (iAmFirst && pressing > 0 && dCar < 11) {
+    // the DELAY stance (principles I.2: winning time beats winning the
+    // ball): hold off goal-side ~4.5 m — slow the attack, await the trigger
+    const gx = attackSign(defender.team) > 0 ? 0 : PITCH.length;
+    const dx = gx - carrier.pos.x;
+    const dy = GOAL.centerY - carrier.pos.y;
+    const dn = Math.hypot(dx, dy) || 1;
+    return { kind: 'delay', hold: { x: carrier.pos.x + (dx / dn) * 4.5, y: carrier.pos.y + (dy / dn) * 4.5 } };
+  }
+  // a PRESSING UNIT's non-engaged members take distinct assignments
+  // (principles IV: second man covers) — and the FIRST cover duty is
+  // II.7: protect BEHIND the press. A single pass or carry-around breaks
+  // a press nobody stands behind (the covered-duel arc: the old leftover
+  // rule compacted the second man toward the BALL — ball-watching, Part
+  // VI — and the attacker rounded the pair). The second man sits on the
+  // carrier→goal line behind the presser, shaded to the carrier's arc
+  // side; lane spots only claim the men beyond him.
+  // LINE units (pressing ≤ 0.3) keep L5c shape.
+  if (pressing > 0.3 && firstIsEngaged) {
+    const covers = unit.filter((b) => b.id !== nearest.id);
+    const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+    const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
+    const gd = Math.hypot(og.x - cf.x, og.y - cf.y) || 1;
+    const tg = { x: (og.x - cf.x) / gd, y: (og.y - cf.y) / gd };
+    // shade toward the side the carrier is arcing to
+    const perp = { x: -tg.y, y: tg.x };
+    const side = Math.sign(carrier.vel.x * perp.x + carrier.vel.y * perp.y) || 1;
+    const depth = Math.min(DUEL.coverBehindM, gd - 0.5);
+    const behind = {
+      x: cf.x + tg.x * depth + perp.x * side * DUEL.coverShadeM,
+      y: cf.y + tg.y * depth + perp.y * side * DUEL.coverShadeM,
+    };
+    // the MARK duties (principles IV third defender: watch runners — the
+    // match-shaped-scenes finding: one unmarked outlet undoes the whole
+    // press, 5-7/8 through in the 2v2 probe): free opponents ranked by
+    // the same danger the lane logic prices
+    const others = bodies.filter((b) => b.team === defender.team);
+    const marks = bodies
+      .filter((o) => o.team === carrier.team && o.id !== carrier.id)
+      .map((o) => {
+        const dist0 = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+        const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, others, dist0, o);
+        return { o, danger: open * (0.4 + posValue(o.pos, carrier.team)) };
+      })
+      .filter((m) => m.danger > 0.05)
+      .sort((a, b) => b.danger - a.danger);
+    // the mark's L (I.1 + I.13): goal-side of the man AND shaded toward
+    // the ball — behind-only marking watched 7-8/8 passes arrive freely
+    // (the marker stood behind the receiver, contesting neither the lane
+    // nor the touch)
+    // the anticipation is AFFORDED by cover (builder physics, gated by
+    // the measured trade): with a line behind you, drop off and ride the
+    // run; as the LONE cover you stay touch-tight and gamble — the
+    // ungated drop vacated the middle and the shorthanded 2v2 collapsed
+    // 0/8 → 8/8 through
+    const anticipate = covers.length > 1;
+    const markSpot = (o: BodyState): Vec2 => {
+      const md = Math.hypot(og.x - o.pos.x, og.y - o.pos.y) || 1;
+      const bd = Math.hypot(carrier.pos.x - o.pos.x, carrier.pos.y - o.pos.y) || 1;
+      // the run threat: his speed TOWARD my goal — the station drops with
+      // it and the ball-shade fades (the anticipatory mark: never caught
+      // leaning forward when the dart comes)
+      const gws = anticipate ? Math.max(0, (o.vel.x * (og.x - o.pos.x) + o.vel.y * (og.y - o.pos.y)) / md) : 0;
+      const depth2 = DUEL.markGoalSideM + gws * DUEL.markDropGainS;
+      const shade = DUEL.markBallShadeM * Math.max(0, 1 - gws / DUEL.markShadeFadeMps);
+      return {
+        x: o.pos.x + ((og.x - o.pos.x) / md) * depth2 + ((carrier.pos.x - o.pos.x) / bd) * shade,
+        y: o.pos.y + ((og.y - o.pos.y) / md) * depth2 + ((carrier.pos.y - o.pos.y) / bd) * shade,
+      };
+    };
+    // duty assignment: MARKS first (danger order), behind-cover is the
+    // SPARE man's job. With no spare, defense is man-for-man — the 1v1s
+    // are accepted (a blended neither-duty spot defended nothing: the
+    // measured 2v2 midpoint made the leak WORSE, 5-7/8 → 7-8/8). II.5's
+    // press→cover→balance chain needs a third man to exist; zonal
+    // balance-over-marking arrives with the L6 marking scheme.
+    const free = new Set(covers.map((b) => b.id));
+    const claim = (spot: Vec2): string => {
+      let best = '';
+      let bd = Infinity;
+      for (const id of free) {
+        const b = covers.find((x) => x.id === id)!;
+        const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+        if (d < bd) { bd = d; best = id; }
+      }
+      free.delete(best);
+      return best;
+    };
+    for (const m of marks) {
+      if (!free.size) break;
+      if (claim(markSpot(m.o)) === defender.id) {
+        const md2 = Math.hypot(og.x - m.o.pos.x, og.y - m.o.pos.y) || 1;
+        const gws2 = (m.o.vel.x * (og.x - m.o.pos.x) + m.o.vel.y * (og.y - m.o.pos.y)) / md2;
+        return { kind: 'mark', target: markSpot(m.o), urgent: gws2 > 3 };
+      }
+    }
+    if (free.size && claim(behind) === defender.id) return { kind: 'cover', target: behind };
+    const spot = pressCoverSpots(carrier, bodies, [...free]).get(defender.id);
+    if (spot) return { kind: 'cover', target: spot };
+  } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
+    const lane = shadowSpot(defender, carrier, bodies);
+    if (lane) return { kind: 'interceptLane', target: lane };
+  }
+  return {
+    kind: 'holdShape',
+    target: shapeSpot(defender, bodies, ball, homes, unit.map((b) => b.id), instructions.lineHeight ?? 0.5),
+  };
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];
@@ -740,6 +939,10 @@ export interface DecideInput {
   /** the goalkeepers on the pitch — a knock past a KEEPER must clear hands,
    * dive and sweep, not just feet (every striker knows who the keeper is) */
   keepers?: ReadonlySet<string>;
+  /** defenders currently STAGGERED (planted by a failed lunge) — the knock's
+   * true window. A merely STANDING set man is NOT beaten (that conflation
+   * had carriers knocking past their own wall's static blocker). */
+  staggered?: ReadonlySet<string>;
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
@@ -1261,7 +1464,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           // the knock-past drill's too-tight lesson)
           const t = ((fm.pos.x - here.x) * (past.x - here.x) + (fm.pos.y - here.y) * (past.y - here.y)) / (dK * dK);
           const clear = Math.hypot(fm.pos.x - (here.x + (past.x - here.x) * t), fm.pos.y - (here.y + (past.y - here.y) * t));
-          const beaten = fm.speed < 1.0; // planted (the stagger) — the moment
+          const beaten = input.staggered?.has(fm.id) ?? false; // truly planted — the moment
           // a KEEPER frontman collects with hands, dive and sweep — the berth
           // must be far wider than a tackler's feet (the knock at a stranded
           // keeper rolled straight into his gloves, measured 16/16)
@@ -1270,15 +1473,51 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
             ? Math.max(0, Math.min(1, (clear - 1.6) / 1.4))
             : Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
           if (beaten) pKnock = Math.min(1, pKnock + 0.3);
+          // vs a LIVE rider the geometric clearance lies — he moves WITH you
+          // and covers the push (knock fired 8/8 and converted ~0: the knock
+          // is the PLANTED man's punishment; the live rider is the BEAT's)
+          else pKnock *= 0.3;
           const reclaim = { x: past.x + Math.cos(gdir) * 1.5, y: past.y + Math.sin(gdir) * 1.5 };
           // CHANCE CREATION, as passes price it: the reclaim past the beaten
           // frontman is a shooting position — against a beaten KEEPER, an
           // open net. Without this the knock lost to the very shot the set
           // keeper saves 16/16 (round-the-keeper never fired).
-          const pvReclaim = value(reclaim, carrier.id) +
+          let pvReclaim = value(reclaim, carrier.id) +
             0.6 * xG(reclaim, carrier.team, bodies.filter((b) => b.id !== fm.id && b.id !== carrier.id));
-          const uK = DECIDE.possessionDiscount * pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain;
+          // past the LAST man with nobody covering, the reclaim is a FREE RUN
+          // — the brief's isolation principle priced: without it, beating the
+          // man was worth six meters of grass (uB ~0.008) and the EV never
+          // tried (the beat fired 0/8 in the drill built to show it)
+          const freeRun = !opponents.some((o2) => o2.id !== fm.id &&
+        Math.hypot(o2.pos.x - reclaim.x, o2.pos.y - reclaim.y) < 15 &&
+        Math.hypot(o2.pos.x - g.x, o2.pos.y - g.y) < Math.hypot(reclaim.x - g.x, reclaim.y - g.y) + 2);
+          if (freeRun) pvReclaim += DUEL.freeRunBonus;
+          // risk-SYMMETRIC, like every pass: the failed knock is a turnover
+          // at your own feet — pricing only the success sent carriers
+          // knocking past their own wall and made kick-and-rush free
+          const uK = DECIDE.possessionDiscount *
+            (pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain -
+             (1 - pKnock) * turnoverW * pvHere * 0.8);
           if (uK > 0) options.push({ kind: 'knock', dest: past, speedMps: speed, utility: uK });
+          // the BEAT — the manufactured knock: the lane past a SET rider is
+          // closed (pKnock low) but the FEINT on his ~0.4 s smoothed read
+          // opens it. A sequenced move (approach→feint→burst) the executor
+          // runs; here it is priced as the knock it becomes, times the
+          // feint's skill-scaled success. Not vs a keeper (his counter is the
+          // same move but the burst berth stays hands-wide).
+          // the split: the KNOCK beats a PLANTED man (the stagger's window);
+          // the BEAT beats a LIVE rider — his smoothed read lags the feint.
+          // (fm.speed<3 never matched a TRACK-state rider giving ground at
+          // 4-6 m/s, and geometric pKnock overestimates vs a man moving WITH
+          // you — both gates were written for a jockey that never appears.)
+          if (!isKeeper && !beaten && fd > 1.6 && fd < 6.5) {
+            const pFeint = Math.min(1, DUEL.beatFeintBase + DUEL.beatFeintSkill *
+              Math.max(0, ((carrier.attributes.agility + carrier.attributes.dribbling) / 2 - fm.attributes.agility) / 20));
+            const uB = DECIDE.possessionDiscount *
+              (pFeint * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain -
+               (1 - pFeint) * turnoverW * pvHere * 0.8);
+            if (uB > 0) options.push({ kind: 'beat', dest: past, side, utility: uB });
+          }
         }
       }
     }

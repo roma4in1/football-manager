@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, decide, DECIDE, DUEL, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -195,6 +195,7 @@ export class Sim {
     // keeper with the ball at his feet is decision- or script-owned that tick)
     if (this.keeperHolding && this.ball.carrierId !== this.keeperHolding) this.keeperHolding = null;
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
+    if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
     this.keeperPhase();
 
     // 2. bodies move; chaseBall runs to the INTERCEPT point (players
@@ -248,9 +249,18 @@ export class Sim {
       let timedCap: number | undefined;
       let brakeIntoLine = false;
       let duelFace: Vec2 | undefined; // the jockey squares to the ball
-      if (body.command.type === 'chaseBall' || fetching) {
+      // machine OWNERSHIP (the principles pass): the elected presser
+      // belongs to the duel machine FROM ELECTION — approach, ride, engage
+      // as one continuum. The chaseBall gate parked the approaching presser
+      // in moveTo where the machine never rode him (the covered-duel hole);
+      // now the machine speaks per tick and the moveTo is only the
+      // fallback when it stays silent (out of duel range).
+      const duelRide = body.command.type !== 'chaseBall' && !fetching && !isCarrier &&
+        this.pressingIds.has(body.id) && !this.keepers.has(body.id) &&
+        this.ball.carrierId !== null && this.byId.get(this.ball.carrierId)!.team !== body.team;
+      if (body.command.type === 'chaseBall' || fetching || duelRide) {
         const icept = this.interceptPoint(body);
-        live = icept.pMeet;
+        live = duelRide ? undefined : icept.pMeet;
         // the RECEIVE state machine (judged over eight rounds):
         //  off the line → attack the nearest path point (toward the ball),
         //    braking in when receiving; STICKY phase boundary — a threshold
@@ -379,7 +389,7 @@ export class Sim {
         // the DUEL (L5E) wraps the judged contain: RECOVER/JOCKEY/TRACK own
         // the 2–8 m shell; ENGAGE commits the close; and inside 1.9 m the
         // contain-at-contact (the 360-orbit fix) stands exactly as judged.
-        if (body.command.type === 'chaseBall' && this.ball.carrierId !== null && !isCarrier) {
+        if ((body.command.type === 'chaseBall' || duelRide) && this.ball.carrierId !== null && !isCarrier) {
           const carrierB = this.byId.get(this.ball.carrierId)!;
           const gapBC = Math.hypot(this.ball.pos.x - carrierB.pos.x, this.ball.pos.y - carrierB.pos.y);
           const dToCar = Math.hypot(body.pos.x - carrierB.pos.x, body.pos.y - carrierB.pos.y);
@@ -551,10 +561,14 @@ export class Sim {
       }
       stepBody(body, this.tick, {
         face,
-        external: body.command.type === 'chaseBall' ? live : undefined,
+        external: body.command.type === 'chaseBall' || duelRide ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,
-        carrySpeedCapMps: isCarrier ? this.dribbleArriveCap(body) : undefined,
+        carrySpeedCapMps: isCarrier
+          ? (this.beatExec?.carrierId === body.id && this.beatExec.phase === 'approach'
+            ? Math.min(this.dribbleArriveCap(body) ?? 4.2, 4.2)
+            : this.dribbleArriveCap(body))
+          : undefined,
         stand: standing,
         brakeAtTarget: timedCap !== undefined || brakeIntoLine,
         speedCapMps: timedCap,
@@ -756,6 +770,10 @@ export class Sim {
    * the same loose ball ended 0.7 m apart and each then intercepted the
    * other's pass to a third man (the corner flap's residual). */
   private readonly looseClaimant = new Map<'home' | 'away', { id: string; score: number }>();
+  /** the BEAT in execution (L5E): approach (throttled, at the rider) →
+   * feint (a step to the FAKE side, selling it to his smoothed read) →
+   * burst (the knock through the real side). One carrier at a time. */
+  private beatExec: { carrierId: string; fmId: string; phase: 'approach' | 'feint' | 'burst'; side: number; until: number; lastD?: number; stall?: number } | null = null;
   /** support sides taken this tick — two supporters must NOT share a spot
    * (both computed the same natural side and made twin runs, judged) */
   private readonly supportSides = new Map<'home' | 'away', number[]>();
@@ -783,6 +801,15 @@ export class Sim {
       BALL.touchArriveResidualMps ** 2 + 2 * BALL.dribbleRollDecelMps2 * Math.max(0, distToDest),
     );
     return cap * 1.05;
+  }
+
+  /** the defenders currently planted by a failed lunge — the knock's window */
+  private staggeredSet(): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const [id, d] of this.duels) {
+      if (d.state === 'staggered' && this.tick < (d.plantedUntil ?? 0)) out.add(id);
+    }
+    return out;
   }
 
   private resolveTackles(): void {
@@ -1781,14 +1808,10 @@ export class Sim {
       // — the possession ping-pong the level audit measured (a genuinely
       // loose ball, carrierId null, is unaffected: teammates DO collect it).
       if (carrier && b.team === carrier.team) continue;
-      // the DUEL owns its resolutions (L5E): a jockeying/tracking duelist no
-      // more pinches than he tackles — the steal belongs to ENGAGE. The ride
-      // was a free strip outside the machine (close control lost 15/16
-      // head-on with ZERO tackles rolled).
-      if (carrier) {
-        const pd = this.duels.get(b.id);
-        if (pd && pd.state !== 'engage') continue;
-      }
+      // (the pinch stays UNGATED: it is the rider's natural punishment of a
+      // long touch, not a lunge — engage-gating it made heavy feet's 2 m
+      // touches SAFE and inverted the skill split, while never helping close
+      // control, whose losses are collisions, not pinches. Measured both ways.)
       const { d, at } = segNearest(b);
       if (d > BALL.controlRadiusM) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
@@ -1947,6 +1970,7 @@ export class Sim {
               homes: this.homes,
               bounds: this.bounds,
               keepers: this.keepers,
+              staggered: this.staggeredSet(),
             });
             const aim = ahead.kind === 'pass' || ahead.kind === 'shoot' || ahead.kind === 'clear' || ahead.kind === 'knock'
               ? Math.atan2(ahead.dest.y - body.pos.y, ahead.dest.x - body.pos.x)
@@ -2096,60 +2120,34 @@ export class Sim {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
             const inCounterpress = this.tick - lostAt <= 60 &&
               Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15;
-            const pressing = this.instructions.get(id)?.pressing ?? 0;
-            const justReceived = this.tick - this.carrierSince <= 8;
-            // first-defender election: the nearest eligible defending brain
-            const defBrains = [...this.brains].filter((bid) => {
+            // the DEFENSIVE BRAIN (decide.ts): the sim gathers the unit,
+            // the brain runs the hierarchy, the sim EXECUTES the intent
+            // (and the duel machine rides what press decides)
+            const unit = [...this.brains].filter((bid) => {
               const b2 = this.byId.get(bid)!;
               return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
                 (this.instructions.get(bid)?.objective) !== 'keep';
+            }).map((bid) => this.byId.get(bid)!);
+            const di = decideDefense({
+              defender: body, carrier: carrierBody, bodies: this.bodies, ball: this.ball,
+              instructions: this.instructions.get(id) ?? {}, unit,
+              pressingIds: this.pressingIds, inCounterpress,
+              justReceived: this.tick - this.carrierSince <= 8, homes: this.homes,
             });
-            let nearest = defBrains.reduce((best, bid) => {
-              const b2 = this.byId.get(bid)!;
-              const d2 = Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y);
-              return d2 < best.d ? { id: bid, d: d2 } : best;
-            }, { id: '', d: Infinity });
-            // STICKY election: the engaged presser keeps the job unless he
-            // is clearly beaten (flapping first/second made both look like
-            // ball-chasers — the judged no-coordination)
-            const incumbent = defBrains.find((bid) => this.pressingIds.has(bid));
-            if (incumbent && incumbent !== nearest.id) {
-              const bi = this.byId.get(incumbent)!;
-              const di = Math.hypot(carrierBody.pos.x - bi.pos.x, carrierBody.pos.y - bi.pos.y);
-              if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent, d: di };
-            }
-            const iAmFirst = nearest.id === id;
-            const score = pressScore(body, carrierBody, this.bodies, justReceived, pressing);
-            const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
-            const firstIsEngaged = this.pressingIds.has(nearest.id) || (iAmFirst && pressNow);
-            if (pressNow) {
-              // the CURVED approach: close from the denied lane's side
-              // (pressing.md: a straight chase leaves the lane open); the
-              // last 3 m are the L3 hunt (contain + tackles need the chase)
-              const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
-              if (dCar > 3 && !inCounterpress) {
-                const ap = pressApproach(body, carrierBody, this.bodies);
-                this.assign(body, { type: 'moveTo', target: ap, regime: 'sprint' });
+            if (di.kind === 'press') {
+              if (di.approach) {
+                this.assign(body, { type: 'moveTo', target: di.approach, regime: 'sprint' });
               } else if (body.command.type !== 'chaseBall') {
                 this.assign(body, { type: 'chaseBall', regime: 'sprint' });
               }
               this.pressingIds.add(id);
               this.shapeHolding.delete(id);
-              this.actionLabels.set(id, inCounterpress ? 'counterpress' : 'press');
-            } else if (iAmFirst && pressing > 0 &&
-              Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 11) {
-              // the DELAY stance (pressing.md's passive band): hold off
-              // goal-side ~4.5 m — slow the attack, wait for the trigger
+              this.actionLabels.set(id, di.label);
+            } else if (di.kind === 'delay') {
               this.pressingIds.delete(id);
-              const gSign = body.team === 'home' ? 1 : -1;
-              const gx = gSign > 0 ? 0 : PITCH.length;
-              const dx = gx - carrierBody.pos.x;
-              const dy = 34 - carrierBody.pos.y;
-              const dn = Math.hypot(dx, dy) || 1;
-              const hold = { x: carrierBody.pos.x + (dx / dn) * 4.5, y: carrierBody.pos.y + (dy / dn) * 4.5 };
-              const dh = Math.hypot(hold.x - body.pos.x, hold.y - body.pos.y);
+              const dh = Math.hypot(di.hold.x - body.pos.x, di.hold.y - body.pos.y);
               if (dh > 1.2) {
-                this.assign(body, { type: 'moveTo', target: hold, regime: dh > 7 ? 'run' : 'jog' });
+                this.assign(body, { type: 'moveTo', target: di.hold, regime: dh > 7 ? 'run' : 'jog' });
                 this.shapeHolding.add(id);
               } else if (body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
@@ -2157,30 +2155,14 @@ export class Sim {
               this.actionLabels.set(id, 'delay');
             } else {
               this.pressingIds.delete(id);
-              // a PRESSING UNIT's non-engaged members take distinct
-              // assignments over the carrier's ranked options (a line-shape
-              // fallback stacked all four at one depth — the judged
-              // overlaps); LINE units (pressing ≤ 0.3) keep L5c shape
-              let target: Vec2 | null = null;
-              let label = 'shape';
-              if (pressing > 0.3 && firstIsEngaged) {
-                const coverIds = defBrains.filter((bid) => bid !== nearest.id && bid !== id)
-                  .concat([id]).filter((bid) => bid !== nearest.id);
-                const spots = pressCoverSpots(carrierBody, this.bodies, coverIds);
-                target = spots.get(id) ?? null;
-                label = 'cover';
-              } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
-                target = shadowSpot(body, carrierBody, this.bodies);
-                label = 'shadow';
-              }
-              if (!target) {
-                target = shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
-                  this.instructions.get(id)?.lineHeight ?? 0.5);
-                label = 'shape';
-              }
-              const d = Math.hypot(target.x - body.pos.x, target.y - body.pos.y);
+              const label = di.kind === 'cover' ? 'cover' : di.kind === 'mark' ? 'mark' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
+              const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
               if (d > 1.2) {
-                this.assign(body, { type: 'moveTo', target, regime: d > 8 ? 'run' : 'jog' });
+                // an URGENT mark (his man darting goalward) tracks at pace
+                // from the anticipatory station — jogging the chase was the
+                // judged too-late-by-momentum
+                const regime = di.kind === 'mark' && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
+                this.assign(body, { type: 'moveTo', target: di.target, regime });
                 this.shapeHolding.add(id);
                 this.actionLabels.set(id, label);
               } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
@@ -2216,7 +2198,11 @@ export class Sim {
       this.receiveOpenDir.delete(id);
       this.bendReceive.delete(id); // carrier now — the run is received
       let intent = this.intents.get(id) ?? null;
-      if (!intent || this.tick % DECIDE.reconsiderTicks === 0) {
+      // a feint/burst in flight is a COMMITTED move — no re-pricing of
+      // the geometry the fake itself just changed (the EV was killing
+      // every feint half-made); only the approach is abortable
+      const beatCommitted = this.beatExec?.carrierId === id && this.beatExec.phase !== 'approach';
+      if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
           carrier: body,
           bodies: this.bodies,
@@ -2227,6 +2213,7 @@ export class Sim {
           bounds: this.bounds,
           runners: this.runningLine,
           keepers: this.keepers,
+          staggered: this.staggeredSet(),
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
             const rp = this.runPhase.get(rid);
             const rb = this.byId.get(rid)!;
@@ -2241,6 +2228,10 @@ export class Sim {
         });
         this.intents.set(id, intent);
       }
+      // a stale beatExec outlived its intent and its APPROACH THROTTLE
+      // kept braking the carrier at 4.2 for the rest of the run (the
+      // sluggish post-beat carry, found instrumenting the channel)
+      if (this.beatExec?.carrierId === id && intent.kind !== 'beat') this.beatExec = null;
       switch (intent.kind) {
         case 'carry':
           this.pendingKicks.delete(id);
@@ -2254,6 +2245,103 @@ export class Sim {
           if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
           this.actionLabels.set(id, 'shield');
           break;
+        case 'beat': {
+          this.actionLabels.set(id, 'beat');
+          const gdirB = Math.atan2(goalCenter(body.team).y - body.pos.y, goalCenter(body.team).x - body.pos.x);
+          const ex0 = this.beatExec?.carrierId === id ? this.beatExec : null;
+          let fmB: BodyState | undefined = ex0 ? this.byId.get(ex0.fmId) : undefined;
+          if (!fmB) {
+            // the man to beat is the RIDER — the defender whose duel
+            // machine runs against me (jockey/track/engage; his hold IS
+            // the closable 2-2.6 m). The goalward cone alone locked onto
+            // the RECEDING COVER — 6 m off by construction, never
+            // closable to the feint trigger — while the rider at 2 m sat
+            // outside the cone (the verified approach-only defect).
+            let rdB = 8.0;
+            for (const [rid, rst] of this.duels) {
+              // only a PLANTED man is not worth beating (run past him);
+              // a recovering rider at 2 m is still the man to beat —
+              // excluding recover re-selected the receding cover
+              if (rst.state === 'staggered') continue;
+              const rb = this.byId.get(rid);
+              if (!rb || rb.team === body.team) continue;
+              const d0 = Math.hypot(rb.pos.x - body.pos.x, rb.pos.y - body.pos.y);
+              if (d0 < rdB) { rdB = d0; fmB = rb; }
+            }
+          }
+          if (!fmB) {
+            let fdB = 8.0;
+            for (const o of this.bodies) {
+              if (o.team === body.team) continue;
+              const d0 = Math.hypot(o.pos.x - body.pos.x, o.pos.y - body.pos.y);
+              if (d0 > 8.0) continue;
+              const a0 = Math.abs((((Math.atan2(o.pos.y - body.pos.y, o.pos.x - body.pos.x) - gdirB) + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+              if (a0 > Math.PI / 3) continue;
+              if (d0 < fdB) { fdB = d0; fmB = o; }
+            }
+          }
+          if (!fmB || this.ball.carrierId !== id) {
+            this.beatExec = null;
+            this.intents.delete(id);
+            break;
+          }
+          if (!ex0) this.beatExec = { carrierId: id, fmId: fmB.id, phase: 'approach', side: intent.side, until: 0 };
+          const st = this.beatExec!;
+          const dFm = Math.hypot(fmB.pos.x - body.pos.x, fmB.pos.y - body.pos.y);
+          if (dFm > 9) { // the duel dissolved — hand back to the EV
+            this.beatExec = null;
+            this.intents.delete(id);
+            break;
+          }
+          const perpB = gdirB + Math.PI / 2;
+          if (st.phase === 'approach') {
+            // throttled, straight AT the rider — arrive at the arc in control
+            const cur = body.command.type === 'moveTo' ? body.command.target : null;
+            if (!cur || Math.hypot(cur.x - fmB.pos.x, cur.y - fmB.pos.y) > 0.5) {
+              this.assign(body, { type: 'moveTo', target: { x: fmB.pos.x, y: fmB.pos.y }, regime: 'run' });
+            }
+            // the STALL break: a conceding rider (jockey cap 4.5) can
+            // out-backpedal the throttled approach (4.2) forever — the
+            // 3.1 m arc never arrives. Real take-ons end the standoff
+            // from just outside the tackle arc: gap under 5.5 and no
+            // longer closing → the move is NOW.
+            const closingRate = (st.lastD ?? dFm) - dFm;
+            st.lastD = dFm;
+            if (dFm < 5.5 && closingRate < 0.06) st.stall = (st.stall ?? 0) + 1;
+            else st.stall = 0;
+            if (dFm <= 3.1 || (st.stall ?? 0) >= 4) { st.phase = 'feint'; st.until = this.tick + 4; }
+          }
+          if (st.phase === 'feint') {
+            // the step to the FAKE side (opposite the burst) — his smoothed
+            // read follows it; the lag is the lane
+            const fx = body.pos.x + Math.cos(gdirB) * 0.8 + Math.cos(perpB) * -st.side * 1.7;
+            const fy = body.pos.y + Math.sin(gdirB) * 0.8 + Math.sin(perpB) * -st.side * 1.7;
+            const cur = body.command.type === 'moveTo' ? body.command.target : null;
+            if (!cur || Math.hypot(cur.x - fx, cur.y - fy) > 0.6) {
+              this.assign(body, { type: 'moveTo', target: { x: fx, y: fy }, regime: 'run' });
+            }
+            if (this.tick >= st.until) st.phase = 'burst';
+          }
+          if (st.phase === 'burst') {
+            // the knock through the REAL side, geometry read at burst time —
+            // the pending-kick machinery strikes it on the next touch and the
+            // knock flag turns the follow-through into the sprint
+            const past = {
+              x: fmB.pos.x + Math.cos(gdirB) * 2.4 + Math.cos(perpB) * st.side * 1.9,
+              y: fmB.pos.y + Math.sin(gdirB) * 2.4 + Math.sin(perpB) * st.side * 1.9,
+            };
+            const dP = Math.hypot(past.x - body.pos.x, past.y - body.pos.y);
+            this.pendingKicks.set(id, {
+              dest: past,
+              speedMps: Math.max(7, Math.min(15, rollLaunchForArrival(1.2, dP + 3))),
+              knock: true,
+            });
+            if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+            this.beatExec = null;
+            this.intents.delete(id);
+          }
+          break;
+        }
         case 'pass':
         case 'shoot':
         case 'knock':
