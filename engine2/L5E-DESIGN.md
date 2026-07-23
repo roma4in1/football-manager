@@ -168,6 +168,26 @@ live-rider knock discount). What it established:**
   close-control deficit is the COLLISION, whose true fix is the beat's
   APPROACH phase (slow into the arc).
 
+### The COVERED DUEL (builder-chosen acceptance) — the next defensive work item
+
+The builder chose COVER over walls for the head-on drill (real football forces
+duels with cover, not corridors). Building it exposed the real hole, bigger
+than any drill: **the defense cannot contain a brained attacker even 2v1.**
+Trace evidence (Jul 23): the press election parks the presser in moveTo
+(pressApproach) so the duel machine (chaseBall-gated) never rides him; force-
+assigning chaseBall inside duel range did not change outcomes — the presser
+TRAILS every lateral cut and both skill levels sail through 16/16. The
+press-election ↔ duel-machine integration versus a MOVING, deciding carrier is
+one coupled work item with the covered drill as its acceptance:
+  - the elected presser belongs to the MACHINE from election (not from
+    chaseBall range) — approach, ride, and engage as one continuum;
+  - the ride must hold a CUTTING carrier (the lateral trail is the beat's
+    free win today — fix the defense first, then measure the beat honestly);
+  - cover positioning (the second man) must close the outflank lane, which
+    pressCoverSpots may already express — verify.
+Do this dial-by-dial with the workbench open (wb seeds, builder judging live) —
+three probe-only blocks have now bounced off it.
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
