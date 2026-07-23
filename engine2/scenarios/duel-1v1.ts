@@ -130,16 +130,19 @@ export const matchDuelScenarios: ScenarioDef[] = [
  * Static sideline sentinels measured INVISIBLE (the carry EV is body-blind
  * at range — identical trajectories at every cone layout); the honest
  * channel is BOUNDS, which the attacker's own EV respects. At 24 m the
- * drill finally exercises the take-on: the elite attacker rides the duel
- * (~54 close ticks), SHIELDS, and fires the BEAT every seed — staggering
- * the rider into the cover's arms; heavy feet never earn the move (0/8).
- * 16 m killed the lateral game (heavy pinball 5/8 through); 32 m left
- * wide cheap. The beat CONVERTING is not this drill's claim — that story
- * runs through the concede-stop and the keeper arc. */
+ * drill exercises the take-on INTENT: the elite attacker rides the duel
+ * (~54 close ticks), shields, and enters the beat's APPROACH every seed;
+ * heavy feet never earn the move (0/8). VERIFIED (builder challenge): the
+ * feint/burst phases are never reached — the beat's frontman cone selects
+ * the RECEDING COVER (6 m off by construction) instead of the rider at
+ * 2 m, so the approach can never close to the 3.1 m trigger. That
+ * frontman-selection defect + the concede-stop are the recorded next
+ * beat-executor round. 16 m killed the lateral game (heavy pinball 5/8
+ * through); 32 m left wide cheap. */
 const channelDuel = (name: string, dribbling: number): ScenarioDef => ({
   version: 1,
   name,
-  description: `The covered duel inside a 24 m bounds channel — wide is EV-dead, so the attacker (dribbling ${dribbling}) must attack the pair. Judge the long ride, the shield, and — elite only — the beat: feint, burst, the rider staggered, the cover absorbing.`,
+  description: `The covered duel inside a 24 m bounds channel — wide is EV-dead, so the attacker (dribbling ${dribbling}) must attack the pair. Judge the long ride, the shield, and — elite only — the beat's APPROACH (the feint/burst never trigger yet: the frontman cone locks onto the receding cover — the recorded defect).`,
   durationTicks: 300,
   bounds: { x0: 55, y0: 22, x1: 105, y1: 46 },
   bodies: [
@@ -159,6 +162,48 @@ const channelDuel = (name: string, dribbling: number): ScenarioDef => ({
 export const channelDuelScenarios: ScenarioDef[] = [
   channelDuel('duel-2v1-channel-close', 17),
   channelDuel('duel-2v1-channel-heavy', 5),
+];
+
+/** L5E — the FULLBACKS duel (builder direction): the 2v2 with a ZONE
+ * back line — LB/RB brained at pressing 0 (shape/shadow, anchored wide).
+ * This kills the run-wide artifact with live football, not walls: the
+ * carrier's wide arc dies (maxWide 27-32 → ~11), duels happen centrally,
+ * and the seam pass gets intercepted by the covering back (wb-0: lb
+ * picks it at t37). MEASURED WARNING, the exhibit for roles-as-weights:
+ * the same fullbacks INSIDE the pressing unit (0.8) are VACUUMED by the
+ * duty election (no zone affinity, no travel cost — the RB claims a
+ * 19 m cross-pitch mark) and the defense collapses to 8/8 through —
+ * worse than no fullbacks at all. */
+const fullbacksDuel = (name: string, dribbling: number): ScenarioDef => ({
+  version: 1,
+  name,
+  description: `The 2v2 plus a ZONE back line (LB/RB at pressing 0). Attacker dribbling ${dribbling}. Judge: wide dies without walls, the central pair duels, the fullbacks hold shape and shadow the seams — the covering back intercepts the through pass.`,
+  durationTicks: 300,
+  bodies: [
+    { id: 'attacker', team: 'home', pos: { x: 62, y: 34 }, brain: 'onBall',
+      attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, firstTouch: 12, passing: 14, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'mate', team: 'home', pos: { x: 66, y: 22 }, brain: 'onBall',
+      attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling: 13, firstTouch: 12, passing: 14, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def1', team: 'away', pos: { x: 74, y: 34 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def2', team: 'away', pos: { x: 84, y: 30 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'rb', team: 'away', pos: { x: 84, y: 16 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'lb', team: 'away', pos: { x: 84, y: 52 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+  ],
+  ball: { carrier: 'attacker' },
+  script: [],
+});
+
+export const fullbacksDuelScenarios: ScenarioDef[] = [
+  fullbacksDuel('duel-2v2-fullbacks-close', 17),
+  fullbacksDuel('duel-2v2-fullbacks-heavy', 5),
 ];
 
 export const weave: ScenarioDef = {

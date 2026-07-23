@@ -359,12 +359,31 @@ his run state — the L5b run cycle coupled to the pass release.
   flatter both sides at once.
 - **Channel drills (builder direction, same day)**: to exercise the
   TAKE-ON without match cast, funnel with BOUNDS — never with static
-  sentinel bodies, which measured invisible to the carry EV (identical
-  trajectories at every cone layout; only the touchline exists for the
-  carrier). The 24 m channel is the calibrated width: elite beats 8/8,
-  heavy 0/8, lateral vocabulary alive; 16 m sterilizes (heavy pinball),
-  32 m leaves wide cheap. Carry-pricing body-blindness at range is
-  itself a recorded observation for a future carry-EV round.
+  sentinel bodies, which measured invisible to the carry EV (VERIFIED
+  per-tick: hash-identical trajectories with/without cones, closest
+  approach 10.5 m — the carrier never even routes near them; only the
+  touchline exists for him). The 24 m channel is the calibrated width:
+  elite enters the beat 8/8, heavy 0/8, lateral vocabulary alive; 16 m
+  sterilizes (heavy pinball), 32 m leaves wide cheap. Carry-pricing
+  body-blindness at range is a recorded observation for a carry-EV round.
+- **The beat never completes (verified under builder challenge, Jul 23)**:
+  in the channel the executor reaches APPROACH only — feint/burst 0/8.
+  Root: the frontman cone (nearest opponent within 60° of goal dir, ≤8 m)
+  locks onto the RECEDING COVER (coverBehindM keeps him ~6 m off by
+  construction) while the actual rider at 2 m sits outside the cone; the
+  approach can never close to the 3.1 m feint trigger. The beat-executor
+  round = frontman selection should prefer the RIDING defender (the sim's
+  duel records know him) + the concede-stop.
+- **The duty election needs zone affinity (the fullbacks exhibit)**: LB/RB
+  added to the 2v2 INSIDE the pressing unit (0.8) made the defense WORSE
+  (elite 0/8 → 8/8 through): claim() has no travel cost or zone
+  preference, so the RB won the mate's mark by 0.8 m of spot distance and
+  sprinted 19-23 m cross-pitch, dismantling the back line. The same
+  fullbacks at pressing 0 (zone: shape/shadow, anchored by homes) kill
+  the wide escape entirely (carrier maxWide 27-32 → ~11) and the elite
+  2v2 dies centrally 8/8 — pinned as duel-2v2-fullbacks-close. This is
+  the concrete motivation for ROLES AS WEIGHT VECTORS (a fullback
+  weights holdShape/wide) and a distance/zone cost in claim().
 - Both duel sides are brains in every scenario.
 - `shieldUtility` re-lands at ≈ 0.014 (0.03 froze carriers at kickoff).
 - Carried-ball bounds: dribbling over a grid/pitch line goes dead; bodies

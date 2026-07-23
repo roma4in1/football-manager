@@ -125,11 +125,14 @@ test('the MARK denies the outlet: in the 2v2 the marked mate never receives, and
 
 test('the CHANNEL duel exercises the take-on: the elite attacker BEATS, heavy feet never earn it, the pair holds', () => {
   // the builder's channel (bounds, not cones — static sentinels measured
-  // invisible to the carry EV): with wide EV-dead the drill finally
-  // exercises the beat vs a covered defense. The stable claims: elite
-  // fires the beat nearly every seed, heavy never does (the skill gate),
-  // and the covered pair still defends. CONVERSION is deliberately not
-  // pinned (the concede-stop / keeper arcs own that story).
+  // invisible to the carry EV): with wide EV-dead the drill exercises the
+  // beat's INTENT + APPROACH vs a covered defense. VERIFIED (builder
+  // challenge): the label here means APPROACH ONLY — the feint/burst are
+  // never reached, because the beat's frontman cone locks onto the
+  // RECEDING COVER (6 m off by construction) instead of the rider at
+  // 2 m; that defect + the concede-stop are the next beat-executor
+  // round. The stable claims: elite enters the beat nearly every seed,
+  // heavy never does (the skill gate), and the covered pair defends.
   const seeds = ['wb-0', 'wb-1', 'wb-2', 'ch-0', 'ch-1', 'ch-2', 'ch-3', 'ch-4'];
   const run = (name: string): { beats: number; defended: number } => {
     let beats = 0;
@@ -156,6 +159,37 @@ test('the CHANNEL duel exercises the take-on: the elite attacker BEATS, heavy fe
   assert.ok(heavy.beats <= 1, `heavy feet never earn the beat (${heavy.beats}/8 seeds)`);
   assert.ok(close.defended >= 7, `the covered pair holds the channel vs elite (${close.defended}/8)`);
   assert.ok(heavy.defended >= 7, `the covered pair holds the channel vs heavy (${heavy.defended}/8)`);
+});
+
+test('the FULLBACKS duel: a zone back line kills the wide escape with live football, and the elite attack dies centrally', () => {
+  // the builder's scenario: 2v2 + LB/RB at pressing 0 (shape/shadow,
+  // anchored wide). Stable claims (elite): the defense wins, and the
+  // carrier's wide arc is GONE (maxWide ~11 vs 27-32 bare) — wide is
+  // deterred by live zone presence, not walls. Heavy is NOT pinned
+  // (3/8 through — the kick-and-rush root's honest leak, next round).
+  const seeds = ['wb-0', 'wb-1', 'wb-2', 'fb-0', 'fb-1', 'fb-2', 'fb-3', 'fb-4'];
+  let defended = 0;
+  let narrow = 0;
+  for (const seed of seeds) {
+    const sim = new Sim(scenarioByName('duel-2v2-fullbacks-close'), seed);
+    let maxWide = 0;
+    let won = false;
+    for (let t = 0; t < 300; t++) {
+      sim.step();
+      const c = sim.ball.carrierId;
+      if (c === 'attacker' || c === 'mate') {
+        const b = sim.bodies.find((x) => x.id === c)!;
+        maxWide = Math.max(maxWide, Math.abs(b.pos.y - 34));
+        if (Math.hypot(b.pos.x - 105, b.pos.y - 34) < 16) break;
+      }
+      if (c && c !== 'attacker' && c !== 'mate') { won = true; break; }
+      if (sim.ball.phase === 'dead') { won = true; break; }
+    }
+    if (won) defended++;
+    if (maxWide < 20) narrow++;
+  }
+  assert.ok(defended >= 7, `the zone back line + central pair defend the elite 2v2 (${defended}/8)`);
+  assert.ok(narrow >= 7, `the wide escape is dead — the carrier stays central (${narrow}/8 seeds under 20 m wide)`);
 });
 
 test('bounds: a CARRIED ball over the line is out, and bodies stay on the park', () => {
