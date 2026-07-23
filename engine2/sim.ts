@@ -249,9 +249,18 @@ export class Sim {
       let timedCap: number | undefined;
       let brakeIntoLine = false;
       let duelFace: Vec2 | undefined; // the jockey squares to the ball
-      if (body.command.type === 'chaseBall' || fetching) {
+      // machine OWNERSHIP (the principles pass): the elected presser
+      // belongs to the duel machine FROM ELECTION — approach, ride, engage
+      // as one continuum. The chaseBall gate parked the approaching presser
+      // in moveTo where the machine never rode him (the covered-duel hole);
+      // now the machine speaks per tick and the moveTo is only the
+      // fallback when it stays silent (out of duel range).
+      const duelRide = body.command.type !== 'chaseBall' && !fetching && !isCarrier &&
+        this.pressingIds.has(body.id) && !this.keepers.has(body.id) &&
+        this.ball.carrierId !== null && this.byId.get(this.ball.carrierId)!.team !== body.team;
+      if (body.command.type === 'chaseBall' || fetching || duelRide) {
         const icept = this.interceptPoint(body);
-        live = icept.pMeet;
+        live = duelRide ? undefined : icept.pMeet;
         // the RECEIVE state machine (judged over eight rounds):
         //  off the line → attack the nearest path point (toward the ball),
         //    braking in when receiving; STICKY phase boundary — a threshold
@@ -380,7 +389,7 @@ export class Sim {
         // the DUEL (L5E) wraps the judged contain: RECOVER/JOCKEY/TRACK own
         // the 2–8 m shell; ENGAGE commits the close; and inside 1.9 m the
         // contain-at-contact (the 360-orbit fix) stands exactly as judged.
-        if (body.command.type === 'chaseBall' && this.ball.carrierId !== null && !isCarrier) {
+        if ((body.command.type === 'chaseBall' || duelRide) && this.ball.carrierId !== null && !isCarrier) {
           const carrierB = this.byId.get(this.ball.carrierId)!;
           const gapBC = Math.hypot(this.ball.pos.x - carrierB.pos.x, this.ball.pos.y - carrierB.pos.y);
           const dToCar = Math.hypot(body.pos.x - carrierB.pos.x, body.pos.y - carrierB.pos.y);
@@ -552,7 +561,7 @@ export class Sim {
       }
       stepBody(body, this.tick, {
         face,
-        external: body.command.type === 'chaseBall' ? live : undefined,
+        external: body.command.type === 'chaseBall' || duelRide ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,
         carrySpeedCapMps: isCarrier
