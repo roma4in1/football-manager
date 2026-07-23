@@ -188,6 +188,41 @@ one coupled work item with the covered drill as its acceptance:
 Do this dial-by-dial with the workbench open (wb seeds, builder judging live) —
 three probe-only blocks have now bounced off it.
 
+### THE DEFENSIVE BRAIN (builder direction, Jul 23) — the real shape of the fix
+
+The asymmetry, named by the builder: the attacker has an EV brain (decide.ts);
+the defender has hardcoded machinery. Audited: `pressScore` uses ZERO
+attributes (distance + the team pressing dial only); every DUEL dial is a
+constant (all defenders jockey at 4.5, fill patience in 3.5 s, engage at 2.6);
+attributes enter defense only at contact (`tackleWinProbability`); roles.md
+sits unwired. `brain: 'onBall'` says it out loud — only on-ball decisions were
+ever designed.
+
+**decideDefense — symmetry with decide:**
+- Per defender per reconsider tick, choose a defensive INTENT: `press` (first
+  man) / `contain` (the machine executes the ride) / `cover` (second-man
+  spot) / `mark` (a runner) / `interceptLane` / `drop` (recover) /
+  `holdShape`. Team coordination (one presser, cover assignment) stays an
+  election — but scored, not hardcoded.
+- **Attributes drive the dials** (per-player, not constants):
+  tackling → pressure fill rate (a strong tackler engages sooner);
+  agility/balance → jockey cap + engage range (nimble rides tighter);
+  pace → track confidence + concede rate (a SLOW defender drops earlier —
+  real football). Schema candidates recorded: `positioning`, `aggression`
+  (defensive IQ has no attribute today), alongside finishing/shotPower.
+- **Tactics drive the weights** (the instructions surface): pressing +
+  lineHeight (exist), plus marking scheme, engagement line, compactness —
+  the L6 story: management controls driving the behavioral sim.
+- **Roles weight the intents** (BodyInit.role, from roles.md): a CB weights
+  cover/drop/mark; a FB contains wide and tracks; a DM screens lanes. A role
+  is a weight vector over intents, not a position.
+- **The machine becomes the executor** of press/contain intents — the exact
+  decide→executor split the attacker has. This dissolves the chaseBall-gating
+  hole structurally: the brain owns the defender, the machine runs his state.
+
+Acceptance: the covered duel (above) defends honestly; the beat is then
+measured against a competent defense; pressScore retires into decideDefense.
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
