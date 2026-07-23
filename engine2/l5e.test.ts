@@ -13,8 +13,12 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
   let flips = 0;
   let passReachesMid = 0;
   let bracketed = 0;
-  for (let s = 0; s < 8; s++) {
-    const sim = new Sim(scenarioByName('l5e-loose-arbitration'), `arb-${s}`);
+  let looksLikeAPass = 0;
+  // the WORKBENCH seeds lead: the builder watches wb-N, so wb-N is what the
+  // pin must certify — a spread of test-only seeds proved nothing he saw
+  const seeds = ['wb-0', 'wb-1', 'wb-2', 'arb-0', 'arb-1', 'arb-2', 'arb-3', 'arb-4'];
+  for (const seed of seeds) {
+    const sim = new Sim(scenarioByName('l5e-loose-arbitration'), seed);
     let first: string | null = null;
     let prev: string | null = null;
     let passed = false;
@@ -30,8 +34,12 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
         sepAtClaim = Math.hypot(t1.pos.x - t2.pos.x, t1.pos.y - t2.pos.y);
       }
       // the collector must actually PASS (mid collecting it himself proved
-      // nothing — the judged hole in the first version of this pin)
-      if (f.bodies.find((b) => (b.id === 't1' || b.id === 't2') && b.action?.startsWith('pass→mid'))) passed = true;
+      // nothing — the judged hole in the first version of this pin), and it
+      // must LOOK like a pass: a struck ball, not a dribble mid walks onto
+      if (!passed && f.bodies.find((b) => (b.id === 't1' || b.id === 't2') && b.action?.startsWith('pass→mid'))) {
+        passed = true;
+        if (Math.hypot(sim.ball.vel.x, sim.ball.vel.y) >= 5) looksLikeAPass++;
+      }
       // the ping-pong: the collectors trading the ball between themselves
       if (c && prev && c !== prev && (prev === 't1' || prev === 't2') && (c === 't1' || c === 't2')) flips++;
       if (passed && c === 'mid') { passReachesMid++; break; }
@@ -41,6 +49,7 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
     if (sepAtClaim > 1.3) bracketed++;
   }
   assert.ok(pairClaims >= 7, `the racing pair claims the loose ball, not the far man (${pairClaims}/8)`);
+  assert.ok(looksLikeAPass >= 7, `the release is a STRUCK ball (>=5 m/s), visibly a pass (${looksLikeAPass}/8)`);
   assert.equal(flips, 0, `the collectors never trade the ball between themselves (${flips} flips)`);
   assert.ok(passReachesMid >= 7, `the collector RELEASES and the third man receives — the twin no longer eats it (${passReachesMid}/8)`);
   assert.ok(bracketed >= 7, `the supporters take DISTINCT spots, no twin runs (${bracketed}/8 bracketed)`);
