@@ -62,6 +62,15 @@ export const DUEL = {
   /** the KNOCK-AND-GO: the utility gain on the reclaim point's value — the
    * burst past a jockey is the attacker's half of the duel */
   knockGain: 1.2, // tempered — the chance-creation term carries the value
+  /** the BEAT sequence (approach→feint→burst) — the manufactured knock:
+   * when the lane past a SET rider is closed, the feint on his smoothed-read
+   * lag opens it. Priced like the knock it becomes, times the feint's
+   * success (attacker agility+dribbling vs the defender's agility). */
+  beatFeintBase: 0.5,
+  beatFeintSkill: 0.5,
+  /** past the last man, unmarked: a free run at goal is worth far more than
+   * the ground it stands on */
+  freeRunBonus: 0.1,
 } as const;
 
 export const GOAL = {
@@ -95,6 +104,7 @@ export type Intent =
   | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
   | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
+  | { kind: 'beat'; dest: Vec2; side: number; utility: number }
   | { kind: 'shield'; utility: number }
   | { kind: 'clear'; dest: Vec2; speedMps: number; utility: number };
 
@@ -740,6 +750,10 @@ export interface DecideInput {
   /** the goalkeepers on the pitch — a knock past a KEEPER must clear hands,
    * dive and sweep, not just feet (every striker knows who the keeper is) */
   keepers?: ReadonlySet<string>;
+  /** defenders currently STAGGERED (planted by a failed lunge) — the knock's
+   * true window. A merely STANDING set man is NOT beaten (that conflation
+   * had carriers knocking past their own wall's static blocker). */
+  staggered?: ReadonlySet<string>;
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
@@ -1261,7 +1275,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           // the knock-past drill's too-tight lesson)
           const t = ((fm.pos.x - here.x) * (past.x - here.x) + (fm.pos.y - here.y) * (past.y - here.y)) / (dK * dK);
           const clear = Math.hypot(fm.pos.x - (here.x + (past.x - here.x) * t), fm.pos.y - (here.y + (past.y - here.y) * t));
-          const beaten = fm.speed < 1.0; // planted (the stagger) — the moment
+          const beaten = input.staggered?.has(fm.id) ?? false; // truly planted — the moment
           // a KEEPER frontman collects with hands, dive and sweep — the berth
           // must be far wider than a tackler's feet (the knock at a stranded
           // keeper rolled straight into his gloves, measured 16/16)
@@ -1270,15 +1284,51 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
             ? Math.max(0, Math.min(1, (clear - 1.6) / 1.4))
             : Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
           if (beaten) pKnock = Math.min(1, pKnock + 0.3);
+          // vs a LIVE rider the geometric clearance lies — he moves WITH you
+          // and covers the push (knock fired 8/8 and converted ~0: the knock
+          // is the PLANTED man's punishment; the live rider is the BEAT's)
+          else pKnock *= 0.3;
           const reclaim = { x: past.x + Math.cos(gdir) * 1.5, y: past.y + Math.sin(gdir) * 1.5 };
           // CHANCE CREATION, as passes price it: the reclaim past the beaten
           // frontman is a shooting position — against a beaten KEEPER, an
           // open net. Without this the knock lost to the very shot the set
           // keeper saves 16/16 (round-the-keeper never fired).
-          const pvReclaim = value(reclaim, carrier.id) +
+          let pvReclaim = value(reclaim, carrier.id) +
             0.6 * xG(reclaim, carrier.team, bodies.filter((b) => b.id !== fm.id && b.id !== carrier.id));
-          const uK = DECIDE.possessionDiscount * pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain;
+          // past the LAST man with nobody covering, the reclaim is a FREE RUN
+          // — the brief's isolation principle priced: without it, beating the
+          // man was worth six meters of grass (uB ~0.008) and the EV never
+          // tried (the beat fired 0/8 in the drill built to show it)
+          const freeRun = !opponents.some((o2) => o2.id !== fm.id &&
+        Math.hypot(o2.pos.x - reclaim.x, o2.pos.y - reclaim.y) < 15 &&
+        Math.hypot(o2.pos.x - g.x, o2.pos.y - g.y) < Math.hypot(reclaim.x - g.x, reclaim.y - g.y) + 2);
+          if (freeRun) pvReclaim += DUEL.freeRunBonus;
+          // risk-SYMMETRIC, like every pass: the failed knock is a turnover
+          // at your own feet — pricing only the success sent carriers
+          // knocking past their own wall and made kick-and-rush free
+          const uK = DECIDE.possessionDiscount *
+            (pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain -
+             (1 - pKnock) * turnoverW * pvHere * 0.8);
           if (uK > 0) options.push({ kind: 'knock', dest: past, speedMps: speed, utility: uK });
+          // the BEAT — the manufactured knock: the lane past a SET rider is
+          // closed (pKnock low) but the FEINT on his ~0.4 s smoothed read
+          // opens it. A sequenced move (approach→feint→burst) the executor
+          // runs; here it is priced as the knock it becomes, times the
+          // feint's skill-scaled success. Not vs a keeper (his counter is the
+          // same move but the burst berth stays hands-wide).
+          // the split: the KNOCK beats a PLANTED man (the stagger's window);
+          // the BEAT beats a LIVE rider — his smoothed read lags the feint.
+          // (fm.speed<3 never matched a TRACK-state rider giving ground at
+          // 4-6 m/s, and geometric pKnock overestimates vs a man moving WITH
+          // you — both gates were written for a jockey that never appears.)
+          if (!isKeeper && !beaten && fd > 1.6 && fd < 6.5) {
+            const pFeint = Math.min(1, DUEL.beatFeintBase + DUEL.beatFeintSkill *
+              Math.max(0, ((carrier.attributes.agility + carrier.attributes.dribbling) / 2 - fm.attributes.agility) / 20));
+            const uB = DECIDE.possessionDiscount *
+              (pFeint * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain -
+               (1 - pFeint) * turnoverW * pvHere * 0.8);
+            if (uB > 0) options.push({ kind: 'beat', dest: past, side, utility: uB });
+          }
         }
       }
     }
