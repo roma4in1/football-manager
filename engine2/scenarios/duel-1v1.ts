@@ -126,6 +126,41 @@ export const matchDuelScenarios: ScenarioDef[] = [
   matchDuel('duel-3v2-spare-close', 17, true),
 ];
 
+/** L5E — the CHANNEL duel (builder direction: stop the run-wide artifact).
+ * Static sideline sentinels measured INVISIBLE (the carry EV is body-blind
+ * at range — identical trajectories at every cone layout); the honest
+ * channel is BOUNDS, which the attacker's own EV respects. At 24 m the
+ * drill finally exercises the take-on: the elite attacker rides the duel
+ * (~54 close ticks), SHIELDS, and fires the BEAT every seed — staggering
+ * the rider into the cover's arms; heavy feet never earn the move (0/8).
+ * 16 m killed the lateral game (heavy pinball 5/8 through); 32 m left
+ * wide cheap. The beat CONVERTING is not this drill's claim — that story
+ * runs through the concede-stop and the keeper arc. */
+const channelDuel = (name: string, dribbling: number): ScenarioDef => ({
+  version: 1,
+  name,
+  description: `The covered duel inside a 24 m bounds channel — wide is EV-dead, so the attacker (dribbling ${dribbling}) must attack the pair. Judge the long ride, the shield, and — elite only — the beat: feint, burst, the rider staggered, the cover absorbing.`,
+  durationTicks: 300,
+  bounds: { x0: 55, y0: 22, x1: 105, y1: 46 },
+  bodies: [
+    { id: 'attacker', team: 'home', pos: { x: 62, y: 34 }, brain: 'onBall',
+      attributes: { pace: 14, acceleration: 14, agility: 14, balance: 14, dribbling, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def1', team: 'away', pos: { x: 74, y: 34 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+    { id: 'def2', team: 'away', pos: { x: 84, y: 30 }, facing: Math.PI, brain: 'onBall',
+      instructions: { pressing: 0.8 },
+      attributes: { pace: 14, acceleration: 14, agility: 13, balance: 13, dribbling: 10, firstTouch: 12, passing: 12, tackling: 12, strength: 12, stamina: 12 } },
+  ],
+  ball: { carrier: 'attacker' },
+  script: [],
+});
+
+export const channelDuelScenarios: ScenarioDef[] = [
+  channelDuel('duel-2v1-channel-close', 17),
+  channelDuel('duel-2v1-channel-heavy', 5),
+];
+
 export const weave: ScenarioDef = {
   version: 1,
   name: 'dribble-weave',

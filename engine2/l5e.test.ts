@@ -123,6 +123,41 @@ test('the MARK denies the outlet: in the 2v2 the marked mate never receives, and
   }
 });
 
+test('the CHANNEL duel exercises the take-on: the elite attacker BEATS, heavy feet never earn it, the pair holds', () => {
+  // the builder's channel (bounds, not cones — static sentinels measured
+  // invisible to the carry EV): with wide EV-dead the drill finally
+  // exercises the beat vs a covered defense. The stable claims: elite
+  // fires the beat nearly every seed, heavy never does (the skill gate),
+  // and the covered pair still defends. CONVERSION is deliberately not
+  // pinned (the concede-stop / keeper arcs own that story).
+  const seeds = ['wb-0', 'wb-1', 'wb-2', 'ch-0', 'ch-1', 'ch-2', 'ch-3', 'ch-4'];
+  const run = (name: string): { beats: number; defended: number } => {
+    let beats = 0;
+    let defended = 0;
+    for (const seed of seeds) {
+      const sim = new Sim(scenarioByName(name), seed);
+      let sawBeat = false;
+      for (let t = 0; t < 300; t++) {
+        const f = sim.step();
+        if (f.bodies.find((b) => b.id === 'attacker')?.action === 'beat') sawBeat = true;
+        const c = sim.ball.carrierId;
+        if (c === 'def1' || c === 'def2') { defended++; break; }
+        const att = sim.bodies.find((b) => b.id === 'attacker')!;
+        if (c === 'attacker' && Math.hypot(att.pos.x - 105, att.pos.y - 34) < 16) break;
+        if (sim.ball.phase === 'dead') { defended++; break; }
+      }
+      if (sawBeat) beats++;
+    }
+    return { beats, defended };
+  };
+  const close = run('duel-2v1-channel-close');
+  const heavy = run('duel-2v1-channel-heavy');
+  assert.ok(close.beats >= 7, `elite fires the BEAT in the channel (${close.beats}/8 seeds)`);
+  assert.ok(heavy.beats <= 1, `heavy feet never earn the beat (${heavy.beats}/8 seeds)`);
+  assert.ok(close.defended >= 7, `the covered pair holds the channel vs elite (${close.defended}/8)`);
+  assert.ok(heavy.defended >= 7, `the covered pair holds the channel vs heavy (${heavy.defended}/8)`);
+});
+
 test('bounds: a CARRIED ball over the line is out, and bodies stay on the park', () => {
   const outfield = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 14, firstTouch: 14, passing: 15, tackling: 12, strength: 12, stamina: 12 };
   const sim = new Sim({
