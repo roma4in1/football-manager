@@ -8,33 +8,41 @@ import assert from 'node:assert/strict';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
 
-test('loose-ball ARBITRATION: one claims, the twin offsets, and the pass to the third man survives', () => {
+test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the RELEASED pass to the third man survives', () => {
+  let pairClaims = 0;
   let flips = 0;
-  let midGets = 0;
+  let passReachesMid = 0;
   let bracketed = 0;
   for (let s = 0; s < 8; s++) {
     const sim = new Sim(scenarioByName('l5e-loose-arbitration'), `arb-${s}`);
+    let first: string | null = null;
     let prev: string | null = null;
+    let passed = false;
     let sepAtClaim = 0;
-    for (let t = 0; t < 100; t++) {
-      sim.step();
+    for (let t = 0; t < 120; t++) {
+      const f = sim.step();
       const c = sim.ball.carrierId;
-      if (c && !prev) {
+      if (c && !first) {
+        first = c;
+        if (c === 't1' || c === 't2') pairClaims++;
         const t1 = sim.bodies.find((b) => b.id === 't1')!;
         const t2 = sim.bodies.find((b) => b.id === 't2')!;
         sepAtClaim = Math.hypot(t1.pos.x - t2.pos.x, t1.pos.y - t2.pos.y);
       }
+      // the collector must actually PASS (mid collecting it himself proved
+      // nothing — the judged hole in the first version of this pin)
+      if (f.bodies.find((b) => (b.id === 't1' || b.id === 't2') && b.action?.startsWith('pass→mid'))) passed = true;
       // the ping-pong: the collectors trading the ball between themselves
       if (c && prev && c !== prev && (prev === 't1' || prev === 't2') && (c === 't1' || c === 't2')) flips++;
-      if (c === 'mid') { midGets++; break; }
+      if (passed && c === 'mid') { passReachesMid++; break; }
       if (c) prev = c;
     }
-    // NOT twin runs (judged): by the claim the two have split to distinct
-    // spots, bracketing the ball — wider than they started (0.94)
+    // NOT twin runs (judged): by the claim the two have split, bracketing
     if (sepAtClaim > 1.3) bracketed++;
   }
+  assert.ok(pairClaims >= 7, `the racing pair claims the loose ball, not the far man (${pairClaims}/8)`);
   assert.equal(flips, 0, `the collectors never trade the ball between themselves (${flips} flips)`);
-  assert.ok(midGets >= 7, `the third man receives — his lane is not eaten by the twin (${midGets}/8)`);
+  assert.ok(passReachesMid >= 7, `the collector RELEASES and the third man receives — the twin no longer eats it (${passReachesMid}/8)`);
   assert.ok(bracketed >= 7, `the supporters take DISTINCT spots, no twin runs (${bracketed}/8 bracketed)`);
 });
 
