@@ -110,6 +110,34 @@ old 12/16 through-pin encoded the pre-machine static defense and is retired;
 the head-on test pins engagement + the defensive win until the beat lands.
 Design the beat as a unit with the knock-and-go (they share the arc bands).
 
+**Second exploration (Jul 23), six measured probes, all reverted — the map for
+the micro-session:**
+
+1. Touch-shorten under a rider: broke the chase-escape drill (shortening must
+   be RIDDEN-only, not near-any-opponent), didn't move the front-on rate.
+2. Pinch gated on ENGAGE (kept in the judged build): principled, didn't move
+   the rate — the strip is NOT the pinch.
+3. Beat bonus (skill-scaled cut EV) + collision tax (a carry path through a
+   body ×0.25): the cuts ARE chosen (measured in the options dump) but the
+   rate did not move — and the pair destabilized striker-breakaway and
+   wall-pass (the collision tax reshapes carry EV everywhere). Needs
+   RIDDEN-scoped application.
+4. Defender reaction lag (smoothed ~0.4 s read of the carrier's velocity —
+   the per-tick 0.4 s FUTURE projection anticipates every cut, which is
+   superhuman and no feint can move): principled, kept-worthy, but alone did
+   not move the rate.
+5. Ball-anchored ride (the bands are carrier-relative but the ball rides
+   1-1.4 m ahead — a 2.0 hold sits INSIDE every touch): made it worse (0/16);
+   the standoff helps the defender too.
+6. The MICROTRACE truth: the strip is the COLLISION — the attacker's speed
+   dies on the body clip while his momentum touch spills forward, and any
+   forward spill favors the goal-side man BY GEOMETRY. The attacker needs
+   approach CRAFT: slow INTO the arc (never drive full-pace into a set
+   rider), cut on the smoothed-read lag, THEN burst (knock) through the
+   opened lane — a sequenced move, i.e. a real feint state on the attacker,
+   not an EV bonus. Build it as a small attacker-side state (APPROACH →
+   FEINT → BURST) in its own session, judged in the workbench per step.
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
