@@ -136,6 +136,12 @@ export class Sim {
   }
   /** brains currently pressing (the first-defender election's memory) */
   private readonly pressingIds = new Set<string>();
+  /** defenders mid STEP-IN (attacking an opponent pass flight's line) —
+   * resolved the tick the flight ends: into a press if the opponent
+   * claimed at their feet, back to the block otherwise. Without the
+   * lifecycle the chase persisted post-receipt (chaseBall matches no
+   * defense-chain gate) and the striker ran the vacated line. */
+  private readonly steppingIds = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
    * refreshed during the flight — his receive facing opens toward it */
   private readonly receiveOpenDir = new Map<string, number>();
@@ -2148,6 +2154,26 @@ export class Sim {
         this.openPass = null;
       }
     }
+    // the STEP-IN resolves when the flight ends — however it ended
+    if (this.steppingIds.size && (this.ball.carrierId !== null ||
+      this.intendedReceiverId === null || this.ball.phase === 'dead')) {
+      const cbNow = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+      for (const sid of this.steppingIds) {
+        const sb = this.byId.get(sid);
+        if (!sb) continue;
+        if (cbNow && cbNow.team !== sb.team &&
+          Math.hypot(cbNow.pos.x - sb.pos.x, cbNow.pos.y - sb.pos.y) < 6) {
+          // he arrived — the contest continues as a press (the duel
+          // machine rides pressingIds; election can demote him later)
+          this.pressingIds.add(sid);
+        } else if (sb.command.type === 'chaseBall') {
+          // the flight is gone and he isn't on the man — re-enter the
+          // block (hold matches every idle-defense gate next reconsider)
+          this.assign(sb, { type: 'hold' });
+        }
+      }
+      this.steppingIds.clear();
+    }
     // the receive reflex ends when ANYONE ends up with the ball
     if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
     for (const id of this.brains) {
@@ -2560,6 +2586,60 @@ export class Sim {
             this.pressingIds.delete(id);
           }
           if (carrierBody && carrierBody.team !== body.team) this.attackIdle.delete(id);
+          // THE STEP-IN (the debt round): an opponent pass IN FLIGHT was
+          // uncontestable — intendedReceiverId excludes it from every loose-
+          // ball race, so the receive reflex ran unopposed while the goal-
+          // side marker (often CLOSER to the arrival point than the darting
+          // runner) escorted air toward a station. The model prices cuts;
+          // the executor never sent one. Now the flight is a duty: the ONE
+          // defender whose intercept beats the receiver's attacks the
+          // ball's line. Ground balls only — interceptPoint's tMeet is
+          // z-blind (the receiver-release lesson, three aerial pins).
+          // NOTE the gate is on the REAL carrier, not carrierBody — that
+          // variable proxies the intended receiver during flights, which
+          // is exactly why the defending chain above keeps escorting: it
+          // marks THROUGH the flight. The step-in runs after and outranks
+          // its fresh assignment (the ball's line beats the man's line).
+          if (this.ball.carrierId === null && this.ball.phase !== 'dead' &&
+            this.intendedReceiverId !== null &&
+            this.ball.z < 0.5 && Math.abs(this.ball.vz) < 2 &&
+            (body.command.type === 'hold' || this.attackIdle.has(id) || this.shapeHolding.has(id) ||
+              this.runningLine.has(id)) &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1) &&
+            !this.pressingIds.has(id) && !this.keepers.has(id)) {
+            const recv = this.byId.get(this.intendedReceiverId);
+            if (recv && recv.team !== body.team) {
+              const mine = this.interceptPoint(body);
+              const recvT = this.interceptPoint(recv).tMeet;
+              // arriving WITH the receiver contests (claims/tackles
+              // resolve the meeting), and arriving a quarter-second behind
+              // the touch is still ON the man for the immediate tackle —
+              // the wb-0 race measured the tie at 2.6 s, which the first
+              // cut (margin 0.1, cap 2.5) excluded on both ends
+              if (mine.tMeet <= recvT + 0.35 && mine.tMeet < 3.5) {
+                // one stepper per team — the best of the eligible unit
+                let bestMate = Infinity;
+                for (const bid of this.brains) {
+                  if (bid === id) continue;
+                  const b2 = this.byId.get(bid)!;
+                  if (b2.team !== body.team || this.keepers.has(bid)) continue;
+                  if (this.pressingIds.has(bid)) continue;
+                  bestMate = Math.min(bestMate, this.interceptPoint(b2).tMeet);
+                }
+                if (mine.tMeet <= bestMate) {
+                  this.shapeHolding.delete(id);
+                  this.attackIdle.delete(id);
+                  this.runningLine.delete(id);
+                  this.runPhase.delete(id);
+                  this.steppingIds.add(id);
+                  this.assign(body, { type: 'chaseBall', regime: 'sprint' });
+                  this.actionLabels.set(id, 'step-in');
+                  continue;
+                }
+              }
+            }
+          }
           // NO POSSESSION, NO PAUSE (the judged freeze): with the ball
           // loose and unclaimed there is no carrier context, so neither
           // idle branch ever ran — 18 non-racing players stood on stale
