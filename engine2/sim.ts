@@ -2055,7 +2055,20 @@ export class Sim {
               (boxSign > 0 ? PITCH.length - carrierBody.pos.x : carrierBody.pos.x) <= DECIDE.crossAdvanceM &&
               (boxSign > 0 ? PITCH.length - body.pos.x : body.pos.x) <= 24 &&
               Math.abs(body.pos.y - PITCH.width / 2) < DECIDE.crossWideM;
-            const atStation = closerMates >= 2 && !boxOccupy;
+            // the TWO most advanced teammates keep the RUN GAME even
+            // beyond the support rank (the judged lack of attacking
+            // options: two supporters + seven statues had no in-behind
+            // runs, no dummies) — runPlan itself still gates on room
+            let moreAdvanced = 0;
+            const advSign = attackSign(body.team);
+            for (const bid of this.brains) {
+              if (bid === id || bid === carrierBody.id) continue;
+              const b2 = this.byId.get(bid)!;
+              if (b2.team !== body.team) continue;
+              if (advSign * (b2.pos.x - body.pos.x) > 0) moreAdvanced++;
+            }
+            const advancedRunner = advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 2;
+            const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
             if (atStation) {
               this.runPhase.delete(id);
@@ -2224,7 +2237,10 @@ export class Sim {
                 const b2 = this.byId.get(bid)!;
                 if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myBallDist) closerCp++;
               }
-              if (closerCp < 2 || myBallDist < 3) {
+              // vs a CARRIED ball, ONE man commits (the elected press is
+              // the second layer — two counterpressors + a presser was
+              // the judged double-commit); loose balls keep the pair
+              if ((oppHasIt ? closerCp < 1 : closerCp < 2) || myBallDist < 3) {
                 if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
                 this.pressingIds.add(id); // a pressing state — demotable
                 this.actionLabels.set(id, 'counterpress');
@@ -2252,7 +2268,7 @@ export class Sim {
               if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myBd) cpCloser++;
             }
             // capped like the transition path (the m11 swarm): two hunt
-            const inCounterpress = this.tick - lostAt <= 60 && myBd < 15 && cpCloser < 2;
+            const inCounterpress = this.tick - lostAt <= 60 && myBd < 15 && cpCloser < 1;
             // the DEFENSIVE BRAIN (decide.ts): the sim gathers the unit,
             // the brain runs the hierarchy, the sim EXECUTES the intent
             // (and the duel machine rides what press decides)
@@ -2307,13 +2323,37 @@ export class Sim {
             this.pressingIds.delete(id);
           }
           if (carrierBody && carrierBody.team !== body.team) this.attackIdle.delete(id);
+          // NO POSSESSION, NO PAUSE (the judged freeze): with the ball
+          // loose and unclaimed there is no carrier context, so neither
+          // idle branch ever ran — 18 non-racing players stood on stale
+          // commands. Both teams now hold their block-shifted stations
+          // through the scramble.
+          if (!carrierBody && this.ball.phase !== 'dead' &&
+            (body.command.type === 'hold' || this.attackIdle.has(id) || this.shapeHolding.has(id)) &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1) &&
+            this.homes.has(id)) {
+            const home = this.homes.get(id)!;
+            const st = {
+              x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-14, Math.min(14, (this.ball.pos.x - PITCH.length / 2) * 0.3)))),
+              y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-9, Math.min(9, (this.ball.pos.y - PITCH.width / 2) * 0.25)))),
+            };
+            const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
+            this.attackIdle.add(id);
+            if (dSt > 1.6) {
+              this.assign(body, { type: 'moveTo', target: st, regime: dSt > 9 ? 'run' : 'jog' });
+              this.actionLabels.set(id, 'station');
+            } else if (body.command.type !== 'hold') {
+              this.assign(body, { type: 'hold' });
+            }
+          }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
           // RACED by each team's nearest brain — deflected passes died
           // untouched with players standing over them (the audit), and at
           // match spacing the old 8 m radius DEADLOCKED an entire 11v11
           // around a neutral kickoff ball for 18+ seconds (the m11 pilot's
           // first finding): a neutral ball is always somebody's to go for.
-          if (body.command.type === 'hold' && this.ball.carrierId === null &&
+          if ((body.command.type === 'hold' || this.attackIdle.has(id)) && this.ball.carrierId === null &&
             this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
             Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
             const nearestOfTeam = [...this.brains].reduce((best, bid) => {
