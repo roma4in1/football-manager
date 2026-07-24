@@ -112,4 +112,15 @@ export const m11SecondBall = matchSituation({
   awayPressing: 0.6,
 });
 
-export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall];
+/** the full MATCH for self-play: kickoff-ish neutral ball at the centre,
+ * restarts keep it flowing — the memory space's stage. */
+export const m11Match = matchSituation({
+  name: 'm11-match',
+  description: 'A full 11v11 match slice from a neutral centre ball — restarts keep play flowing. The self-play harness stage; also the workbench\'s longest look at everything at once.',
+  durationTicks: 900,
+  ball: { pos: { x: 52.5, y: 34 } },
+  homePressing: 0.6,
+  awayPressing: 0.6,
+});
+
+export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match];

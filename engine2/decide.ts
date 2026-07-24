@@ -1676,7 +1676,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor);
         if (!bestPass || uL > bestPass.utility) {
-          bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg, pC: pCa };
         }
         // ── the CURL AROUND (trivela; the builder's outside bender): the
         // ground ball bent around this blocker — to FEET, controllable,
@@ -1701,7 +1701,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor);
           if (!bestPass || uK > bestPass.utility) {
-            bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK };
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK, pC: pCk };
           }
         }
       }
@@ -1739,7 +1739,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor);
           if (!bestPass || uC > bestPass.utility) {
-            bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg };
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
           }
         }
       }
@@ -1764,7 +1764,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor);
         if (!bestPass || uS > bestPass.utility) {
-          bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg };
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg, pC: pCs };
         }
       }
     }

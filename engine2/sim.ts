@@ -95,6 +95,12 @@ export class Sim {
    * when the current carrier claimed (the press-the-touch trigger) */
   private readonly lostPossessionAt = new Map<'home' | 'away', number>();
   private carrierSince = -1;
+  /** SELF-PLAY TELEMETRY (the memory space): an optional hook the match
+   * harness sets — the sim emits decision→outcome pairs (priced pass
+   * completion vs what actually happened) for the calibration ledger.
+   * Null in normal play; zero cost when unset. */
+  public telemetry: ((ev: Record<string, unknown>) => void) | null = null;
+  private openPass: { tick: number; pC?: number; dist: number; loft: number; spin: number; kicker: string; receiver: string } | null = null;
   /** L8-minimal restarts (match scale only): when the ball died and who
    * is awarded the put-back; claims are team-locked briefly */
   private deadSinceTick = -1;
@@ -2069,6 +2075,21 @@ export class Sim {
    * a brain never enter here — scripts own them entirely. */
   private decidePhase(): void {
     if (this.brains.size === 0) return;
+    // telemetry: resolve the open pass when anyone claims or the ball dies
+    if (this.openPass && this.telemetry) {
+      const c = this.ball.carrierId;
+      if (c) {
+        const cb3 = this.byId.get(c);
+        const kb = this.byId.get(this.openPass.kicker);
+        const outcome = c === this.openPass.receiver ? 'complete'
+          : cb3 && kb && cb3.team === kb.team ? 'teammate' : 'cut';
+        this.telemetry({ t: 'pass', ...this.openPass, outcome, dt: this.tick - this.openPass.tick });
+        this.openPass = null;
+      } else if (this.ball.phase === 'dead') {
+        this.telemetry({ t: 'pass', ...this.openPass, outcome: 'dead', dt: this.tick - this.openPass.tick });
+        this.openPass = null;
+      }
+    }
     // the receive reflex ends when ANYONE ends up with the ball
     if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
     for (const id of this.brains) {
@@ -2720,6 +2741,14 @@ export class Sim {
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
+              if (this.telemetry) {
+                this.openPass = {
+                  tick: this.tick, pC: intent.pC,
+                  dist: Math.hypot(intent.dest.x - body.pos.x, intent.dest.y - body.pos.y),
+                  loft: intent.loftDeg ?? 0, spin: intent.spin ?? 0,
+                  kicker: id, receiver: intent.receiverId,
+                };
+              }
             }
             this.intents.delete(id);
             this.pendingKicks.delete(id);
