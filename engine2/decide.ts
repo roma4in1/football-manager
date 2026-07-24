@@ -73,6 +73,11 @@ export const DUEL = {
   /** the LOCAL GAME radius (the m11 verdict): board duties only for
    * defenders this near the carrier — the rest are team shape */
   localGameR: 30,
+  /** the press hand-off leash: incumbency lapses when the chase has
+   * dragged the presser this far from his formation home — the carrier
+   * is PASSED ON between zones instead of towing one man across the
+   * pitch (the builder's dragged-CB frame) */
+  pressLeashM: 20,
   /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
    * momentum rule applied to marking): a marker who steps toward his
    * man is too late on the dart by momentum alone. The station DROPS
@@ -990,7 +995,19 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
   const incumbent = unit.find((b) => pressingIds.has(b.id));
   if (incumbent && incumbent.id !== nearest.id) {
     const di = Math.hypot(carrier.pos.x - incumbent.pos.x, carrier.pos.y - incumbent.pos.y);
-    if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent.id, d: di };
+    // the HAND-OFF LEASH (the builder's frame: a CB dragged across the
+    // pitch by a moving carrier — incumbency held as long as he stayed
+    // within 14 m of the carrier, which chasing guarantees): stickiness
+    // also requires the incumbent still near HIS OWN STATION; a press
+    // dragged beyond the leash lapses, the nearest fresh defender takes
+    // the carrier, and the dragged man returns to his zone.
+    const ih = input.homes.get(incumbent.id);
+    const drag = ih ? Math.hypot(incumbent.pos.x - ih.x, incumbent.pos.y - ih.y) : 0;
+    // ...a TEAM behavior: with fewer than five defenders there are no
+    // zones to protect and the long escorted press (the 2v1 herd) is
+    // the right football
+    const leashed = unit.length >= 5 && drag >= DUEL.pressLeashM;
+    if (di < nearest.d + 4 && di < 14 && !leashed) nearest = { id: incumbent.id, d: di };
   }
   const iAmFirst = nearest.id === defender.id;
   const score = pressScore(defender, carrier, bodies, justReceived, pressing);
