@@ -382,8 +382,13 @@ export const passCompletion = (
       // reacting to CUT a fast ball is harder than stepping on a roller —
       // the second half of "driven passes are harder to intercept"
       // (passing.md #13; the flat 0.35 s made every zipped diagonal
-      // cuttable and the multi-line ball never existed)
-      const tOpp = 0.35 + 0.01 * Math.max(0, ballHere - 8) + tRun;
+      // cuttable and the multi-line ball never existed). But PRESENCE
+      // BEATS REACTION: a body already ON the lane blocks by standing
+      // there (the ball deflects off him — no read required); the
+      // reaction excuse let a 20 m/s screamer be priced 0.76 through a
+      // CB's shins he cut at his plane (the wb-0 cross).
+      const react = dOpp <= 0 ? 0.12 : 0.35 + 0.01 * Math.max(0, ballHere - 8);
+      const tOpp = react + tRun;
       // the lane's TAIL belongs to the receiver: a defender the receiver
       // beats to a late sample isn't cleanly intercepting — he's arriving
       // into a contested receive. Soften his threat rather than void it (a
@@ -465,7 +470,10 @@ export const aerialCompletion = (
     if (zAt <= reach) {
       const cx = from.x + ux * fO * dChord;
       const cy = from.y + uy * fO * dChord;
-      const tO = 0.35 + runT(o, cx, cy, 0);
+      // presence beats reaction: a body already at the crossing blocks
+      // the sub-reach flight by standing there
+      const dCross = Math.hypot(o.pos.x - cx, o.pos.y - cy);
+      const tO = (dCross <= DECIDE.interceptReachM ? 0.12 : 0.35) + runT(o, cx, cy, 0);
       worst = Math.min(worst, tO - fO * hangS);
     }
     // the LANDING RACE: he converges on the drop during the hang. An
@@ -539,7 +547,10 @@ export const curlCompletion = (
       const a = KIN.accelBase + KIN.accelPerPoint * o.attributes.acceleration;
       const ramp = (vOpp * vOpp) / (2 * a);
       const tRun = dOpp <= ramp ? Math.sqrt((2 * dOpp) / a) : vOpp / (2 * a) + dOpp / vOpp;
-      const tOpp = 0.35 + 0.01 * Math.max(0, ballHere - 8) + tRun;
+      // presence beats reaction (see passCompletion): a body on the bent
+      // path blocks by standing there
+      const react = dOpp <= 0 ? 0.12 : 0.35 + 0.01 * Math.max(0, ballHere - 8);
+      const tOpp = react + tRun;
       const protectedTail = receiver !== undefined && f > 0.7 &&
         runTime(receiver, px, py, 0.1) <= tOpp;
       worst = Math.min(worst, tOpp - tBall + (protectedTail ? 0.35 : 0));
@@ -1359,16 +1370,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // ...and the RELEASE GATE (L5E): even a darting runner is not yet a
       // through-ball target until he is UP TO SPEED — the overhit tail came
       // from balls played while the runner was still accelerating (measured:
-      // launch 13.6 past a striker at 3.5 m/s → overrun → dead). The gate
-      // is PRICED, not flat (the builder's "pass earlier": the flat 0.25
-      // suppressed the open-seam window while the shadow converged, then
-      // released the late ball into his arms 7/8): the discount eases as
-      // the runner winds up, so a wide-open early seam can outbid the
-      // suppression while a marginal early ball stays buried.
+      // launch 13.6 past a striker at 3.5 m/s → overrun → dead). No weight
+      // constant fixes this; the release waits for the run. (A speed-eased
+      // discount was tried Jul 24 and REVERTED same day: the builder's eye
+      // caught the overhit tail returning — slow-releases fed the cut
+      // rates. The original measurement stands.)
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
-      const ridingWait = waitingRunners?.has(mate.id)
-        ? 0.25
-        : notUpToSpeed ? 0.25 + 0.75 * Math.min(1, mate.speed / 5) : 1;
+      const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };

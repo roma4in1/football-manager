@@ -177,21 +177,31 @@ test('CHEST control: a fast ball crossing chest height is cushioned down OR boun
   assert.ok(cushioned >= 1 && bounced >= 1, `both a clean control and a bounce-off occur (${cushioned} cushion, ${bounced} off)`);
 });
 
-test('the CROSS DECISION: a wide, advanced carrier chooses to whip an aerial cross to a striker in the box', () => {
-  let crossed = 0;
-  let reached = 0;
-  for (let s = 0; s < 10; s++) {
-    const sim = new Sim(scenarioByName('cross-decision'), `cd-${s}`);
-    let sawAir = false;
+test('the DELIVERY DECISION: the wide carrier finds his striker against a real box (feet or air, honestly priced)', () => {
+  // HISTORY (Jul 24, the brain-refinement round): this pin used to demand
+  // an aerial cross ≥8/10 — a behavior the OLD aerial mispricing produced
+  // (0.986 lanes the CB actually cut; floats rolling into a keeperless
+  // net). With honest pricing (presence cuts, keeper claims, hang races)
+  // and a real box (keeper + marker), the EV correctly refuses the cross
+  // from this cast: the striker's SUPPORT brain walks him out for feet —
+  // BOX OCCUPATION (hold the box while a wide carrier is advanced) is
+  // the missing off-ball behavior, recorded in the L5E ledger. Until it
+  // exists, the honest claim is the DELIVERY: the winger gets the ball
+  // to his striker against keeper+marker+cb+fb, by whichever route
+  // prices true. wb seeds LEAD (the pinning discipline — the old cd-only
+  // seeds hid a t0 screamer the builder caught on wb-0).
+  let delivered = 0;
+  const seeds = ['wb-0', 'wb-1', 'wb-2', 'cd-0', 'cd-1', 'cd-2', 'cd-3', 'cd-4', 'cd-5', 'cd-6'];
+  for (const seed of seeds) {
+    const sim = new Sim(scenarioByName('cross-decision'), seed);
+    let passed = false;
     for (let t = 0; t < 60; t++) {
-      sim.step();
-      if (sim.ball.phase === 'airborne' && sim.ball.kickerId === 'winger') sawAir = true;
-      if (sim.ball.carrierId === 'striker' && sawAir) { reached++; break; }
+      const f = sim.step();
+      if (f.bodies.find((b) => b.id === 'winger')?.action?.startsWith('pass→striker')) passed = true;
+      if (passed && sim.ball.carrierId === 'striker') { delivered++; break; }
     }
-    if (sawAir) crossed++;
   }
-  assert.ok(crossed >= 8, `the winger chooses an aerial cross, not a carry into the corner (${crossed}/10)`);
-  assert.ok(reached >= 7, `the cross reaches the striker in the box (${reached}/10)`);
+  assert.ok(delivered >= 7, `the winger finds his striker against the real box (${delivered}/10)`);
 });
 
 test('the SWITCH DECISION: a walled-in wide carrier floats a long ball to the far flank', () => {

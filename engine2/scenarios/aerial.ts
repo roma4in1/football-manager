@@ -196,10 +196,19 @@ export const crossDecision: ScenarioDef = {
   durationTicks: 60,
   bodies: [
     { id: 'winger', team: 'home', pos: { x: 98, y: 55 }, attributes: { ...passer, passing: 18 }, brain: 'onBall', instructions: { risk: 0.6 } },
-    // a striker attacking the centre of the box
-    { id: 'striker', team: 'home', pos: { x: 99, y: 37 }, attributes: { ...passer, strength: 15 }, brain: 'onBall' },
-    // a defender on the ground lane between winger and striker (the air is open)
-    { id: 'cb', team: 'away', pos: { x: 98, y: 46 }, attributes: passer },
+    // a striker attacking the box from DEEP — a real cross target: the
+    // old spawn (99,37) sat five meters from the keeper with the CB on
+    // the lane, and honest pricing (presence cuts, keeper claims)
+    // correctly refused every delivery to it
+    { id: 'striker', team: 'home', pos: { x: 92, y: 40 }, attributes: { ...passer, strength: 15 }, brain: 'onBall' },
+    // a defender ON the ground lane to the striker (the air is open —
+    // presence pricing correctly kills the feet ball through him)
+    { id: 'cb', team: 'away', pos: { x: 95.5, y: 48 }, attributes: passer },
+    // the striker's MARKER — holds him in the box (support logic was
+    // walking him out for a feet ball, dissolving the cross geometry;
+    // a marked man can't take feet, and the ball over the top is the
+    // honest answer — which is why real strikers stay in)
+    { id: 'marker', team: 'away', pos: { x: 93.5, y: 38.5 }, attributes: passer },
     // a defender closing the winger — carrying on is not free
     { id: 'fb', team: 'away', pos: { x: 96, y: 54 }, attributes: passer },
     // the KEEPER (match-shaped rule): a box with no keeper is an empty

@@ -402,7 +402,35 @@ breaking, break it toward whichever intent most degrades the carrier's top
    mechanism when it hurts enough: the STRIKE-ABORT — re-check the lane
    at execution and check out of a died pass, the passing twin of the
    committed-feint rule.
-10. Roles as weight vectors (Part V ↔ roles.md).
+10. **The BRAIN-REFINEMENT round, first installment (builder-directed,
+    Jul 24)**. Landed: **PRESENCE BEATS REACTION** — a body already on
+    the lane blocks by standing there (react 0.35 s → 0.12 when within
+    intercept reach), fixed in passCompletion, curlCompletion, and the
+    aerial cut term. It explains the wb-0 cross cut, the fullbacks LB
+    cut, and 20 m/s screamers priced 0.76 through a CB's shins. The
+    priced release gate REVERTED same-day (builder's eye caught the
+    overhit tail returning — the original "the release waits for the
+    run" measurement stands). Downstream re-bases: the marked runner's
+    dead lane stops being played → def2 SAGS OFF (zonal, honest, defense
+    improves 5→6/8) → the fullbacks pin floors the ride instead of
+    percentage-pinning it; the cross-decision pin re-based to the
+    DELIVERY (wb seeds now LEAD it — the cd-only seeds had hidden a t0
+    screamer).
+    **THE REFINEMENT AGENDA (the rest of the builder's directive — a
+    designed round, not whack-a-mole)**:
+    - BOX OCCUPATION: the striker's support brain walks him out of the
+      box for feet — no cast can honestly produce a cross until an
+      off-ball 'hold the box / attack the delivery' behavior exists.
+      This is the crossing game's missing half.
+    - the STRIKE-ABORT: decision-to-execution lag (priced at t30, struck
+      t33 into the converged shadow) — re-check the lane at execution.
+    - the t0 INSTANT STRIKE: brains kick on a scenario's first tick —
+      openings read as never-had-possession; a settle/dwell judgment.
+    - WB-SEED SWEEP: every pre-rule pin runs its own seed families only;
+      wb-0..2 must lead ALL of them (two hidden defects found this way).
+    - UTILITY UNIFICATION: the pass/loft/cross/switch/curl utility
+      formulas are five hand-copies with drift risk — one shared shape.
+11. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
