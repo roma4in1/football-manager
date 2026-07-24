@@ -2383,6 +2383,15 @@ export class Sim {
             // cost (defenders keep closing while the body comes around)
             if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
             body.command = { type: 'hold', facing: strikeDir };
+          } else if (reach <= TECH.kickReachM && this.tick - this.carrierSince < 2) {
+            // the SETTLE touch (the refinement round's t0 instant strike):
+            // a possession just GAINED — spawn or turnover — takes a beat
+            // before an intent strike (same-team combinations keep their
+            // tempo: carrierSince only resets on the team changing). The
+            // builder watched a t0 screamer from a player who visibly
+            // never had the ball.
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+            body.command = { type: 'hold', facing: strikeDir };
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);

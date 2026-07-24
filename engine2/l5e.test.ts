@@ -23,6 +23,8 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
     let prev: string | null = null;
     let passed = false;
     let sepAtClaim = 0;
+    let struckDeadline = -1;
+    let looksLike = 0;
     for (let t = 0; t < 120; t++) {
       const f = sim.step();
       const c = sim.ball.carrierId;
@@ -35,11 +37,16 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
       }
       // the collector must actually PASS (mid collecting it himself proved
       // nothing — the judged hole in the first version of this pin), and it
-      // must LOOK like a pass: a struck ball, not a dribble mid walks onto
+      // must LOOK like a pass: a struck ball, not a dribble mid walks onto.
+      // The strike may land a couple of ticks AFTER the label (the settle
+      // touch on a gained possession) — watch a short window, not the
+      // label's own tick.
       if (!passed && f.bodies.find((b) => (b.id === 't1' || b.id === 't2') && b.action?.startsWith('pass→mid'))) {
         passed = true;
-        if (Math.hypot(sim.ball.vel.x, sim.ball.vel.y) >= 5) looksLikeAPass++;
+        struckDeadline = t + 6;
       }
+      if (passed && looksLike === 0 && t <= struckDeadline &&
+        Math.hypot(sim.ball.vel.x, sim.ball.vel.y) >= 5) looksLike = 1;
       // the ping-pong: the collectors trading the ball between themselves
       if (c && prev && c !== prev && (prev === 't1' || prev === 't2') && (c === 't1' || c === 't2')) flips++;
       if (passed && c === 'mid') { passReachesMid++; break; }
@@ -47,6 +54,7 @@ test('loose-ball ARBITRATION: one of the pair claims, the twin offsets, and the 
     }
     // NOT twin runs (judged): by the claim the two have split, bracketing
     if (sepAtClaim > 1.3) bracketed++;
+    looksLikeAPass += looksLike;
   }
   assert.ok(pairClaims >= 7, `the racing pair claims the loose ball, not the far man (${pairClaims}/8)`);
   assert.ok(looksLikeAPass >= 7, `the release is a STRUCK ball (>=5 m/s), visibly a pass (${looksLikeAPass}/8)`);
