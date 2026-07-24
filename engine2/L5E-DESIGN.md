@@ -430,7 +430,18 @@ breaking, break it toward whichever intent most degrades the carrier's top
       wb-0..2 must lead ALL of them (two hidden defects found this way).
     - UTILITY UNIFICATION: the pass/loft/cross/switch/curl utility
       formulas are five hand-copies with drift risk — one shared shape.
-11. Roles as weight vectors (Part V ↔ roles.md).
+11. **The refinement agenda EXECUTED (Jul 24, all five)**: wb-seed sweep
+    (seedFor in all 25 decision-pin loops; three latent margins re-based
+    honestly); BOX OCCUPATION (the 'box' station when the carrier is
+    wide+advanced — the honest cross returned immediately: 10/10 aerial,
+    9/10 collected); the SETTLE touch (a gained possession takes a beat
+    before an intent strike; same-team tempo untouched); the STRIKE-ABORT
+    (collapsed lanes pull the pass at execution — conservative v1, flat
+    ground only; the fullbacks-heavy LB cut persists because his claim is
+    a momentum-DEFLECTION priced ~0.2, above the collapse line — the
+    converge-deflection term is the ledgered remainder); passUtility
+    unification (bit-identical). 97/97.
+12. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
