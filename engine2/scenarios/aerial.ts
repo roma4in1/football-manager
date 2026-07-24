@@ -202,6 +202,10 @@ export const crossDecision: ScenarioDef = {
     { id: 'cb', team: 'away', pos: { x: 98, y: 46 }, attributes: passer },
     // a defender closing the winger — carrying on is not free
     { id: 'fb', team: 'away', pos: { x: 96, y: 54 }, attributes: passer },
+    // the KEEPER (match-shaped rule): a box with no keeper is an empty
+    // stage for crosses — the honest float was rolling straight in and
+    // "reaching the striker" measured a phantom
+    { id: 'keeper', team: 'away', pos: { x: 103.5, y: 34 }, attributes: { ...passer, agility: 15, firstTouch: 14, pace: 12 }, keeper: true },
   ],
   ball: { carrier: 'winger' },
   script: [],

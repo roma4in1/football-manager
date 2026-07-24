@@ -14,8 +14,8 @@
  * striker-shoots-by-construction hold natively: no role flag, just EV.
  */
 
-import { PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
-import { loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
+import { DT, PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
+import { loftApex, loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveCurl, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
@@ -160,6 +160,14 @@ export const DECIDE = {
    * around this pace and dies just beyond him — the old linear formula hit
    * every ball to arrive at full pace and roll 60 m when a receive missed */
   passArriveMps: 5.5,
+  /** the CURL (trivela): a ground ball bent around a lane blocker — fully
+   * controllable to feet where the loft trades control for altitude. Spin
+   * within the validated band (curve scenarios: 52–85); range bounded by
+   * roll reach (a 17 m/s ball dies ~31 m). The bend needs room to work:
+   * under ~10 m there is no arc, beyond ~30 the ball dies on the line. */
+  curlSpin: 70,
+  curlMinM: 10,
+  curlMaxM: 30,
   /** the lane margin (s) an opponent needs to make the intercept — sampled
    * against ball travel time along the lane */
   laneSampleStep: 0.15, // fraction of the lane per sample
@@ -200,12 +208,17 @@ export const DECIDE = {
   clearUtility: 0.06,
   shieldUtility: 0.03,
   /** LOFTED ball: a driven loft (low angle) is the accurate, fast aerial
-   * through ball; a chip (steeper) clears a nearer man. Aerial control is
-   * harder than a ground receive — the drop is taxed by first touch. */
+   * through ball; a chip (steeper) clears a nearer man. The receive tax
+   * is SMALL — measured (Jul 24): unmarked aerial receives complete 12/12
+   * at every angle × distance even at firstTouch 6; the aerial ball's
+   * real risk is the CONTEST (mid-flight cuts, the drop race), which
+   * aerialCompletion's time model prices. The old 0.5+0.02·touch charged
+   * 22% for a receive that does not fail — and its double-count pushed
+   * honest floats/switches under the pass floor (the failed pins). */
   loftDrivenDeg: 24,
   loftChipDeg: 42,
-  aerialControlBase: 0.5,
-  aerialControlTouchGain: 0.02,
+  aerialControlBase: 0.86,
+  aerialControlTouchGain: 0.01,
   /** the CROSS: a wide, advanced carrier whips an aerial ball into the box for
    * an attacker's run — a DRIVEN (fast, flat) or FLOATED (high, hang-time)
    * delivery, both solved to land on his run. Fires from wide + advanced into a
@@ -402,16 +415,142 @@ export const aerialCompletion = (
   landing: Vec2,
   mate: BodyState,
   opponents: readonly BodyState[],
+  /** flight origin + hang time + apex: enable the TIME model. Without them
+   * the old distance-at-the-drop margin runs (sim's quick claim gates).
+   * Calibrated against the measured contest matrix (Jul 24): the old model
+   * priced a blocker 9 m from the landing at 0.986 while he jogged onto
+   * the drop during the hang (chosen 8/8, completed 1/8); and a 24° loft
+   * over 18 m has apex ~2.0 m — UNDER a defender's 2.26 m reach for the
+   * whole flight: not an "over" ball at all, cuttable at any point he can
+   * reach in time. */
+  from?: Vec2,
+  hangS?: number,
+  apexM?: number,
+  /** keeper ids among the opponents: a keeper's catch is HANDS — clean,
+   * no header contest, wider claim radius. A float dropping in his zone
+   * is his ball, not a coin flip (the cross scene: 7/10 keeper claims
+   * the model priced at 0.93). */
+  keeperIds?: ReadonlySet<string>,
 ): number => {
   const dMate = Math.hypot(mate.pos.x - landing.x, mate.pos.y - landing.y);
-  let nearest = Infinity;
-  for (const o of opponents) {
-    nearest = Math.min(nearest, Math.hypot(o.pos.x - landing.x, o.pos.y - landing.y));
+  if (from === undefined || hangS === undefined || apexM === undefined) {
+    let nearest = Infinity;
+    for (const o of opponents) {
+      nearest = Math.min(nearest, Math.hypot(o.pos.x - landing.x, o.pos.y - landing.y));
+    }
+    const margin = nearest - dMate;
+    return 1 / (1 + Math.exp(-(margin - 0.5) / 2.0));
   }
-  // metre margin at the drop (receiver closer than any defender = safe); the
-  // receiver reads the flight and gets under it, a defender must recover to it
-  const margin = nearest - dMate;
-  return 1 / (1 + Math.exp(-(margin - 0.5) / 2.0));
+  const runT = (b: BodyState, tx: number, ty: number, reactS: number): number => {
+    const d = Math.max(0, Math.hypot(b.pos.x - tx, b.pos.y - ty) - DECIDE.interceptReachM);
+    const v = Math.max(regimeCapMps(b.attributes.pace, 'sprint'), 1);
+    const a = KIN.accelBase + KIN.accelPerPoint * b.attributes.acceleration;
+    const ramp = (v * v) / (2 * a);
+    return reactS + (d <= ramp ? Math.sqrt((2 * d) / a) : v / (2 * a) + d / v);
+  };
+  const dChord = Math.max(Math.hypot(landing.x - from.x, landing.y - from.y), 1e-6);
+  const ux = (landing.x - from.x) / dChord;
+  const uy = (landing.y - from.y) / dChord;
+  // the receiver must be under the drop by the hang (callers lead him there)
+  const tRx = 0.1 + runT(mate, landing.x, landing.y, 0);
+  let worst = Infinity; // seconds of margin over the best-placed opponent
+  for (const o of opponents) {
+    const reach = 1.9 + 0.03 * o.attributes.strength; // headStandM + jump
+    // MID-FLIGHT CUT: where the flight crosses his reach he can head/cut
+    // it — the parabola z(f) ≈ 4·apex·f(1−f) says which stretch of the
+    // chord is below him; race him to his nearest cuttable point
+    const fO = Math.max(0.08, Math.min(0.92,
+      ((o.pos.x - from.x) * ux + (o.pos.y - from.y) * uy) / dChord));
+    const zAt = 4 * apexM * fO * (1 - fO);
+    if (zAt <= reach) {
+      const cx = from.x + ux * fO * dChord;
+      const cy = from.y + uy * fO * dChord;
+      const tO = 0.35 + runT(o, cx, cy, 0);
+      worst = Math.min(worst, tO - fO * hangS);
+    }
+    // the LANDING RACE: he converges on the drop during the hang. An
+    // ATTENDED drop that both bodies reach is a header CONTEST (the
+    // aerial-contest layer decides it by reach/strength) — floored near
+    // the coin flip, or every cross into a real box prices to zero (the
+    // failed cross pin). An UNattended drop he reaches first is his.
+    // A KEEPER gets no contest floor and a head start (hands claim wide
+    // and clean — the drop in his zone is simply his).
+    const isK = keeperIds?.has(o.id) ?? false;
+    const tOl = 0.35 + runT(o, landing.x, landing.y, 0) - (isK ? 0.25 : 0);
+    let lm = tOl - Math.max(hangS, tRx);
+    if (!isK && tRx <= hangS + 0.2) lm = Math.max(lm, -0.18); // contest floor ≈ 0.46
+    worst = Math.min(worst, lm);
+  }
+  // time margin → probability (fitted: −0.35 s ≈ 1/3, +0.05 s ≈ 0.85)
+  return Math.max(0.02, Math.min(0.98, 1 / (1 + Math.exp(-(worst + 0.15) / 0.2))));
+};
+
+/** completion of a CURLING ground ball: the lane is the BENT path, not the
+ * chord — a straight-lane check would see the exact blocker the bend exists
+ * to avoid. Simulate the spun roll once (the same stepBall physics the
+ * match runs) and apply passCompletion's interception-margin model over the
+ * TRUE samples. `aim` is solveCurl's strike point; `dest` the intended
+ * arrival (the receiver's ball). */
+export const curlCompletion = (
+  from: Vec2,
+  aim: Vec2,
+  spin: number,
+  speedMps: number,
+  dest: Vec2,
+  opponents: readonly BodyState[],
+  receiver?: BodyState,
+  passerSkill = 12,
+): number => {
+  const dChord = Math.hypot(dest.x - from.x, dest.y - from.y);
+  if (dChord < 0.5) return 0.2;
+  const dirA = Math.atan2(aim.y - from.y, aim.x - from.x);
+  const b: BallState = {
+    pos: { x: from.x, y: from.y }, z: 0,
+    vel: { x: Math.cos(dirA) * speedMps, y: Math.sin(dirA) * speedMps }, vz: 0, spin,
+    phase: 'rolling', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  const runTime = (bd: BodyState, tx: number, ty: number, reactS: number): number => {
+    const d = Math.max(0, Math.hypot(bd.pos.x - tx, bd.pos.y - ty) - DECIDE.interceptReachM);
+    const v = Math.max(regimeCapMps(bd.attributes.pace, 'sprint'), 1);
+    const a = KIN.accelBase + KIN.accelPerPoint * bd.attributes.acceleration;
+    const ramp = (v * v) / (2 * a);
+    return reactS + (d <= ramp ? Math.sqrt((2 * d) / a) : v / (2 * a) + d / v);
+  };
+  let worst = Infinity;
+  for (let i = 1; i <= 400; i++) {
+    stepBall(b);
+    const ballHere = Math.hypot(b.vel.x, b.vel.y);
+    const distTo = Math.hypot(b.pos.x - dest.x, b.pos.y - dest.y);
+    const arrived = distTo <= 1.2;
+    if (ballHere < 0.3) break;
+    if (i % 2 !== 0 && !arrived) continue; // every 0.2 s + the arrival
+    const tBall = i * DT;
+    const px = b.pos.x;
+    const py = b.pos.y;
+    const f = Math.max(0, Math.min(1, 1 - distTo / dChord));
+    for (const o of opponents) {
+      const proj = Math.min(tBall, 0.8);
+      const ox = o.pos.x + o.vel.x * proj;
+      const oy = o.pos.y + o.vel.y * proj;
+      const dProj = Math.max(0, Math.hypot(ox - px, oy - py) - DECIDE.interceptReachM);
+      const dNow = Math.max(0, Math.hypot(o.pos.x - px, o.pos.y - py) - DECIDE.interceptReachM);
+      const dOpp = Math.min(dProj, dNow);
+      const vOpp = Math.max(regimeCapMps(o.attributes.pace, 'sprint'), 1);
+      const a = KIN.accelBase + KIN.accelPerPoint * o.attributes.acceleration;
+      const ramp = (vOpp * vOpp) / (2 * a);
+      const tRun = dOpp <= ramp ? Math.sqrt((2 * dOpp) / a) : vOpp / (2 * a) + dOpp / vOpp;
+      const tOpp = 0.35 + 0.01 * Math.max(0, ballHere - 8) + tRun;
+      const protectedTail = receiver !== undefined && f > 0.7 &&
+        runTime(receiver, px, py, 0.1) <= tOpp;
+      worst = Math.min(worst, tOpp - tBall + (protectedTail ? 0.35 : 0));
+    }
+    if (arrived) break;
+  }
+  const precision = (passerSkill - 14) * 0.02;
+  const p = (worst + precision + 0.4) / 1.0;
+  const lane = Math.max(0.02, Math.min(0.98, p));
+  const range = 1 / (1 + Math.max(0, dChord - 26) / 30);
+  return lane * range;
 };
 
 /** L5a — the support spot: where an off-ball teammate should stand so the
@@ -954,7 +1093,7 @@ export interface DecideInput {
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds } = input;
+  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds, keepers } = input;
   const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
     (p.x >= bounds.x0 + m && p.x <= bounds.x1 - m && p.y >= bounds.y0 + m && p.y <= bounds.y1 - m);
   const roomToBound = (from2: Vec2, dir: { x: number; y: number }): number => {
@@ -1248,7 +1387,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         // aerial control is HARDER than a ground receive — a dropping ball
         // is taxed by the taker's first touch (silk feet cushion it)
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-        const pCa = aerialCompletion(landing, mate, opponents) * ctrl;
+        const pCa = aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl;
         let pvL = value(landing, mate.id);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uProgL = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvL - pvHere);
@@ -1257,15 +1396,34 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
         }
-        // NOTE: the CURL AROUND (a trivela ground ball bent around this blocker,
-        // via solveCurl) belongs here too — validated in isolation (bends clear
-        // and reaches the man 12/12) — but as a fully-controllable ground ball it
-        // OUT-COMPETES the loft here and the cross into the box, and whether a
-        // curl-to-feet should beat a cross-to-head or a loft-over is a real EV
-        // calibration + scenario-isolation question. Deferred, not forced.
-        // AND: solveCurl fixes DIRECTION only — the integration must pick speed
-        // by roll reach (rollLaunchForArrival), not a flat constant: a 17 m/s
-        // ball dies at ~31 m (dry-grass friction + drag), silently short beyond.
+        // ── the CURL AROUND (trivela; the builder's outside bender): the
+        // ground ball bent around this blocker — to FEET, controllable,
+        // where the loft trades control for altitude. solveCurl fixes
+        // direction only (its contract): speed is picked by roll reach
+        // first, completion is judged on the BENT path (curlCompletion),
+        // and the intent's dest is the AIM point — kickBall strikes at it
+        // and the Magnus brings the ball to the mate. ────────────────────
+        if (dLoft >= DECIDE.curlMinM && dLoft <= DECIDE.curlMaxM) {
+          // bend around the blocker's far side: +spin bows the arc to the
+          // RIGHT of the chord (the ball deviates left of its travel, so
+          // the aim sits right and the arc stays right) — blocker left of
+          // the chord → +spin, and mirrored
+          const crossB = (landing.x - here.x) * (laneBlocker.pos.y - here.y) -
+            (landing.y - here.y) * (laneBlocker.pos.x - here.x);
+          const spinK = crossB > 0 ? DECIDE.curlSpin : -DECIDE.curlSpin;
+          const speedK = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
+            rollLaunchForArrival(Math.min(softArrive + 1, riderBehind ? riderArriveCap : Infinity), dLoft)));
+          const aimK = solveCurl(here, landing, spinK, speedK);
+          const pCk = curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing);
+          let pvK = value(landing, mate.id);
+          pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+          const uProgK = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvK - pvHere);
+          const meetsK = pCk >= passFloor ? 1 : 0.25 + 0.45 * risk;
+          const uK = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCk * pvK - (1 - pCk) * turnoverW * pvK) + uProgK) * meetsK;
+          if (!bestPass || uK > bestPass.utility) {
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK };
+          }
+        }
       }
     }
     // ── the CROSS: a wide, advanced carrier whips an aerial ball into the box
@@ -1296,7 +1454,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           if (!intoBox || dCross < 8 || !inBounds(cross, 0.8)) continue;
           const speedC = solveLoftSpeed(dCross, loftDeg);
           const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-          const pCc = aerialCompletion(cross, mate, opponents) * ctrl;
+          const pCc = aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl;
           let pvC = value(cross, mate.id);
           pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uProgC = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvC - pvHere);
@@ -1323,7 +1481,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
         const speedS = solveLoftSpeed(dSwitch, loftDeg);
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-        const pCs = aerialCompletion(land, mate, opponents) * ctrl;
+        const pCs = aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl;
         let pvS = value(land, mate.id);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uProgS = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvS - pvHere);
