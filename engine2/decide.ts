@@ -1040,8 +1040,30 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
   // FIRST-DEFENDER election (principles IV: ONE man pressures the ball):
   // nearest eligible — STICKY for the incumbent unless clearly beaten
   // (flapping first/second made both look like ball-chasers)
+  // ZONE-ENTRY election (the EAFC frames: the back line holds ~15 m
+  // behind the engagement and MIDFIELD presses; the earlier flat
+  // line-tax measured backward because a fullback pressing in his OWN
+  // channel is right): a deep-half defender only wins the election when
+  // the carrier has actually entered his line's DEPTH BAND — otherwise
+  // a midfielder steps out even if slightly farther. Team behavior
+  // (unit >= 5); drills keep raw-nearest.
+  const zHomes = unit.map((b) => homes.get(b.id)).filter((h): h is Vec2 => !!h);
+  const zCx = zHomes.length ? zHomes.reduce((a, h) => a + h.x, 0) / zHomes.length : carrier.pos.x;
+  const zSign = attackSign(defender.team);
   let nearest = unit.reduce((best, b) => {
     const d = Math.hypot(carrier.pos.x - b.pos.x, carrier.pos.y - b.pos.y);
+    if (unit.length >= 5) {
+      const h = homes.get(b.id);
+      const deep = h ? (zSign > 0 ? h.x <= zCx + 0.5 : h.x >= zCx - 0.5) : false;
+      if (deep) {
+        // his line's depth band: from his own goal out to his line's
+        // height + a stride — the carrier must be INSIDE it
+        const lineU = h ? h.x * zSign : 0;
+        const carU = carrier.pos.x * zSign;
+        const entered = carU <= lineU + 10;
+        if (!entered) return best; // hold the line; midfield steps
+      }
+    }
     return d < best.d ? { id: b.id, d } : best;
   }, { id: '', d: Infinity });
   const incumbent = unit.find((b) => pressingIds.has(b.id));
