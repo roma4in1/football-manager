@@ -95,6 +95,9 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
     })),
   ball: def.ball,
   script: [],
+  // full-match slices get the real match shape: opening kickoff,
+  // half-time, second-half handover
+  halves: 'pos' in def.ball && def.durationTicks >= 600 ? true : undefined,
 });
 
 /** the WING DUEL in match context: an away striker has broken onto the

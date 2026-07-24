@@ -164,6 +164,10 @@ export class Sim {
       throw new Error(`unsupported scenario version ${String((def as { version: unknown }).version)} — this build reads v1`);
     }
     this.rng = new KeyedRng(`${def.name}|${seed}`);
+    if (def.halves) {
+      this.pendingKickoffTeam = 'home';
+      this.halfTick = Math.floor(def.durationTicks / 2);
+    }
     this.bodies = def.bodies.map((b) => ({
       id: b.id,
       team: b.team,
@@ -227,6 +231,29 @@ export class Sim {
 
   /** advance one tick; returns the full-rate frame for it */
   step(): Frame {
+    // HALF-TIME: the whistle, then the other team's kickoff ceremony
+    if (this.halfTick > 0 && this.tick === this.halfTick && this.half === 1) {
+      this.half = 2;
+      this.ball.phase = 'dead';
+      this.ball.carrierId = null;
+      this.ball.vel = { x: 0, y: 0 };
+      this.ball.vz = 0;
+      this.ball.z = 0;
+      this.pendingKickoffTeam = 'away';
+      this.restartTaker = null;
+      this.restartType = null;
+      this.restartPenalty = false;
+      this.restartLock = null;
+      this.wallSpots.clear();
+      this.pendingFreeKick = null;
+      this.telemetry?.({ t: 'half', tick: this.tick });
+    }
+    // the OPENING kickoff: the match starts dead at the centre
+    if (this.pendingKickoffTeam && this.tick === 0) {
+      this.ball.phase = 'dead';
+      this.ball.carrierId = null;
+      this.ball.vel = { x: 0, y: 0 };
+    }
     // action labels are per-tick — clear them up front so brain-less scenarios
     // (which skip decidePhase) don't carry a stale header/block/handball label
     this.actionLabels.clear();
@@ -950,7 +977,12 @@ export class Sim {
         let award: 'home' | 'away' = lastTeam === 'home' ? 'away' : 'home';
         let spot: Vec2;
         const p = this.ball.pos;
-        if (this.pendingFreeKick) {
+        if (this.pendingKickoffTeam) {
+          award = this.pendingKickoffTeam;
+          spot = { x: PITCH.length / 2, y: PITCH.width / 2 };
+          this.restartType = 'kickoff';
+          this.pendingKickoffTeam = null;
+        } else if (this.pendingFreeKick) {
           // an offside or foul free kick: the fouled side restarts at the spot
           award = this.pendingFreeKick.team;
           spot = {
@@ -3461,6 +3493,11 @@ export class Sim {
    * and throw-ins are thrown (two-handed, offside-exempt per the law). */
   private restartType: 'kickoff' | 'throw-in' | 'corner' | 'goal-kick' | 'free-kick' | null = null;
   private restartPenalty = false;
+  /** HALVES: which half we are in, and the queued half-start kickoff
+   * (the opening ceremony and the second-half handover to away) */
+  half = 1;
+  private pendingKickoffTeam: 'home' | 'away' | null = null;
+  private halfTick = -1;
   /** THE WALL: at a shooting-range free kick the defense posts 2-4 men
    * on the ball-goal line at 9.15 m — the body-block physics then does
    * the rest (low drives die in the wall; the taker must go over it) */

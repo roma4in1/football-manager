@@ -156,6 +156,9 @@ export interface ScenarioDef {
   ball?: { pos?: Vec2; carrier?: string };
   /** scripted strikes (L2) */
   kicks?: KickEvent[];
+  /** a real MATCH: opening kickoff ceremony (home), half-time at
+   * durationTicks/2, second-half kickoff to away */
+  halves?: boolean;
   /** optional drill BOUNDARIES (positional grids): a loose ball crossing
    * them goes dead, exactly like the pitch edge (restarts are L8's) */
   bounds?: { x0: number; y0: number; x1: number; y1: number };
