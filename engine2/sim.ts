@@ -95,6 +95,11 @@ export class Sim {
    * when the current carrier claimed (the press-the-touch trigger) */
   private readonly lostPossessionAt = new Map<'home' | 'away', number>();
   private carrierSince = -1;
+  /** L8-minimal restarts (match scale only): when the ball died and who
+   * is awarded the put-back; claims are team-locked briefly */
+  private deadSinceTick = -1;
+  private restartLock: { team: 'home' | 'away'; until: number } | null = null;
+  private lastGoalCount = 0;
   private prevCarrierTeam: 'home' | 'away' | null = null;
   /** off-ball ATTACK brains owned by the idle branch (station/support) —
    * without this re-entry set, a body once sent to a moveTo NEVER
@@ -780,6 +785,53 @@ export class Sim {
       this.ball.vel = { x: 0, y: 0 };
       this.ball.vz = 0;
       this.ball.z = 0;
+    }
+    // L8-MINIMAL RESTARTS (the frames' matches keep flowing; ours ended
+    // at the first dead ball into polite statues): at match scale (both
+    // XIs) a dead ball restarts after 1.5 s — throw-in at the touchline
+    // spot, corner or goal-kick on the goal lines, kickoff after a goal
+    // — awarded AGAINST the last kicker, with a 2 s team claim lock.
+    // Drills (small casts, bounded grids) keep dead-ends-the-drill.
+    if (this.ball.phase === 'dead') {
+      if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
+      const hN = this.teamBrainCount('home');
+      const aN = this.teamBrainCount('away');
+      if (hN >= 8 && aN >= 8 && this.bounds === undefined &&
+        this.tick - this.deadSinceTick >= 15) {
+        const lastTeam = this.ball.kickerId ? this.byId.get(this.ball.kickerId)?.team : undefined;
+        let award: 'home' | 'away' = lastTeam === 'home' ? 'away' : 'home';
+        let spot: Vec2;
+        const p = this.ball.pos;
+        if (this.goals.length > this.lastGoalCount) {
+          // kickoff: the conceding side restarts from the centre
+          award = this.goals[this.goals.length - 1].against;
+          spot = { x: PITCH.length / 2, y: PITCH.width / 2 };
+          this.lastGoalCount = this.goals.length;
+        } else if (p.y < 0 || p.y > PITCH.width) {
+          // throw-in at the touchline spot
+          spot = { x: Math.max(2, Math.min(PITCH.length - 2, p.x)), y: p.y < 0 ? 1 : PITCH.width - 1 };
+        } else {
+          // over a goal line: corner for the attacker, goal-kick for the
+          // defender of that end (home defends x=0)
+          const endX = p.x < 0 ? 0 : PITCH.length;
+          const defenderOfEnd: 'home' | 'away' = endX === 0 ? 'home' : 'away';
+          if (award === defenderOfEnd) {
+            spot = { x: endX === 0 ? 6 : PITCH.length - 6, y: PITCH.width / 2 + (p.y >= PITCH.width / 2 ? 6 : -6) };
+          } else {
+            spot = { x: endX === 0 ? 1 : PITCH.length - 1, y: p.y >= PITCH.width / 2 ? PITCH.width - 1 : 1 };
+          }
+        }
+        this.ball.pos = { x: spot.x, y: spot.y };
+        this.ball.vel = { x: 0, y: 0 };
+        this.ball.z = 0;
+        this.ball.vz = 0;
+        this.ball.phase = 'rolling';
+        this.ball.kickerId = null;
+        this.restartLock = { team: award, until: this.tick + 20 };
+        this.deadSinceTick = -1;
+      }
+    } else {
+      this.deadSinceTick = -1;
     }
 
     // 5. loose-ball claims (and the chaseBall race resolution) — against the
@@ -1819,6 +1871,7 @@ export class Sim {
 
   private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ || this.ball.phase === 'dead') return;
+    if (this.restartLock && this.tick >= this.restartLock.until) this.restartLock = null;
     // closest approach of a body to the ball's swept path — in the BODY'S
     // frame: subtract his own displacement so two fast movers crossing
     // cannot tunnel through each other's reach between samples
@@ -1851,6 +1904,9 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
+      // a RESTART is the awarded team's put-back: the other side stands
+      // off until the lock expires (L8-minimal)
+      if (this.restartLock && this.tick < this.restartLock.until && b.team !== this.restartLock.team) continue;
       // a pass in FLIGHT is protected: while it is fresh (the kicker's lock
       // window), a teammate who is NOT the intended receiver stands off and
       // lets it reach its target — otherwise two stacked teammates in the
@@ -2443,6 +2499,9 @@ export class Sim {
           if ((body.command.type === 'hold' || this.attackIdle.has(id)) && this.ball.carrierId === null &&
             this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
             Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
+            if (this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team) {
+              // not our restart — hold shape while they put it back in
+            } else {
             const nearestOfTeam = [...this.brains].reduce((best, bid) => {
               const b = this.byId.get(bid)!;
               if (b.team !== body.team) return best;
@@ -2452,6 +2511,7 @@ export class Sim {
             if (nearestOfTeam.id === id) {
               this.assign(body, { type: 'chaseBall', regime: nearestOfTeam.d > 10 ? 'sprint' : 'run' });
               this.actionLabels.set(id, 'collect');
+            }
             }
           }
         }
