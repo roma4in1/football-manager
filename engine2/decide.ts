@@ -1039,6 +1039,9 @@ export interface DefenseInput {
   /** the carrier's first touches — press the touch (defensive.md) */
   justReceived: boolean;
   homes: ReadonlyMap<string, Vec2>;
+  /** goalkeepers — the danger-driven line and offside geometry are
+   * keeper-blind (he is not "the line") */
+  keepers?: ReadonlySet<string>;
 }
 
 /** the BLOCK STATION (the four-frame verdict): a player's off-ball spot
@@ -1107,6 +1110,20 @@ export const blockStation = (
       // TEAM COMPACTNESS (principles II.1): out of possession no station
       // sits more than 28 m ahead of the ball — hard to play through
       if (u > ballU + 28) x = (ballU + 28) * sign;
+      // THE DANGER-DRIVEN LINE (builder: 'the last defensive line
+      // should be a lot higher... not a set limit but forced through
+      // detrimental dangerEV'): with NO opponent between the line and
+      // the space behind, hanging deep concedes the midfield for
+      // nothing — the line pushes to the deepest opponent (minus a
+      // 2 m step) or 10 m behind the ball, whichever is deeper. The
+      // slide caps stop being the binding force; the OPPONENTS are.
+      // Offside (the law, this same round) is what makes the pushed
+      // line defensible — the lurker in behind is now a dead ball.
+      if (oppDeepU !== undefined) {
+        const lineTarget = Math.min(oppDeepU - 3, ballU - 14);
+        if (x * sign < lineTarget) x = lineTarget * sign;
+        x = Math.max(2, Math.min(PITCH.length - 2, x));
+      }
     } else {
       // POSSESSION COMPACTNESS + REST-DEFENSE (the EAFC frames: the
       // attacking block spans ~35 m with the back line stepped up to a
@@ -1256,7 +1273,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
-      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
+      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers) };
     }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
@@ -1409,13 +1426,13 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const lane = shadowSpot(defender, carrier, bodies);
     if (lane) return { kind: 'interceptLane', target: lane };
   }
-  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
+  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers) };
 };
 
 /** defensive off-board shape: the block station (formation lines sliding
  * with the ball) — shapeSpot was an L5c small-line tool and read as "no
  * structure" at eleven */
-const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[]): Vec2 => {
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>): Vec2 => {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -1425,7 +1442,31 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
     cx += h.x; cy += h.y; n++;
   }
   const centroid = n ? { x: cx / n, y: cy / n } : defender.pos;
-  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, attackSign(defender.team), 0.5, unit.length + 1);
+  // back-line member? (deepest outfield home +6 m, the sim's rule) —
+  // only the LINE rides the danger-driven push; mids keep the block
+  const sgnD = attackSign(defender.team);
+  const myHome = homes.get(defender.id);
+  let deepestHome = Infinity;
+  for (const b of unit) {
+    const h = homes.get(b.id);
+    if (h && !keepers?.has(b.id)) deepestHome = Math.min(deepestHome, h.x * sgnD);
+  }
+  const isBackLine = myHome !== undefined && !keepers?.has(defender.id) &&
+    myHome.x * sgnD <= deepestHome + 6;
+  let oppDeep: number | undefined;
+  // MATCH SCALE ONLY (unit >= 8): the pushed line is defensible only
+  // UNDER the offside law, which is itself match-gated — in a drill the
+  // lurker in behind is legal and the high line is the old suicide
+  // (line-vs-runs measured 52% the moment the push reached it)
+  if (isBackLine && unit.length >= 8) {
+    oppDeep = Infinity;
+    for (const b of bodies) {
+      if (b.team === defender.team || keepers?.has(b.id)) continue;
+      oppDeep = Math.min(oppDeep, b.pos.x * sgnD);
+    }
+    if (!Number.isFinite(oppDeep)) oppDeep = undefined;
+  }
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep);
   // VACANCY ROTATION (the builder's dragged-CB principle, second half:
   // "the position he leaves open gets covered immediately by a teammate
   // who then leaves their position to be covered, etc"): a shape-holder
@@ -1566,6 +1607,24 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   const value = (p: Vec2, anchorId: string): number =>
     (keep ? keepValue(p, opponents, homes?.get(anchorId)) : posValue(p, team));
   const pvHere = value(here, carrier.id);
+  // THE OFFSIDE LAW, attack side (match scale — the big-cast precedent):
+  // a mate beyond the second-last opponent, in their half, ahead of the
+  // ball is a FLAGGED run — passing to him is a dead ball, so he is not
+  // a candidate. (The law itself is enforced in the sim; this is the
+  // brain respecting it.)
+  let offsideLineU = Infinity;
+  if (!keep && bodies.length >= 18) {
+    const sgnOf = attackSign(team);
+    const oppUs = opponents.map((o) => o.pos.x * sgnOf).sort((a, b) => b - a);
+    offsideLineU = oppUs[1] ?? Infinity;
+  }
+  const isOffside = (m: BodyState): boolean => {
+    if (offsideLineU === Infinity) return false;
+    const sgnOf = attackSign(team);
+    const mu = m.pos.x * sgnOf;
+    const inOppHalf = sgnOf > 0 ? m.pos.x > PITCH.length / 2 : m.pos.x < PITCH.length / 2;
+    return inOppHalf && mu > offsideLineU && mu > here.x * sgnOf;
+  };
   // turnover currency: what THEY gain where we would lose it
   const lossVal = (p: Vec2): number => posValue(p, team === 'home' ? 'away' : 'home');
   // conservation grows under pressure — the back/square ball is football's
@@ -1696,6 +1755,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
 
   // PASS — each teammate, at a lead point if he is moving
   for (const mate of mates) {
+    if (isOffside(mate)) continue; // a flagged run is not a target
     const dist0 = Math.hypot(mate.pos.x - here.x, mate.pos.y - here.y);
     // the WEIGHT tradeoff: a soft ball dies at the receiver's stride (easy
     // take, but slow through tight lanes); a firm ball beats interceptors

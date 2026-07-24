@@ -37,6 +37,8 @@ export interface BallState {
    * own kicker standing at the strike point */
   kickerId: string | null;
   kickerLockUntilTick: number;
+  /** tick of the most recent kick — the offside law reads it */
+  lastKickTick?: number;
   /** alternating-foot texture: flips each touch */
   touchParity: boolean;
 }
@@ -506,5 +508,6 @@ export function kickBall(ball: BallState, target: Vec2, speedMps: number, loftDe
   ball.carrierId = null;
   ball.kickerId = kickerId;
   ball.kickerLockUntilTick = tick + BALL.kickerLockTicks;
+  ball.lastKickTick = tick;
   ball.spin = spin;
 }

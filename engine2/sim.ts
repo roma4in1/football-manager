@@ -849,7 +849,15 @@ export class Sim {
         let award: 'home' | 'away' = lastTeam === 'home' ? 'away' : 'home';
         let spot: Vec2;
         const p = this.ball.pos;
-        if (this.goals.length > this.lastGoalCount) {
+        if (this.pendingFreeKick) {
+          // an offside (or future foul) free kick: defenders restart at the spot
+          award = this.pendingFreeKick.team;
+          spot = {
+            x: Math.max(2, Math.min(PITCH.length - 2, this.pendingFreeKick.spot.x)),
+            y: Math.max(2, Math.min(PITCH.width - 2, this.pendingFreeKick.spot.y)),
+          };
+          this.pendingFreeKick = null;
+        } else if (this.goals.length > this.lastGoalCount) {
           // kickoff: the conceding side restarts from the centre
           award = this.goals[this.goals.length - 1].against;
           spot = { x: PITCH.length / 2, y: PITCH.width / 2 };
@@ -887,6 +895,9 @@ export class Sim {
     } else {
       this.deadSinceTick = -1;
     }
+
+    // 4b. the offside law: flags at kicks, whistles on the touch
+    this.updateOffside();
 
     // 5. loose-ball claims (and the chaseBall race resolution) — against the
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
@@ -2611,6 +2622,7 @@ export class Sim {
               instructions: this.instructions.get(id) ?? {}, unit,
               pressingIds: this.pressingIds, inCounterpress,
               justReceived: this.tick - this.carrierSince <= 8, homes: this.homes,
+              keepers: this.keepers,
             });
             if (di.kind === 'press') {
               if (di.approach) {
@@ -2734,7 +2746,8 @@ export class Sim {
             this.homes.has(id)) {
             const home = this.homes.get(id)!;
             const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
-              0.5, this.teamBrainCount(body.team) + 1);
+              0.5, this.teamBrainCount(body.team) + 1,
+              this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined);
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             if (dSt > 1.6) {
@@ -3100,6 +3113,64 @@ export class Sim {
    * identical inputs (each defender simulates the others' claims), so
    * organized defense reads as coached communication. Perception gates
    * the ATTACKING decisions: what you haven't seen can cut your pass. */
+  /** THE OFFSIDE LAW (match scale): at every kick, teammates beyond the
+   * second-last opponent, in the opponent half, ahead of the ball are
+   * TAGGED; if a tagged man is the first of his team to take the ball,
+   * the whistle goes — dead ball, free kick to the defenders at the
+   * spot. Tags clear when the other team touches or the ball dies. */
+  private readonly offsideTagged = new Set<string>();
+  private offsideKickTeam: 'home' | 'away' | null = null;
+  private pendingFreeKick: { team: 'home' | 'away'; spot: Vec2 } | null = null;
+
+  private updateOffside(): void {
+    if (this.brains.size < 12) return;
+    // the whistle: a tagged man took the ball
+    const cb = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
+    if (cb && this.offsideKickTeam) {
+      if (cb.team !== this.offsideKickTeam) {
+        this.offsideTagged.clear();
+        this.offsideKickTeam = null;
+      } else if (this.offsideTagged.has(cb.id) && this.ball.phase !== 'dead') {
+        this.ball.phase = 'dead';
+        this.ball.carrierId = null;
+        this.ball.vel = { x: 0, y: 0 };
+        this.ball.vz = 0;
+        this.ball.z = 0;
+        this.pendingFreeKick = {
+          team: cb.team === 'home' ? 'away' : 'home',
+          spot: { x: cb.pos.x, y: cb.pos.y },
+        };
+        this.actionLabels.set(cb.id, 'offside');
+        this.offsideTagged.clear();
+        this.offsideKickTeam = null;
+        return;
+      }
+    }
+    // the flag: tag at the moment of every kick
+    if (this.ball.lastKickTick === this.tick && this.ball.kickerId) {
+      const kb = this.byId.get(this.ball.kickerId);
+      if (kb) {
+        this.offsideTagged.clear();
+        this.offsideKickTeam = kb.team;
+        const sgn = attackSign(kb.team);
+        const oppUs = this.bodies.filter((b) => b.team !== kb.team)
+          .map((b) => b.pos.x * sgn).sort((a, b) => b - a);
+        const secondLastU = oppUs[1] ?? Infinity;
+        const ballU = this.ball.pos.x * sgn;
+        for (const m of this.bodies) {
+          if (m.team !== kb.team || m.id === kb.id) continue;
+          const mu = m.pos.x * sgn;
+          const inOppHalf = sgn > 0 ? m.pos.x > PITCH.length / 2 : m.pos.x < PITCH.length / 2;
+          if (inOppHalf && mu > secondLastU && mu > ballU) this.offsideTagged.add(m.id);
+        }
+      }
+    }
+    if (this.ball.phase === 'dead' && !this.pendingFreeKick) {
+      this.offsideTagged.clear();
+      this.offsideKickTeam = null;
+    }
+  }
+
   /** attack targets claimed THIS tick (run lanes, support spots, box
    * slots) — the cross-system half of the claims channel: sequential
    * processing means later brains see earlier claims, deterministic */
