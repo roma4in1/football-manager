@@ -686,12 +686,20 @@ export const runPlan = (
   // not deep midfielders)
   const room = sign > 0 ? goalX - lineX : lineX - goalX;
   if (room < 12) return null;
+  // FINAL-THIRD mode (the tick-625 frame: both strikers LEVEL with an
+  // advanced carrier failed the ahead-gate, fell to the support game
+  // and jogged BACK at him mid-attack — and a midfielder behind the
+  // ball could never run at all): with the carrier advanced, the run
+  // game opens to the LATE ARRIVAL — the man level or behind who
+  // attacks the line from deep, football's most common goal-run.
+  const carrierProg = sign > 0 ? carrier.pos.x : PITCH.length - carrier.pos.x;
+  const finalThird = carrierProg > 55;
   const distToLine = sign > 0 ? lineX - mate.pos.x : mate.pos.x - lineX;
-  if (distToLine > 22 || distToLine < -2) return null;
+  if (distToLine > (finalThird ? 30 : 22) || distToLine < -2) return null;
   // ahead of the carrier — OR close enough to the line to beat it (the
   // one-two: the giver starts BEHIND his wall man and runs beyond)
   const aheadOfCarrier = sign > 0 ? mate.pos.x > carrier.pos.x + 2 : mate.pos.x < carrier.pos.x - 2;
-  if (!aheadOfCarrier && distToLine > 12) return null;
+  if (!finalThird && !aheadOfCarrier && distToLine > 12) return null;
   // the channel is a SEAM: ride between defenders (or off the outside
   // shoulder), never a defender's own lane — the ball in behind must have
   // somewhere to go (the judged drill: the runner rode the marker's

@@ -2302,8 +2302,13 @@ export class Sim {
             }
             // THREE runners keep the run game (builder: 'attacking runs
             // are still lacking' at two — a real attack sends both
-            // strikers AND an arriving midfielder/winger)
-            const advancedRunner = advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3;
+            // strikers AND an arriving midfielder/winger); in the FINAL
+            // THIRD the LATE ARRIVAL joins them — a fourth man level or
+            // up to 18 m behind the carrier attacking the line from deep
+            const carrierProg2 = advSign > 0 ? carrierBody.pos.x : PITCH.length - carrierBody.pos.x;
+            const lateArrival = carrierProg2 > 55 && moreAdvanced < 4 &&
+              advSign * (body.pos.x - carrierBody.pos.x) > -18;
+            const advancedRunner = (advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3) || lateArrival;
             const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies, this.keepers) : null;
             if (atStation) {
