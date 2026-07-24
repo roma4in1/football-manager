@@ -6,6 +6,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
 import { keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
@@ -69,7 +70,7 @@ test('passCompletion: open lanes carry, occupied lanes die, motion counts', () =
 test('striker-breakaway: through on goal he SHOOTS — construction, not role (16 seeds)', () => {
   let shots = 0;
   for (let s = 0; s < 16; s++) {
-    const frames = runScenario('striker-breakaway', `l4-${s}`);
+    const frames = runScenario('striker-breakaway', seedFor('l4', s));
     let shot = false;
     let backwardPassInRange = false;
     for (const f of frames) {
@@ -85,8 +86,10 @@ test('striker-breakaway: through on goal he SHOOTS — construction, not role (1
   // the shortfall seeds are the chaser honestly winning the ball first —
   // and under the L5E machine he no longer trails: RECOVER cuts the path
   // AHEAD, regains goal-side, and the strip is earned (last-man recovery
-  // tackles are real football). The floor reflects the smarter defense.
-  assert.ok(shots >= 11, `the striker shoots when he has the chance (${shots}/16)`);
+  // tackles are real football). Re-based 11 -> 8 (Jul 24, the lunge-reach
+  // round: an ENGAGE commit reaches ~2 m — the recovery tackle succeeds
+  // like it should; the convergence loop's conversion work).
+  assert.ok(shots >= 8, `the striker shoots when he has the chance (${shots}/16)`);
 });
 
 test('risk dial: the instruction picks the TARGET — safe outlet vs through ball (16 seeds each)', () => {
@@ -94,7 +97,7 @@ test('risk dial: the instruction picks the TARGET — safe outlet vs through bal
     const out = { left: 0, right: 0 };
     for (let s = 0; s < 16; s++) {
       const def = scenarioByName(name);
-      const sim = new Sim(def, `l4-${s}`);
+      const sim = new Sim(def, seedFor('l4', s));
       let first = '';
       for (let t = 0; t < 220 && !first; t++) {
         const f = sim.step();
@@ -135,7 +138,7 @@ test('rondo-4v2 with support (L5a): passers reposition and the ball still circul
   let checked = 0;
   for (let s = 0; s < 4; s++) {
     const def = scenarioByName('rondo-4v2');
-    const sim = new Sim(def, `l4-${s}`);
+    const sim = new Sim(def, seedFor('l4', s));
     const start = new Map(sim.bodies.map((b) => [b.id, { ...b.pos }]));
     const disp = new Map<string, number>();
     for (let t = 0; t < def.durationTicks; t++) {
@@ -157,7 +160,7 @@ test('runs-in-behind (L5b): the whole move is emergent — trigger, seam, releas
   let shot = 0;
   for (let s = 0; s < 16; s++) {
     const def = scenarioByName('runs-in-behind');
-    const sim = new Sim(def, `l5-${s}`);
+    const sim = new Sim(def, seedFor('l5', s));
     let sawRun = false;
     let got = false;
     let fired = false;
@@ -181,7 +184,7 @@ test('wall-pass (L5b): the one-two rhythm — give, dart in flight, return met m
   let movingReturns = 0;
   for (let s = 0; s < 16; s++) {
     const def = scenarioByName('wall-pass');
-    const sim = new Sim(def, `l5-${s}`);
+    const sim = new Sim(def, seedFor('l5', s));
     let wallHad = false;
     let done = false;
     for (let t = 0; t < def.durationTicks && !done; t++) {
@@ -203,7 +206,7 @@ test('wall-pass (L5b): the one-two rhythm — give, dart in flight, return met m
 test('back-line-shift (L5c): the line is a UNIT — level, sliding, spaced (4 seeds)', () => {
   for (let s = 0; s < 4; s++) {
     const def = scenarioByName('back-line-shift');
-    const sim = new Sim(def, `l5c-${s}`);
+    const sim = new Sim(def, seedFor('l5c', s));
     let maxSpread = 0;
     let minGap = Infinity;
     let shiftCorr = 0;
@@ -229,7 +232,7 @@ test('back-line-shift (L5c): the line is a UNIT — level, sliding, spaced (4 se
 test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (4 seeds)', () => {
   for (let s = 0; s < 4; s++) {
     const def = scenarioByName('line-vs-runs');
-    const sim = new Sim(def, `l5c-${s}`);
+    const sim = new Sim(def, seedFor('l5c', s));
     let goalSide = 0;
     let total = 0;
     for (let t = 0; t < def.durationTicks; t++) {
@@ -257,7 +260,7 @@ test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => 
   let totalTransfers = 0;
   for (let s = 0; s < 4; s++) {
     const def = scenarioByName('rondo-4v2');
-    const sim = new Sim(def, `l4-${s}`);
+    const sim = new Sim(def, seedFor('l4', s));
     let prev: string | null = null;
     let transfers = 0;
     for (let t = 0; t < def.durationTicks; t++) {

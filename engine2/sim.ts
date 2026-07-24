@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, decide, DECIDE, DUEL, GOAL, goalCenter, passCompletion, pressApproach, pressCoverSpots, pressScore, runPlan, shadowSpot, shapeSpot, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -95,7 +95,45 @@ export class Sim {
    * when the current carrier claimed (the press-the-touch trigger) */
   private readonly lostPossessionAt = new Map<'home' | 'away', number>();
   private carrierSince = -1;
+  /** SELF-PLAY TELEMETRY (the memory space): an optional hook the match
+   * harness sets — the sim emits decision→outcome pairs (priced pass
+   * completion vs what actually happened) for the calibration ledger.
+   * Null in normal play; zero cost when unset. */
+  public telemetry: ((ev: Record<string, unknown>) => void) | null = null;
+  private openPass: { tick: number; pC?: number; dist: number; loft: number; spin: number; kicker: string; receiver: string } | null = null;
+  private openCarry: { tick: number; carrier: string; density: number; startU: number } | null = null;
+  /** L8-minimal restarts (match scale only): when the ball died and who
+   * is awarded the put-back; claims are team-locked briefly */
+  private deadSinceTick = -1;
+  private restartLock: { team: 'home' | 'away'; until: number } | null = null;
+  private lastGoalCount = 0;
   private prevCarrierTeam: 'home' | 'away' | null = null;
+  /** off-ball ATTACK brains owned by the idle branch (station/support) —
+   * without this re-entry set, a body once sent to a moveTo NEVER
+   * reconsidered (the m11 chaotic-positions root: stale targets forever) */
+  private readonly attackIdle = new Set<string>();
+  private readonly homeCentroids = new Map<string, { x: number; y: number }>();
+  private teamBrainCount(team: string): number {
+    let n = 0;
+    for (const id of this.brains) if (this.byId.get(id)!.team === team) n++;
+    return n;
+  }
+  private teamCentroid(team: string): { x: number; y: number } {
+    let c = this.homeCentroids.get(team);
+    if (!c) {
+      let cx = 0; let cy = 0; let n = 0;
+      for (const id of this.brains) {
+        const b = this.byId.get(id)!;
+        if (b.team !== team) continue;
+        const h = this.homes.get(id);
+        if (!h) continue;
+        cx += h.x; cy += h.y; n++;
+      }
+      c = n ? { x: cx / n, y: cy / n } : { x: PITCH.length / 2, y: PITCH.width / 2 };
+      this.homeCentroids.set(team, c);
+    }
+    return c;
+  }
   /** brains currently pressing (the first-defender election's memory) */
   private readonly pressingIds = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
@@ -237,6 +275,33 @@ export class Sim {
     for (const body of this.bodies) {
       this.prevPos.set(body.id, { x: body.pos.x, y: body.pos.y });
     }
+    // 2-pre: CONTACT DAMPING (the m11 scrum: steering re-created closing
+    // velocity every tick faster than the bounded resolver drained it, and
+    // pairs ground along merged for ticks) — bodies already in contact
+    // lose their into-contact velocity BEFORE the step, so re-entry is one
+    // tick of acceleration, which the resolver clears trivially.
+    {
+      const touchSep = TECH.bodyRadiusM * 2 + 0.1;
+      for (let i = 0; i < this.bodies.length; i++) {
+        for (let j = i + 1; j < this.bodies.length; j++) {
+          const a = this.bodies[i];
+          const b = this.bodies[j];
+          const dx = b.pos.x - a.pos.x;
+          const dy = b.pos.y - a.pos.y;
+          const d = Math.hypot(dx, dy);
+          if (d >= touchSep || d < 1e-9) continue;
+          const nx = dx / d;
+          const ny = dy / d;
+          const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
+          if (closing > 0) {
+            a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
+            b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
+            a.speed = Math.hypot(a.vel.x, a.vel.y);
+            b.speed = Math.hypot(b.vel.x, b.vel.y);
+          }
+        }
+      }
+    }
     for (const body of this.bodies) {
       const isCarrier = this.ball.carrierId === body.id;
       const gap = isCarrier
@@ -249,9 +314,18 @@ export class Sim {
       let timedCap: number | undefined;
       let brakeIntoLine = false;
       let duelFace: Vec2 | undefined; // the jockey squares to the ball
-      if (body.command.type === 'chaseBall' || fetching) {
+      // machine OWNERSHIP (the principles pass): the elected presser
+      // belongs to the duel machine FROM ELECTION — approach, ride, engage
+      // as one continuum. The chaseBall gate parked the approaching presser
+      // in moveTo where the machine never rode him (the covered-duel hole);
+      // now the machine speaks per tick and the moveTo is only the
+      // fallback when it stays silent (out of duel range).
+      const duelRide = body.command.type !== 'chaseBall' && !fetching && !isCarrier &&
+        this.pressingIds.has(body.id) && !this.keepers.has(body.id) &&
+        this.ball.carrierId !== null && this.byId.get(this.ball.carrierId)!.team !== body.team;
+      if (body.command.type === 'chaseBall' || fetching || duelRide) {
         const icept = this.interceptPoint(body);
-        live = icept.pMeet;
+        live = duelRide ? undefined : icept.pMeet;
         // the RECEIVE state machine (judged over eight rounds):
         //  off the line → attack the nearest path point (toward the ball),
         //    braking in when receiving; STICKY phase boundary — a threshold
@@ -380,7 +454,7 @@ export class Sim {
         // the DUEL (L5E) wraps the judged contain: RECOVER/JOCKEY/TRACK own
         // the 2–8 m shell; ENGAGE commits the close; and inside 1.9 m the
         // contain-at-contact (the 360-orbit fix) stands exactly as judged.
-        if (body.command.type === 'chaseBall' && this.ball.carrierId !== null && !isCarrier) {
+        if ((body.command.type === 'chaseBall' || duelRide) && this.ball.carrierId !== null && !isCarrier) {
           const carrierB = this.byId.get(this.ball.carrierId)!;
           const gapBC = Math.hypot(this.ball.pos.x - carrierB.pos.x, this.ball.pos.y - carrierB.pos.y);
           const dToCar = Math.hypot(body.pos.x - carrierB.pos.x, body.pos.y - carrierB.pos.y);
@@ -470,6 +544,14 @@ export class Sim {
               } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM &&
                 this.tick >= (duel.beatenUntil ?? 0)) {
                 duel.state = 'engage';
+              } else if ((duel.closeTicks ?? 0) >= 3 && dToCar <= 2.4 &&
+                this.tick >= (duel.beatenUntil ?? 0)) {
+                // the RUNNING CHALLENGE (the escort-conversion root, the
+                // queue's last item: a rider goal-side within touching
+                // distance for half a second makes his play — riders DO
+                // tackle at pace; waiting for the patience meter let a
+                // carrier be escorted 35 m to the box)
+                duel.state = 'engage';
               } else {
                 // JOCKEY only while a square backpedal can hold the gap. Too
                 // hot — the carrier escaping at pace OR closing faster than
@@ -486,6 +568,8 @@ export class Sim {
                   duel.state = carrierB.speed > DUEL.trackEnterMps || closingSp > 3.2 ? 'track' : 'jockey';
                 }
               }
+              duel.closeTicks = dToCar < 2.4 && (duel.state === 'jockey' || duel.state === 'track')
+                ? (duel.closeTicks ?? 0) + 1 : 0;
               this.duels.set(body.id, duel);
               // targets — computed from the carrier's PROJECTED position
               // (0.4 s ahead): the jockey LEADS the retreat, matching the
@@ -552,13 +636,26 @@ export class Sim {
       }
       stepBody(body, this.tick, {
         face,
-        external: body.command.type === 'chaseBall' ? live : undefined,
+        external: body.command.type === 'chaseBall' || duelRide ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,
+        // the DRIBBLE SPEED COST (the convergence loop's physics find:
+        // carriers ran at FULL sprint with the ball glued, so equal-pace
+        // riders could never close and every carry survived by
+        // construction): carrying caps at ~89-96% of sprint, scaled by
+        // the dribbling attribute — the first true kinematic attribute
+        // effect (skill = speed retained with the ball)
         carrySpeedCapMps: isCarrier
-          ? (this.beatExec?.carrierId === body.id && this.beatExec.phase === 'approach'
-            ? Math.min(this.dribbleArriveCap(body) ?? 4.2, 4.2)
-            : this.dribbleArriveCap(body))
+          ? Math.min(
+            // scaled from the COMMANDED regime — sprint-anchored never
+            // bound for run-regime match carriers (byte-identical
+            // ledgers proved it a no-op)
+            regimeCapMps(body.attributes.pace,
+              (body.command.type === 'moveTo' || body.command.type === 'followPath' || body.command.type === 'chaseBall')
+                ? body.command.regime : 'run') * (0.87 + 0.005 * body.attributes.dribbling),
+            (this.beatExec?.carrierId === body.id && this.beatExec.phase === 'approach'
+              ? Math.min(this.dribbleArriveCap(body) ?? 4.2, 4.2)
+              : this.dribbleArriveCap(body)) ?? Infinity)
           : undefined,
         stand: standing,
         brakeAtTarget: timedCap !== undefined || brakeIntoLine,
@@ -602,45 +699,52 @@ export class Sim {
     // pushing the middle man INTO a third body squeezed past the floor);
     // total displacement per body per tick is CAPPED — iterations could
     // accumulate a 0.84 m teleport in dense press scrums
+    // DEEPEST-FIRST sequential relaxation (the m11 scrum finding: the
+    // order-free batch let opposing pushes cancel vectorially and a
+    // deeply merged pair sat unresolved for ticks while shallow contacts
+    // consumed the budget) — sorted processing is equally deterministic
+    // and spends the budget where the merge is worst.
     const sepTotal = new Map<string, number>();
+    const applyPush = (b: BodyState, px: number, py: number): void => {
+      const used = sepTotal.get(b.id) ?? 0;
+      const mag = Math.hypot(px, py);
+      const allowed = Math.max(0, 0.6 - used);
+      const k = mag > allowed ? allowed / (mag || 1) : 1;
+      b.pos = { x: b.pos.x + px * k, y: b.pos.y + py * k };
+      sepTotal.set(b.id, used + mag * k);
+    };
     for (let sepIter = 0; sepIter < 3; sepIter++) {
       const minSep = TECH.bodyRadiusM * 2;
-      const push = new Map<string, Vec2>();
+      const pairs: Array<{ a: BodyState; b: BodyState; d: number }> = [];
       for (let i = 0; i < this.bodies.length; i++) {
         for (let j = i + 1; j < this.bodies.length; j++) {
           const a = this.bodies[i];
           const b = this.bodies[j];
-          const dx = b.pos.x - a.pos.x;
-          const dy = b.pos.y - a.pos.y;
-          const d = Math.hypot(dx, dy);
-          if (d >= minSep || d < 1e-9) continue;
-          const overlap = Math.min((minSep - d) / 2, TECH.separationSpeedMps * DT);
-          const nx = dx / d;
-          const ny = dy / d;
-          const pa = push.get(a.id) ?? { x: 0, y: 0 };
-          const pb = push.get(b.id) ?? { x: 0, y: 0 };
-          push.set(a.id, { x: pa.x - nx * overlap, y: pa.y - ny * overlap });
-          push.set(b.id, { x: pb.x + nx * overlap, y: pb.y + ny * overlap });
-          // velocity resolution: colliding bodies stop CLOSING — remove the
-          // approaching components (inelastic shoulder contact, not a bounce)
-          const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
-          if (closing > 0) {
-            a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
-            b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
-            a.speed = Math.hypot(a.vel.x, a.vel.y);
-            b.speed = Math.hypot(b.vel.x, b.vel.y);
-          }
+          const d = Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y);
+          if (d < minSep && d >= 1e-9) pairs.push({ a, b, d });
         }
       }
-      for (const b of this.bodies) {
-        const p = push.get(b.id);
-        if (!p) continue;
-        const used = sepTotal.get(b.id) ?? 0;
-        const mag = Math.hypot(p.x, p.y);
-        const allowed = Math.max(0, 0.5 - used);
-        const k = mag > allowed ? allowed / (mag || 1) : 1;
-        b.pos = { x: b.pos.x + p.x * k, y: b.pos.y + p.y * k };
-        sepTotal.set(b.id, used + mag * k);
+      if (!pairs.length) break;
+      pairs.sort((p1, p2) => p1.d - p2.d);
+      for (const { a, b } of pairs) {
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= minSep || d < 1e-9) continue;
+        const overlap = Math.min((minSep - d) / 2, TECH.separationSpeedMps * DT);
+        const nx = dx / d;
+        const ny = dy / d;
+        applyPush(a, -nx * overlap, -ny * overlap);
+        applyPush(b, nx * overlap, ny * overlap);
+        // velocity resolution: colliding bodies stop CLOSING — remove the
+        // approaching components (inelastic shoulder contact, not a bounce)
+        const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
+        if (closing > 0) {
+          a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
+          b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
+          a.speed = Math.hypot(a.vel.x, a.vel.y);
+          b.speed = Math.hypot(b.vel.x, b.vel.y);
+        }
       }
     }
 
@@ -712,6 +816,53 @@ export class Sim {
       this.ball.vz = 0;
       this.ball.z = 0;
     }
+    // L8-MINIMAL RESTARTS (the frames' matches keep flowing; ours ended
+    // at the first dead ball into polite statues): at match scale (both
+    // XIs) a dead ball restarts after 1.5 s — throw-in at the touchline
+    // spot, corner or goal-kick on the goal lines, kickoff after a goal
+    // — awarded AGAINST the last kicker, with a 2 s team claim lock.
+    // Drills (small casts, bounded grids) keep dead-ends-the-drill.
+    if (this.ball.phase === 'dead') {
+      if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
+      const hN = this.teamBrainCount('home');
+      const aN = this.teamBrainCount('away');
+      if (hN >= 8 && aN >= 8 && this.bounds === undefined &&
+        this.tick - this.deadSinceTick >= 15) {
+        const lastTeam = this.ball.kickerId ? this.byId.get(this.ball.kickerId)?.team : undefined;
+        let award: 'home' | 'away' = lastTeam === 'home' ? 'away' : 'home';
+        let spot: Vec2;
+        const p = this.ball.pos;
+        if (this.goals.length > this.lastGoalCount) {
+          // kickoff: the conceding side restarts from the centre
+          award = this.goals[this.goals.length - 1].against;
+          spot = { x: PITCH.length / 2, y: PITCH.width / 2 };
+          this.lastGoalCount = this.goals.length;
+        } else if (p.y < 0 || p.y > PITCH.width) {
+          // throw-in at the touchline spot
+          spot = { x: Math.max(2, Math.min(PITCH.length - 2, p.x)), y: p.y < 0 ? 1 : PITCH.width - 1 };
+        } else {
+          // over a goal line: corner for the attacker, goal-kick for the
+          // defender of that end (home defends x=0)
+          const endX = p.x < 0 ? 0 : PITCH.length;
+          const defenderOfEnd: 'home' | 'away' = endX === 0 ? 'home' : 'away';
+          if (award === defenderOfEnd) {
+            spot = { x: endX === 0 ? 6 : PITCH.length - 6, y: PITCH.width / 2 + (p.y >= PITCH.width / 2 ? 6 : -6) };
+          } else {
+            spot = { x: endX === 0 ? 1 : PITCH.length - 1, y: p.y >= PITCH.width / 2 ? PITCH.width - 1 : 1 };
+          }
+        }
+        this.ball.pos = { x: spot.x, y: spot.y };
+        this.ball.vel = { x: 0, y: 0 };
+        this.ball.z = 0;
+        this.ball.vz = 0;
+        this.ball.phase = 'rolling';
+        this.ball.kickerId = null;
+        this.restartLock = { team: award, until: this.tick + 20 };
+        this.deadSinceTick = -1;
+      }
+    } else {
+      this.deadSinceTick = -1;
+    }
 
     // 5. loose-ball claims (and the chaseBall race resolution) — against the
     // ball's SWEPT PATH this tick, not its sampled endpoint: a 16 m/s ball
@@ -764,11 +915,11 @@ export class Sim {
   /** the BEAT in execution (L5E): approach (throttled, at the rider) →
    * feint (a step to the FAKE side, selling it to his smoothed read) →
    * burst (the knock through the real side). One carrier at a time. */
-  private beatExec: { carrierId: string; fmId: string; phase: 'approach' | 'feint' | 'burst'; side: number; until: number } | null = null;
+  private beatExec: { carrierId: string; fmId: string; phase: 'approach' | 'feint' | 'burst'; side: number; until: number; lastD?: number; stall?: number } | null = null;
   /** support sides taken this tick — two supporters must NOT share a spot
    * (both computed the same natural side and made twin runs, judged) */
   private readonly supportSides = new Map<'home' | 'away', number[]>();
-  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number }>();
+  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number; closeTicks?: number }>();
   /** pre-movement positions this tick — claims sweep the ball's path in the
    * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
    * against his end position alone skips the reach window) */
@@ -813,16 +964,29 @@ export class Sim {
     if (gap > BALL.controlRadiusM) return; // a running touch is the pinch's domain
     for (const b of this.bodies) {
       if (b.id === carrier.id || b.team === carrier.team) continue;
-      if (b.command.type !== 'chaseBall') continue; // intent to win the ball
+      // intent to win the ball: the chase, OR machine ownership — the
+      // duelRide presser (moveTo, ridden per tick) could reach ENGAGE
+      // via the running challenge and still never tackle (this gate
+      // predates ownership; the conversion loop measured the hole)
+      if (b.command.type !== 'chaseBall' && !this.pressingIds.has(b.id)) continue;
       if ((this.tackleCooldown.get(b.id) ?? -1) > this.tick) continue;
-      // a DUELIST tackles only from ENGAGE — the committed close. Proximity
-      // alone lunged on contact and skipped the jockey entirely (the machine
-      // never got to be seen; bodies without a duel record tackle as before)
+      // a DUELIST tackles from any GOAL-SIDE riding state in true reach —
+      // the engage-only gate throttled match conversion to 38 rolls per
+      // 300 s against 386 close-contact ticks (the funnel measurement);
+      // recover/staggered still never lunge (a trailing or planted man
+      // has no tackle), and the drills keep their jockey texture because
+      // reach itself stays the hard gate.
       const dst = this.duels.get(b.id);
-      if (dst && dst.state !== 'engage') continue;
+      if (dst && (dst.state === 'recover' || dst.state === 'staggered')) continue;
       const reach = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
-      if (reach > TECH.tackleReachM) continue;
+      // an ENGAGE commit is a LUNGE — a slide reaches ~2 m, not the
+      // standing poke's 1.2 (the funnel: the machine rides at the 2.0 m
+      // hold, architecturally OUTSIDE its own tackle range; 38 rolls in
+      // 300 s of match)
+      const lungeReach = dst?.state === 'engage' ? 2.0 : TECH.tackleReachM;
+      if (reach > lungeReach) continue;
       this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
+      this.telemetry?.({ t: 'tackle', tick: this.tick });
       const winP = tackleWinProbability(b.attributes, carrier.attributes) /
         (1 + TECH.tackleCarrierSpeedFactor * carrier.speed);
       // the failed lunge is the BEATEN moment (L5E): planted, and the
@@ -1750,6 +1914,7 @@ export class Sim {
 
   private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ || this.ball.phase === 'dead') return;
+    if (this.restartLock && this.tick >= this.restartLock.until) this.restartLock = null;
     // closest approach of a body to the ball's swept path — in the BODY'S
     // frame: subtract his own displacement so two fast movers crossing
     // cannot tunnel through each other's reach between samples
@@ -1782,6 +1947,9 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
+      // a RESTART is the awarded team's put-back: the other side stands
+      // off until the lock expires (L8-minimal)
+      if (this.restartLock && this.tick < this.restartLock.until && b.team !== this.restartLock.team) continue;
       // a pass in FLIGHT is protected: while it is fresh (the kicker's lock
       // window), a teammate who is NOT the intended receiver stands off and
       // lets it reach its target — otherwise two stacked teammates in the
@@ -1934,6 +2102,52 @@ export class Sim {
    * a brain never enter here — scripts own them entirely. */
   private decidePhase(): void {
     if (this.brains.size === 0) return;
+    // telemetry: carry segments — from a brain's claim to release/strip/dead
+    if (this.telemetry) {
+      const c = this.ball.carrierId;
+      if (this.openCarry) {
+        // a segment SURVIVES the dribble's own touch-and-collect cycle
+        // (carrierId flickers null between touches — closing there read
+        // open-field retention at 0.24, a pure taxonomy artifact): close
+        // only on the carrier's own kick, another body's claim, or death
+        const oc = this.openCarry;
+        const prev = this.byId.get(oc.carrier);
+        const now = c ? this.byId.get(c) : undefined;
+        let outcome: string | null = null;
+        if (this.openPass && this.openPass.kicker === oc.carrier) outcome = 'released';
+        else if (c && c !== oc.carrier) outcome = now && prev && now.team === prev.team ? 'teammate' : 'stripped';
+        else if (this.ball.phase === 'dead') outcome = 'dead';
+        if (outcome) {
+          const pb = this.byId.get(oc.carrier);
+          const endU = pb ? pb.pos.x * attackSign(pb.team) : oc.startU;
+          this.telemetry({ t: 'carry', dur: this.tick - oc.tick, density: oc.density, outcome, adv: endU - oc.startU });
+          this.openCarry = null;
+        }
+      }
+      if (!this.openCarry && c && this.brains.has(c)) {
+        const cb0 = this.byId.get(c)!;
+        let nOpp = 0;
+        for (const b of this.bodies) {
+          if (b.team !== cb0.team && Math.hypot(b.pos.x - cb0.pos.x, b.pos.y - cb0.pos.y) < 12) nOpp++;
+        }
+        this.openCarry = { tick: this.tick, carrier: c, density: Math.min(1, nOpp / 3), startU: cb0.pos.x * attackSign(cb0.team) };
+      }
+    }
+    // telemetry: resolve the open pass when anyone claims or the ball dies
+    if (this.openPass && this.telemetry) {
+      const c = this.ball.carrierId;
+      if (c) {
+        const cb3 = this.byId.get(c);
+        const kb = this.byId.get(this.openPass.kicker);
+        const outcome = c === this.openPass.receiver ? 'complete'
+          : cb3 && kb && cb3.team === kb.team ? 'teammate' : 'cut';
+        this.telemetry({ t: 'pass', ...this.openPass, outcome, dt: this.tick - this.openPass.tick });
+        this.openPass = null;
+      } else if (this.ball.phase === 'dead') {
+        this.telemetry({ t: 'pass', ...this.openPass, outcome: 'dead', dt: this.tick - this.openPass.tick });
+        this.openPass = null;
+      }
+    }
     // the receive reflex ends when ANYONE ends up with the ball
     if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
     for (const id of this.brains) {
@@ -1941,6 +2155,31 @@ export class Sim {
       if (this.ball.carrierId !== id) {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
+          // UNIVERSAL RE-ELECTION (builder principle: always weighing the
+          // best option, even mid-action): a receiver whose ball is
+          // clearly LOST — an opponent beats him to every meet by a real
+          // margin — releases the reflex instead of jogging after a lost
+          // cause, and re-enters the live game next tick.
+          // ground balls only: interceptPoint's tMeet is z-blind, and a
+          // man standing UNDER a flighted ball "beats" a receiver it will
+          // sail clean over (three aerial pins measured it)
+          if (this.tick % DECIDE.reconsiderTicks === 0 && this.ball.z < 0.5 && Math.abs(this.ball.vz) < 2) {
+            const mine = this.interceptPoint(body);
+            let bestOpp = Infinity;
+            for (const o of this.bodies) {
+              // only opponents actually CHASING count — the model rates a
+              // STANDING man as if he would race optimally, and statues
+              // near the landing "beat" receivers they never move for
+              if (o.team === body.team || o.command.type !== 'chaseBall') continue;
+              bestOpp = Math.min(bestOpp, this.interceptPoint(o).tMeet);
+            }
+            if (bestOpp + 0.25 < mine.tMeet) {
+              this.intendedReceiverId = null;
+              this.assign(body, { type: 'hold' });
+              this.actionLabels.set(id, 'release');
+              continue;
+            }
+          }
           if (this.runningLine.has(id)) this.bendReceive.add(id);
           this.runningLine.delete(id);
           this.runPhase.delete(id);
@@ -1985,12 +2224,111 @@ export class Sim {
               ? this.byId.get(this.intendedReceiverId)
               : undefined);
           if (carrierBody && carrierBody.team === body.team && carrierBody.id !== id &&
-            (body.command.type === 'hold' || this.runningLine.has(id)) &&
+            (body.command.type === 'hold' || this.runningLine.has(id) || this.attackIdle.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             const objective = (this.instructions.get(id)?.objective) ?? 'score';
-            const plan = objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
-            if (plan) {
+            // THE LOCAL GAME, attack side (the m11 pilot verdict: every
+            // idle attacker ran support/run logic at once — the swarm —
+            // and no structured outlet ever stood anywhere): only the TWO
+            // nearest teammates play the local support/run game; everyone
+            // else holds his FORMATION STATION, block-shifted toward the
+            // ball. Drill casts have <=2 idle mates, so the small scenes
+            // are untouched.
+            let closerMates = 0;
+            const myDCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
+            for (const bid of this.brains) {
+              if (bid === id || bid === carrierBody.id) continue;
+              const b2 = this.byId.get(bid)!;
+              if (b2.team !== body.team) continue;
+              if (Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y) < myDCar) closerMates++;
+            }
+            // BOX OCCUPATION (the crossing game's missing half — the
+            // refinement round): with my carrier WIDE and ADVANCED, the
+            // advanced central attacker does not come short for feet — he
+            // HOLDS the box at the spot zone, attacking the delivery.
+            // Support logic walked him out every time and no honest cast
+            // could produce a cross.
+            const boxSign = attackSign(body.team);
+            const boxGoalX = boxSign > 0 ? PITCH.length : 0;
+            const boxOccupy = objective === 'score' &&
+              Math.abs(carrierBody.pos.y - PITCH.width / 2) >= DECIDE.crossWideM &&
+              (boxSign > 0 ? PITCH.length - carrierBody.pos.x : carrierBody.pos.x) <= DECIDE.crossAdvanceM &&
+              (boxSign > 0 ? PITCH.length - body.pos.x : body.pos.x) <= 24 &&
+              Math.abs(body.pos.y - PITCH.width / 2) < DECIDE.crossWideM;
+            // the TWO most advanced teammates keep the RUN GAME even
+            // beyond the support rank (the judged lack of attacking
+            // options: two supporters + seven statues had no in-behind
+            // runs, no dummies) — runPlan itself still gates on room
+            let moreAdvanced = 0;
+            const advSign = attackSign(body.team);
+            for (const bid of this.brains) {
+              if (bid === id || bid === carrierBody.id) continue;
+              const b2 = this.byId.get(bid)!;
+              if (b2.team !== body.team) continue;
+              if (advSign * (b2.pos.x - body.pos.x) > 0) moreAdvanced++;
+            }
+            const advancedRunner = advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 2;
+            const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
+            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
+            if (atStation) {
+              this.runPhase.delete(id);
+              this.runningLine.delete(id);
+              const home = this.homes.get(id) ?? body.pos;
+              // the RECYCLE OUTLET (the EAFC mesh's constant third body):
+              // the CLOSEST stationer stands behind the ball at ~10 m —
+              // the safe under-ball option every reference frame shows
+              let st;
+              if (closerMates === 3) {
+                const gSign = attackSign(body.team);
+                st = {
+                  x: Math.max(2, Math.min(PITCH.length - 2, carrierBody.pos.x - gSign * 9)),
+                  y: Math.max(2, Math.min(PITCH.width - 2, carrierBody.pos.y + (home.y >= carrierBody.pos.y ? 4 : -4))),
+                };
+                this.actionLabels.set(id, 'outlet');
+              } else {
+                st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
+                  this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1);
+              }
+              const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
+              this.attackIdle.add(id);
+              if (dSt > 1.6) {
+                this.assign(body, { type: 'moveTo', target: st, regime: dSt > 9 ? 'run' : 'jog' });
+                this.actionLabels.set(id, 'station');
+              } else if (body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
+            } else if (boxOccupy) {
+              this.runPhase.delete(id);
+              this.runningLine.delete(id);
+              // MULTI-MAN box occupation (the EAFC 71:10 frame: a box
+              // attack packs 4-6 bodies at near post / spot / far post —
+              // ours sent one): up to three qualifying attackers take
+              // SLOTS, ranked by advancement; the fourth-plus stations.
+              let aheadOfMe = 0;
+              for (const bid of this.brains) {
+                if (bid === id || bid === carrierBody.id) continue;
+                const b2 = this.byId.get(bid)!;
+                if (b2.team !== body.team) continue;
+                const qualifies = (boxSign > 0 ? PITCH.length - b2.pos.x : b2.pos.x) <= 24 &&
+                  Math.abs(b2.pos.y - PITCH.width / 2) < DECIDE.crossWideM;
+                if (qualifies && boxSign * (b2.pos.x - body.pos.x) > 0) aheadOfMe++;
+              }
+              const slots = [
+                { x: boxGoalX - boxSign * 12, y: PITCH.width / 2 + (body.pos.y >= PITCH.width / 2 ? 2.5 : -2.5) },
+                { x: boxGoalX - boxSign * 7, y: PITCH.width / 2 - 6 },
+                { x: boxGoalX - boxSign * 7, y: PITCH.width / 2 + 6 },
+              ];
+              const station = slots[Math.min(aheadOfMe, 2)];
+              const dSt = Math.hypot(station.x - body.pos.x, station.y - body.pos.y);
+              if (dSt > 1.4) {
+                this.assign(body, { type: 'moveTo', target: station, regime: dSt > 7 ? 'run' : 'jog' });
+              } else if (body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
+              this.actionLabels.set(id, 'box');
+              this.attackIdle.add(id);
+            } else if (plan) {
               // the RUN CYCLE: approach → RIDE the line (reload, jog) →
               // DART (sprint diagonally across the blind side into the
               // adjacent seam — pace is built BEFORE the ball is played;
@@ -2055,11 +2393,46 @@ export class Sim {
                   body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos, objective,
                 );
                 const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
+                this.attackIdle.add(id);
                 if (d > 1.4) {
                   this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
                   this.actionLabels.set(id, 'support');
                 }
               }
+            }
+          }
+          // UNIVERSAL RE-ELECTION, pursuit side (builder principle): a
+          // chasing brain who is NO LONGER his team's claimant — the
+          // election moved on, or his own side now has the ball — stops
+          // the chase and re-enters the idle game (nothing ever demoted
+          // an obsolete chaser before: once in chaseBall, forever in
+          // chaseBall). The duel presser (pressingIds) and the live
+          // receiver are exempt — those are owned elsewhere.
+          if (this.tick % DECIDE.reconsiderTicks === 0 &&
+            body.command.type === 'chaseBall' &&
+            (!this.pressingIds.has(id) || this.ball.phase === 'dead') &&
+            this.intendedReceiverId !== id &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            // a SCRIPTED chase gets 2 s of grace — drills time runs by
+            // sending the chase before the ball is struck (the aerial
+            // through-ball runner was demoted mid-preparation)
+            const ownBall = carrierBody !== undefined && carrierBody.team === body.team &&
+              this.tick - (this.scriptedUntil.get(id) ?? -999) > 20;
+            let closerChase = 0;
+            if (!ownBall && this.ball.carrierId === null) {
+              const myD = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+              for (const bid of this.brains) {
+                if (bid === id) continue;
+                const b2 = this.byId.get(bid)!;
+                if (b2.team !== body.team) continue;
+                if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myD) closerChase++;
+              }
+            }
+            if (ownBall || this.ball.phase === 'dead' ||
+              (this.ball.carrierId === null && closerChase >= 2)) {
+              this.assign(body, { type: 'hold' });
+              this.pressingIds.delete(id);
+              this.actionLabels.set(id, 'release');
             }
           }
           // L5d COUNTERPRESS (before everything): the 5–8 s transition
@@ -2069,7 +2442,11 @@ export class Sim {
           {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
             const oppHasIt = carrierBody !== undefined && carrierBody.team !== body.team;
-            const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null;
+            // a DEAD ball is not a loose ball — two players ground at an
+            // out-of-play ball against the boundary clamp for 12+ ticks
+            // (the interpenetration pin caught the pile-up)
+            const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null &&
+              this.ball.phase !== 'dead';
             // counterpress is INNATE — even 'keep' brains hunt the ball
             // they just lost (it is literally the rondo's rule); the keep
             // gate below only blocks ORGANIZED defense
@@ -2085,12 +2462,19 @@ export class Sim {
                 const b2 = this.byId.get(bid)!;
                 return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1);
               });
-              const nearestCp = teamBrains.reduce((best, bid) => {
+
+              // the PURSUIT CAP (the m11 swarm: seven chasers at once):
+              // the two nearest hunt; everyone else keeps his structure
+              let closerCp = 0;
+              for (const bid of teamBrains) {
+                if (bid === id) continue;
                 const b2 = this.byId.get(bid)!;
-                const d2 = Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y);
-                return d2 < best.d ? { id: bid, d: d2 } : best;
-              }, { id: '', d: Infinity });
-              if (nearestCp.id === id || myBallDist < 6) {
+                if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myBallDist) closerCp++;
+              }
+              // vs a CARRIED ball, ONE man commits (the elected press is
+              // the second layer — two counterpressors + a presser was
+              // the judged double-commit); loose balls keep the pair
+              if ((oppHasIt ? closerCp < 1 : closerCp < 2) || myBallDist < 3) {
                 if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
                 this.pressingIds.add(id); // a pressing state — demotable
                 this.actionLabels.set(id, 'counterpress');
@@ -2105,66 +2489,51 @@ export class Sim {
           // SHAPE (the line). Contact stays L3's contain/tackle machinery.
           if (carrierBody && carrierBody.team !== body.team &&
             (this.instructions.get(id)?.objective) !== 'keep' &&
-            (body.command.type === 'hold' || this.shapeHolding.has(id) || this.pressingIds.has(id)) &&
+            (body.command.type === 'hold' || this.shapeHolding.has(id) || this.pressingIds.has(id) ||
+              this.runningLine.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
-            const inCounterpress = this.tick - lostAt <= 60 &&
-              Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y) < 15;
-            const pressing = this.instructions.get(id)?.pressing ?? 0;
-            const justReceived = this.tick - this.carrierSince <= 8;
-            // first-defender election: the nearest eligible defending brain
-            const defBrains = [...this.brains].filter((bid) => {
+            let cpCloser = 0;
+            const myBd = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+            for (const bid of this.brains) {
+              if (bid === id) continue;
+              const b2 = this.byId.get(bid)!;
+              if (b2.team !== body.team) continue;
+              if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myBd) cpCloser++;
+            }
+            // capped like the transition path (the m11 swarm): two hunt
+            const inCounterpress = this.tick - lostAt <= 60 && myBd < 15 && cpCloser < 1;
+            // the DEFENSIVE BRAIN (decide.ts): the sim gathers the unit,
+            // the brain runs the hierarchy, the sim EXECUTES the intent
+            // (and the duel machine rides what press decides)
+            const unit = [...this.brains].filter((bid) => {
               const b2 = this.byId.get(bid)!;
               return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
                 (this.instructions.get(bid)?.objective) !== 'keep';
+            }).map((bid) => this.byId.get(bid)!);
+            this.runningLine.delete(id);
+            this.runPhase.delete(id);
+            const di = decideDefense({
+              defender: body, carrier: carrierBody, bodies: this.bodies, ball: this.ball,
+              instructions: this.instructions.get(id) ?? {}, unit,
+              pressingIds: this.pressingIds, inCounterpress,
+              justReceived: this.tick - this.carrierSince <= 8, homes: this.homes,
             });
-            let nearest = defBrains.reduce((best, bid) => {
-              const b2 = this.byId.get(bid)!;
-              const d2 = Math.hypot(carrierBody.pos.x - b2.pos.x, carrierBody.pos.y - b2.pos.y);
-              return d2 < best.d ? { id: bid, d: d2 } : best;
-            }, { id: '', d: Infinity });
-            // STICKY election: the engaged presser keeps the job unless he
-            // is clearly beaten (flapping first/second made both look like
-            // ball-chasers — the judged no-coordination)
-            const incumbent = defBrains.find((bid) => this.pressingIds.has(bid));
-            if (incumbent && incumbent !== nearest.id) {
-              const bi = this.byId.get(incumbent)!;
-              const di = Math.hypot(carrierBody.pos.x - bi.pos.x, carrierBody.pos.y - bi.pos.y);
-              if (di < nearest.d + 4 && di < 14) nearest = { id: incumbent, d: di };
-            }
-            const iAmFirst = nearest.id === id;
-            const score = pressScore(body, carrierBody, this.bodies, justReceived, pressing);
-            const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
-            const firstIsEngaged = this.pressingIds.has(nearest.id) || (iAmFirst && pressNow);
-            if (pressNow) {
-              // the CURVED approach: close from the denied lane's side
-              // (pressing.md: a straight chase leaves the lane open); the
-              // last 3 m are the L3 hunt (contain + tackles need the chase)
-              const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
-              if (dCar > 3 && !inCounterpress) {
-                const ap = pressApproach(body, carrierBody, this.bodies);
-                this.assign(body, { type: 'moveTo', target: ap, regime: 'sprint' });
+            if (di.kind === 'press') {
+              if (di.approach) {
+                this.assign(body, { type: 'moveTo', target: di.approach, regime: 'sprint' });
               } else if (body.command.type !== 'chaseBall') {
                 this.assign(body, { type: 'chaseBall', regime: 'sprint' });
               }
               this.pressingIds.add(id);
               this.shapeHolding.delete(id);
-              this.actionLabels.set(id, inCounterpress ? 'counterpress' : 'press');
-            } else if (iAmFirst && pressing > 0 &&
-              Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 11) {
-              // the DELAY stance (pressing.md's passive band): hold off
-              // goal-side ~4.5 m — slow the attack, wait for the trigger
+              this.actionLabels.set(id, di.label);
+            } else if (di.kind === 'delay') {
               this.pressingIds.delete(id);
-              const gSign = body.team === 'home' ? 1 : -1;
-              const gx = gSign > 0 ? 0 : PITCH.length;
-              const dx = gx - carrierBody.pos.x;
-              const dy = 34 - carrierBody.pos.y;
-              const dn = Math.hypot(dx, dy) || 1;
-              const hold = { x: carrierBody.pos.x + (dx / dn) * 4.5, y: carrierBody.pos.y + (dy / dn) * 4.5 };
-              const dh = Math.hypot(hold.x - body.pos.x, hold.y - body.pos.y);
+              const dh = Math.hypot(di.hold.x - body.pos.x, di.hold.y - body.pos.y);
               if (dh > 1.2) {
-                this.assign(body, { type: 'moveTo', target: hold, regime: dh > 7 ? 'run' : 'jog' });
+                this.assign(body, { type: 'moveTo', target: di.hold, regime: dh > 7 ? 'run' : 'jog' });
                 this.shapeHolding.add(id);
               } else if (body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
@@ -2172,30 +2541,14 @@ export class Sim {
               this.actionLabels.set(id, 'delay');
             } else {
               this.pressingIds.delete(id);
-              // a PRESSING UNIT's non-engaged members take distinct
-              // assignments over the carrier's ranked options (a line-shape
-              // fallback stacked all four at one depth — the judged
-              // overlaps); LINE units (pressing ≤ 0.3) keep L5c shape
-              let target: Vec2 | null = null;
-              let label = 'shape';
-              if (pressing > 0.3 && firstIsEngaged) {
-                const coverIds = defBrains.filter((bid) => bid !== nearest.id && bid !== id)
-                  .concat([id]).filter((bid) => bid !== nearest.id);
-                const spots = pressCoverSpots(carrierBody, this.bodies, coverIds);
-                target = spots.get(id) ?? null;
-                label = 'cover';
-              } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
-                target = shadowSpot(body, carrierBody, this.bodies);
-                label = 'shadow';
-              }
-              if (!target) {
-                target = shapeSpot(body, this.bodies, this.ball, this.homes, defBrains,
-                  this.instructions.get(id)?.lineHeight ?? 0.5);
-                label = 'shape';
-              }
-              const d = Math.hypot(target.x - body.pos.x, target.y - body.pos.y);
+              const label = di.kind === 'cover' ? 'cover' : di.kind === 'mark' ? 'mark' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
+              const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
               if (d > 1.2) {
-                this.assign(body, { type: 'moveTo', target, regime: d > 8 ? 'run' : 'jog' });
+                // an URGENT mark (his man darting goalward) tracks at pace
+                // from the anticipatory station — jogging the chase was the
+                // judged too-late-by-momentum
+                const regime = di.kind === 'mark' && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
+                this.assign(body, { type: 'moveTo', target: di.target, regime });
                 this.shapeHolding.add(id);
                 this.actionLabels.set(id, label);
               } else if (this.shapeHolding.has(id) && body.command.type !== 'hold') {
@@ -2206,23 +2559,52 @@ export class Sim {
             this.shapeHolding.delete(id);
             this.pressingIds.delete(id);
           }
+          if (carrierBody && carrierBody.team !== body.team) this.attackIdle.delete(id);
+          // NO POSSESSION, NO PAUSE (the judged freeze): with the ball
+          // loose and unclaimed there is no carrier context, so neither
+          // idle branch ever ran — 18 non-racing players stood on stale
+          // commands. Both teams now hold their block-shifted stations
+          // through the scramble.
+          if (!carrierBody && this.ball.phase !== 'dead' &&
+            (body.command.type === 'hold' || this.attackIdle.has(id) || this.shapeHolding.has(id) ||
+              this.runningLine.has(id)) &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1) &&
+            this.homes.has(id)) {
+            const home = this.homes.get(id)!;
+            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
+              0.5, this.teamBrainCount(body.team) + 1);
+            const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
+            this.attackIdle.add(id);
+            if (dSt > 1.6) {
+              this.assign(body, { type: 'moveTo', target: st, regime: dSt > 9 ? 'run' : 'jog' });
+              this.actionLabels.set(id, 'station');
+            } else if (body.command.type !== 'hold') {
+              this.assign(body, { type: 'hold' });
+            }
+          }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
-          // collected by the nearest idle brain — deflected passes died
-          // untouched with players standing over them (the audit)
-          if (body.command.type === 'hold' && this.ball.carrierId === null &&
+          // RACED by each team's nearest brain — deflected passes died
+          // untouched with players standing over them (the audit), and at
+          // match spacing the old 8 m radius DEADLOCKED an entire 11v11
+          // around a neutral kickoff ball for 18+ seconds (the m11 pilot's
+          // first finding): a neutral ball is always somebody's to go for.
+          if ((body.command.type === 'hold' || this.attackIdle.has(id)) && this.ball.carrierId === null &&
             this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
             Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
-            const d = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
-            if (d < 8) {
-              const nearestBrain = [...this.brains].reduce((best, bid) => {
-                const b = this.byId.get(bid)!;
-                const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
-                return bd < best.d ? { id: bid, d: bd } : best;
-              }, { id: '', d: Infinity });
-              if (nearestBrain.id === id) {
-                this.assign(body, { type: 'chaseBall', regime: 'run' });
-                this.actionLabels.set(id, 'collect');
-              }
+            if (this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team) {
+              // not our restart — hold shape while they put it back in
+            } else {
+            const nearestOfTeam = [...this.brains].reduce((best, bid) => {
+              const b = this.byId.get(bid)!;
+              if (b.team !== body.team) return best;
+              const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+              return bd < best.d ? { id: bid, d: bd } : best;
+            }, { id: '', d: Infinity });
+            if (nearestOfTeam.id === id) {
+              this.assign(body, { type: 'chaseBall', regime: nearestOfTeam.d > 10 ? 'sprint' : 'run' });
+              this.actionLabels.set(id, 'collect');
+            }
             }
           }
         }
@@ -2231,7 +2613,11 @@ export class Sim {
       this.receiveOpenDir.delete(id);
       this.bendReceive.delete(id); // carrier now — the run is received
       let intent = this.intents.get(id) ?? null;
-      if (!intent || this.tick % DECIDE.reconsiderTicks === 0) {
+      // a feint/burst in flight is a COMMITTED move — no re-pricing of
+      // the geometry the fake itself just changed (the EV was killing
+      // every feint half-made); only the approach is abortable
+      const beatCommitted = this.beatExec?.carrierId === id && this.beatExec.phase !== 'approach';
+      if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
           carrier: body,
           bodies: this.bodies,
@@ -2257,6 +2643,10 @@ export class Sim {
         });
         this.intents.set(id, intent);
       }
+      // a stale beatExec outlived its intent and its APPROACH THROTTLE
+      // kept braking the carrier at 4.2 for the rest of the run (the
+      // sluggish post-beat carry, found instrumenting the channel)
+      if (this.beatExec?.carrierId === id && intent.kind !== 'beat') this.beatExec = null;
       switch (intent.kind) {
         case 'carry':
           this.pendingKicks.delete(id);
@@ -2275,6 +2665,25 @@ export class Sim {
           const gdirB = Math.atan2(goalCenter(body.team).y - body.pos.y, goalCenter(body.team).x - body.pos.x);
           const ex0 = this.beatExec?.carrierId === id ? this.beatExec : null;
           let fmB: BodyState | undefined = ex0 ? this.byId.get(ex0.fmId) : undefined;
+          if (!fmB) {
+            // the man to beat is the RIDER — the defender whose duel
+            // machine runs against me (jockey/track/engage; his hold IS
+            // the closable 2-2.6 m). The goalward cone alone locked onto
+            // the RECEDING COVER — 6 m off by construction, never
+            // closable to the feint trigger — while the rider at 2 m sat
+            // outside the cone (the verified approach-only defect).
+            let rdB = 8.0;
+            for (const [rid, rst] of this.duels) {
+              // only a PLANTED man is not worth beating (run past him);
+              // a recovering rider at 2 m is still the man to beat —
+              // excluding recover re-selected the receding cover
+              if (rst.state === 'staggered') continue;
+              const rb = this.byId.get(rid);
+              if (!rb || rb.team === body.team) continue;
+              const d0 = Math.hypot(rb.pos.x - body.pos.x, rb.pos.y - body.pos.y);
+              if (d0 < rdB) { rdB = d0; fmB = rb; }
+            }
+          }
           if (!fmB) {
             let fdB = 8.0;
             for (const o of this.bodies) {
@@ -2306,7 +2715,16 @@ export class Sim {
             if (!cur || Math.hypot(cur.x - fmB.pos.x, cur.y - fmB.pos.y) > 0.5) {
               this.assign(body, { type: 'moveTo', target: { x: fmB.pos.x, y: fmB.pos.y }, regime: 'run' });
             }
-            if (dFm <= 3.1) { st.phase = 'feint'; st.until = this.tick + 4; }
+            // the STALL break: a conceding rider (jockey cap 4.5) can
+            // out-backpedal the throttled approach (4.2) forever — the
+            // 3.1 m arc never arrives. Real take-ons end the standoff
+            // from just outside the tackle arc: gap under 5.5 and no
+            // longer closing → the move is NOW.
+            const closingRate = (st.lastD ?? dFm) - dFm;
+            st.lastD = dFm;
+            if (dFm < 5.5 && closingRate < 0.06) st.stall = (st.stall ?? 0) + 1;
+            else st.stall = 0;
+            if (dFm <= 3.1 || (st.stall ?? 0) >= 4) { st.phase = 'feint'; st.until = this.tick + 4; }
           }
           if (st.phase === 'feint') {
             // the step to the FAKE side (opposite the burst) — his smoothed
@@ -2353,6 +2771,31 @@ export class Sim {
             // cost (defenders keep closing while the body comes around)
             if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
             body.command = { type: 'hold', facing: strikeDir };
+          } else if (reach <= TECH.kickReachM && this.tick - this.carrierSince < 2) {
+            // the SETTLE touch (the refinement round's t0 instant strike):
+            // a possession just GAINED — spawn or turnover — takes a beat
+            // before an intent strike (same-team combinations keep their
+            // tempo: carrierSince only resets on the team changing). The
+            // builder watched a t0 screamer from a player who visibly
+            // never had the ball.
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+            body.command = { type: 'hold', facing: strikeDir };
+          } else if (reach <= TECH.kickReachM && intent.kind === 'pass' && intent.pC !== undefined &&
+            !intent.loftDeg && !intent.spin &&
+            passCompletion(body.pos, intent.dest, intent.speedMps,
+              this.bodies.filter((o) => o.team !== body.team),
+              Math.hypot(intent.dest.x - body.pos.x, intent.dest.y - body.pos.y),
+              this.byId.get(intent.receiverId), body.attributes.passing) <
+              Math.min(0.15, intent.pC * 0.45)) {
+            // the STRIKE-ABORT (the refinement round): the lane is priced
+            // at DECISION time and struck ~0.3 s later — a shadow can
+            // converge in between (the LB cutting the 'clear' thread 7/8).
+            // A lane that has COLLAPSED since pricing (not merely a bad
+            // lane knowingly chosen — that would abort-loop) pulls the
+            // pass; the player checks out and re-decides.
+            this.intents.delete(id);
+            this.actionLabels.set(id, 'check');
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
@@ -2360,6 +2803,14 @@ export class Sim {
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
+              if (this.telemetry) {
+                this.openPass = {
+                  tick: this.tick, pC: intent.pC,
+                  dist: Math.hypot(intent.dest.x - body.pos.x, intent.dest.y - body.pos.y),
+                  loft: intent.loftDeg ?? 0, spin: intent.spin ?? 0,
+                  kicker: id, receiver: intent.receiverId,
+                };
+              }
             }
             this.intents.delete(id);
             this.pendingKicks.delete(id);

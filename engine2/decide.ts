@@ -14,9 +14,10 @@
  * striker-shoots-by-construction hold natively: no role flag, just EV.
  */
 
-import { PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
-import { loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveLoftSpeed, type BallState } from './ball.ts';
+import { DT, PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
+import { loftApex, loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveCurl, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
+import { calibratePass, carryRetention } from './pass-calibration.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
 /** L5E — the duel state machine's numbers (design: L5E-DESIGN.md). The
@@ -47,6 +48,51 @@ export const DUEL = {
   pressureStoppedFactor: 3,
   pressureSupportFactor: 1.8,
   dCoverM: 12,
+  /** II.7 — the second man's spot BEHIND the press, on the carrier→goal
+   * line (deep enough to meet the carry-around, inside dCoverM so the
+   * presser's patience feels the support), shaded to the arc side */
+  coverBehindM: 6,
+  coverShadeM: 1.5,
+  /** the mark's L (I.1): goal-side of his man, a stride off — close
+   * enough to press the touch, goal-side enough to never be run past —
+   * and shaded BALL-side to sit against the lane (I.13) */
+  markGoalSideM: 1.8,
+  markBallShadeM: 0.9,
+  /** the DUTY BOARD's insurance factor: the behind-cover duty prices as
+   * the carrier's danger × this — the presser already engages him;
+   * behind guards the breakthrough, the second layer. Fitted (Jul 24)
+   * at 0.35: every measured allocation holds outcome-identically.
+   * MEASURED LIMIT (same day): the desired flip — ignore a HARMLESS
+   * 45 m outlet and cover behind a goal-bearing carrier — needs ≥0.45,
+   * but the pinned 2v2's LIVE-outlet mark already loses at 0.45: no
+   * single scalar separates them, because the mark scale's 0.4
+   * completability floor prices live and harmless outlets alike. The
+   * next calibration is the mark-danger scale itself (threat vs
+   * completability) — it re-prices lane ranking everywhere, a
+   * builder-live round. */
+  behindInsurance: 0.35,
+  /** the LOCAL GAME radius (the m11 verdict): board duties only for
+   * defenders this near the carrier — the rest are team shape */
+  localGameR: 30,
+  /** the press hand-off leash: incumbency lapses when the chase has
+   * dragged the presser this far from his formation home — the carrier
+   * is PASSED ON between zones instead of towing one man across the
+   * pitch (the builder's dragged-CB frame) */
+  pressLeashM: 20,
+  /** zone weight in duty seating/claims: meters of home displacement
+   * priced per meter of duty distance — the left back stops being the
+   * "nearest" man to a central cover spot */
+  dutyZoneW: 0.6,
+  /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
+   * momentum rule applied to marking): a marker who steps toward his
+   * man is too late on the dart by momentum alone. The station DROPS
+   * goal-side with the man's goalward speed (the buffer IS the
+   * anticipation, and retreating with the rising threat gives the
+   * marker goalward momentum BEFORE the race), and the ball-shade
+   * FADES with it — contest the feet ball on a static outlet, concede
+   * feet and deny in-behind on a runner. */
+  markDropGainS: 0.8,
+  markShadeFadeMps: 3,
   engageEscapeM: 3.5, // the carrier breaks this far → the engage is over
   pressureResetOnEscape: 0.3,
   /** the failed lunge is the BEATEN moment: planted ~0.8 s. Without it,
@@ -101,7 +147,7 @@ export interface PlayInstructions {
 
 export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
-  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
+  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number; pC?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
   | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
   | { kind: 'beat'; dest: Vec2; side: number; utility: number }
@@ -140,6 +186,14 @@ export const DECIDE = {
    * around this pace and dies just beyond him — the old linear formula hit
    * every ball to arrive at full pace and roll 60 m when a receive missed */
   passArriveMps: 5.5,
+  /** the CURL (trivela): a ground ball bent around a lane blocker — fully
+   * controllable to feet where the loft trades control for altitude. Spin
+   * within the validated band (curve scenarios: 52–85); range bounded by
+   * roll reach (a 17 m/s ball dies ~31 m). The bend needs room to work:
+   * under ~10 m there is no arc, beyond ~30 the ball dies on the line. */
+  curlSpin: 70,
+  curlMinM: 10,
+  curlMaxM: 30,
   /** the lane margin (s) an opponent needs to make the intercept — sampled
    * against ball travel time along the lane */
   laneSampleStep: 0.15, // fraction of the lane per sample
@@ -180,12 +234,17 @@ export const DECIDE = {
   clearUtility: 0.06,
   shieldUtility: 0.03,
   /** LOFTED ball: a driven loft (low angle) is the accurate, fast aerial
-   * through ball; a chip (steeper) clears a nearer man. Aerial control is
-   * harder than a ground receive — the drop is taxed by first touch. */
+   * through ball; a chip (steeper) clears a nearer man. The receive tax
+   * is SMALL — measured (Jul 24): unmarked aerial receives complete 12/12
+   * at every angle × distance even at firstTouch 6; the aerial ball's
+   * real risk is the CONTEST (mid-flight cuts, the drop race), which
+   * aerialCompletion's time model prices. The old 0.5+0.02·touch charged
+   * 22% for a receive that does not fail — and its double-count pushed
+   * honest floats/switches under the pass floor (the failed pins). */
   loftDrivenDeg: 24,
   loftChipDeg: 42,
-  aerialControlBase: 0.5,
-  aerialControlTouchGain: 0.02,
+  aerialControlBase: 0.86,
+  aerialControlTouchGain: 0.01,
   /** the CROSS: a wide, advanced carrier whips an aerial ball into the box for
    * an attacker's run — a DRIVEN (fast, flat) or FLOATED (high, hang-time)
    * delivery, both solved to land on his run. Fires from wide + advanced into a
@@ -349,8 +408,13 @@ export const passCompletion = (
       // reacting to CUT a fast ball is harder than stepping on a roller —
       // the second half of "driven passes are harder to intercept"
       // (passing.md #13; the flat 0.35 s made every zipped diagonal
-      // cuttable and the multi-line ball never existed)
-      const tOpp = 0.35 + 0.01 * Math.max(0, ballHere - 8) + tRun;
+      // cuttable and the multi-line ball never existed). But PRESENCE
+      // BEATS REACTION: a body already ON the lane blocks by standing
+      // there (the ball deflects off him — no read required); the
+      // reaction excuse let a 20 m/s screamer be priced 0.76 through a
+      // CB's shins he cut at his plane (the wb-0 cross).
+      const react = dOpp <= 0 ? 0.12 : 0.35 + 0.01 * Math.max(0, ballHere - 8);
+      const tOpp = react + tRun;
       // the lane's TAIL belongs to the receiver: a defender the receiver
       // beats to a late sample isn't cleanly intercepting — he's arriving
       // into a contested receive. Soften his threat rather than void it (a
@@ -382,16 +446,148 @@ export const aerialCompletion = (
   landing: Vec2,
   mate: BodyState,
   opponents: readonly BodyState[],
+  /** flight origin + hang time + apex: enable the TIME model. Without them
+   * the old distance-at-the-drop margin runs (sim's quick claim gates).
+   * Calibrated against the measured contest matrix (Jul 24): the old model
+   * priced a blocker 9 m from the landing at 0.986 while he jogged onto
+   * the drop during the hang (chosen 8/8, completed 1/8); and a 24° loft
+   * over 18 m has apex ~2.0 m — UNDER a defender's 2.26 m reach for the
+   * whole flight: not an "over" ball at all, cuttable at any point he can
+   * reach in time. */
+  from?: Vec2,
+  hangS?: number,
+  apexM?: number,
+  /** keeper ids among the opponents: a keeper's catch is HANDS — clean,
+   * no header contest, wider claim radius. A float dropping in his zone
+   * is his ball, not a coin flip (the cross scene: 7/10 keeper claims
+   * the model priced at 0.93). */
+  keeperIds?: ReadonlySet<string>,
 ): number => {
   const dMate = Math.hypot(mate.pos.x - landing.x, mate.pos.y - landing.y);
-  let nearest = Infinity;
-  for (const o of opponents) {
-    nearest = Math.min(nearest, Math.hypot(o.pos.x - landing.x, o.pos.y - landing.y));
+  if (from === undefined || hangS === undefined || apexM === undefined) {
+    let nearest = Infinity;
+    for (const o of opponents) {
+      nearest = Math.min(nearest, Math.hypot(o.pos.x - landing.x, o.pos.y - landing.y));
+    }
+    const margin = nearest - dMate;
+    return 1 / (1 + Math.exp(-(margin - 0.5) / 2.0));
   }
-  // metre margin at the drop (receiver closer than any defender = safe); the
-  // receiver reads the flight and gets under it, a defender must recover to it
-  const margin = nearest - dMate;
-  return 1 / (1 + Math.exp(-(margin - 0.5) / 2.0));
+  const runT = (b: BodyState, tx: number, ty: number, reactS: number): number => {
+    const d = Math.max(0, Math.hypot(b.pos.x - tx, b.pos.y - ty) - DECIDE.interceptReachM);
+    const v = Math.max(regimeCapMps(b.attributes.pace, 'sprint'), 1);
+    const a = KIN.accelBase + KIN.accelPerPoint * b.attributes.acceleration;
+    const ramp = (v * v) / (2 * a);
+    return reactS + (d <= ramp ? Math.sqrt((2 * d) / a) : v / (2 * a) + d / v);
+  };
+  const dChord = Math.max(Math.hypot(landing.x - from.x, landing.y - from.y), 1e-6);
+  const ux = (landing.x - from.x) / dChord;
+  const uy = (landing.y - from.y) / dChord;
+  // the receiver must be under the drop by the hang (callers lead him there)
+  const tRx = 0.1 + runT(mate, landing.x, landing.y, 0);
+  let worst = Infinity; // seconds of margin over the best-placed opponent
+  for (const o of opponents) {
+    const reach = 1.9 + 0.03 * o.attributes.strength; // headStandM + jump
+    // MID-FLIGHT CUT: where the flight crosses his reach he can head/cut
+    // it — the parabola z(f) ≈ 4·apex·f(1−f) says which stretch of the
+    // chord is below him; race him to his nearest cuttable point
+    const fO = Math.max(0.08, Math.min(0.92,
+      ((o.pos.x - from.x) * ux + (o.pos.y - from.y) * uy) / dChord));
+    const zAt = 4 * apexM * fO * (1 - fO);
+    if (zAt <= reach) {
+      const cx = from.x + ux * fO * dChord;
+      const cy = from.y + uy * fO * dChord;
+      // presence beats reaction: a body already at the crossing blocks
+      // the sub-reach flight by standing there
+      const dCross = Math.hypot(o.pos.x - cx, o.pos.y - cy);
+      const tO = (dCross <= DECIDE.interceptReachM ? 0.12 : 0.35) + runT(o, cx, cy, 0);
+      worst = Math.min(worst, tO - fO * hangS);
+    }
+    // the LANDING RACE: he converges on the drop during the hang. An
+    // ATTENDED drop that both bodies reach is a header CONTEST (the
+    // aerial-contest layer decides it by reach/strength) — floored near
+    // the coin flip, or every cross into a real box prices to zero (the
+    // failed cross pin). An UNattended drop he reaches first is his.
+    // A KEEPER gets no contest floor and a head start (hands claim wide
+    // and clean — the drop in his zone is simply his).
+    const isK = keeperIds?.has(o.id) ?? false;
+    const tOl = 0.35 + runT(o, landing.x, landing.y, 0) - (isK ? 0.25 : 0);
+    let lm = tOl - Math.max(hangS, tRx);
+    if (!isK && tRx <= hangS + 0.2) lm = Math.max(lm, -0.18); // contest floor ≈ 0.46
+    worst = Math.min(worst, lm);
+  }
+  // time margin → probability (fitted: −0.35 s ≈ 1/3, +0.05 s ≈ 0.85)
+  return Math.max(0.02, Math.min(0.98, 1 / (1 + Math.exp(-(worst + 0.15) / 0.2))));
+};
+
+/** completion of a CURLING ground ball: the lane is the BENT path, not the
+ * chord — a straight-lane check would see the exact blocker the bend exists
+ * to avoid. Simulate the spun roll once (the same stepBall physics the
+ * match runs) and apply passCompletion's interception-margin model over the
+ * TRUE samples. `aim` is solveCurl's strike point; `dest` the intended
+ * arrival (the receiver's ball). */
+export const curlCompletion = (
+  from: Vec2,
+  aim: Vec2,
+  spin: number,
+  speedMps: number,
+  dest: Vec2,
+  opponents: readonly BodyState[],
+  receiver?: BodyState,
+  passerSkill = 12,
+): number => {
+  const dChord = Math.hypot(dest.x - from.x, dest.y - from.y);
+  if (dChord < 0.5) return 0.2;
+  const dirA = Math.atan2(aim.y - from.y, aim.x - from.x);
+  const b: BallState = {
+    pos: { x: from.x, y: from.y }, z: 0,
+    vel: { x: Math.cos(dirA) * speedMps, y: Math.sin(dirA) * speedMps }, vz: 0, spin,
+    phase: 'rolling', carrierId: null, kickerId: null, kickerLockUntilTick: 0, touchParity: false,
+  };
+  const runTime = (bd: BodyState, tx: number, ty: number, reactS: number): number => {
+    const d = Math.max(0, Math.hypot(bd.pos.x - tx, bd.pos.y - ty) - DECIDE.interceptReachM);
+    const v = Math.max(regimeCapMps(bd.attributes.pace, 'sprint'), 1);
+    const a = KIN.accelBase + KIN.accelPerPoint * bd.attributes.acceleration;
+    const ramp = (v * v) / (2 * a);
+    return reactS + (d <= ramp ? Math.sqrt((2 * d) / a) : v / (2 * a) + d / v);
+  };
+  let worst = Infinity;
+  for (let i = 1; i <= 400; i++) {
+    stepBall(b);
+    const ballHere = Math.hypot(b.vel.x, b.vel.y);
+    const distTo = Math.hypot(b.pos.x - dest.x, b.pos.y - dest.y);
+    const arrived = distTo <= 1.2;
+    if (ballHere < 0.3) break;
+    if (i % 2 !== 0 && !arrived) continue; // every 0.2 s + the arrival
+    const tBall = i * DT;
+    const px = b.pos.x;
+    const py = b.pos.y;
+    const f = Math.max(0, Math.min(1, 1 - distTo / dChord));
+    for (const o of opponents) {
+      const proj = Math.min(tBall, 0.8);
+      const ox = o.pos.x + o.vel.x * proj;
+      const oy = o.pos.y + o.vel.y * proj;
+      const dProj = Math.max(0, Math.hypot(ox - px, oy - py) - DECIDE.interceptReachM);
+      const dNow = Math.max(0, Math.hypot(o.pos.x - px, o.pos.y - py) - DECIDE.interceptReachM);
+      const dOpp = Math.min(dProj, dNow);
+      const vOpp = Math.max(regimeCapMps(o.attributes.pace, 'sprint'), 1);
+      const a = KIN.accelBase + KIN.accelPerPoint * o.attributes.acceleration;
+      const ramp = (vOpp * vOpp) / (2 * a);
+      const tRun = dOpp <= ramp ? Math.sqrt((2 * dOpp) / a) : vOpp / (2 * a) + dOpp / vOpp;
+      // presence beats reaction (see passCompletion): a body on the bent
+      // path blocks by standing there
+      const react = dOpp <= 0 ? 0.12 : 0.35 + 0.01 * Math.max(0, ballHere - 8);
+      const tOpp = react + tRun;
+      const protectedTail = receiver !== undefined && f > 0.7 &&
+        runTime(receiver, px, py, 0.1) <= tOpp;
+      worst = Math.min(worst, tOpp - tBall + (protectedTail ? 0.35 : 0));
+    }
+    if (arrived) break;
+  }
+  const precision = (passerSkill - 14) * 0.02;
+  const p = (worst + precision + 0.4) / 1.0;
+  const lane = Math.max(0.02, Math.min(0.98, p));
+  const range = 1 / (1 + Math.max(0, dChord - 26) / 30);
+  return lane * range;
 };
 
 /** L5a — the support spot: where an off-ball teammate should stand so the
@@ -407,12 +603,17 @@ export const supportSpot = (
 ): Vec2 => {
   const opponents = bodies.filter((b) => b.team !== mate.team);
   const mates = bodies.filter((b) => b.team === mate.team && b.id !== mate.id);
-  // the home DEFORMS toward the ball (structure follows play)
+  // the home DEFORMS toward the ball (structure follows play). In SCORE
+  // mode the base sits ON THE MESH RING around the carrier (the EAFC
+  // frames: 3-4 short options within 8-15 m; home-anchored support left
+  // the carrier one pass short of a triangle) — approached from the
+  // supporter's natural side so the mesh keeps its angles.
   const dx = carrier.pos.x - home.x;
   const dy = carrier.pos.y - home.y;
   const dd = Math.hypot(dx, dy) || 1;
-  const shift = Math.min(dd * 0.3, objective === 'keep' ? 3 : 8);
-  const base = { x: home.x + (dx / dd) * shift, y: home.y + (dy / dd) * shift };
+  const base = objective === 'keep'
+    ? { x: home.x + (dx / dd) * Math.min(dd * 0.3, 3), y: home.y + (dy / dd) * Math.min(dd * 0.3, 3) }
+    : { x: carrier.pos.x - (dx / dd) * Math.min(dd, 12), y: carrier.pos.y - (dy / dd) * Math.min(dd, 12) };
   let best: Vec2 = base;
   let bestU = -Infinity;
   for (let i = -1; i < 8; i++) {
@@ -423,12 +624,22 @@ export const supportSpot = (
     if (cand.x < 1 || cand.x > PITCH.length - 1 || cand.y < 1 || cand.y > PITCH.width - 1) continue;
     const dist = Math.hypot(cand.x - carrier.pos.x, cand.y - carrier.pos.y);
     if (dist < 4) continue; // an outlet is not a crowd around the carrier
+    if (objective === 'score' && dist > 17) continue; // the mesh ring: short options only
     const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;
+    // TRIANGLE SPREAD (the builder's frame: supporters approached from
+    // their home directions — same-side men stacked on one line, no
+    // angles): a candidate within ~40° of another mate's bearing from
+    // the carrier is crowding the SAME passing lane, wherever he stands
+    const candAng = Math.atan2(cand.y - carrier.pos.y, cand.x - carrier.pos.x);
     for (const m of mates) {
       const md = Math.hypot(m.pos.x - cand.x, m.pos.y - cand.y);
       if (md < 6) crowd += (6 - md) / 6;
+      const mAng = Math.atan2(m.pos.y - carrier.pos.y, m.pos.x - carrier.pos.x);
+      const dAng = Math.abs(((candAng - mAng + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const mDist = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
+      if (dAng < 0.7 && mDist < 20) crowd += (0.7 - dAng) / 0.7 * 0.8;
     }
     const u = lane * 0.6 + val * 1.2 - crowd * 0.12;
     if (u > bestU) {
@@ -736,6 +947,416 @@ export const pressApproach = (
   return { x: carrier.pos.x + (lx / ln) * 1.4, y: carrier.pos.y + (ly / ln) * 1.4 };
 };
 
+/** L5E — the DEFENSIVE BRAIN (reference/defensive_principles.md): Part
+ * III's decision hierarchy, run per defender per reconsider tick — is my
+ * teammate already pressing? should I press? delay? cover? sit on the
+ * lane? recover shape? — returning an INTENT the sim executes (and the
+ * duel machine rides, for the presser). This skeleton extracts the
+ * inline chain the sim grew, verbatim; the principles' refinements
+ * (cover-behind-the-press, force direction, attribute dials, role
+ * weights) land on it one measured change at a time. */
+export type DefenseIntent =
+  | { kind: 'press'; approach: Vec2 | null; label: 'press' | 'counterpress' }
+  | { kind: 'delay'; hold: Vec2 }
+  | { kind: 'cover'; target: Vec2 }
+  | { kind: 'mark'; target: Vec2; urgent: boolean }
+  | { kind: 'interceptLane'; target: Vec2 }
+  | { kind: 'holdShape'; target: Vec2 };
+
+export interface DefenseInput {
+  defender: BodyState;
+  carrier: BodyState;
+  bodies: readonly BodyState[];
+  ball: BallState;
+  instructions: PlayInstructions;
+  /** the defending UNIT: eligible brains on this team, defender included */
+  unit: readonly BodyState[];
+  /** the first-defender election's memory — who pressed last tick */
+  pressingIds: ReadonlySet<string>;
+  /** inside the transition window and near the ball (innate aggression) */
+  inCounterpress: boolean;
+  /** the carrier's first touches — press the touch (defensive.md) */
+  justReceived: boolean;
+  homes: ReadonlyMap<string, Vec2>;
+}
+
+/** the BLOCK STATION (the four-frame verdict): a player's off-ball spot
+ * is his formation home slid toward the BALL relative to the team's
+ * formation centroid — anchoring on the pitch center made midfield
+ * possession compute ~zero shift, and a striker attacked six defenders
+ * while his team idled at home. Possession pushes hard (the block
+ * supports its carrier); defense slides shorter and compresses. */
+export const blockStation = (
+  home: Vec2,
+  centroid: Vec2,
+  ball: Vec2,
+  possession: boolean,
+  /** the team's attack sign — the compactness clamp needs to know which
+   * way "ahead of the ball" points */
+  sign = 0,
+  /** the tactics hook (L6): a higher line squeezes the possession rest
+   * band up the pitch; the band itself is fundamental */
+  lineHeight = 0.5,
+  /** EAFC-scale compression is an ELEVEN-man behavior: a 4-man line that
+   * tucks 16 m abandons its channel outright (the fullbacks drill went
+   * 8/8 through) — small casts keep the old gentle slide */
+  teamSize = 11,
+): Vec2 => {
+  const kx = possession ? 0.7 : 0.45;
+  const capX = possession ? 30 : 18;
+  // BALL-SIDE COMPRESSION (the EAFC frames: density is central and
+  // ball-side; a far winger tucks toward the box edge rather than
+  // holding the touchline) — roughly double the old lateral slide
+  const big = teamSize >= 8;
+  const ky = big ? 0.45 : 0.3;
+  const capY = big ? 16 : possession ? 10 : 8;
+  let x = Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx))));
+  if (sign !== 0) {
+    const u = x * sign;
+    const ballU = ball.x * sign;
+    if (!possession) {
+      // TEAM COMPACTNESS (principles II.1): out of possession no station
+      // sits more than 28 m ahead of the ball — hard to play through
+      if (u > ballU + 28) x = (ballU + 28) * sign;
+    } else {
+      // POSSESSION COMPACTNESS + REST-DEFENSE (the EAFC frames: the
+      // attacking block spans ~35 m with the back line stepped up to a
+      // visible rest chain behind the ball). lineHeight is the tactics
+      // hook: a higher line squeezes the rest band up; the fundamentals
+      // (a band exists) are not optional.
+      // tightened to the EAFC density (three probes showed the short-
+      // option mesh is a GEOMETRY product: at their ~40 m envelope, 3-4
+      // teammates sit within 16 m of the carrier by construction)
+      const restDeep = 16 + (1 - lineHeight) * 8; // deepest station behind the ball
+      if (u < ballU - restDeep) x = (ballU - restDeep) * sign;
+      if (u > ballU + 10) x = (ballU + 10) * sign; // stations don't lead the ball (runs/box do)
+    }
+    x = Math.max(2, Math.min(PITCH.length - 2, x));
+  }
+  let y = Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky))));
+  // the far-side TUCK: nobody stations more than 26 m across from the
+  // ball line (the EAFC far winger sits at the box edge, not the chalk)
+  if (big) {
+    if (y - ball.y > 26) y = ball.y + 26;
+    if (ball.y - y > 26) y = ball.y - 26;
+    y = Math.max(2, Math.min(PITCH.width - 2, y));
+  }
+  return { x, y };
+};
+
+export const decideDefense = (input: DefenseInput): DefenseIntent => {
+  const { defender, carrier, bodies, ball, instructions, unit, pressingIds, inCounterpress, justReceived, homes } = input;
+  const pressing = instructions.pressing ?? 0;
+  // FIRST-DEFENDER election (principles IV: ONE man pressures the ball):
+  // nearest eligible — STICKY for the incumbent unless clearly beaten
+  // (flapping first/second made both look like ball-chasers)
+  // ZONE-ENTRY election (the EAFC frames: the back line holds ~15 m
+  // behind the engagement and MIDFIELD presses; the earlier flat
+  // line-tax measured backward because a fullback pressing in his OWN
+  // channel is right): a deep-half defender only wins the election when
+  // the carrier has actually entered his line's DEPTH BAND — otherwise
+  // a midfielder steps out even if slightly farther. Team behavior
+  // (unit >= 5); drills keep raw-nearest.
+  const zHomes = unit.map((b) => homes.get(b.id)).filter((h): h is Vec2 => !!h);
+  const zCx = zHomes.length ? zHomes.reduce((a, h) => a + h.x, 0) / zHomes.length : carrier.pos.x;
+  const zSign = attackSign(defender.team);
+  let nearest = unit.reduce((best, b) => {
+    const d = Math.hypot(carrier.pos.x - b.pos.x, carrier.pos.y - b.pos.y);
+    if (unit.length >= 5) {
+      const h = homes.get(b.id);
+      const deep = h ? (zSign > 0 ? h.x <= zCx + 0.5 : h.x >= zCx - 0.5) : false;
+      if (deep) {
+        // his line's depth band: from his own goal out to his line's
+        // height + a stride — the carrier must be INSIDE it
+        const lineU = h ? h.x * zSign : 0;
+        const carU = carrier.pos.x * zSign;
+        const entered = carU <= lineU + 10;
+        if (!entered) return best; // hold the line; midfield steps
+      }
+    }
+    return d < best.d ? { id: b.id, d } : best;
+  }, { id: '', d: Infinity });
+  const incumbent = unit.find((b) => pressingIds.has(b.id));
+  if (incumbent && incumbent.id !== nearest.id) {
+    const di = Math.hypot(carrier.pos.x - incumbent.pos.x, carrier.pos.y - incumbent.pos.y);
+    // the HAND-OFF LEASH (the builder's frame: a CB dragged across the
+    // pitch by a moving carrier — incumbency held as long as he stayed
+    // within 14 m of the carrier, which chasing guarantees): stickiness
+    // also requires the incumbent still near HIS OWN STATION; a press
+    // dragged beyond the leash lapses, the nearest fresh defender takes
+    // the carrier, and the dragged man returns to his zone.
+    const ih = input.homes.get(incumbent.id);
+    const drag = ih ? Math.hypot(incumbent.pos.x - ih.x, incumbent.pos.y - ih.y) : 0;
+    // ...a TEAM behavior: with fewer than five defenders there are no
+    // zones to protect and the long escorted press (the 2v1 herd) is
+    // the right football
+    const leashed = unit.length >= 5 && drag >= DUEL.pressLeashM;
+    if (di < nearest.d + 4 && di < 14 && !leashed) nearest = { id: incumbent.id, d: di };
+  }
+  const iAmFirst = nearest.id === defender.id;
+  const score = pressScore(defender, carrier, bodies, justReceived, pressing);
+  const pressNow = inCounterpress || (iAmFirst && pressing > 0 && score >= 0.75 - 0.3 * pressing);
+  const firstIsEngaged = pressingIds.has(nearest.id) || (iAmFirst && pressNow);
+  const dCar = Math.hypot(carrier.pos.x - defender.pos.x, carrier.pos.y - defender.pos.y);
+  if (pressNow) {
+    // the CURVED approach: close from the denied lane's side (pressing.md:
+    // a straight chase leaves the lane open); the last 3 m are the
+    // machine's hunt (contain + tackles need the chase)
+    const approach = dCar > 3 && !inCounterpress ? pressApproach(defender, carrier, bodies) : null;
+    return { kind: 'press', approach, label: inCounterpress ? 'counterpress' : 'press' };
+  }
+  if (iAmFirst && pressing > 0 && dCar < 11) {
+    // the DELAY stance (principles I.2: winning time beats winning the
+    // ball): hold off goal-side ~4.5 m — slow the attack, await the trigger
+    const gx = attackSign(defender.team) > 0 ? 0 : PITCH.length;
+    const dx = gx - carrier.pos.x;
+    const dy = GOAL.centerY - carrier.pos.y;
+    const dn = Math.hypot(dx, dy) || 1;
+    return { kind: 'delay', hold: { x: carrier.pos.x + (dx / dn) * 4.5, y: carrier.pos.y + (dy / dn) * 4.5 } };
+  }
+  // a PRESSING UNIT's non-engaged members take distinct assignments
+  // (principles IV: second man covers) — and the FIRST cover duty is
+  // II.7: protect BEHIND the press. A single pass or carry-around breaks
+  // a press nobody stands behind (the covered-duel arc: the old leftover
+  // rule compacted the second man toward the BALL — ball-watching, Part
+  // VI — and the attacker rounded the pair). The second man sits on the
+  // carrier→goal line behind the presser, shaded to the carrier's arc
+  // side; lane spots only claim the men beyond him.
+  // LINE units (pressing ≤ 0.3) keep L5c shape.
+  if (pressing > 0.3 && firstIsEngaged) {
+    // THE LOCAL GAME (the m11 pilot verdict: every duty fired globally —
+    // ten defenders marking across the whole pitch, nobody holding a
+    // line): the duty board is for the LOCAL unit only; everyone beyond
+    // localGameR falls through to holdShape. Drill casts sit inside the
+    // radius, so the small scenes are untouched.
+    // ... and the board seats PRESSER + THREE (the builder's screenshot:
+    // with the ball in the corner, EIGHT men inside the local radius all
+    // drew 'cover' duties and the leftover-centroid rule stacked them
+    // into one blob — a real defense compacts as a STRUCTURED block, so
+    // everyone beyond the three nearest holds shape instead)
+    // seating and claiming are ZONE-WEIGHTED (the builder's frame: the
+    // LEFT BACK seated by raw proximity and handed a central cover spot
+    // — the board must prefer the man whose zone the duty sits in)
+    const zoneCost = (b: BodyState, at: Vec2): number => {
+      const h = homes.get(b.id);
+      if (!h) return Math.hypot(b.pos.x - at.x, b.pos.y - at.y);
+      // VACANCY DANGER (builder direction): the gap a defender leaves by
+      // taking this duty is itself a danger — priced by how far the duty
+      // drags him from his zone AND whether opponents lurk near the zone
+      // he'd vacate. Shape retention becomes an EV force, not a leash.
+      let lurkers = 0;
+      for (const o of bodies) {
+        if (o.team === defender.team) continue;
+        if (Math.hypot(o.pos.x - h.x, o.pos.y - h.y) < 16) lurkers++;
+      }
+      return Math.hypot(b.pos.x - at.x, b.pos.y - at.y) +
+        DUEL.dutyZoneW * Math.hypot(at.x - h.x, at.y - h.y) * (1 + 0.7 * Math.min(2, lurkers));
+    };
+    const covers = unit.filter((b) => b.id !== nearest.id &&
+      Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR)
+      .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
+      .slice(0, 3);
+    if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
+      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
+    }
+    const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
+    const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
+    const gd = Math.hypot(og.x - cf.x, og.y - cf.y) || 1;
+    const tg = { x: (og.x - cf.x) / gd, y: (og.y - cf.y) / gd };
+    // shade toward the side the carrier is arcing to
+    const perp = { x: -tg.y, y: tg.x };
+    const side = Math.sign(carrier.vel.x * perp.x + carrier.vel.y * perp.y) || 1;
+    const depth = Math.min(DUEL.coverBehindM, gd - 0.5);
+    const behind = {
+      x: cf.x + tg.x * depth + perp.x * side * DUEL.coverShadeM,
+      y: cf.y + tg.y * depth + perp.y * side * DUEL.coverShadeM,
+    };
+    // the MARK duties (principles IV third defender: watch runners — the
+    // match-shaped-scenes finding: one unmarked outlet undoes the whole
+    // press, 5-7/8 through in the 2v2 probe): free opponents ranked by
+    // the same danger the lane logic prices
+    const others = bodies.filter((b) => b.team === defender.team);
+    // the DANGER-EV (the builder's symmetry, completed): duties price in
+    // the ATTACK'S OWN CURRENCY — a mark is worth the receivable value
+    // it removes (his reachability × his position's value, the same
+    // models the attacker prices with). The old 0.4 completability
+    // floor made a harmless 45 m outlet as "dangerous" as a live one —
+    // the recorded mark-scale limit, retired here.
+    // priced at the PROJECTED receive point (0.8 s ahead): a darting
+    // runner's danger lives where he will take the ball, not where he
+    // is — current-spot pricing let the behind duty's xG outgrow the
+    // mark late in attacks and the lone cover abandoned the runner
+    const oppValue = (o: BodyState): number => {
+      const px2 = { x: o.pos.x + o.vel.x * 0.8, y: o.pos.y + o.vel.y * 0.8 };
+      return posValue(px2, carrier.team) +
+        0.8 * xG(px2, carrier.team, bodies.filter((b) => b.team === defender.team));
+    };
+    const marks = bodies
+      .filter((o) => o.team === carrier.team && o.id !== carrier.id &&
+        Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y) < 28)
+      .map((o) => {
+        const dist0 = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
+        // priced AS IF UNATTENDED: openness excludes the covers being
+        // allocated (the shadowSpot lesson again — a defender standing
+        // near the lane saw "closed, no danger" and LEFT it; the same
+        // exclusion set for every defender keeps the board consistent)
+        const unattended = others.filter((d) => !covers.some((cv) => cv.id === d.id));
+        const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, unattended, dist0, o);
+        return { o, danger: open * oppValue(o) };
+      })
+      .filter((m) => m.danger > 0.012)
+      .sort((a, b) => b.danger - a.danger);
+    // the mark's L (I.1 + I.13): goal-side of the man AND shaded toward
+    // the ball — behind-only marking watched 7-8/8 passes arrive freely
+    // (the marker stood behind the receiver, contesting neither the lane
+    // nor the touch)
+    // the anticipation is AFFORDED by cover (builder physics, gated by
+    // the measured trade): with a line behind you, drop off and ride the
+    // run; as the LONE cover you stay touch-tight and gamble — the
+    // ungated drop vacated the middle and the shorthanded 2v2 collapsed
+    // 0/8 → 8/8 through
+    const anticipate = covers.length > 1;
+    const markSpot = (o: BodyState): Vec2 => {
+      const md = Math.hypot(og.x - o.pos.x, og.y - o.pos.y) || 1;
+      const bd = Math.hypot(carrier.pos.x - o.pos.x, carrier.pos.y - o.pos.y) || 1;
+      // the run threat: his speed TOWARD my goal — the station drops with
+      // it and the ball-shade fades (the anticipatory mark: never caught
+      // leaning forward when the dart comes)
+      const gws = anticipate ? Math.max(0, (o.vel.x * (og.x - o.pos.x) + o.vel.y * (og.y - o.pos.y)) / md) : 0;
+      const depth2 = DUEL.markGoalSideM + gws * DUEL.markDropGainS;
+      const shade = DUEL.markBallShadeM * Math.max(0, 1 - gws / DUEL.markShadeFadeMps);
+      return {
+        x: o.pos.x + ((og.x - o.pos.x) / md) * depth2 + ((carrier.pos.x - o.pos.x) / bd) * shade,
+        y: o.pos.y + ((og.y - o.pos.y) / md) * depth2 + ((carrier.pos.y - o.pos.y) / bd) * shade,
+      };
+    };
+    // THE DUTY BOARD (the defensive twin of the attacker's priced menu —
+    // the builder's calibration round): every duty carries the DANGER it
+    // neutralizes on ONE scale (the mark scale: openness × (0.4 + pos
+    // value)), ranked, greedy-claimed nearest-first. The old fixed order
+    // (marks always first, behind for the spare) becomes the usual
+    // RESULT, not a rule: the BEHIND duty prices as the carrier's
+    // breakthrough threat × the insurance factor — the presser already
+    // engages him, behind is the second layer. Fitted so the measured
+    // scenes hold (2v2 marks the outlet; a dangerous carrier bearing on
+    // goal with a weak outlet flips behind up the board). With no spare,
+    // man-for-man stands (the blended neither-duty spot measured worse).
+    const duties: Array<{ danger: number; spot: Vec2; mk?: BodyState }> =
+      marks.map((m) => ({ danger: m.danger, spot: markSpot(m.o), mk: m.o }));
+    // the behind duty: the carrier's BREAKTHROUGH EV — the value of the
+    // space behind the press, discounted by the presser already engaging
+    duties.push({
+      danger: (posValue(behind, carrier.team) +
+        0.8 * xG(behind, carrier.team, bodies.filter((b) => b.team === defender.team))) * DUEL.behindInsurance * 1.2,
+      spot: behind,
+    });
+    duties.sort((a, b) => b.danger - a.danger);
+    const free = new Set(covers.map((b) => b.id));
+    const claim = (spot: Vec2): string => {
+      let best = '';
+      let bd = Infinity;
+      for (const id of free) {
+        const b = covers.find((x) => x.id === id)!;
+        // the DUTY LEASH (the h-cb1 frame: a dropping striker towed the
+        // CB into midfield — the press got a leash, the duties never
+        // did): at team scale nobody claims a duty beyond 18 m of his
+        // home; an unclaimable duty goes unassigned and the dropper is
+        // the next line's problem. Deterministic and identical in every
+        // defender's simulation of the shared assignment.
+        if (unit.length >= 5) {
+          const h = homes.get(id);
+          if (h && Math.hypot(spot.x - h.x, spot.y - h.y) > 26) continue; // 26 = shift cap 18 + local 8 (raw homes, shifted block)
+        }
+        const d = zoneCost(b, spot);
+        if (d < bd) { bd = d; best = id; }
+      }
+      if (best) free.delete(best);
+      return best;
+    };
+    for (const duty of duties) {
+      if (!free.size) break;
+      if (claim(duty.spot) === defender.id) {
+        if (duty.mk) {
+          const md2 = Math.hypot(og.x - duty.mk.pos.x, og.y - duty.mk.pos.y) || 1;
+          const gws2 = (duty.mk.vel.x * (og.x - duty.mk.pos.x) + duty.mk.vel.y * (og.y - duty.mk.pos.y)) / md2;
+          return { kind: 'mark', target: duty.spot, urgent: gws2 > 3 };
+        }
+        return { kind: 'cover', target: duty.spot };
+      }
+    }
+    const spot = pressCoverSpots(carrier, bodies, [...free]).get(defender.id);
+    if (spot) return { kind: 'cover', target: spot };
+  } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
+    const lane = shadowSpot(defender, carrier, bodies);
+    if (lane) return { kind: 'interceptLane', target: lane };
+  }
+  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
+};
+
+/** defensive off-board shape: the block station (formation lines sliding
+ * with the ball) — shapeSpot was an L5c small-line tool and read as "no
+ * structure" at eleven */
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[]): Vec2 => {
+  let cx = 0;
+  let cy = 0;
+  let n = 0;
+  for (const b of unit) {
+    const h = homes.get(b.id);
+    if (!h) continue;
+    cx += h.x; cy += h.y; n++;
+  }
+  const centroid = n ? { x: cx / n, y: cy / n } : defender.pos;
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, attackSign(defender.team), 0.5, unit.length + 1);
+  // VACANCY ROTATION (the builder's dragged-CB principle, second half:
+  // "the position he leaves open gets covered immediately by a teammate
+  // who then leaves their position to be covered, etc"): a shape-holder
+  // whose NEIGHBOR is off on duty far from home slides toward the
+  // vacated zone; the chain emerges from the same rule applying to the
+  // next man at the next reconsider. Team behavior (unit >= 5).
+  if (unit.length >= 5) {
+    for (const b of unit) {
+      if (b.id === defender.id) continue;
+      const bh = homes.get(b.id);
+      if (!bh) continue;
+      const away = Math.hypot(b.pos.x - bh.x, b.pos.y - bh.y);
+      if (away < 12) continue; // he is home enough
+      const myDistToHisZone = Math.hypot(st.x - bh.x, st.y - bh.y);
+      // rotate DOWN the pitch only (cover the deeper vacancy; sideways
+      // slides opened the middle — measured 2/5 concessions), and only
+      // for ball-relevant zones
+      const mh = homes.get(defender.id) ?? defender.pos;
+      const sgn = attackSign(defender.team);
+      const deeperVacancy = bh.x * sgn <= mh.x * sgn + 1;
+      if (deeperVacancy && myDistToHisZone < 15 && Math.abs(bh.y - ball.pos.y) < 25) {
+        st.x = (st.x + bh.x) / 2;
+        st.y = (st.y + bh.y) / 2;
+        break;
+      }
+    }
+  }
+  // the LINE clamp: a deep-half defender (his formation home behind the
+  // team centroid) never stations AHEAD of the deepest opponent — the
+  // raw slide let runners live behind the "line" (the l5c integrity pin
+  // fell to 43%)
+  const home = homes.get(defender.id) ?? defender.pos;
+  const sign = attackSign(defender.team); // own goal is opposite the attack
+  // epsilon: a FLAT back line ties its own centroid (the two-CB scene:
+  // 70 vs 70) and dodged the clamp entirely
+  const deepHalf = sign > 0 ? home.x <= centroid.x + 0.5 : home.x >= centroid.x - 0.5;
+  if (deepHalf) {
+    let deepestOpp = sign > 0 ? Infinity : -Infinity;
+    for (const o of bodies) {
+      if (o.team === defender.team) continue;
+      deepestOpp = sign > 0 ? Math.min(deepestOpp, o.pos.x) : Math.max(deepestOpp, o.pos.x);
+    }
+    if (Number.isFinite(deepestOpp)) {
+      st.x = sign > 0 ? Math.min(st.x, deepestOpp - 1.2) : Math.max(st.x, deepestOpp + 1.2);
+      st.x = Math.max(2, Math.min(PITCH.length - 2, st.x));
+    }
+  }
+  return st;
+};
+
 export interface DecideInput {
   carrier: BodyState;
   bodies: readonly BodyState[];
@@ -764,8 +1385,24 @@ export interface DecideInput {
 
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
+/** the shared PASS-UTILITY shape (the refinement round: five hand-copies
+ * across ground/loft/curl/cross/switch had begun to drift) — completion-
+ * weighted value minus turnover, plus the risk-scaled progress term,
+ * floored by the meets penalty. Algebraically identical to the copies. */
+const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turnoverW: number, passFloor: number): number => {
+  const meets = pC >= passFloor ? 1 : 0.25 + 0.45 * risk;
+  const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pv - pvHere);
+  return (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pv - (1 - pC) * turnoverW * pv) + uProg) * meets;
+};
+
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds } = input;
+  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds, keepers } = input;
+  // hazard density for the calibration lives where the ball is GOING —
+  // a switch out of a crowded flank into an empty one is not a traffic
+  // ball (carrier-anchored density gave it the full shrink and killed
+  // the switch outright)
+  const destDensity = (at: Vec2): number => Math.min(1, bodies.filter((b) => b.team !== carrier.team &&
+    Math.hypot(b.pos.x - at.x, b.pos.y - at.y) < 14).length / 3);
   const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
     (p.x >= bounds.x0 + m && p.x <= bounds.x1 - m && p.y >= bounds.y0 + m && p.y <= bounds.y1 - m);
   const roomToBound = (from2: Vec2, dir: { x: number; y: number }): number => {
@@ -929,13 +1566,21 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     }
     const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
     if (riderBehind) {
-      // both weights die IN the space (riderArriveCap): an overhit thread
-      // is a dead ball, not a pass
-      allCandidates.push({ arrive: Math.min(softArrive + 1, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
-      // the DRIVEN thread (passing.md #9/#13): a faster ball through the
-      // same gap — less flight time beats closing defenders; the receiver
-      // pays the hot-arrival tax instead
-      allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
+      // the SEAM FAN (the builder's LB–CB scene): the thread is not owed
+      // to the runner's own column — a breach point a few meters to
+      // either side may run through a WIDE-OPEN seam in the line while
+      // his column is a defender's chest. Each seam dest is priced by
+      // the same lane completion; the runner ANGLES his dart onto the
+      // winner (the receive reflex chases the ball, not the column).
+      for (const dy of [0, -4, 4, -7, 7]) {
+        const rd = { x: riderBehind.x, y: riderBehind.y + dy };
+        if (dy !== 0 && !inBounds(rd, 2)) continue;
+        // both weights die IN the space (riderArriveCap): an overhit
+        // thread is a dead ball, not a pass; the DRIVEN variant
+        // (passing.md #9/#13) trades a hot arrival for less flight time
+        allCandidates.push({ arrive: Math.min(softArrive + 1, riderArriveCap), leadExtraS: 0, destOverride: rd });
+        allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: rd });
+      }
     }
     for (const { arrive: arrive0, leadExtraS, destOverride } of allCandidates) {
       // in a bounded grid, weight the ball to DIE INSIDE (the grid's first
@@ -1007,8 +1652,6 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // sub-floor lanes are taxed, but the tax RIDES RISK — "the best pass
       // is not always the safest" (passing.md): a speculative player keeps
       // the threaded splitting ball live; a safe one buries it
-      const meets = pC >= passFloor ? 1 : 0.25 + 0.45 * risk;
-      const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
       // the ball to a RIDING runner waits for his movement — you play the
       // through ball when the dart goes, not while he stands on the line.
       // EXCEPT the ball into his run's PATH (destOverride): the first-time
@@ -1024,12 +1667,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // through-ball target until he is UP TO SPEED — the overhit tail came
       // from balls played while the runner was still accelerating (measured:
       // launch 13.6 past a striker at 3.5 m/s → overrun → dead). No weight
-      // constant fixes this; the release waits for the run.
+      // constant fixes this; the release waits for the run. (A speed-eased
+      // discount was tried Jul 24 and REVERTED same day: the builder's eye
+      // caught the overhit tail returning — slow-releases fed the cut
+      // rates. The original measurement stands.)
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
-      const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
+      pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest));
+      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor) * ridingWait;
       if (!bestPass || u > bestPass.utility) {
-        bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
+        bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
     }
     // ── the LOFTED ball: a chip / driven loft OVER a ground defender in the
@@ -1046,7 +1693,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
             if (t <= 0.12 || t >= 0.92) return false;
             const px = here.x + t * (landing.x - here.x);
             const py = here.y + t * (landing.y - here.y);
-            return Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2;
+            // NOW or CONVERGING (momentum doesn't delete the man, and it
+            // doesn't excuse him either — the shadow half a second from
+            // the lane is the blocker the bend/loft exists to beat; the
+            // current-position gate watched him cut the "clear" ball 7/8)
+            const dNow = Math.hypot(o.pos.x - px, o.pos.y - py);
+            const dProj = Math.hypot(o.pos.x + o.vel.x * 0.5 - px, o.pos.y + o.vel.y * 0.5 - py);
+            return Math.min(dNow, dProj) < 2.2;
           }) ?? null
         : null;
       if (laneBlocker) {
@@ -1059,24 +1712,41 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         // aerial control is HARDER than a ground receive — a dropping ball
         // is taxed by the taker's first touch (silk feet cushion it)
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-        const pCa = aerialCompletion(landing, mate, opponents) * ctrl;
+        const pCa = calibratePass(loftDeg, 0, dLoft,
+          aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl, destDensity(landing));
         let pvL = value(landing, mate.id);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uProgL = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvL - pvHere);
-        const meetsL = pCa >= passFloor ? 1 : 0.25 + 0.45 * risk;
-        const uL = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCa * pvL - (1 - pCa) * turnoverW * pvL) + uProgL) * meetsL;
+        const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor);
         if (!bestPass || uL > bestPass.utility) {
-          bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg, pC: pCa };
         }
-        // NOTE: the CURL AROUND (a trivela ground ball bent around this blocker,
-        // via solveCurl) belongs here too — validated in isolation (bends clear
-        // and reaches the man 12/12) — but as a fully-controllable ground ball it
-        // OUT-COMPETES the loft here and the cross into the box, and whether a
-        // curl-to-feet should beat a cross-to-head or a loft-over is a real EV
-        // calibration + scenario-isolation question. Deferred, not forced.
-        // AND: solveCurl fixes DIRECTION only — the integration must pick speed
-        // by roll reach (rollLaunchForArrival), not a flat constant: a 17 m/s
-        // ball dies at ~31 m (dry-grass friction + drag), silently short beyond.
+        // ── the CURL AROUND (trivela; the builder's outside bender): the
+        // ground ball bent around this blocker — to FEET, controllable,
+        // where the loft trades control for altitude. solveCurl fixes
+        // direction only (its contract): speed is picked by roll reach
+        // first, completion is judged on the BENT path (curlCompletion),
+        // and the intent's dest is the AIM point — kickBall strikes at it
+        // and the Magnus brings the ball to the mate. ────────────────────
+        if (dLoft >= DECIDE.curlMinM && dLoft <= DECIDE.curlMaxM) {
+          // bend around the blocker's far side: +spin bows the arc to the
+          // RIGHT of the chord (the ball deviates left of its travel, so
+          // the aim sits right and the arc stays right) — blocker left of
+          // the chord → +spin, and mirrored
+          const crossB = (landing.x - here.x) * (laneBlocker.pos.y - here.y) -
+            (landing.y - here.y) * (laneBlocker.pos.x - here.x);
+          const spinK = crossB > 0 ? DECIDE.curlSpin : -DECIDE.curlSpin;
+          const speedK = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
+            rollLaunchForArrival(Math.min(softArrive + 1, riderBehind ? riderArriveCap : Infinity), dLoft)));
+          const aimK = solveCurl(here, landing, spinK, speedK);
+          const pCk = calibratePass(0, spinK, dLoft,
+            curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing), destDensity(landing));
+          let pvK = value(landing, mate.id);
+          pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+          const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor);
+          if (!bestPass || uK > bestPass.utility) {
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK, pC: pCk };
+          }
+        }
       }
     }
     // ── the CROSS: a wide, advanced carrier whips an aerial ball into the box
@@ -1107,14 +1777,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           if (!intoBox || dCross < 8 || !inBounds(cross, 0.8)) continue;
           const speedC = solveLoftSpeed(dCross, loftDeg);
           const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-          const pCc = aerialCompletion(cross, mate, opponents) * ctrl;
+          const pCc = calibratePass(loftDeg, 0, dCross,
+            aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl, destDensity(cross));
           let pvC = value(cross, mate.id);
-          pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-          const uProgC = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvC - pvHere);
-          const meetsC = pCc >= passFloor ? 1 : 0.25 + 0.45 * risk;
-          const uC = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCc * pvC - (1 - pCc) * turnoverW * pvC) + uProgC) * meetsC;
+          // 0.6 -> 1.0 under the calibrated regime: crosses are LOW-
+          // COMPLETION HIGH-VALUE by nature — the old weight was fitted
+          // when pC pretended the box was safe
+          pvC += 1.0 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+          const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor);
           if (!bestPass || uC > bestPass.utility) {
-            bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg };
+            bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
           }
         }
       }
@@ -1134,14 +1806,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
         const speedS = solveLoftSpeed(dSwitch, loftDeg);
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-        const pCs = aerialCompletion(land, mate, opponents) * ctrl;
+        const pCs = calibratePass(loftDeg, 0, dSwitch,
+          aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land));
         let pvS = value(land, mate.id);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uProgS = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvS - pvHere);
-        const meetsS = pCs >= passFloor ? 1 : 0.25 + 0.45 * risk;
-        const uS = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCs * pvS - (1 - pCs) * turnoverW * pvS) + uProgS) * meetsS;
+        const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor);
         if (!bestPass || uS > bestPass.utility) {
-          bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg };
+          bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg, pC: pCs };
         }
       }
     }
@@ -1193,15 +1864,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       x: Math.min(bounds ? bounds.x1 - 1 : PITCH.length - 0.5, Math.max(bounds ? bounds.x0 + 1 : 0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
       y: Math.min(bounds ? bounds.y1 - 1 : PITCH.width - 0.5, Math.max(bounds ? bounds.y0 + 1 : 0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
     };
-    let u = DECIDE.possessionDiscount * (
-      // pressure taxes the spot, but momentum and control mean a defender
-      // meters away is a problem, not half your value (the judged
-      // dribble-away-from-everyone)
-      pv * (1 - 0.55 * pressure) * 0.92 -
-      // carrying into reach risks the tackle — risk-scaled turnover, same
-      // family as the pass penalty (dodging is not free)
-      turnoverW * pv * pressure * DECIDE.carryTurnoverGain
-    );
+    // the FITTED retention replaces the hand-constants when the memory
+    // space's carry table is applied (the both-sided rule) — legacy
+    // algebra otherwise; R(0) of the legacy form is the same 0.92
+    const fittedR = carryRetention(pressure);
+    let u = fittedR !== null
+      ? DECIDE.possessionDiscount * (pv * fittedR - turnoverW * pv * (1 - fittedR) * DECIDE.carryTurnoverGain)
+      : DECIDE.possessionDiscount * (
+        pv * (1 - 0.55 * pressure) * 0.92 -
+        turnoverW * pv * pressure * DECIDE.carryTurnoverGain
+      );
     // the DRIVE credit: when GENUINELY UNPRESSURED a carrier is free to run
     // the ball forward, and that progression should read like a pass's does
     // — otherwise a marginal square/forward ball to an open mate beats simply

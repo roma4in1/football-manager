@@ -223,6 +223,245 @@ ever designed.
 Acceptance: the covered duel (above) defends honestly; the beat is then
 measured against a competent defense; pressScore retires into decideDefense.
 
+### The principles pass (reference/defensive_principles.md, Jul 23)
+
+The builder's reference doc gives the brain its spine. What it settles:
+
+**Part III's decision hierarchy IS the scorer.** decideDefense evaluates the
+nine questions in order — goal threat? goal side? teammate pressing? cover?
+mark? intercept? delay? tackle? recover shape — as TIERED scores, not if-else:
+a live higher tier dominates, attributes/tactics/roles modulate within a tier.
+The intent set, mapped to the doc:
+
+| intent | principle | today's machinery (what it absorbs) |
+|---|---|---|
+| `recover` | I.1, I.12 (goal side; if beaten, sprint) | machine RECOVER state |
+| `press` | IV first defender: pressure, slow, FORCE direction | election + pressApproach |
+| `contain` | I.2/I.3, II.13 (delay > diving in; control distance) | machine JOCKEY/TRACK |
+| `cover` | IV second defender + **II.7 protect BEHIND the press** | pressCoverSpots (lane-only — see hole below) |
+| `balance` | IV third defender: dangerous space, watch runners | nothing (new) |
+| `mark` | I.8 (ball AND man) | the deferred dart hand-off lands here |
+| `interceptLane` | I.9, I.13 | shadowSpot |
+| `holdShape` | II.10 (shape > chasing) | shapeSpot |
+
+**FORCE DIRECTION is an output, not an intent** (I.4, II.2, II.8): press and
+contain emit a steer — toward touchline, toward the cover man, away from
+center. The contain bearing and the give-ground line take the bias. This is
+the named missing counter from the kick-and-rush finding ("cover/angling"),
+and it turns the covered duel from two independent defenders into a TRAP:
+the ride forces the cut into the second man.
+
+**The cover hole, named by II.7**: pressCoverSpots stands men ON pass lanes at
+t=0.45 — nobody protects the space behind a beaten presser. "Single pass →
+defensive line broken" is exactly the covered-duel outflank (16/16 through).
+The cover spot becomes a blend: deny the best lane AND sit goal-side behind
+the presser at the depth that closes the carry-around.
+
+**Attributes → dials, per principle**: I.3 control distance (agility/balance →
+holdM/engage tighter); I.2+I.10 delay-vs-dive (tackling, and the `aggression`
+schema candidate → pressure fill + engage threshold); I.12 recover (pace →
+concede rate; a slow defender drops earlier). Part V's role priorities are
+roles.md's weight vectors verbatim (CB cover/aerial/organize, FB wide/delay,
+DM screen/intercept, W track/double, ST initiate/block).
+
+**Part VI is the regression anti-checklist** — each mistake is an engine
+failure we have already met: diving in = the pre-machine charge; chasing the
+ball = the chaseBall gate; pressing without support = the 2v1 sail-through;
+ball watching = trailing the lateral cut. New pins should quote it.
+
+**Philosophy line for the scorer**: "reduce the opponent's options until they
+are forced into a low-quality decision" — the defender's EV is the negative
+of the attacker's best option. Tier scores approximate this; when a tie needs
+breaking, break it toward whichever intent most degrades the carrier's top
+`evaluateOptions` entry.
+
+**Execution order (one measured change at a time):**
+1. decideDefense skeleton + machine OWNERSHIP: the elected presser belongs to
+   the machine from election (not from chaseBall range) — behavior-preserving
+   refactor first, full suite green. **DONE** (97717564 bit-identical
+   extraction; b1ab9139 ownership — outcome-neutral enabler, ride texture
+   only: heavy close-ticks 39.9→12.8, the face-park gone).
+2. Cover-behind-the-press spot (II.7) — the covered duel's outflank closes.
+   **DONE** (38b827a6): probe 16/16 through → 0/16 close, 1/16 heavy; the
+   win is herd-to-flank + strip. Pinned as duel-2v1-covered-close/heavy
+   (f5f3d775, act-one signatures, wb seeds leading).
+3. Force-direction steer in the ride (I.4/II.2). **DEFERRED (stop-rule)**:
+   the herd EMERGED from the cover geometry alone (maxWide 27–32 every
+   seed) and the covered duel sits at ceiling — no measurable headroom;
+   vs a lone retreating man route-one is legitimately real. Revisit when
+   a drill shows a middle-lane leak the cover alone doesn't close.
+4. Attribute dials — **BUILT, MEASURED, REVERTED (stop-rule)**. duelDials
+   (tackling→fill, agility+balance→jockey cap, agility→engage clamped in
+   the joint bands, pace→concede lag), anchored no-op-at-neutral, wired
+   into the machine. Measurement: ZERO split anywhere the machine decides
+   a duel — the covered duel strips at t128 with IDENTICAL trajectories
+   for stopper (18/16/16), neutral, and statue (6/9/9) pairs, because
+   duels are decided by the PINCH/RACE machinery, which reads no dials;
+   a lone defender loses to a brained attacker at every quality (kick-
+   and-rush, accepted). The one place the fill dial acted was striker-
+   breakaway — where it broke the pinned floor (11→8 shots: the tackling-
+   14 chaser engage-tackled half the clean breakaways). No benefit, one
+   cost → reverted. THE REAL SEAM: defender attributes must enter where
+   duels are actually decided — the pinch election/reach and
+   tackleWinProbability's surrounding gates — a coupled change needing
+   its own builder round (it re-prices every touch duel in open play).
+5. The MARK intent (builder round, Jul 23 — after the match-shaped rule):
+   duty election marks-first, behind-cover is the SPARE man's job (no
+   spare → man-for-man; a blended neither-duty spot measured WORSE,
+   5-7/8 → 7-8/8 through). The mark's L: goal-side markGoalSideM 1.8 +
+   ball-shade markBallShadeM 0.9 (behind-only marking watched 7-8/8
+   passes arrive). **Pinned: the outlet deny (8/8 both skills) + the
+   visible mark.** NOT pinned: the ensuing 1v1 carry endgame — the
+   shapes swing wildly per dial (2v2 elite 0/8↔8/8 through, heavy the
+   inverse) because once the pass is dead everything reduces to the
+   carry vs the retreating rider, and **the machine never STOPS
+   conceding** — the kick-and-rush root, third appearance. That
+   concede-stop is machine-core and globally priced: it is the NEXT
+   measured round, with the workbench open and the builder judging
+   duel-2v2-covered-* / duel-3v2-spare-close live.
+6. **The SHARPNESS round (builder judgments, Jul 23 — quantified, fixes
+   measured, REVERTED; the designed LIVE round)**. The builder watched
+   duel-2v2-fullbacks-close and judged: defenders collapse onto the ball;
+   nobody marks the runner; the attacker knocks on instead of playing the
+   through ball; "more hertz maybe". Quantified on wb-0..2: 3+ defenders
+   within 6 m of the ball 11-16% of ticks; the darting mate FREE (>5 m
+   from any defender) 38-52% of his darting ticks, avg gap 5.0-5.3 m.
+   **Hertz is NOT the lever** (measured): reconsiderTicks is already 3
+   (0.3 s); at 1 (10 Hz) collapse improves (16→1%) but the free runner
+   WORSENS (41-52→52-67%) — faster updates to a trailing jog-target just
+   thrash the claims. Three structural fixes built and measured, EACH
+   broke a load-bearing accident:
+   - mark tracks (leading spot + sprint + sticky memory): runner-free
+     drops to 30-41% BUT the fullbacks defended rate halves 8/8→4/8
+     (the dragged marker weakens the outlet deny);
+   - shadow dedup (one man per lane): kills the collapse (0%) BUT the
+     lane-bunching had been accidentally blocking the center — the
+     carrier walks through and shoots;
+   - the tuck-in (line man fills unstaffed behind-duty): restores the
+     center BUT reshuffles the election mid-flight and the outlet deny
+     breaks (the mate receives, 1-2, goal).
+   The defensive coordination is now a genuinely coupled system at the
+   edge of probe-tuning. NEXT: the live round — workbench open, these
+   three dials one at a time under the builder's eye, alongside the
+   concede-stop. The knock-instead-of-through judgment did NOT reproduce
+   on wb-0..2 (no knock/beat labels at past-the-man moments; the fast
+   carry may read as a knock-on, or it was another seed — ask which).
+7. **The ANTICIPATORY mark (builder physics, Jul 23 — SHIPPED)**: the
+   duel's momentum rule applied to marking. The station drops goal-side
+   with the man's goalward speed (markDropGainS 0.8 — the buffer is the
+   anticipation, and retreating with the rising threat gives goalward
+   momentum BEFORE the race); the ball-shade fades with threat (concede
+   feet, deny in-behind); urgent marks track at sprint. GATED on a spare
+   existing (covers > 1): the LONE cover stays touch-tight — ungated,
+   the shorthanded 2v2 collapsed 0/8→8/8 through. Measured: the darting
+   runner is RIDDEN (goal-side marker ≤5 m) 73% of dart ticks vs 19%
+   before; the 2v1/2v2-covered pins hold untouched. The honest cost,
+   pinned as a 4/8 floor: the ESCORT DOES NOT CONVERT — the ridden
+   runner still receives and finishes 3/8 (wb-2/fb-1/fb-3, north seam
+   y≈40) because the rider never makes a play on the arriving ball. The
+   concede-stop round (third naming) is what turns the ride into a
+   defense; the builder judges the trade live in duel-2v2-fullbacks-*.
+8. **The concede-stop REFUTED + the beat executor FIXED (Jul 23)**. The
+   "concede that STOPS" (standM 16, the retreat floor at the box edge)
+   was built and measured DEAD in every geometry: concede-as-speed
+   already ended the elastic backpedal, and today's duels are decided at
+   contact or in recover — the rider is never herded past ~16 m even
+   without a floor. The thrice-named root decomposes honestly: (a) an
+   equal-pace rider beaten at contact = accepted football; (b) the
+   through-ball photo-finish (the ball reaches the trailing receiver
+   first, goal-side marker or not; the early block is priced unreachable
+   by the 0.3 s reaction margin) = plausible football, recorded for a
+   possible chase-machinery round; (c) the BEAT EXECUTOR defects — now
+   fixed: the frontman prefers the RIDER (any duel record except
+   staggered; the cone had locked onto the receding cover), a stall-
+   break ends the approach standoff (gap <5.5 m and not closing → move
+   NOW), a stale beatExec no longer throttles the post-beat carry at
+   4.2 (found instrumenting the channel), and a feint/burst in flight is
+   a COMMITTED move (the EV re-pricing the fake's own geometry killed
+   every feint half-made). The full sequence now runs 8/8 in the channel
+   (approach→feint→burst-knock at the rider, elite only) and mostly
+   LOSES to the covered contact — correct for the drill; the beat's
+   winning stage is open space and the keeper round-around (next arc).
+9. **The PASSING-MENU round (builder-directed, Jul 24)**. Shipped: the
+   honest aerial menu (092dd35f — time-race aerialCompletion with
+   mid-flight cuts and keeper claims; measured: unmarked aerial receives
+   are 12/12 even at touch 6, so the ctrl tax fell 0.78→~1.0; the old
+   model chose lofts 8/8 that completed 1/8; the cross scene gained its
+   keeper per the match-shaped rule and the striker now claims 9/10) +
+   the CURL in the menu (honest, thus rare: the stylised Magnus bows
+   ~1 m mid-chord — cannot round a dead-center man; SPIN-PHYSICS BUILDER
+   CALL recorded: raising the gameplay bend is a visual-style dial that
+   reopens the curve pins) + the seam fan (thread dests ±4/±7 off the
+   runner's column, priced per lane) + the priced release gate (the
+   early-seam discount eases with runner speed, replacing flat ×0.25) +
+   the projected laneBlocker gate (a converging shadow counts).
+   **The remaining truth in duel-2v2-fullbacks-heavy (LB cuts 7/8)**:
+   the ball is PRICED at decision time (lane open, LB 3.5 m off) and
+   STRUCK 0.3 s later via turn-then-strike into his converged position —
+   a DECISION-TO-EXECUTION LAG defect no menu dial reaches. Next
+   mechanism when it hurts enough: the STRIKE-ABORT — re-check the lane
+   at execution and check out of a died pass, the passing twin of the
+   committed-feint rule.
+10. **The BRAIN-REFINEMENT round, first installment (builder-directed,
+    Jul 24)**. Landed: **PRESENCE BEATS REACTION** — a body already on
+    the lane blocks by standing there (react 0.35 s → 0.12 when within
+    intercept reach), fixed in passCompletion, curlCompletion, and the
+    aerial cut term. It explains the wb-0 cross cut, the fullbacks LB
+    cut, and 20 m/s screamers priced 0.76 through a CB's shins. The
+    priced release gate REVERTED same-day (builder's eye caught the
+    overhit tail returning — the original "the release waits for the
+    run" measurement stands). Downstream re-bases: the marked runner's
+    dead lane stops being played → def2 SAGS OFF (zonal, honest, defense
+    improves 5→6/8) → the fullbacks pin floors the ride instead of
+    percentage-pinning it; the cross-decision pin re-based to the
+    DELIVERY (wb seeds now LEAD it — the cd-only seeds had hidden a t0
+    screamer).
+    **THE REFINEMENT AGENDA (the rest of the builder's directive — a
+    designed round, not whack-a-mole)**:
+    - BOX OCCUPATION: the striker's support brain walks him out of the
+      box for feet — no cast can honestly produce a cross until an
+      off-ball 'hold the box / attack the delivery' behavior exists.
+      This is the crossing game's missing half.
+    - the STRIKE-ABORT: decision-to-execution lag (priced at t30, struck
+      t33 into the converged shadow) — re-check the lane at execution.
+    - the t0 INSTANT STRIKE: brains kick on a scenario's first tick —
+      openings read as never-had-possession; a settle/dwell judgment.
+    - WB-SEED SWEEP: every pre-rule pin runs its own seed families only;
+      wb-0..2 must lead ALL of them (two hidden defects found this way).
+    - UTILITY UNIFICATION: the pass/loft/cross/switch/curl utility
+      formulas are five hand-copies with drift risk — one shared shape.
+11. **The refinement agenda EXECUTED (Jul 24, all five)**: wb-seed sweep
+    (seedFor in all 25 decision-pin loops; three latent margins re-based
+    honestly); BOX OCCUPATION (the 'box' station when the carrier is
+    wide+advanced — the honest cross returned immediately: 10/10 aerial,
+    9/10 collected); the SETTLE touch (a gained possession takes a beat
+    before an intent strike; same-team tempo untouched); the STRIKE-ABORT
+    (collapsed lanes pull the pass at execution — conservative v1, flat
+    ground only; the fullbacks-heavy LB cut persists because his claim is
+    a momentum-DEFLECTION priced ~0.2, above the collapse line — the
+    converge-deflection term is the ledgered remainder); passUtility
+    unification (bit-identical). 97/97.
+12. **The EAFC passing/pressing comparison (Jul 24, measured + reverted
+    probes)**. The frames show a SHORT-SUPPORT MESH — 3-4 options within
+    8-15 m of the carrier at varied angles including a behind-ball
+    recycle — and a back line that holds ~15 m behind the engagement
+    while MIDFIELD presses. Ours: 1.7 short options average (support
+    caps at 2 and supportSpot tethers men to deformed HOMES, not to the
+    carrier — raising the cap to 3 measured 1.3, WORSE, because the
+    third man stands at his lane spot 20 m away); and a flat
+    backStepPenaltyM 12 in the election measured MORE back pressing
+    (24% vs 7% of press ticks) because zone-appropriate back pressing
+    (the wing FB in his own channel) is not "jumping" — the discipline
+    needed is zone-ENTRY semantics, not a line tax. TWO DESIGNED ROUNDS:
+    (a) proximity-banded support (supportSpot constrained to an 8-16 m
+    ring with angle spread + a behind-ball outlet slot) — global, rondo/
+    grid pins re-roll, builder live; (b) press election by zone entry
+    (a back wins only when the carrier crosses his line's depth band,
+    a mid otherwise steps out even if slightly farther) — replaces the
+    reverted flat penalty. Builder's truncated third item ("defenders
+    do not take ada…") awaiting completion.
+13. Roles as weight vectors (Part V ↔ roles.md).
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
@@ -252,6 +491,40 @@ his run state — the L5b run cycle coupled to the pass release.
 
 ## 6. Ground rules carried in from the brief
 
+- **Match-shaped scenes (builder rule, Jul 23)**: a DECISION-level scene
+  must give every brain a match-shaped option set — an outlet, a recovery
+  threat, or both. Empty stages only pin EXECUTORS. Found the hard way:
+  the covered 2v1 read 0/16 through while the attacker was merely priced
+  into running wide (no outlet, stalling costless); one added mate flipped
+  it to 5-7/8 through because no intent MARKED him. An empty drill can
+  flatter both sides at once.
+- **Channel drills (builder direction, same day)**: to exercise the
+  TAKE-ON without match cast, funnel with BOUNDS — never with static
+  sentinel bodies, which measured invisible to the carry EV (VERIFIED
+  per-tick: hash-identical trajectories with/without cones, closest
+  approach 10.5 m — the carrier never even routes near them; only the
+  touchline exists for him). The 24 m channel is the calibrated width:
+  elite enters the beat 8/8, heavy 0/8, lateral vocabulary alive; 16 m
+  sterilizes (heavy pinball), 32 m leaves wide cheap. Carry-pricing
+  body-blindness at range is a recorded observation for a carry-EV round.
+- **The beat never completes (verified under builder challenge, Jul 23)**:
+  in the channel the executor reaches APPROACH only — feint/burst 0/8.
+  Root: the frontman cone (nearest opponent within 60° of goal dir, ≤8 m)
+  locks onto the RECEDING COVER (coverBehindM keeps him ~6 m off by
+  construction) while the actual rider at 2 m sits outside the cone; the
+  approach can never close to the 3.1 m feint trigger. The beat-executor
+  round = frontman selection should prefer the RIDING defender (the sim's
+  duel records know him) + the concede-stop.
+- **The duty election needs zone affinity (the fullbacks exhibit)**: LB/RB
+  added to the 2v2 INSIDE the pressing unit (0.8) made the defense WORSE
+  (elite 0/8 → 8/8 through): claim() has no travel cost or zone
+  preference, so the RB won the mate's mark by 0.8 m of spot distance and
+  sprinted 19-23 m cross-pitch, dismantling the back line. The same
+  fullbacks at pressing 0 (zone: shape/shadow, anchored by homes) kill
+  the wide escape entirely (carrier maxWide 27-32 → ~11) and the elite
+  2v2 dies centrally 8/8 — pinned as duel-2v2-fullbacks-close. This is
+  the concrete motivation for ROLES AS WEIGHT VECTORS (a fullback
+  weights holdShape/wide) and a distance/zone cost in claim().
 - Both duel sides are brains in every scenario.
 - `shieldUtility` re-lands at ≈ 0.014 (0.03 froze carriers at kickoff).
 - Carried-ball bounds: dribbling over a grid/pitch line goes dead; bodies
