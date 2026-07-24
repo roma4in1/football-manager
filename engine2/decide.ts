@@ -1254,6 +1254,33 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
   }
   const centroid = n ? { x: cx / n, y: cy / n } : defender.pos;
   const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, attackSign(defender.team), 0.5, unit.length + 1);
+  // VACANCY ROTATION (the builder's dragged-CB principle, second half:
+  // "the position he leaves open gets covered immediately by a teammate
+  // who then leaves their position to be covered, etc"): a shape-holder
+  // whose NEIGHBOR is off on duty far from home slides toward the
+  // vacated zone; the chain emerges from the same rule applying to the
+  // next man at the next reconsider. Team behavior (unit >= 5).
+  if (unit.length >= 5) {
+    for (const b of unit) {
+      if (b.id === defender.id) continue;
+      const bh = homes.get(b.id);
+      if (!bh) continue;
+      const away = Math.hypot(b.pos.x - bh.x, b.pos.y - bh.y);
+      if (away < 12) continue; // he is home enough
+      const myDistToHisZone = Math.hypot(st.x - bh.x, st.y - bh.y);
+      // rotate DOWN the pitch only (cover the deeper vacancy; sideways
+      // slides opened the middle — measured 2/5 concessions), and only
+      // for ball-relevant zones
+      const mh = homes.get(defender.id) ?? defender.pos;
+      const sgn = attackSign(defender.team);
+      const deeperVacancy = bh.x * sgn <= mh.x * sgn + 1;
+      if (deeperVacancy && myDistToHisZone < 15 && Math.abs(bh.y - ball.pos.y) < 25) {
+        st.x = (st.x + bh.x) / 2;
+        st.y = (st.y + bh.y) / 2;
+        break;
+      }
+    }
+  }
   // the LINE clamp: a deep-half defender (his formation home behind the
   // team centroid) never stations AHEAD of the deepest opponent — the
   // raw slide let runners live behind the "line" (the l5c integrity pin
