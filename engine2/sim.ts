@@ -348,6 +348,7 @@ export class Sim {
       this.restartType = null;
       this.restartPenalty = false;
       this.restartLock = null;
+      this.wallSpots.clear();
     }
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
     if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
@@ -1016,6 +1017,29 @@ export class Sim {
         }
         this.lostPossessionAt.set('home', -999);
         this.lostPossessionAt.set('away', -999);
+        this.wallSpots.clear();
+        if (this.restartType === 'free-kick' && !this.restartPenalty) {
+          const g = goalCenter(award);
+          const dG = Math.hypot(g.x - spot.x, g.y - spot.y);
+          if (dG <= 30) {
+            const n2 = dG < 20 ? 4 : dG < 26 ? 3 : 2;
+            const ux = (g.x - spot.x) / dG;
+            const uy = (g.y - spot.y) / dG;
+            const base = { x: spot.x + ux * 9.15, y: spot.y + uy * 9.15 };
+            const defs = [...this.brains]
+              .map((bid) => this.byId.get(bid)!)
+              .filter((bb) => bb.team !== award && !this.keepers.has(bb.id) && !this.sentOff.has(bb.id))
+              .sort((a2, b2) => Math.hypot(a2.pos.x - base.x, a2.pos.y - base.y) - Math.hypot(b2.pos.x - base.x, b2.pos.y - base.y))
+              .slice(0, n2);
+            defs.forEach((bb, i) => {
+              const off = (i - (n2 - 1) / 2) * 0.7;
+              this.wallSpots.set(bb.id, {
+                x: Math.max(2, Math.min(PITCH.length - 2, base.x - uy * off)),
+                y: Math.max(2, Math.min(PITCH.width - 2, base.y + ux * off)),
+              });
+            });
+          }
+        }
         this.ball.pos = { x: spot.x, y: spot.y };
         this.ball.vel = { x: 0, y: 0 };
         this.ball.z = 0;
@@ -1781,6 +1805,20 @@ export class Sim {
       // the CHIP READ: a ball ARCING OVER HIM toward his goal — above the bar
       // right now (so no shot gate sees it) but dropping at the mouth. He
       // turns and SPRINTS for his line to contest the drop; the save races it.
+      // PENALTY: the defending keeper stands ON HIS LINE until it is
+      // struck — angle play would carry him toward the spot
+      if (this.restartPenalty && this.restartTaker) {
+        const tkB2 = this.byId.get(this.restartTaker);
+        if (tkB2 && tkB2.team !== k.team) {
+          const lineSpot = { x: own.x + (sign > 0 ? 0.6 : -0.6), y: GOAL.centerY };
+          if (Math.hypot(lineSpot.x - k.pos.x, lineSpot.y - k.pos.y) > 0.4) {
+            this.assign(k, { type: 'moveTo', target: lineSpot, regime: 'run' });
+          } else if (k.command.type !== 'hold') {
+            this.assign(k, { type: 'hold' });
+          }
+          continue;
+        }
+      }
       const dBallGoal = Math.hypot(this.ball.pos.x - own.x, this.ball.pos.y - own.y);
       const ballCarrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
       if (ballCarrier === undefined && this.ball.phase === 'airborne' &&
@@ -2738,6 +2776,29 @@ export class Sim {
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             const tkB = this.byId.get(this.restartTaker);
+            // the WALL takes its post (and re-enters defense via
+            // shapeHolding when the ceremony resolves)
+            const ws = this.wallSpots.get(id);
+            if (ws && tkB && body.team !== tkB.team) {
+              const dW = Math.hypot(ws.x - body.pos.x, ws.y - body.pos.y);
+              if (dW > 0.6) this.assign(body, { type: 'moveTo', target: ws, regime: dW > 8 ? 'run' : 'jog' });
+              else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+              this.shapeHolding.add(id);
+              this.actionLabels.set(id, 'wall');
+              continue;
+            }
+            // the PENALTY ceremony: everyone but the taker clears the box
+            if (this.restartPenalty && tkB && id !== this.restartTaker) {
+              const nearHome = this.ball.pos.x < PITCH.length / 2;
+              const inBox = (nearHome ? body.pos.x < GOAL.boxDepthM + 1 : body.pos.x > PITCH.length - GOAL.boxDepthM - 1) &&
+                Math.abs(body.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 1;
+              if (inBox) {
+                const outX = nearHome ? GOAL.boxDepthM + 2.5 : PITCH.length - GOAL.boxDepthM - 2.5;
+                this.assign(body, { type: 'moveTo', target: { x: outX, y: Math.max(6, Math.min(PITCH.width - 6, body.pos.y)) }, regime: 'jog' });
+                this.actionLabels.set(id, 'clear-box');
+                continue;
+              }
+            }
             if (tkB && body.team !== tkB.team) {
               const dRb = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
               if (dRb < 9) {
@@ -3378,6 +3439,10 @@ export class Sim {
    * and throw-ins are thrown (two-handed, offside-exempt per the law). */
   private restartType: 'kickoff' | 'throw-in' | 'corner' | 'goal-kick' | 'free-kick' | null = null;
   private restartPenalty = false;
+  /** THE WALL: at a shooting-range free kick the defense posts 2-4 men
+   * on the ball-goal line at 9.15 m — the body-block physics then does
+   * the rest (low drives die in the wall; the taker must go over it) */
+  private readonly wallSpots = new Map<string, Vec2>();
   private offsideExemptTick = -1;
 
   private updateOffside(): void {
