@@ -106,6 +106,11 @@ export class Sim {
    * is awarded the put-back; claims are team-locked briefly */
   private deadSinceTick = -1;
   private restartLock: { team: 'home' | 'away'; until: number } | null = null;
+  /** the designated restart taker (goal kicks belong to the KEEPER): his
+   * own outfielders don't race the ball while set — the builder watched
+   * a right-back win the race to his own goal kick and roll it straight
+   * to the pressing striker */
+  private restartTaker: string | null = null;
   private lastGoalCount = 0;
   private prevCarrierTeam: 'home' | 'away' | null = null;
   /** off-ball ATTACK brains owned by the idle branch (station/support) —
@@ -238,6 +243,7 @@ export class Sim {
     // 1c. L7 — keepers self-position on the ball–goal line (after decide so a
     // keeper with the ball at his feet is decision- or script-owned that tick)
     if (this.keeperHolding && this.ball.carrierId !== this.keeperHolding) this.keeperHolding = null;
+    if (this.restartTaker && this.ball.carrierId !== null) this.restartTaker = null;
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
     if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
     this.keeperPhase();
@@ -853,6 +859,10 @@ export class Sim {
           const defenderOfEnd: 'home' | 'away' = endX === 0 ? 'home' : 'away';
           if (award === defenderOfEnd) {
             spot = { x: endX === 0 ? 6 : PITCH.length - 6, y: PITCH.width / 2 + (p.y >= PITCH.width / 2 ? 6 : -6) };
+            for (const kid of this.keepers) {
+              const kb = this.byId.get(kid);
+              if (kb && kb.team === award) this.restartTaker = kid;
+            }
           } else {
             spot = { x: endX === 0 ? 1 : PITCH.length - 1, y: p.y >= PITCH.width / 2 ? PITCH.width - 1 : 1 };
           }
@@ -863,7 +873,10 @@ export class Sim {
         this.ball.vz = 0;
         this.ball.phase = 'rolling';
         this.ball.kickerId = null;
-        this.restartLock = { team: award, until: this.tick + 20 };
+        // a goal kick gets a longer claim window (the keeper WALKS to his
+        // ball while opponents retreat — 20 ticks let a striker camp the
+        // box and steal the restart at expiry, straight into a shot)
+        this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 40 : 20) };
         this.deadSinceTick = -1;
       }
     } else {
@@ -1620,7 +1633,8 @@ export class Sim {
           const hisBall = this.ball.phase === 'airborne' &&
             Math.abs(pred.x - own.x) <= GOAL.boxDepthM &&
             Math.abs(pred.y - GOAL.centerY) <= GOAL.boxHalfWidthM;
-          const mateNearer = !hisBall && this.bodies.some((m) => m.team === k.team && m.id !== k.id &&
+          const mateNearer = !hisBall && this.restartTaker !== id &&
+            this.bodies.some((m) => m.team === k.team && m.id !== k.id &&
             Math.hypot(this.ball.pos.x - m.pos.x, this.ball.pos.y - m.pos.y) < kD - 1);
           if (!mateNearer) {
             if (kD <= 1.2) {
@@ -2294,7 +2308,10 @@ export class Sim {
               if (b2.team !== body.team) continue;
               if (advSign * (b2.pos.x - body.pos.x) > 0) moreAdvanced++;
             }
-            const advancedRunner = advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 2;
+            // THREE runners keep the run game (builder: 'attacking runs
+            // are still lacking' at two — a real attack sends both
+            // strikers AND an arriving midfielder/winger)
+            const advancedRunner = advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3;
             const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies, this.keepers) : null;
             if (atStation) {
@@ -2313,8 +2330,13 @@ export class Sim {
                 };
                 this.actionLabels.set(id, 'outlet');
               } else {
+                // REST-DEFENSE (builder: 'cb players pushing too high' —
+                // measured level with or past the deepest opponent in
+                // 17/31 attacking samples): back-line stations stay
+                // goal-side of the highest opposing outfielder
                 st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
-                  this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1);
+                  this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1,
+                  this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined);
               }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
@@ -2475,8 +2497,9 @@ export class Sim {
             // a DEAD ball is not a loose ball — two players ground at an
             // out-of-play ball against the boundary clamp for 12+ ticks
             // (the interpenetration pin caught the pile-up)
+            const takerB2 = this.restartTaker ? this.byId.get(this.restartTaker) : undefined;
             const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null &&
-              this.ball.phase !== 'dead';
+              this.ball.phase !== 'dead' && !(takerB2 && takerB2.team === body.team);
             // counterpress is INNATE — even 'keep' brains hunt the ball
             // they just lost (it is literally the rondo's rule); the keep
             // gate below only blocks ORGANIZED defense
@@ -2484,7 +2507,10 @@ export class Sim {
             if (this.tick - lostAt <= 60 && (oppHasIt || looseBall) &&
               this.tick % DECIDE.reconsiderTicks === 0 &&
               this.tick > (this.scriptedUntil.get(id) ?? -1) &&
-              myBallDist < 15) {
+              myBallDist < 15 &&
+              // a restart is not a transition — the counterpress instinct
+              // ignored the claim lock and hunted the other team's ball
+              !(this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team)) {
               // counterpress is ELECTED too: the nearest man (or anyone
               // right on the ball) hunts; the rest keep balance — the
               // swarm re-created the double-chase the shadow exists to fix
@@ -2676,8 +2702,10 @@ export class Sim {
           if ((body.command.type === 'hold' || this.attackIdle.has(id)) && this.ball.carrierId === null &&
             this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
             Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
-            if (this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team) {
-              // not our restart — hold shape while they put it back in
+            const takerB = this.restartTaker ? this.byId.get(this.restartTaker) : undefined;
+            if ((this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team) ||
+              (takerB && takerB.team === body.team)) {
+              // not our restart — or the KEEPER's: hold shape while it is put back in
             } else {
             const nearestOfTeam = [...this.brains].reduce((best, bid) => {
               const b = this.byId.get(bid)!;
@@ -2998,6 +3026,32 @@ export class Sim {
       return bp;
     }
     return null;
+  }
+
+  /** deepest opposing outfielder's u-coordinate (this team's attack sign) */
+  private oppDeepestU(team: 'home' | 'away'): number {
+    const sgn = attackSign(team);
+    let u = Infinity;
+    for (const b of this.bodies) {
+      if (b.team === team || this.keepers.has(b.id)) continue;
+      u = Math.min(u, b.pos.x * sgn);
+    }
+    return u;
+  }
+
+  /** is this player's HOME in the team's deepest outfield band (the back
+   * line, formation-agnostic: within 6 m of the deepest outfield home)? */
+  private backLineHome(id: string, team: 'home' | 'away'): boolean {
+    const home = this.homes.get(id);
+    if (!home || this.keepers.has(id)) return false;
+    const sgn = attackSign(team);
+    let deepest = Infinity;
+    for (const [hid, h] of this.homes) {
+      const b = this.byId.get(hid);
+      if (!b || b.team !== team || this.keepers.has(hid)) continue;
+      deepest = Math.min(deepest, h.x * sgn);
+    }
+    return home.x * sgn <= deepest + 6;
   }
 
   private interceptPoint(body: BodyState): {

@@ -1013,6 +1013,11 @@ export const blockStation = (
    * tucks 16 m abandons its channel outright (the fullbacks drill went
    * 8/8 through) — small casts keep the old gentle slide */
   teamSize = 11,
+  /** REST-DEFENSE (possession only): the deepest opposing outfielder's
+   * u-coordinate — a back-line station never pushes past it (minus a
+   * 4 m cushion). The rest band tracked the BALL alone, and the CBs
+   * rode it level with (worst: 19 m past) the opponent's front line. */
+  oppDeepU?: number,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
   const capX = possession ? 30 : 18;
@@ -1042,6 +1047,7 @@ export const blockStation = (
       const restDeep = 16 + (1 - lineHeight) * 8; // deepest station behind the ball
       if (u < ballU - restDeep) x = (ballU - restDeep) * sign;
       if (u > ballU + 10) x = (ballU + 10) * sign; // stations don't lead the ball (runs/box do)
+      if (oppDeepU !== undefined && x * sign > oppDeepU - 4) x = (oppDeepU - 4) * sign;
     }
     x = Math.max(2, Math.min(PITCH.length - 2, x));
   }
