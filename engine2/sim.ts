@@ -2405,7 +2405,19 @@ export class Sim {
                 { x: boxGoalX - boxSign * 7, y: PITCH.width / 2 - 6 },
                 { x: boxGoalX - boxSign * 7, y: PITCH.width / 2 + 6 },
               ];
-              const station = slots[Math.min(aheadOfMe, 2)];
+              const station = { ...slots[Math.min(aheadOfMe, 2)] };
+              // ONSIDE clamp (the offside law era): a box slot beyond the
+              // second-last defender parks its man permanently flagged —
+              // unpassable, and a whistle the moment the cross comes. He
+              // holds the line's shoulder and attacks the slot late.
+              if (this.brains.size >= 12) {
+                const oppUs2 = this.bodies.filter((b) => b.team !== body.team)
+                  .map((b) => b.pos.x * boxSign).sort((a, b) => b - a);
+                const lineU2 = oppUs2[1];
+                if (lineU2 !== undefined && station.x * boxSign > lineU2 - 1) {
+                  station.x = (lineU2 - 1) * boxSign;
+                }
+              }
               const dSt = Math.hypot(station.x - body.pos.x, station.y - body.pos.y);
               if (dSt > 1.4) {
                 this.assign(body, { type: 'moveTo', target: station, regime: dSt > 7 ? 'run' : 'jog' });
@@ -2763,9 +2775,17 @@ export class Sim {
           // match spacing the old 8 m radius DEADLOCKED an entire 11v11
           // around a neutral kickoff ball for 18+ seconds (the m11 pilot's
           // first finding): a neutral ball is always somebody's to go for.
+          // ANY unowned live ball is raced — the dying-ball gate (vel < 3)
+          // left a cut pass rolling fast with its receiver released and
+          // NOBODY entitled to chase (the builder's twice-hit gap: the
+          // tick-499 'no one is going after the ball' frame); the
+          // one-per-team intercept-time election already prevents swarms
+          // (fast-ball chases at match scale only — scripted drill kicks
+          // carry no intendedReceiverId, and the drills' story balls were
+          // being run down mid-flight by helpful bystanders)
           if ((body.command.type === 'hold' || this.attackIdle.has(id)) && this.ball.carrierId === null &&
             this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
-            Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
+            (this.brains.size >= 12 || Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3)) {
             const takerB = this.restartTaker ? this.byId.get(this.restartTaker) : undefined;
             if ((this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team) ||
               (takerB && takerB.team === body.team)) {

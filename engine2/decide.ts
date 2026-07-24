@@ -1618,12 +1618,17 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     const oppUs = opponents.map((o) => o.pos.x * sgnOf).sort((a, b) => b - a);
     offsideLineU = oppUs[1] ?? Infinity;
   }
-  const isOffside = (m: BodyState): boolean => {
-    if (offsideLineU === Infinity) return false;
+  // graded, not binary (the tick-499 reluctance: with the line pushed
+  // higher, a striker A STEP beyond it vanished from the whole menu —
+  // even for the feet-ball he would drop back onto): clearly offside
+  // (> 1.5 m) is no target; marginal is a heavy tax, not a veto
+  const offsideBy = (m: BodyState): number => {
+    if (offsideLineU === Infinity) return 0;
     const sgnOf = attackSign(team);
     const mu = m.pos.x * sgnOf;
     const inOppHalf = sgnOf > 0 ? m.pos.x > PITCH.length / 2 : m.pos.x < PITCH.length / 2;
-    return inOppHalf && mu > offsideLineU && mu > here.x * sgnOf;
+    if (!inOppHalf || mu <= here.x * sgnOf) return 0;
+    return Math.max(0, mu - offsideLineU);
   };
   // turnover currency: what THEY gain where we would lose it
   const lossVal = (p: Vec2): number => posValue(p, team === 'home' ? 'away' : 'home');
@@ -1755,7 +1760,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
 
   // PASS — each teammate, at a lead point if he is moving
   for (const mate of mates) {
-    if (isOffside(mate)) continue; // a flagged run is not a target
+    const offBy = offsideBy(mate);
+    if (offBy > 1.5) continue; // clearly flagged — not a target
+    const offsideTax = offBy > 0 ? 0.25 : 1;
     const dist0 = Math.hypot(mate.pos.x - here.x, mate.pos.y - here.y);
     // the WEIGHT tradeoff: a soft ball dies at the receiver's stride (easy
     // take, but slow through tight lanes); a firm ball beats interceptors
@@ -1908,7 +1915,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest));
-      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait;
+      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait * offsideTax;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
