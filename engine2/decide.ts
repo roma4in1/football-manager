@@ -955,6 +955,28 @@ export interface DefenseInput {
   homes: ReadonlyMap<string, Vec2>;
 }
 
+/** the BLOCK STATION (the four-frame verdict): a player's off-ball spot
+ * is his formation home slid toward the BALL relative to the team's
+ * formation centroid — anchoring on the pitch center made midfield
+ * possession compute ~zero shift, and a striker attacked six defenders
+ * while his team idled at home. Possession pushes hard (the block
+ * supports its carrier); defense slides shorter and compresses. */
+export const blockStation = (
+  home: Vec2,
+  centroid: Vec2,
+  ball: Vec2,
+  possession: boolean,
+): Vec2 => {
+  const kx = possession ? 0.7 : 0.45;
+  const capX = possession ? 30 : 18;
+  const ky = possession ? 0.3 : 0.3;
+  const capY = possession ? 10 : 8;
+  return {
+    x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx)))),
+    y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky)))),
+  };
+};
+
 export const decideDefense = (input: DefenseInput): DefenseIntent => {
   const { defender, carrier, bodies, ball, instructions, unit, pressingIds, inCounterpress, justReceived, homes } = input;
   const pressing = instructions.pressing ?? 0;
@@ -1018,10 +1040,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
         Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
-      return {
-        kind: 'holdShape',
-        target: shapeSpot(defender, bodies, ball, homes, unit.map((b) => b.id), instructions.lineHeight ?? 0.5),
-      };
+      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
     }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
@@ -1121,10 +1140,44 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const lane = shadowSpot(defender, carrier, bodies);
     if (lane) return { kind: 'interceptLane', target: lane };
   }
-  return {
-    kind: 'holdShape',
-    target: shapeSpot(defender, bodies, ball, homes, unit.map((b) => b.id), instructions.lineHeight ?? 0.5),
-  };
+  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
+};
+
+/** defensive off-board shape: the block station (formation lines sliding
+ * with the ball) — shapeSpot was an L5c small-line tool and read as "no
+ * structure" at eleven */
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[]): Vec2 => {
+  let cx = 0;
+  let cy = 0;
+  let n = 0;
+  for (const b of unit) {
+    const h = homes.get(b.id);
+    if (!h) continue;
+    cx += h.x; cy += h.y; n++;
+  }
+  const centroid = n ? { x: cx / n, y: cy / n } : defender.pos;
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false);
+  // the LINE clamp: a deep-half defender (his formation home behind the
+  // team centroid) never stations AHEAD of the deepest opponent — the
+  // raw slide let runners live behind the "line" (the l5c integrity pin
+  // fell to 43%)
+  const home = homes.get(defender.id) ?? defender.pos;
+  const sign = attackSign(defender.team); // own goal is opposite the attack
+  // epsilon: a FLAT back line ties its own centroid (the two-CB scene:
+  // 70 vs 70) and dodged the clamp entirely
+  const deepHalf = sign > 0 ? home.x <= centroid.x + 0.5 : home.x >= centroid.x - 0.5;
+  if (deepHalf) {
+    let deepestOpp = sign > 0 ? Infinity : -Infinity;
+    for (const o of bodies) {
+      if (o.team === defender.team) continue;
+      deepestOpp = sign > 0 ? Math.min(deepestOpp, o.pos.x) : Math.max(deepestOpp, o.pos.x);
+    }
+    if (Number.isFinite(deepestOpp)) {
+      st.x = sign > 0 ? Math.min(st.x, deepestOpp - 1.2) : Math.max(st.x, deepestOpp + 1.2);
+      st.x = Math.max(2, Math.min(PITCH.length - 2, st.x));
+    }
+  }
+  return st;
 };
 
 export interface DecideInput {

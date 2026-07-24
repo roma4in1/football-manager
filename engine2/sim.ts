@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -100,6 +100,23 @@ export class Sim {
    * without this re-entry set, a body once sent to a moveTo NEVER
    * reconsidered (the m11 chaotic-positions root: stale targets forever) */
   private readonly attackIdle = new Set<string>();
+  private readonly homeCentroids = new Map<string, { x: number; y: number }>();
+  private teamCentroid(team: string): { x: number; y: number } {
+    let c = this.homeCentroids.get(team);
+    if (!c) {
+      let cx = 0; let cy = 0; let n = 0;
+      for (const id of this.brains) {
+        const b = this.byId.get(id)!;
+        if (b.team !== team) continue;
+        const h = this.homes.get(id);
+        if (!h) continue;
+        cx += h.x; cy += h.y; n++;
+      }
+      c = n ? { x: cx / n, y: cy / n } : { x: PITCH.length / 2, y: PITCH.width / 2 };
+      this.homeCentroids.set(team, c);
+    }
+    return c;
+  }
   /** brains currently pressing (the first-defender election's memory) */
   private readonly pressingIds = new Set<string>();
   /** the half-turn: the intended receiver's anticipated NEXT-play direction,
@@ -240,6 +257,33 @@ export class Sim {
     this.prevPos.clear();
     for (const body of this.bodies) {
       this.prevPos.set(body.id, { x: body.pos.x, y: body.pos.y });
+    }
+    // 2-pre: CONTACT DAMPING (the m11 scrum: steering re-created closing
+    // velocity every tick faster than the bounded resolver drained it, and
+    // pairs ground along merged for ticks) — bodies already in contact
+    // lose their into-contact velocity BEFORE the step, so re-entry is one
+    // tick of acceleration, which the resolver clears trivially.
+    {
+      const touchSep = TECH.bodyRadiusM * 2 + 0.1;
+      for (let i = 0; i < this.bodies.length; i++) {
+        for (let j = i + 1; j < this.bodies.length; j++) {
+          const a = this.bodies[i];
+          const b = this.bodies[j];
+          const dx = b.pos.x - a.pos.x;
+          const dy = b.pos.y - a.pos.y;
+          const d = Math.hypot(dx, dy);
+          if (d >= touchSep || d < 1e-9) continue;
+          const nx = dx / d;
+          const ny = dy / d;
+          const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
+          if (closing > 0) {
+            a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
+            b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
+            a.speed = Math.hypot(a.vel.x, a.vel.y);
+            b.speed = Math.hypot(b.vel.x, b.vel.y);
+          }
+        }
+      }
     }
     for (const body of this.bodies) {
       const isCarrier = this.ball.carrierId === body.id;
@@ -615,45 +659,52 @@ export class Sim {
     // pushing the middle man INTO a third body squeezed past the floor);
     // total displacement per body per tick is CAPPED — iterations could
     // accumulate a 0.84 m teleport in dense press scrums
+    // DEEPEST-FIRST sequential relaxation (the m11 scrum finding: the
+    // order-free batch let opposing pushes cancel vectorially and a
+    // deeply merged pair sat unresolved for ticks while shallow contacts
+    // consumed the budget) — sorted processing is equally deterministic
+    // and spends the budget where the merge is worst.
     const sepTotal = new Map<string, number>();
+    const applyPush = (b: BodyState, px: number, py: number): void => {
+      const used = sepTotal.get(b.id) ?? 0;
+      const mag = Math.hypot(px, py);
+      const allowed = Math.max(0, 0.6 - used);
+      const k = mag > allowed ? allowed / (mag || 1) : 1;
+      b.pos = { x: b.pos.x + px * k, y: b.pos.y + py * k };
+      sepTotal.set(b.id, used + mag * k);
+    };
     for (let sepIter = 0; sepIter < 3; sepIter++) {
       const minSep = TECH.bodyRadiusM * 2;
-      const push = new Map<string, Vec2>();
+      const pairs: Array<{ a: BodyState; b: BodyState; d: number }> = [];
       for (let i = 0; i < this.bodies.length; i++) {
         for (let j = i + 1; j < this.bodies.length; j++) {
           const a = this.bodies[i];
           const b = this.bodies[j];
-          const dx = b.pos.x - a.pos.x;
-          const dy = b.pos.y - a.pos.y;
-          const d = Math.hypot(dx, dy);
-          if (d >= minSep || d < 1e-9) continue;
-          const overlap = Math.min((minSep - d) / 2, TECH.separationSpeedMps * DT);
-          const nx = dx / d;
-          const ny = dy / d;
-          const pa = push.get(a.id) ?? { x: 0, y: 0 };
-          const pb = push.get(b.id) ?? { x: 0, y: 0 };
-          push.set(a.id, { x: pa.x - nx * overlap, y: pa.y - ny * overlap });
-          push.set(b.id, { x: pb.x + nx * overlap, y: pb.y + ny * overlap });
-          // velocity resolution: colliding bodies stop CLOSING — remove the
-          // approaching components (inelastic shoulder contact, not a bounce)
-          const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
-          if (closing > 0) {
-            a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
-            b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
-            a.speed = Math.hypot(a.vel.x, a.vel.y);
-            b.speed = Math.hypot(b.vel.x, b.vel.y);
-          }
+          const d = Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y);
+          if (d < minSep && d >= 1e-9) pairs.push({ a, b, d });
         }
       }
-      for (const b of this.bodies) {
-        const p = push.get(b.id);
-        if (!p) continue;
-        const used = sepTotal.get(b.id) ?? 0;
-        const mag = Math.hypot(p.x, p.y);
-        const allowed = Math.max(0, 0.5 - used);
-        const k = mag > allowed ? allowed / (mag || 1) : 1;
-        b.pos = { x: b.pos.x + p.x * k, y: b.pos.y + p.y * k };
-        sepTotal.set(b.id, used + mag * k);
+      if (!pairs.length) break;
+      pairs.sort((p1, p2) => p1.d - p2.d);
+      for (const { a, b } of pairs) {
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= minSep || d < 1e-9) continue;
+        const overlap = Math.min((minSep - d) / 2, TECH.separationSpeedMps * DT);
+        const nx = dx / d;
+        const ny = dy / d;
+        applyPush(a, -nx * overlap, -ny * overlap);
+        applyPush(b, nx * overlap, ny * overlap);
+        // velocity resolution: colliding bodies stop CLOSING — remove the
+        // approaching components (inelastic shoulder contact, not a bounce)
+        const closing = (a.vel.x - b.vel.x) * nx + (a.vel.y - b.vel.y) * ny;
+        if (closing > 0) {
+          a.vel = { x: a.vel.x - nx * closing * 0.5, y: a.vel.y - ny * closing * 0.5 };
+          b.vel = { x: b.vel.x + nx * closing * 0.5, y: b.vel.y + ny * closing * 0.5 };
+          a.speed = Math.hypot(a.vel.x, a.vel.y);
+          b.speed = Math.hypot(b.vel.x, b.vel.y);
+        }
       }
     }
 
@@ -2074,14 +2125,7 @@ export class Sim {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               const home = this.homes.get(id) ?? body.pos;
-              // IN POSSESSION the whole block pushes toward the ball hard
-              // (the builder's screenshot: the attacking back line
-              // loitered 65 m behind its own striker) — a stronger,
-              // ball-side shift than the neutral slide
-              const st = {
-                x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-24, Math.min(24, (this.ball.pos.x - PITCH.length / 2) * 0.5)))),
-                y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-10, Math.min(10, (this.ball.pos.y - PITCH.width / 2) * 0.3)))),
-              };
+              const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true);
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
               if (dSt > 1.6) {
@@ -2187,7 +2231,8 @@ export class Sim {
           // receiver are exempt — those are owned elsewhere.
           if (this.tick % DECIDE.reconsiderTicks === 0 &&
             body.command.type === 'chaseBall' &&
-            !this.pressingIds.has(id) && this.intendedReceiverId !== id &&
+            (!this.pressingIds.has(id) || this.ball.phase === 'dead') &&
+            this.intendedReceiverId !== id &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             // a SCRIPTED chase gets 2 s of grace — drills time runs by
             // sending the chase before the ball is struck (the aerial
@@ -2204,8 +2249,10 @@ export class Sim {
                 if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myD) closerChase++;
               }
             }
-            if (ownBall || (this.ball.carrierId === null && closerChase >= 2)) {
+            if (ownBall || this.ball.phase === 'dead' ||
+              (this.ball.carrierId === null && closerChase >= 2)) {
               this.assign(body, { type: 'hold' });
+              this.pressingIds.delete(id);
               this.actionLabels.set(id, 'release');
             }
           }
@@ -2216,7 +2263,11 @@ export class Sim {
           {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
             const oppHasIt = carrierBody !== undefined && carrierBody.team !== body.team;
-            const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null;
+            // a DEAD ball is not a loose ball — two players ground at an
+            // out-of-play ball against the boundary clamp for 12+ ticks
+            // (the interpenetration pin caught the pile-up)
+            const looseBall = this.ball.carrierId === null && this.intendedReceiverId === null &&
+              this.ball.phase !== 'dead';
             // counterpress is INNATE — even 'keep' brains hunt the ball
             // they just lost (it is literally the rondo's rule); the keep
             // gate below only blocks ORGANIZED defense
@@ -2338,10 +2389,7 @@ export class Sim {
             this.tick > (this.scriptedUntil.get(id) ?? -1) &&
             this.homes.has(id)) {
             const home = this.homes.get(id)!;
-            const st = {
-              x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-14, Math.min(14, (this.ball.pos.x - PITCH.length / 2) * 0.3)))),
-              y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-9, Math.min(9, (this.ball.pos.y - PITCH.width / 2) * 0.25)))),
-            };
+            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false);
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             if (dSt > 1.6) {
