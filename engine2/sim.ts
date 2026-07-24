@@ -2640,13 +2640,23 @@ export class Sim {
               // the wb-0 race measured the tie at 2.6 s, which the first
               // cut (margin 0.1, cap 2.5) excluded on both ends
               if (mine.tMeet <= recvT + 0.35 && mine.tMeet < 3.5) {
-                // one stepper per team — the best of the eligible unit
+                // one stepper per team — the best of the ELIGIBLE unit.
+                // Eligible means passing the same state gate as me: the
+                // first cut counted every non-pressing teammate, so a man
+                // with a better intercept time who was mid-errand (a
+                // sprint command from another duty — he never runs this
+                // branch) collected the deferral and NOBODY stepped in
+                // (the tick-282 frame: a-cm2 jogging beside the ball's
+                // path while the receiver doubled back uncontested).
                 let bestMate = Infinity;
                 for (const bid of this.brains) {
                   if (bid === id) continue;
                   const b2 = this.byId.get(bid)!;
                   if (b2.team !== body.team || this.keepers.has(bid)) continue;
                   if (this.pressingIds.has(bid)) continue;
+                  if (!(b2.command.type === 'hold' || this.attackIdle.has(bid) ||
+                    this.shapeHolding.has(bid) || this.runningLine.has(bid))) continue;
+                  if (this.tick <= (this.scriptedUntil.get(bid) ?? -1)) continue;
                   bestMate = Math.min(bestMate, this.interceptPoint(b2).tMeet);
                 }
                 if (mine.tMeet <= bestMate) {
