@@ -254,6 +254,69 @@ export class Sim {
       // claim and first-time pass land in one tick, and resolving only
       // on carrier-sight left the lock up with the taker's own receiver
       // barred from the ball) — the ceremony resolves
+      // THE SET-PIECE MENU (manager hooks: freeKickStyle / cornerStyle /
+      // setPieceTaker): penalties strike, close central free kicks shoot
+      // over the retreated nine meters, wide advanced ones cross into
+      // the assembled box, deep ones go long or play short to the brain
+      if (this.ball.carrierId === this.restartTaker &&
+        (this.restartType === 'corner' || this.restartType === 'free-kick')) {
+        const tk = this.byId.get(this.restartTaker)!;
+        const style = this.restartType === 'corner'
+          ? (this.instructions.get(tk.id)?.cornerStyle ?? 'cross')
+          : (this.instructions.get(tk.id)?.freeKickStyle ?? 'auto');
+        const g = goalCenter(tk.team);
+        const dGoal = Math.hypot(g.x - tk.pos.x, g.y - tk.pos.y);
+        const central = Math.abs(tk.pos.y - PITCH.width / 2) <= 18;
+        const opps2 = this.bodies.filter((o2) => o2.team !== tk.team);
+        // the best BOX target for a delivery, if any mate is assembled
+        let boxMate: { m: BodyState; pC: number } | null = null;
+        for (const m of this.bodies) {
+          if (m.team !== tk.team || m.id === tk.id || this.sentOff.has(m.id)) continue;
+          if (Math.hypot(g.x - m.pos.x, g.y - m.pos.y) > 22) continue;
+          const landing = { x: m.pos.x + m.vel.x * 0.5, y: m.pos.y + m.vel.y * 0.5 };
+          const pC = aerialCompletion(landing, m, opps2);
+          if (!boxMate || pC > boxMate.pC) boxMate = { m, pC };
+        }
+        let act: 'shot' | 'cross' | 'long' | 'short' = 'short';
+        if (this.restartPenalty) act = 'shot';
+        else if (this.restartType === 'corner') act = style === 'short' ? 'short' : (boxMate ? 'cross' : 'short');
+        else if (style === 'shoot' || (style === 'auto' && dGoal <= 26 && central)) act = 'shot';
+        else if ((style === 'cross' || (style === 'auto' && dGoal <= 45)) && boxMate) act = 'cross';
+        else if (style === 'long') act = 'long';
+        if (act === 'shot') {
+          const yOff = (this.rng.chance(0.5, this.tick, tk.id, 'sp-side') ? 1 : -1) *
+            (GOAL.mouthHalfWidthM - 0.6);
+          kickBall(this.ball, { x: g.x, y: g.y + yOff },
+            this.restartPenalty ? 22 : 23, this.restartPenalty ? 6 : 12, tk.id, this.tick);
+          this.actionLabels.set(tk.id, this.restartPenalty ? 'penalty' : 'fk-shot');
+        } else if (act === 'cross' && boxMate) {
+          const lead = { x: boxMate.m.pos.x + boxMate.m.vel.x * 0.5, y: boxMate.m.pos.y + boxMate.m.vel.y * 0.5 };
+          const dC = Math.hypot(lead.x - tk.pos.x, lead.y - tk.pos.y);
+          kickBall(this.ball, lead, Math.min(26, solveLoftSpeed(dC, 23)), 23, tk.id, this.tick);
+          this.intendedReceiverId = boxMate.m.id;
+          if (this.restartType === 'corner') this.offsideExemptTick = this.tick; // the law's own rule
+          this.actionLabels.set(tk.id, this.restartType === 'corner' ? 'corner-cross' : 'fk-cross');
+        } else if (act === 'long') {
+          let far: { m: BodyState; score: number } | null = null;
+          const sgnT = attackSign(tk.team);
+          for (const m of this.bodies) {
+            if (m.team !== tk.team || m.id === tk.id || this.sentOff.has(m.id)) continue;
+            const dm = Math.hypot(m.pos.x - tk.pos.x, m.pos.y - tk.pos.y);
+            if (dm < 25 || dm > 50) continue;
+            let free = Infinity;
+            for (const o2 of opps2) free = Math.min(free, Math.hypot(o2.pos.x - m.pos.x, o2.pos.y - m.pos.y));
+            const score = sgnT * (m.pos.x - tk.pos.x) * 0.02 + Math.min(1, free / 10);
+            if (!far || score > far.score) far = { m, score };
+          }
+          if (far) {
+            const dm = Math.hypot(far.m.pos.x - tk.pos.x, far.m.pos.y - tk.pos.y);
+            kickBall(this.ball, { x: far.m.pos.x, y: far.m.pos.y }, Math.min(27, solveLoftSpeed(dm, 20)), 20, tk.id, this.tick);
+            this.intendedReceiverId = far.m.id;
+            this.actionLabels.set(tk.id, 'fk-long');
+          }
+        }
+        // act === 'short': leave the ball with the taker's brain
+      }
       if (this.ball.carrierId === this.restartTaker && this.restartType === 'throw-in') {
         // the THROW-IN FORM: two-handed, released above the head, to the
         // best near mate — and offside-exempt (the law's own rule)
@@ -283,6 +346,7 @@ export class Sim {
       }
       this.restartTaker = null;
       this.restartType = null;
+      this.restartPenalty = false;
       this.restartLock = null;
     }
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
@@ -899,8 +963,10 @@ export class Sim {
           // spot kick is the honest stand-in)
           if (spot.x < 16.5 && award === 'away' && Math.abs(spot.y - PITCH.width / 2) < 20) {
             spot = { x: 11, y: PITCH.width / 2 };
+            this.restartPenalty = true;
           } else if (spot.x > PITCH.length - 16.5 && award === 'home' && Math.abs(spot.y - PITCH.width / 2) < 20) {
             spot = { x: PITCH.length - 11, y: PITCH.width / 2 };
+            this.restartPenalty = true;
           }
           this.restartType = 'free-kick';
           this.pendingFreeKick = null;
@@ -940,7 +1006,10 @@ export class Sim {
           for (const bid of this.brains) {
             const bb = this.byId.get(bid)!;
             if (bb.team !== award || this.keepers.has(bid) || this.sentOff.has(bid)) continue;
-            const d = Math.hypot(bb.pos.x - spot.x, bb.pos.y - spot.y);
+            // the manager's designated taker outranks proximity (the
+            // customization hook — free kicks and corners have owners)
+            const d = Math.hypot(bb.pos.x - spot.x, bb.pos.y - spot.y) -
+              (this.instructions.get(bid)?.setPieceTaker ? 1000 : 0);
             if (!bestT || d < bestT.d) bestT = { id: bid, d };
           }
           this.restartTaker = bestT?.id ?? null;
@@ -3308,6 +3377,7 @@ export class Sim {
    * retreat from the spot, kickoffs reset both teams to their homes,
    * and throw-ins are thrown (two-handed, offside-exempt per the law). */
   private restartType: 'kickoff' | 'throw-in' | 'corner' | 'goal-kick' | 'free-kick' | null = null;
+  private restartPenalty = false;
   private offsideExemptTick = -1;
 
   private updateOffside(): void {

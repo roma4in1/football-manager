@@ -156,6 +156,12 @@ export interface PlayInstructions {
    * stay wide... to open up the pitch'): exempt from the lateral
    * block-shift and the far-tuck while the team has the ball. */
   holdWidth?: boolean;
+  /** SET-PIECE hooks (builder: takers and styles manager-customizable).
+   * setPieceTaker biases the ceremony's taker election to this player;
+   * the styles steer the taker's execution — 'auto' prices by geometry. */
+  setPieceTaker?: boolean;
+  freeKickStyle?: 'auto' | 'short' | 'shoot' | 'cross' | 'long';
+  cornerStyle?: 'cross' | 'short';
 }
 
 export type Intent =
