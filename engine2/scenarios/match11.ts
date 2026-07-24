@@ -14,7 +14,10 @@ import type { ScenarioDef } from '../engine2-types.ts';
 const out = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 13, firstTouch: 13, passing: 13, tackling: 13, strength: 13, stamina: 13 };
 const gloves = { ...out, agility: 15, firstTouch: 14, pace: 12 };
 
-/** 4-4-2 stations, home orientation (attacks +x); away mirrors in x. */
+/** formation tables, home orientation (attacks +x); away mirrors in x.
+ * The engine is formation-agnostic — homes drive the stations, the duty
+ * zones, and the back-line detection (deepest outfield home +6 m), so a
+ * back FIVE and a front THREE need no new machinery, only a table. */
 const F442: ReadonlyArray<{ slot: string; x: number; y: number }> = [
   { slot: 'gk', x: 5, y: 34 },
   { slot: 'lb', x: 18, y: 55 }, { slot: 'cb1', x: 16, y: 42 },
@@ -23,6 +26,32 @@ const F442: ReadonlyArray<{ slot: string; x: number; y: number }> = [
   { slot: 'cm2', x: 38, y: 26 }, { slot: 'rm', x: 40, y: 13 },
   { slot: 'st1', x: 58, y: 42 }, { slot: 'st2', x: 58, y: 26 },
 ];
+
+/** 4-3-3: a holding mid behind two eights, wingers high and wide */
+const F433: ReadonlyArray<{ slot: string; x: number; y: number }> = [
+  { slot: 'gk', x: 5, y: 34 },
+  { slot: 'lb', x: 18, y: 55 }, { slot: 'cb1', x: 16, y: 42 },
+  { slot: 'cb2', x: 16, y: 26 }, { slot: 'rb', x: 18, y: 13 },
+  { slot: 'dm', x: 31, y: 34 },
+  { slot: 'cm1', x: 40, y: 45 }, { slot: 'cm2', x: 40, y: 23 },
+  { slot: 'lw', x: 56, y: 55 }, { slot: 'st', x: 58, y: 34 },
+  { slot: 'rw', x: 56, y: 13 },
+];
+
+/** 5-2-3: a back five with wingbacks, a double pivot, a front three */
+const F523: ReadonlyArray<{ slot: string; x: number; y: number }> = [
+  { slot: 'gk', x: 5, y: 34 },
+  { slot: 'lwb', x: 20, y: 58 }, { slot: 'cb1', x: 15, y: 46 },
+  { slot: 'cb2', x: 14, y: 34 }, { slot: 'cb3', x: 15, y: 22 },
+  { slot: 'rwb', x: 20, y: 10 },
+  { slot: 'cm1', x: 36, y: 42 }, { slot: 'cm2', x: 36, y: 26 },
+  { slot: 'lw', x: 54, y: 52 }, { slot: 'st', x: 56, y: 34 },
+  { slot: 'rw', x: 54, y: 16 },
+];
+
+export const FORMATIONS: Readonly<Record<string, ReadonlyArray<{ slot: string; x: number; y: number }>>> = {
+  '442': F442, '433': F433, '523': F523,
+};
 
 export interface SituationDef {
   name: string;
@@ -34,6 +63,9 @@ export interface SituationDef {
   ball: { carrier: string } | { pos: { x: number; y: number } };
   homePressing?: number;
   awayPressing?: number;
+  /** formation table names (FORMATIONS keys), default '442' */
+  homeFormation?: string;
+  awayFormation?: string;
 }
 
 export const matchSituation = (def: SituationDef): ScenarioDef => ({
@@ -41,8 +73,8 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
   name: def.name,
   description: def.description,
   durationTicks: def.durationTicks,
-  bodies: F442.flatMap(({ slot, x, y }) => {
-    const mk = (team: 'home' | 'away'): ScenarioDef['bodies'][number] => {
+  bodies: (['home', 'away'] as const).flatMap((team) =>
+    (FORMATIONS[(team === 'home' ? def.homeFormation : def.awayFormation) ?? '442'] ?? F442).map(({ slot, x, y }) => {
       const id = `${team === 'home' ? 'h' : 'a'}-${slot}`;
       const px = team === 'home' ? x : 105 - x;
       const p = def.place?.[id] ?? { x: px, y };
@@ -59,9 +91,7 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
           lineHeight: 0.5,
         },
       };
-    };
-    return [mk('home'), mk('away')];
-  }),
+    })),
   ball: def.ball,
   script: [],
 });
@@ -123,4 +153,19 @@ export const m11Match = matchSituation({
   awayPressing: 0.6,
 });
 
-export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match];
+/** the FORMATION DUEL (builder request): a 4-3-3 against a 5-2-3 — the
+ * fluid front three vs the back five, wingbacks against high wingers,
+ * a double pivot against a midfield triangle. Same neutral centre ball
+ * as m11-match; the formations are the experiment. */
+export const m11Formations = matchSituation({
+  name: 'm11-433-523',
+  description: 'A full 11v11 slice: home 4-3-3 vs away 5-2-3 from a neutral centre ball. Judge the front three against the back five, the wingbacks\' dual role, and the pivot battle.',
+  durationTicks: 900,
+  ball: { pos: { x: 52.5, y: 34 } },
+  homePressing: 0.6,
+  awayPressing: 0.6,
+  homeFormation: '433',
+  awayFormation: '523',
+});
+
+export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations];

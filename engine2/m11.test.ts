@@ -68,3 +68,41 @@ test('M11 pilot — the second ball is RACED by both teams (the deadlock is dead
   assert.ok(r.bothCollect >= 4, `both teams send a collector to the neutral ball (${r.bothCollect}/5)`);
   assert.ok(r.claimed >= 4, `the scramble resolves to possession (${r.claimed}/5)`);
 });
+
+test('M11 FORMATIONS — the 4-3-3 vs 5-2-3 duel: each shape keeps its identity in live play', () => {
+  // storyboarded on wb-0..2 (the builder's seeds) before pinning: back
+  // five 4.5-4.9/5 goal-side, front three x̄ 61-67, wingback spread
+  // 40-43 m — the pins sit under the measured floors
+  for (const seed of ['wb-0', 'wb-1', 'wb-2']) {
+    const sim = new Sim(scenarioByName('m11-433-523'), seed);
+    let hPass = 0;
+    let aPass = 0;
+    sim.telemetry = (e: any) => {
+      if (e.t === 'pass' && (e.outcome === 'complete' || e.outcome === 'teammate')) {
+        if ((e.kicker as string).startsWith('h-')) hPass++; else aPass++;
+      }
+    };
+    const five: number[] = [];
+    const three: number[] = [];
+    const spread: number[] = [];
+    for (let t = 0; t < 900; t++) {
+      sim.step();
+      if (t % 30 !== 0 || t < 60) continue;
+      const backs = ['a-lwb', 'a-cb1', 'a-cb2', 'a-cb3', 'a-rwb'].map((id) => sim.bodies.find((b) => b.id === id)!);
+      const hAtt = Math.max(...sim.bodies.filter((b) => b.team === 'home' && b.id !== 'h-gk').map((b) => b.pos.x));
+      five.push(backs.filter((b) => b.pos.x > hAtt - 3).length);
+      const front = ['h-lw', 'h-st', 'h-rw'].map((id) => sim.bodies.find((b) => b.id === id)!);
+      three.push(front.reduce((s2, b) => s2 + b.pos.x, 0) / 3);
+      const c = sim.ball.carrierId;
+      if (c && c.startsWith('a-')) {
+        const wbs = ['a-lwb', 'a-rwb'].map((id) => sim.bodies.find((b) => b.id === id)!);
+        spread.push(Math.abs(wbs[0].pos.y - wbs[1].pos.y));
+      }
+    }
+    const avg = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
+    assert.ok(avg(five) >= 3.8, `${seed}: the back five holds its goal-side chain (${avg(five).toFixed(1)}/5)`);
+    assert.ok(avg(three) >= 52, `${seed}: the front three stays high (x̄=${avg(three).toFixed(0)})`);
+    assert.ok(spread.length > 0 && avg(spread) >= 28, `${seed}: the wingbacks give the width in possession (${spread.length ? avg(spread).toFixed(0) : 0}m)`);
+    assert.ok(hPass >= 5 && aPass >= 4, `${seed}: both shapes circulate (h=${hPass} a=${aPass})`);
+  }
+});
