@@ -101,6 +101,11 @@ export class Sim {
    * reconsidered (the m11 chaotic-positions root: stale targets forever) */
   private readonly attackIdle = new Set<string>();
   private readonly homeCentroids = new Map<string, { x: number; y: number }>();
+  private teamBrainCount(team: string): number {
+    let n = 0;
+    for (const id of this.brains) if (this.byId.get(id)!.team === team) n++;
+    return n;
+  }
   private teamCentroid(team: string): { x: number; y: number } {
     let c = this.homeCentroids.get(team);
     if (!c) {
@@ -2125,7 +2130,8 @@ export class Sim {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               const home = this.homes.get(id) ?? body.pos;
-              const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team));
+              const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
+                this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1);
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
               if (dSt > 1.6) {
@@ -2137,10 +2143,25 @@ export class Sim {
             } else if (boxOccupy) {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
-              const station = {
-                x: boxGoalX - boxSign * 12,
-                y: PITCH.width / 2 + (body.pos.y >= PITCH.width / 2 ? 2.5 : -2.5),
-              };
+              // MULTI-MAN box occupation (the EAFC 71:10 frame: a box
+              // attack packs 4-6 bodies at near post / spot / far post —
+              // ours sent one): up to three qualifying attackers take
+              // SLOTS, ranked by advancement; the fourth-plus stations.
+              let aheadOfMe = 0;
+              for (const bid of this.brains) {
+                if (bid === id || bid === carrierBody.id) continue;
+                const b2 = this.byId.get(bid)!;
+                if (b2.team !== body.team) continue;
+                const qualifies = (boxSign > 0 ? PITCH.length - b2.pos.x : b2.pos.x) <= 24 &&
+                  Math.abs(b2.pos.y - PITCH.width / 2) < DECIDE.crossWideM;
+                if (qualifies && boxSign * (b2.pos.x - body.pos.x) > 0) aheadOfMe++;
+              }
+              const slots = [
+                { x: boxGoalX - boxSign * 12, y: PITCH.width / 2 + (body.pos.y >= PITCH.width / 2 ? 2.5 : -2.5) },
+                { x: boxGoalX - boxSign * 7, y: PITCH.width / 2 - 6 },
+                { x: boxGoalX - boxSign * 7, y: PITCH.width / 2 + 6 },
+              ];
+              const station = slots[Math.min(aheadOfMe, 2)];
               const dSt = Math.hypot(station.x - body.pos.x, station.y - body.pos.y);
               if (dSt > 1.4) {
                 this.assign(body, { type: 'moveTo', target: station, regime: dSt > 7 ? 'run' : 'jog' });
@@ -2389,7 +2410,8 @@ export class Sim {
             this.tick > (this.scriptedUntil.get(id) ?? -1) &&
             this.homes.has(id)) {
             const home = this.homes.get(id)!;
-            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team));
+            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
+              0.5, this.teamBrainCount(body.team) + 1);
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             if (dSt > 1.6) {

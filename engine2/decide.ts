@@ -978,26 +978,51 @@ export const blockStation = (
   /** the team's attack sign — the compactness clamp needs to know which
    * way "ahead of the ball" points */
   sign = 0,
+  /** the tactics hook (L6): a higher line squeezes the possession rest
+   * band up the pitch; the band itself is fundamental */
+  lineHeight = 0.5,
+  /** EAFC-scale compression is an ELEVEN-man behavior: a 4-man line that
+   * tucks 16 m abandons its channel outright (the fullbacks drill went
+   * 8/8 through) — small casts keep the old gentle slide */
+  teamSize = 11,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
   const capX = possession ? 30 : 18;
-  const ky = possession ? 0.3 : 0.3;
-  const capY = possession ? 10 : 8;
+  // BALL-SIDE COMPRESSION (the EAFC frames: density is central and
+  // ball-side; a far winger tucks toward the box edge rather than
+  // holding the touchline) — roughly double the old lateral slide
+  const big = teamSize >= 8;
+  const ky = big ? 0.45 : 0.3;
+  const capY = big ? 16 : possession ? 10 : 8;
   let x = Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx))));
-  if (!possession && sign !== 0) {
-    // TEAM COMPACTNESS (defensive_principles II.1, the builder's frame:
-    // strikers loitering 30+ m above the ball while their side defends):
-    // out of possession no station sits more than 28 m AHEAD of the ball
-    // (toward the team's own attacking goal) — the highest player
-    // recovers toward the block and the team is hard to play through.
-    const excess = (x - ball.x) * sign - 28;
-    if (excess > 0) x = ball.x + sign * 28;
+  if (sign !== 0) {
+    const u = x * sign;
+    const ballU = ball.x * sign;
+    if (!possession) {
+      // TEAM COMPACTNESS (principles II.1): out of possession no station
+      // sits more than 28 m ahead of the ball — hard to play through
+      if (u > ballU + 28) x = (ballU + 28) * sign;
+    } else {
+      // POSSESSION COMPACTNESS + REST-DEFENSE (the EAFC frames: the
+      // attacking block spans ~35 m with the back line stepped up to a
+      // visible rest chain behind the ball). lineHeight is the tactics
+      // hook: a higher line squeezes the rest band up; the fundamentals
+      // (a band exists) are not optional.
+      const restDeep = 24 + (1 - lineHeight) * 10; // deepest station behind the ball
+      if (u < ballU - restDeep) x = (ballU - restDeep) * sign;
+      if (u > ballU + 12) x = (ballU + 12) * sign; // stations don't lead the ball (runs/box do)
+    }
     x = Math.max(2, Math.min(PITCH.length - 2, x));
   }
-  return {
-    x,
-    y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky)))),
-  };
+  let y = Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky))));
+  // the far-side TUCK: nobody stations more than 26 m across from the
+  // ball line (the EAFC far winger sits at the box edge, not the chalk)
+  if (big) {
+    if (y - ball.y > 26) y = ball.y + 26;
+    if (ball.y - y > 26) y = ball.y - 26;
+    y = Math.max(2, Math.min(PITCH.width - 2, y));
+  }
+  return { x, y };
 };
 
 export const decideDefense = (input: DefenseInput): DefenseIntent => {
@@ -1197,7 +1222,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
     cx += h.x; cy += h.y; n++;
   }
   const centroid = n ? { x: cx / n, y: cy / n } : defender.pos;
-  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, attackSign(defender.team));
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, attackSign(defender.team), 0.5, unit.length + 1);
   // the LINE clamp: a deep-half defender (his formation home behind the
   // team centroid) never stations AHEAD of the deepest opponent — the
   // raw slide let runners live behind the "line" (the l5c integrity pin
