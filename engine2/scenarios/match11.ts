@@ -18,7 +18,7 @@ const gloves = { ...out, agility: 15, firstTouch: 14, pace: 12 };
  * The engine is formation-agnostic — homes drive the stations, the duty
  * zones, and the back-line detection (deepest outfield home +6 m), so a
  * back FIVE and a front THREE need no new machinery, only a table. */
-const F442: ReadonlyArray<{ slot: string; x: number; y: number }> = [
+const F442: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown> }> = [
   { slot: 'gk', x: 5, y: 34 },
   { slot: 'lb', x: 18, y: 55 }, { slot: 'cb1', x: 16, y: 42 },
   { slot: 'cb2', x: 16, y: 26 }, { slot: 'rb', x: 18, y: 13 },
@@ -28,28 +28,28 @@ const F442: ReadonlyArray<{ slot: string; x: number; y: number }> = [
 ];
 
 /** 4-3-3: a holding mid behind two eights, wingers high and wide */
-const F433: ReadonlyArray<{ slot: string; x: number; y: number }> = [
+const F433: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown> }> = [
   { slot: 'gk', x: 5, y: 34 },
   { slot: 'lb', x: 18, y: 55 }, { slot: 'cb1', x: 16, y: 42 },
   { slot: 'cb2', x: 16, y: 26 }, { slot: 'rb', x: 18, y: 13 },
   { slot: 'dm', x: 31, y: 34 },
   { slot: 'cm1', x: 40, y: 45 }, { slot: 'cm2', x: 40, y: 23 },
-  { slot: 'lw', x: 56, y: 55 }, { slot: 'st', x: 58, y: 34 },
-  { slot: 'rw', x: 56, y: 13 },
+  { slot: 'lw', x: 56, y: 55, instr: { holdWidth: true } }, { slot: 'st', x: 58, y: 34 },
+  { slot: 'rw', x: 56, y: 13, instr: { holdWidth: true } },
 ];
 
 /** 5-2-3: a back five with wingbacks, a double pivot, a front three */
-const F523: ReadonlyArray<{ slot: string; x: number; y: number }> = [
+const F523: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown> }> = [
   { slot: 'gk', x: 5, y: 34 },
-  { slot: 'lwb', x: 20, y: 58 }, { slot: 'cb1', x: 15, y: 46 },
+  { slot: 'lwb', x: 20, y: 58, instr: { joinAttack: 0.8, holdWidth: true } }, { slot: 'cb1', x: 15, y: 46 },
   { slot: 'cb2', x: 14, y: 34 }, { slot: 'cb3', x: 15, y: 22 },
-  { slot: 'rwb', x: 20, y: 10 },
+  { slot: 'rwb', x: 20, y: 10, instr: { joinAttack: 0.8, holdWidth: true } },
   { slot: 'cm1', x: 36, y: 42 }, { slot: 'cm2', x: 36, y: 26 },
-  { slot: 'lw', x: 54, y: 52 }, { slot: 'st', x: 56, y: 34 },
-  { slot: 'rw', x: 54, y: 16 },
+  { slot: 'lw', x: 54, y: 52, instr: { holdWidth: true } }, { slot: 'st', x: 56, y: 34 },
+  { slot: 'rw', x: 54, y: 16, instr: { holdWidth: true } },
 ];
 
-export const FORMATIONS: Readonly<Record<string, ReadonlyArray<{ slot: string; x: number; y: number }>>> = {
+export const FORMATIONS: Readonly<Record<string, ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown> }>>> = {
   '442': F442, '433': F433, '523': F523,
 };
 
@@ -74,7 +74,7 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
   description: def.description,
   durationTicks: def.durationTicks,
   bodies: (['home', 'away'] as const).flatMap((team) =>
-    (FORMATIONS[(team === 'home' ? def.homeFormation : def.awayFormation) ?? '442'] ?? F442).map(({ slot, x, y }) => {
+    (FORMATIONS[(team === 'home' ? def.homeFormation : def.awayFormation) ?? '442'] ?? F442).map(({ slot, x, y, instr }) => {
       const id = `${team === 'home' ? 'h' : 'a'}-${slot}`;
       const px = team === 'home' ? x : 105 - x;
       const p = def.place?.[id] ?? { x: px, y };
@@ -89,6 +89,7 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
         instructions: {
           pressing: team === 'home' ? (def.homePressing ?? 0.5) : (def.awayPressing ?? 0.5),
           lineHeight: 0.5,
+          ...(instr ?? {}),
         },
       };
     })),

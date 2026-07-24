@@ -2354,9 +2354,16 @@ export class Sim {
                   cPress = Math.min(cPress, Math.hypot(o.pos.x - carrierBody.pos.x, o.pos.y - carrierBody.pos.y));
                 }
                 const settled = this.tick - gainedAt > 25 && cPress > 4;
-                st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
-                  this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1,
-                  this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined, settled);
+                const instr = this.instructions.get(id) ?? {};
+                const sgnB = attackSign(body.team);
+                const restBound = this.backLineHome(id, body.team) && (instr.joinAttack ?? 0) < 0.6;
+                const oppU = restBound ? this.oppDeepestU(body.team) : undefined;
+                // threat 1 at our box edge, fading to 0.3 by halfway
+                const oppProg = oppU === undefined ? 1 : oppU + (sgnB > 0 ? 0 : PITCH.length);
+                const oppThreat = Math.max(0.3, Math.min(1, 1 - (oppProg - 15) / 35));
+                st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, sgnB,
+                  instr.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1,
+                  oppU, settled, oppThreat, instr.holdWidth === true);
               }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
@@ -2641,7 +2648,12 @@ export class Sim {
               }
             }
           } else if (carrierBody && carrierBody.team === body.team) {
-            this.shapeHolding.delete(id);
+            // TRANSITION RE-ENTRY (the tick-291 frame: five men at their
+            // defensive homes 40 m behind their own possession): an
+            // ex-defender mid-moveTo matched no attack gate until his
+            // stale walk ARRIVED — flag him idle so the attack game
+            // picks him up next reconsider
+            if (this.shapeHolding.delete(id)) this.attackIdle.add(id);
             this.pressingIds.delete(id);
           }
           if (carrierBody && carrierBody.team !== body.team) this.attackIdle.delete(id);

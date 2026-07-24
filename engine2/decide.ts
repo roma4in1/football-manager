@@ -146,6 +146,16 @@ export interface PlayInstructions {
   /** keeper distribution style — weights the priced menu (short throws
    * vs the loop / drop-kick / punt). Default 'mixed'. */
   distribution?: 'short' | 'mixed' | 'long';
+  /** back-line role in possession, 0..1 (builder: 'the wide defenders
+   * are not helping in the attack... it should be possible to make
+   * them move up'): >= 0.6 releases this back from the rest-defense
+   * clamp — he pushes with the possession band (the wingback's whole
+   * point); the remaining backs keep the rest chain. Default 0. */
+  joinAttack?: number;
+  /** hold the touchline in possession (builder: 'instruct wingers to
+   * stay wide... to open up the pitch'): exempt from the lateral
+   * block-shift and the far-tuck while the team has the ball. */
+  holdWidth?: boolean;
 }
 
 export type Intent =
@@ -1063,6 +1073,14 @@ export const blockStation = (
    * ball changed hands): unsettled possession holds a deeper band and
    * a fatter cushion; the line steps up when the ball is actually won. */
   settled = true,
+  /** how threatening the deepest opponent is (0..1, 1 = camped near our
+   * goal): scales the rest cushion — a striker loitering at halfway
+   * does not need a 9 m buffer, and the full-price cushion was opening
+   * a 20 m band of nobody between the rest line and the attack (the
+   * builder's 'massive gap'). */
+  oppThreat = 1,
+  /** possession width hold: skip the lateral slide + far-tuck */
+  holdWidth = false,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
   let capX = possession ? 30 : 18;
@@ -1107,15 +1125,17 @@ export const blockStation = (
       const prog = sign > 0 ? ball.x : PITCH.length - ball.x;
       const aheadCap = 10 + 26 * Math.max(0, Math.min(1, (50 - prog) / 40));
       if (u > ballU + aheadCap) x = (ballU + aheadCap) * sign;
-      const cushion = settled ? 4 : 9;
+      const cushion = (settled ? 4 : 9) * Math.max(0.3, oppThreat);
       if (oppDeepU !== undefined && x * sign > oppDeepU - cushion) x = (oppDeepU - cushion) * sign;
     }
     x = Math.max(2, Math.min(PITCH.length - 2, x));
   }
-  let y = Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky))));
+  let y = possession && holdWidth
+    ? home.y // the chalk-line winger: width IS his job in possession
+    : Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky))));
   // the far-side TUCK: nobody stations more than 26 m across from the
   // ball line (the EAFC far winger sits at the box edge, not the chalk)
-  if (big) {
+  if (big && !(possession && holdWidth)) {
     if (y - ball.y > 26) y = ball.y + 26;
     if (ball.y - y > 26) y = ball.y - 26;
     y = Math.max(2, Math.min(PITCH.width - 2, y));
