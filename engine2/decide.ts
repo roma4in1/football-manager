@@ -57,6 +57,19 @@ export const DUEL = {
    * and shaded BALL-side to sit against the lane (I.13) */
   markGoalSideM: 1.8,
   markBallShadeM: 0.9,
+  /** the DUTY BOARD's insurance factor: the behind-cover duty prices as
+   * the carrier's danger × this — the presser already engages him;
+   * behind guards the breakthrough, the second layer. Fitted (Jul 24)
+   * at 0.35: every measured allocation holds outcome-identically.
+   * MEASURED LIMIT (same day): the desired flip — ignore a HARMLESS
+   * 45 m outlet and cover behind a goal-bearing carrier — needs ≥0.45,
+   * but the pinned 2v2's LIVE-outlet mark already loses at 0.45: no
+   * single scalar separates them, because the mark scale's 0.4
+   * completability floor prices live and harmless outlets alike. The
+   * next calibration is the mark-danger scale itself (threat vs
+   * completability) — it re-prices lane ranking everywhere, a
+   * builder-live round. */
+  behindInsurance: 0.35,
   /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
    * momentum rule applied to marking): a marker who steps toward his
    * man is too late on the dart by momentum alone. The station DROPS
@@ -1036,12 +1049,24 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
         y: o.pos.y + ((og.y - o.pos.y) / md) * depth2 + ((carrier.pos.y - o.pos.y) / bd) * shade,
       };
     };
-    // duty assignment: MARKS first (danger order), behind-cover is the
-    // SPARE man's job. With no spare, defense is man-for-man — the 1v1s
-    // are accepted (a blended neither-duty spot defended nothing: the
-    // measured 2v2 midpoint made the leak WORSE, 5-7/8 → 7-8/8). II.5's
-    // press→cover→balance chain needs a third man to exist; zonal
-    // balance-over-marking arrives with the L6 marking scheme.
+    // THE DUTY BOARD (the defensive twin of the attacker's priced menu —
+    // the builder's calibration round): every duty carries the DANGER it
+    // neutralizes on ONE scale (the mark scale: openness × (0.4 + pos
+    // value)), ranked, greedy-claimed nearest-first. The old fixed order
+    // (marks always first, behind for the spare) becomes the usual
+    // RESULT, not a rule: the BEHIND duty prices as the carrier's
+    // breakthrough threat × the insurance factor — the presser already
+    // engages him, behind is the second layer. Fitted so the measured
+    // scenes hold (2v2 marks the outlet; a dangerous carrier bearing on
+    // goal with a weak outlet flips behind up the board). With no spare,
+    // man-for-man stands (the blended neither-duty spot measured worse).
+    const duties: Array<{ danger: number; spot: Vec2; mk?: BodyState }> =
+      marks.map((m) => ({ danger: m.danger, spot: markSpot(m.o), mk: m.o }));
+    duties.push({
+      danger: (0.4 + posValue(carrier.pos, carrier.team)) * DUEL.behindInsurance,
+      spot: behind,
+    });
+    duties.sort((a, b) => b.danger - a.danger);
     const free = new Set(covers.map((b) => b.id));
     const claim = (spot: Vec2): string => {
       let best = '';
@@ -1054,15 +1079,17 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       free.delete(best);
       return best;
     };
-    for (const m of marks) {
+    for (const duty of duties) {
       if (!free.size) break;
-      if (claim(markSpot(m.o)) === defender.id) {
-        const md2 = Math.hypot(og.x - m.o.pos.x, og.y - m.o.pos.y) || 1;
-        const gws2 = (m.o.vel.x * (og.x - m.o.pos.x) + m.o.vel.y * (og.y - m.o.pos.y)) / md2;
-        return { kind: 'mark', target: markSpot(m.o), urgent: gws2 > 3 };
+      if (claim(duty.spot) === defender.id) {
+        if (duty.mk) {
+          const md2 = Math.hypot(og.x - duty.mk.pos.x, og.y - duty.mk.pos.y) || 1;
+          const gws2 = (duty.mk.vel.x * (og.x - duty.mk.pos.x) + duty.mk.vel.y * (og.y - duty.mk.pos.y)) / md2;
+          return { kind: 'mark', target: duty.spot, urgent: gws2 > 3 };
+        }
+        return { kind: 'cover', target: duty.spot };
       }
     }
-    if (free.size && claim(behind) === defender.id) return { kind: 'cover', target: behind };
     const spot = pressCoverSpots(carrier, bodies, [...free]).get(defender.id);
     if (spot) return { kind: 'cover', target: spot };
   } else if (!iAmFirst && firstIsEngaged && nearest.d < 6) {
