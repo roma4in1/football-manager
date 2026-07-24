@@ -78,6 +78,10 @@ export const DUEL = {
    * is PASSED ON between zones instead of towing one man across the
    * pitch (the builder's dragged-CB frame) */
   pressLeashM: 20,
+  /** zone weight in duty seating/claims: meters of home displacement
+   * priced per meter of duty distance — the left back stops being the
+   * "nearest" man to a central cover spot */
+  dutyZoneW: 0.6,
   /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
    * momentum rule applied to marking): a marker who steps toward his
    * man is too late on the dart by momentum alone. The station DROPS
@@ -971,13 +975,27 @@ export const blockStation = (
   centroid: Vec2,
   ball: Vec2,
   possession: boolean,
+  /** the team's attack sign — the compactness clamp needs to know which
+   * way "ahead of the ball" points */
+  sign = 0,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
   const capX = possession ? 30 : 18;
   const ky = possession ? 0.3 : 0.3;
   const capY = possession ? 10 : 8;
+  let x = Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx))));
+  if (!possession && sign !== 0) {
+    // TEAM COMPACTNESS (defensive_principles II.1, the builder's frame:
+    // strikers loitering 30+ m above the ball while their side defends):
+    // out of possession no station sits more than 28 m AHEAD of the ball
+    // (toward the team's own attacking goal) — the highest player
+    // recovers toward the block and the team is hard to play through.
+    const excess = (x - ball.x) * sign - 28;
+    if (excess > 0) x = ball.x + sign * 28;
+    x = Math.max(2, Math.min(PITCH.length - 2, x));
+  }
   return {
-    x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx)))),
+    x,
     y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-capY, Math.min(capY, (ball.y - centroid.y) * ky)))),
   };
 };
@@ -1050,11 +1068,17 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // drew 'cover' duties and the leftover-centroid rule stacked them
     // into one blob — a real defense compacts as a STRUCTURED block, so
     // everyone beyond the three nearest holds shape instead)
+    // seating and claiming are ZONE-WEIGHTED (the builder's frame: the
+    // LEFT BACK seated by raw proximity and handed a central cover spot
+    // — the board must prefer the man whose zone the duty sits in)
+    const zoneCost = (b: BodyState, at: Vec2): number => {
+      const h = homes.get(b.id);
+      return Math.hypot(b.pos.x - at.x, b.pos.y - at.y) +
+        (h ? DUEL.dutyZoneW * Math.hypot(at.x - h.x, at.y - h.y) : 0);
+    };
     const covers = unit.filter((b) => b.id !== nearest.id &&
       Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR)
-      .sort((a, b) =>
-        Math.hypot(a.pos.x - carrier.pos.x, a.pos.y - carrier.pos.y) -
-        Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y))
+      .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
       return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies) };
@@ -1134,7 +1158,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       let bd = Infinity;
       for (const id of free) {
         const b = covers.find((x) => x.id === id)!;
-        const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+        const d = zoneCost(b, spot);
         if (d < bd) { bd = d; best = id; }
       }
       free.delete(best);
@@ -1173,7 +1197,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
     cx += h.x; cy += h.y; n++;
   }
   const centroid = n ? { x: cx / n, y: cy / n } : defender.pos;
-  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false);
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, attackSign(defender.team));
   // the LINE clamp: a deep-half defender (his formation home behind the
   // team centroid) never stations AHEAD of the deepest opponent — the
   // raw slide let runners live behind the "line" (the l5c integrity pin

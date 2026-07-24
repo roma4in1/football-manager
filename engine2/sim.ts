@@ -2125,7 +2125,7 @@ export class Sim {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               const home = this.homes.get(id) ?? body.pos;
-              const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true);
+              const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team));
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
               if (dSt > 1.6) {
@@ -2389,7 +2389,7 @@ export class Sim {
             this.tick > (this.scriptedUntil.get(id) ?? -1) &&
             this.homes.has(id)) {
             const home = this.homes.get(id)!;
-            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false);
+            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team));
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             if (dSt > 1.6) {
