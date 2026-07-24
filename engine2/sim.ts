@@ -1954,6 +1954,31 @@ export class Sim {
       if (this.ball.carrierId !== id) {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
+          // UNIVERSAL RE-ELECTION (builder principle: always weighing the
+          // best option, even mid-action): a receiver whose ball is
+          // clearly LOST — an opponent beats him to every meet by a real
+          // margin — releases the reflex instead of jogging after a lost
+          // cause, and re-enters the live game next tick.
+          // ground balls only: interceptPoint's tMeet is z-blind, and a
+          // man standing UNDER a flighted ball "beats" a receiver it will
+          // sail clean over (three aerial pins measured it)
+          if (this.tick % DECIDE.reconsiderTicks === 0 && this.ball.z < 0.5 && Math.abs(this.ball.vz) < 2) {
+            const mine = this.interceptPoint(body);
+            let bestOpp = Infinity;
+            for (const o of this.bodies) {
+              // only opponents actually CHASING count — the model rates a
+              // STANDING man as if he would race optimally, and statues
+              // near the landing "beat" receivers they never move for
+              if (o.team === body.team || o.command.type !== 'chaseBall') continue;
+              bestOpp = Math.min(bestOpp, this.interceptPoint(o).tMeet);
+            }
+            if (bestOpp + 0.25 < mine.tMeet) {
+              this.intendedReceiverId = null;
+              this.assign(body, { type: 'hold' });
+              this.actionLabels.set(id, 'release');
+              continue;
+            }
+          }
           if (this.runningLine.has(id)) this.bendReceive.add(id);
           this.runningLine.delete(id);
           this.runPhase.delete(id);
@@ -2134,6 +2159,37 @@ export class Sim {
                   this.actionLabels.set(id, 'support');
                 }
               }
+            }
+          }
+          // UNIVERSAL RE-ELECTION, pursuit side (builder principle): a
+          // chasing brain who is NO LONGER his team's claimant — the
+          // election moved on, or his own side now has the ball — stops
+          // the chase and re-enters the idle game (nothing ever demoted
+          // an obsolete chaser before: once in chaseBall, forever in
+          // chaseBall). The duel presser (pressingIds) and the live
+          // receiver are exempt — those are owned elsewhere.
+          if (this.tick % DECIDE.reconsiderTicks === 0 &&
+            body.command.type === 'chaseBall' &&
+            !this.pressingIds.has(id) && this.intendedReceiverId !== id &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            // a SCRIPTED chase gets 2 s of grace — drills time runs by
+            // sending the chase before the ball is struck (the aerial
+            // through-ball runner was demoted mid-preparation)
+            const ownBall = carrierBody !== undefined && carrierBody.team === body.team &&
+              this.tick - (this.scriptedUntil.get(id) ?? -999) > 20;
+            let closerChase = 0;
+            if (!ownBall && this.ball.carrierId === null) {
+              const myD = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+              for (const bid of this.brains) {
+                if (bid === id) continue;
+                const b2 = this.byId.get(bid)!;
+                if (b2.team !== body.team) continue;
+                if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myD) closerChase++;
+              }
+            }
+            if (ownBall || (this.ball.carrierId === null && closerChase >= 2)) {
+              this.assign(body, { type: 'hold' });
+              this.actionLabels.set(id, 'release');
             }
           }
           // L5d COUNTERPRESS (before everything): the 5–8 s transition
