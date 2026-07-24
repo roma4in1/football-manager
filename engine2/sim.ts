@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -1429,71 +1429,63 @@ export class Sim {
         // kick range, nobody pressing) earns the DROP TO FEET and a ground
         // pass; nobody at all → the PUNT long
         if (this.tick - this.keeperHeldSince >= BALL.keeperHoldTicks) {
-          // the throw must SURVIVE moving opponents, not just a static lane —
-          // a pressing striker ran down every "clear-at-release" throw. The
-          // arrival-race model (passCompletion) is the honest judge.
+          // the PRICED MENU (builder: 'why does the keeper never do long
+          // throws or long kicks?'): the old strict cascade let ANY open
+          // mate inside flat-throw range annihilate every long option —
+          // and after the rest-defense there is always one, so the long
+          // ball never fired. Now every candidate (flat throw, loop,
+          // drop-kick) is scored in the outfield currency — completion x
+          // (position + freedom) — with the distribution instruction
+          // biasing range. The breaking striker in space can now OUTBID
+          // the open CB next to the box; the punt stays the fallback.
           const opps = this.bodies.filter((o) => o.team !== k.team);
-          let best: { mate: BodyState; d: number } | null = null;
+          const style = this.instructions.get(id)?.distribution ?? 'mixed';
+          const safe = !this.bodies.some((o) => o.team !== k.team &&
+            Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < BALL.keeperDropSafeM);
+          let pick: { kind: 'throw' | 'loop' | 'kick'; mate: BodyState; d: number; score: number } | null = null;
           for (const m of this.bodies) {
             if (m.team !== k.team || m.id === id) continue;
             const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
-            if (dm < BALL.keeperThrowMinM || dm > BALL.keeperThrowMaxM) continue;
             const marked = this.bodies.some((o) => o.team !== k.team &&
               Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
             if (marked) continue;
-            // a throw ARRIVES with pace — weighted like a real pass, not a
-            // lob that dies in the middle third as a 50/50 with the presser
-            const spd = Math.max(8, Math.min(16, rollLaunchForArrival(5, dm)));
-            if (passCompletion(k.pos, m.pos, spd, opps, dm, m, 14) < 0.72) continue;
-            if (!best || dm < best.d) best = { mate: m, d: dm };
-          }
-          // beyond flat-throw range, two long options split by PRESSURE: the
-          // LOOPING over-arm throw (from the hands — immunity intact, the
-          // pressed keeper's reach, near the halfway line) and the drop-kick
-          // (unpressed — composed, more range and pace)
-          const safe = !this.bodies.some((o) => o.team !== k.team &&
-            Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < BALL.keeperDropSafeM);
-          let loop: { mate: BodyState; d: number } | null = null;
-          if (!best && !safe) {
-            for (const m of this.bodies) {
-              if (m.team !== k.team || m.id === id) continue;
-              const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
-              if (dm <= BALL.keeperThrowMaxM || dm > BALL.keeperLoopThrowMaxM) continue;
-              if (solveLoftSpeed(dm, BALL.keeperLoopThrowLoftDeg) > BALL.keeperLoopThrowSpeedMax) continue;
-              const marked = this.bodies.some((o) => o.team !== k.team &&
-                Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
-              if (marked) continue;
+            let free = Infinity;
+            for (const o of opps) free = Math.min(free, Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y));
+            const worth = 0.12 + posValue(m.pos, k.team) + 0.06 * Math.min(1, free / 12);
+            const styleW = style === 'short' ? 1.15 - 0.5 * (dm / 50)
+              : style === 'long' ? 0.7 + 0.8 * (dm / 50) : 1;
+            const consider = (kind: 'throw' | 'loop' | 'kick', pC: number, floor: number): void => {
+              if (pC < floor) return;
+              const score = pC * worth * styleW;
+              if (!pick || score > pick.score) pick = { kind, mate: m, d: dm, score };
+            };
+            if (dm >= BALL.keeperThrowMinM && dm <= BALL.keeperThrowMaxM) {
+              // a throw ARRIVES with pace — the arrival-race model
+              // (passCompletion) is the honest judge, not a static lane
+              const spd = Math.max(8, Math.min(16, rollLaunchForArrival(5, dm)));
+              consider('throw', passCompletion(k.pos, m.pos, spd, opps, dm, m, 14), 0.62);
+            } else if (!safe && dm > BALL.keeperThrowMaxM && dm <= BALL.keeperLoopThrowMaxM &&
+              solveLoftSpeed(dm, BALL.keeperLoopThrowLoftDeg) <= BALL.keeperLoopThrowSpeedMax) {
+              // the loop is the PRESSED keeper's long reach (release from
+              // the hands, immunity intact); composed keepers put it down
               const landing = {
                 x: m.pos.x - ((m.pos.x - k.pos.x) / dm) * 3,
                 y: m.pos.y - ((m.pos.y - k.pos.y) / dm) * 3,
               };
-              if (aerialCompletion(landing, m, opps) < 0.6) continue;
-              if (!loop || dm < loop.d) loop = { mate: m, d: dm };
+              consider('loop', aerialCompletion(landing, m, opps), 0.5);
+            } else if (safe && dm > BALL.keeperThrowMaxM && dm <= BALL.keeperKickMaxM) {
+              // the driven low ball FLIES most of the way and skids the
+              // last metres — gated at the ARRIVAL RACE AT THE LANDING
+              const landing = {
+                x: m.pos.x - ((m.pos.x - k.pos.x) / dm) * 5,
+                y: m.pos.y - ((m.pos.y - k.pos.y) / dm) * 5,
+              };
+              consider('kick', aerialCompletion(landing, m, opps), 0.5);
             }
           }
-          let kickable: { mate: BodyState; d: number } | null = null;
-          if (!best && !loop) {
-            if (safe) {
-              for (const m of this.bodies) {
-                if (m.team !== k.team || m.id === id) continue;
-                const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
-                if (dm <= BALL.keeperThrowMaxM || dm > BALL.keeperKickMaxM) continue;
-                const marked = this.bodies.some((o) => o.team !== k.team &&
-                  Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
-                if (marked) continue;
-                // the driven low ball FLIES most of the way and skids the last
-                // metres — the rolling race model can't represent it (a rolled
-                // 19 m/s ball is dead at 37 m and rated near-zero). The gate is
-                // the ARRIVAL RACE AT THE LANDING, as crosses use.
-                const landing = {
-                  x: m.pos.x - ((m.pos.x - k.pos.x) / dm) * 5,
-                  y: m.pos.y - ((m.pos.y - k.pos.y) / dm) * 5,
-                };
-                if (aerialCompletion(landing, m, opps) < 0.6) continue;
-                if (!kickable || dm < kickable.d) kickable = { mate: m, d: dm };
-              }
-            }
-          }
+          const best = pick && pick.kind === 'throw' ? { mate: pick.mate, d: pick.d } : null;
+          const loop = pick && pick.kind === 'loop' ? { mate: pick.mate, d: pick.d } : null;
+          const kickable = pick && pick.kind === 'kick' ? { mate: pick.mate, d: pick.d } : null;
           this.keeperHolding = null;
           if (best) {
             // the THROW — flat, fast, to feet, weighted by range

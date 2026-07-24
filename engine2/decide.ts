@@ -143,6 +143,9 @@ export interface PlayInstructions {
    * never step out unless instructed (counterpress is separate and
    * innate: transition instinct, not organization). */
   pressing?: number;
+  /** keeper distribution style — weights the priced menu (short throws
+   * vs the loop / drop-kick / punt). Default 'mixed'. */
+  distribution?: 'short' | 'mixed' | 'long';
 }
 
 export type Intent =
@@ -1020,7 +1023,16 @@ export const blockStation = (
   oppDeepU?: number,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
-  const capX = possession ? 30 : 18;
+  let capX = possession ? 30 : 18;
+  // HIGH BLOCK vs the deep build-up (the tick-534 frame: the ball at the
+  // opponent goal line and the defending block still sitting 50 m off in
+  // its own half — the 18 m slide cap strands it): the farther the ball
+  // is from OUR goal, the farther the block may step up. The deep-half
+  // line clamp still holds the back line goal-side of the last opponent.
+  if (!possession && sign !== 0) {
+    const dOwnGoal = sign > 0 ? ball.x : PITCH.length - ball.x;
+    capX = 18 + 12 * Math.max(0, Math.min(1, (dOwnGoal - 60) / 30));
+  }
   // BALL-SIDE COMPRESSION (the EAFC frames: density is central and
   // ball-side; a far winger tucks toward the box edge rather than
   // holding the touchline) — roughly double the old lateral slide
@@ -1046,7 +1058,13 @@ export const blockStation = (
       // teammates sit within 16 m of the carrier by construction)
       const restDeep = 16 + (1 - lineHeight) * 8; // deepest station behind the ball
       if (u < ballU - restDeep) x = (ballU - restDeep) * sign;
-      if (u > ballU + 10) x = (ballU + 10) * sign; // stations don't lead the ball (runs/box do)
+      // stations don't lead the ball in the FINAL third (runs/box do) —
+      // but in BUILD-UP the formation itself leads it: a flat +10 cap
+      // dragged all ten outfielders inside 25 m of their own corner
+      // (the tick-534 frame) with nobody upfield to receive an out ball
+      const prog = sign > 0 ? ball.x : PITCH.length - ball.x;
+      const aheadCap = 10 + 26 * Math.max(0, Math.min(1, (50 - prog) / 40));
+      if (u > ballU + aheadCap) x = (ballU + aheadCap) * sign;
       if (oppDeepU !== undefined && x * sign > oppDeepU - 4) x = (oppDeepU - 4) * sign;
     }
     x = Math.max(2, Math.min(PITCH.length - 2, x));
