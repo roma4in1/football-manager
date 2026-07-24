@@ -1021,6 +1021,12 @@ export const blockStation = (
    * 4 m cushion). The rest band tracked the BALL alone, and the CBs
    * rode it level with (worst: 19 m past) the opponent's front line. */
   oppDeepU?: number,
+  /** possession SECURITY (the tick-228 frame: the back four jogging to
+   * halfway while their carrier fought a four-man swarm — flips happen
+   * under 1-2 m of pressure, and the block advanced the instant the
+   * ball changed hands): unsettled possession holds a deeper band and
+   * a fatter cushion; the line steps up when the ball is actually won. */
+  settled = true,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
   let capX = possession ? 30 : 18;
@@ -1056,7 +1062,7 @@ export const blockStation = (
       // tightened to the EAFC density (three probes showed the short-
       // option mesh is a GEOMETRY product: at their ~40 m envelope, 3-4
       // teammates sit within 16 m of the carrier by construction)
-      const restDeep = 16 + (1 - lineHeight) * 8; // deepest station behind the ball
+      const restDeep = 16 + (1 - lineHeight) * 8 + (settled ? 0 : 6); // deepest station behind the ball
       if (u < ballU - restDeep) x = (ballU - restDeep) * sign;
       // stations don't lead the ball in the FINAL third (runs/box do) —
       // but in BUILD-UP the formation itself leads it: a flat +10 cap
@@ -1065,7 +1071,8 @@ export const blockStation = (
       const prog = sign > 0 ? ball.x : PITCH.length - ball.x;
       const aheadCap = 10 + 26 * Math.max(0, Math.min(1, (50 - prog) / 40));
       if (u > ballU + aheadCap) x = (ballU + aheadCap) * sign;
-      if (oppDeepU !== undefined && x * sign > oppDeepU - 4) x = (oppDeepU - 4) * sign;
+      const cushion = settled ? 4 : 9;
+      if (oppDeepU !== undefined && x * sign > oppDeepU - cushion) x = (oppDeepU - cushion) * sign;
     }
     x = Math.max(2, Math.min(PITCH.length - 2, x));
   }

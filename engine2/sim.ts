@@ -2326,9 +2326,16 @@ export class Sim {
                 // measured level with or past the deepest opponent in
                 // 17/31 attacking samples): back-line stations stay
                 // goal-side of the highest opposing outfielder
+                const gainedAt = this.lostPossessionAt.get(body.team === 'home' ? 'away' : 'home') ?? -999;
+                let cPress = Infinity;
+                for (const o of this.bodies) {
+                  if (o.team === body.team) continue;
+                  cPress = Math.min(cPress, Math.hypot(o.pos.x - carrierBody.pos.x, o.pos.y - carrierBody.pos.y));
+                }
+                const settled = this.tick - gainedAt > 25 && cPress > 4;
                 st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
                   this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1,
-                  this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined);
+                  this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined, settled);
               }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
