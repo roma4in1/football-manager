@@ -1006,8 +1006,17 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // line): the duty board is for the LOCAL unit only; everyone beyond
     // localGameR falls through to holdShape. Drill casts sit inside the
     // radius, so the small scenes are untouched.
+    // ... and the board seats PRESSER + THREE (the builder's screenshot:
+    // with the ball in the corner, EIGHT men inside the local radius all
+    // drew 'cover' duties and the leftover-centroid rule stacked them
+    // into one blob — a real defense compacts as a STRUCTURED block, so
+    // everyone beyond the three nearest holds shape instead)
     const covers = unit.filter((b) => b.id !== nearest.id &&
-      Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR);
+      Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR)
+      .sort((a, b) =>
+        Math.hypot(a.pos.x - carrier.pos.x, a.pos.y - carrier.pos.y) -
+        Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y))
+      .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
       return {
         kind: 'holdShape',

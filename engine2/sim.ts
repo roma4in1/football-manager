@@ -2074,9 +2074,13 @@ export class Sim {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               const home = this.homes.get(id) ?? body.pos;
+              // IN POSSESSION the whole block pushes toward the ball hard
+              // (the builder's screenshot: the attacking back line
+              // loitered 65 m behind its own striker) — a stronger,
+              // ball-side shift than the neutral slide
               const st = {
-                x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-14, Math.min(14, (this.ball.pos.x - PITCH.length / 2) * 0.3)))),
-                y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-9, Math.min(9, (this.ball.pos.y - PITCH.width / 2) * 0.25)))),
+                x: Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-24, Math.min(24, (this.ball.pos.x - PITCH.length / 2) * 0.5)))),
+                y: Math.max(2, Math.min(PITCH.width - 2, home.y + Math.max(-10, Math.min(10, (this.ball.pos.y - PITCH.width / 2) * 0.3)))),
               };
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
