@@ -100,7 +100,7 @@ export class Sim {
    * completion vs what actually happened) for the calibration ledger.
    * Null in normal play; zero cost when unset. */
   public telemetry: ((ev: Record<string, unknown>) => void) | null = null;
-  private openPass: { tick: number; pC?: number; dist: number; loft: number; spin: number; kicker: string; receiver: string } | null = null;
+  private openPass: { tick: number; pC?: number; dist: number; loft: number; spin: number; du: number; kicker: string; receiver: string } | null = null;
   private openCarry: { tick: number; carrier: string; density: number; startU: number } | null = null;
   /** L8-minimal restarts (match scale only): when the ball died and who
    * is awarded the put-back; claims are team-locked briefly */
@@ -2888,6 +2888,9 @@ export class Sim {
                   tick: this.tick, pC: intent.pC,
                   dist: Math.hypot(intent.dest.x - body.pos.x, intent.dest.y - body.pos.y),
                   loft: intent.loftDeg ?? 0, spin: intent.spin ?? 0,
+                  // attack-axis progression: forward / square / back shares
+                  // are a calibration axis (the conservation-EV round)
+                  du: (intent.dest.x - body.pos.x) * attackSign(body.team),
                   kicker: id, receiver: intent.receiverId,
                 };
               }

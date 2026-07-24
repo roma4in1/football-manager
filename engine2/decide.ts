@@ -200,6 +200,12 @@ export const DECIDE = {
   interceptReachM: 1.1,
   /** turnover penalty weight — scaled DOWN by the risk instruction */
   turnoverBase: 0.9,
+  /** the CONSERVATION EV (builder direction, Jul 24: "no backwards or
+   * sideways passes... add EV for ball conservation"): a completed pass
+   * KEEPS THE BALL, and that is worth something flat — direction-blind.
+   * Priced so the safe recycle beats a marginal forward ball but never
+   * outbids a genuine thread (whose pv delta dwarfs it). */
+  retainValue: 0.07,
   turnoverRiskGain: 0.55,
   /** completion floor a pass must clear, risk-scaled */
   passFloorBase: 0.8, // a safety-first player wants near-certainty (re-seated as the lane model got honest)
@@ -1389,10 +1395,26 @@ export interface DecideInput {
  * across ground/loft/curl/cross/switch had begun to drift) — completion-
  * weighted value minus turnover, plus the risk-scaled progress term,
  * floored by the meets penalty. Algebraically identical to the copies. */
-const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turnoverW: number, passFloor: number): number => {
+const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turnoverW: number, passFloor: number, lossV = pv, retainW = 0): number => {
   const meets = pC >= passFloor ? 1 : 0.25 + 0.45 * risk;
   const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pv - pvHere);
-  return (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pv - (1 - pC) * turnoverW * pv) + uProg) * meets;
+  // the BOTH-CURRENCY ledger (the danger-EV's mirror): the upside is ours
+  // (destination value + the flat conservation premium for keeping the
+  // ball at all), the downside is THEIRS — lossV prices the turnover in
+  // the OPPONENT's posValue at the loss point. The old pv-scaled risk
+  // made losing the ball DEEP read cheap (our pv is low there) when it is
+  // exactly where a loss is fatal — so the safe backward ball had neither
+  // upside nor downside and never got chosen. keep-objective sites pass
+  // the defaults (lossV = pv, retainW = 0): identity with the old algebra.
+  // the premium rides pC TWICE (pC · pC·retainW): priced completion is
+  // systematically optimistic in the forward direction (priced .87,
+  // realized .59 — the held calibration gap), so a LINEAR premium
+  // follows the same optimism and the mix never shifts; squaring makes
+  // the genuinely-safe ball discriminably richer than the hopeful one
+  // the loss currency only ever RAISES the price (deep losses are fatal);
+  // it never discounts below the old pv-scaled algebra — a cheap-loss
+  // license up the pitch re-fitted every duel trajectory (two pins)
+  return (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * (pv + pC * retainW) - (1 - pC) * turnoverW * Math.max(lossV, pv)) + uProg) * meets;
 };
 
 export const evaluateOptions = (input: DecideInput): Intent[] => {
@@ -1426,6 +1448,38 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   const value = (p: Vec2, anchorId: string): number =>
     (keep ? keepValue(p, opponents, homes?.get(anchorId)) : posValue(p, team));
   const pvHere = value(here, carrier.id);
+  // turnover currency: what THEY gain where we would lose it
+  const lossVal = (p: Vec2): number => posValue(p, team === 'home' ? 'away' : 'home');
+  // conservation grows under pressure — the back/square ball is football's
+  // ESCAPE VALVE: a hunted carrier values keeping the ball far more than a
+  // free one (who keeps his license to drive and thread)
+  let pressHere = 0;
+  for (const o of opponents) {
+    const dO = Math.hypot(o.pos.x - here.x, o.pos.y - here.y);
+    pressHere = Math.max(pressHere, Math.max(0, 1 - dO / DECIDE.carryPressureRangeM));
+  }
+  // ...and DIES NEAR GOAL: conservation is a BUILD-UP value. In the
+  // final third the point of possession is spending it — the 1v1 pins
+  // (stranded keeper, channel beat) caught the elite attacker recycling
+  // out of exactly the moments he exists to take.
+  const gHere = goalCenter(team);
+  const buildup = Math.max(0, Math.min(1, (Math.hypot(gHere.x - here.x, gHere.y - here.y) - 22) / 20));
+  // ...and PRESUMES AN OUTLET: with no teammate on the pitch there is
+  // nobody to conserve THROUGH — the premium just distorted the take-on
+  // (the channel's 1-v-pair reverts to the pure duel economy)
+  const retainW = keep || mates.length === 0 ? 0 : DECIDE.retainValue * (1 + 1.2 * pressHere) * buildup;
+  // RECEIVER FREEDOM (the danger-EV's mirror): a one-step EV undervalues
+  // the open deep man — his position is worth little but his FREEDOM is
+  // the whole next action (the free CB can pick any forward ball; the
+  // covered striker can pick nothing). Space at the destination is value.
+  const freedom = (at: Vec2): number => {
+    if (keep) return 0;
+    let nearest = Infinity;
+    for (const o of opponents) {
+      nearest = Math.min(nearest, Math.hypot(o.pos.x - at.x, o.pos.y - at.y));
+    }
+    return 0.035 * buildup * Math.min(1, nearest / 12);
+  };
   const turnoverW = DECIDE.turnoverBase - DECIDE.turnoverRiskGain * risk;
   // under a LIVE press, standards drop — you take the 60% ball rather
   // than dying with it (measured: good-enough passes existed at 12/49
@@ -1632,7 +1686,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const comfy = 5.5 + 0.35 * mate.attributes.firstTouch;
       pC *= 1 - 0.04 * Math.max(0, arrTrue - comfy);
       if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
-      let pvThere = value(dest, mate.id);
+      let pvThere = value(dest, mate.id) + freedom(dest);
       // CHANCE CREATION (passing.md's pass score): a ball to a teammate in
       // a shooting position carries his shot's value — the square/cutback
       // into the centre was invisible to the EV without it
@@ -1674,7 +1728,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest));
-      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor) * ridingWait;
+      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
@@ -1714,9 +1768,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
         const pCa = calibratePass(loftDeg, 0, dLoft,
           aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl, destDensity(landing));
-        let pvL = value(landing, mate.id);
+        let pvL = value(landing, mate.id) + freedom(landing);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor);
+        const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor, keep ? pvL : lossVal(landing), retainW);
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg, pC: pCa };
         }
@@ -1740,9 +1794,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const aimK = solveCurl(here, landing, spinK, speedK);
           const pCk = calibratePass(0, spinK, dLoft,
             curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing), destDensity(landing));
-          let pvK = value(landing, mate.id);
+          let pvK = value(landing, mate.id) + freedom(landing);
           pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-          const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor);
+          const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor, keep ? pvK : lossVal(landing), retainW);
           if (!bestPass || uK > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK, pC: pCk };
           }
@@ -1779,12 +1833,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
           const pCc = calibratePass(loftDeg, 0, dCross,
             aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl, destDensity(cross));
-          let pvC = value(cross, mate.id);
+          let pvC = value(cross, mate.id) + freedom(cross);
           // 0.6 -> 1.0 under the calibrated regime: crosses are LOW-
           // COMPLETION HIGH-VALUE by nature — the old weight was fitted
           // when pC pretended the box was safe
           pvC += 1.0 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-          const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor);
+          const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor, keep ? pvC : lossVal(cross), retainW);
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
           }
@@ -1808,9 +1862,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
         const pCs = calibratePass(loftDeg, 0, dSwitch,
           aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land));
-        let pvS = value(land, mate.id);
+        let pvS = value(land, mate.id) + freedom(land);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor);
+        const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor, keep ? pvS : lossVal(land), retainW);
         if (!bestPass || uS > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg, pC: pCs };
         }
@@ -1868,11 +1922,24 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // space's carry table is applied (the both-sided rule) — legacy
     // algebra otherwise; R(0) of the legacy form is the same 0.92
     const fittedR = carryRetention(pressure);
+    // the loss side of the both-currency ledger applies to carries too —
+    // but NOT the conservation premium: premium × retention rewards the
+    // lowest-pressure direction, which is retreat, and the channel pin
+    // caught the elite attacker dancing backward off his own take-on
+    // until he was trapped and stripped. A backward CARRY drags the duel
+    // with you; the backward PASS is the escape valve, so the premium
+    // lives on releases (and their manufactured cousins, knock/beat).
+    const lossC = keep ? pv : Math.max(lossVal(p), pv);
+    // ...but with NO premium at all, every pass outbids every carry by
+    // retainValue and five duel scenes released early — so the carry
+    // premium is priced at the carrier's OWN pressure (uniform across
+    // directions): parity with passing holds, retreat earns nothing extra
+    const premC = retainW * (1 - 0.55 * pressHere) * 0.92;
     let u = fittedR !== null
-      ? DECIDE.possessionDiscount * (pv * fittedR - turnoverW * pv * (1 - fittedR) * DECIDE.carryTurnoverGain)
+      ? DECIDE.possessionDiscount * ((pv * fittedR + premC) - turnoverW * lossC * (1 - fittedR) * DECIDE.carryTurnoverGain)
       : DECIDE.possessionDiscount * (
-        pv * (1 - 0.55 * pressure) * 0.92 -
-        turnoverW * pv * pressure * DECIDE.carryTurnoverGain
+        (pv * (1 - 0.55 * pressure) + premC) * 0.92 -
+        turnoverW * lossC * pressure * DECIDE.carryTurnoverGain
       );
     // the DRIVE credit: when GENUINELY UNPRESSURED a carrier is free to run
     // the ball forward, and that progression should read like a pass's does
@@ -1906,7 +1973,10 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 3);
   options.push({
     kind: 'shield',
-    utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * pvHere * 0.2) * (livePress ? 0.45 : 1),
+    // the conservation premium reaches here too — shield IS retention
+    // (with the premium on carries but not the shield, the channel's
+    // elite carried INTO the pincer instead of riding it out)
+    utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * (pvHere * 0.2 + 0.9 * retainW)) * (livePress ? 0.45 : 1),
   });
 
   // the KNOCK-AND-GO (L5E): jockeyed by a FRONTMAN with space behind him —
@@ -1978,8 +2048,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           // risk-SYMMETRIC, like every pass: the failed knock is a turnover
           // at your own feet — pricing only the success sent carriers
           // knocking past their own wall and made kick-and-rush free
+          // the conservation premium is paid to EVERY retention-bearing
+          // option (the channel pin caught plain carries outbidding the
+          // take-on the moment carries alone earned it)
           const uK = DECIDE.possessionDiscount *
-            (pKnock * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain -
+            (pKnock * (Math.max(0, pvReclaim - pvHere) * DUEL.knockGain + 0.9 * retainW) -
              (1 - pKnock) * turnoverW * pvHere * 0.8);
           if (uK > 0) options.push({ kind: 'knock', dest: past, speedMps: speed, utility: uK });
           // the BEAT — the manufactured knock: the lane past a SET rider is
@@ -1997,7 +2070,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
             const pFeint = Math.min(1, DUEL.beatFeintBase + DUEL.beatFeintSkill *
               Math.max(0, ((carrier.attributes.agility + carrier.attributes.dribbling) / 2 - fm.attributes.agility) / 20));
             const uB = DECIDE.possessionDiscount *
-              (pFeint * Math.max(0, pvReclaim - pvHere) * DUEL.knockGain -
+              (pFeint * (Math.max(0, pvReclaim - pvHere) * DUEL.knockGain + 0.9 * retainW) -
                (1 - pFeint) * turnoverW * pvHere * 0.8);
             if (uB > 0) options.push({ kind: 'beat', dest: past, side, utility: uB });
           }
