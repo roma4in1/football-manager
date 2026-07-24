@@ -441,7 +441,26 @@ breaking, break it toward whichever intent most degrades the carrier's top
     a momentum-DEFLECTION priced ~0.2, above the collapse line — the
     converge-deflection term is the ledgered remainder); passUtility
     unification (bit-identical). 97/97.
-12. Roles as weight vectors (Part V ↔ roles.md).
+12. **The EAFC passing/pressing comparison (Jul 24, measured + reverted
+    probes)**. The frames show a SHORT-SUPPORT MESH — 3-4 options within
+    8-15 m of the carrier at varied angles including a behind-ball
+    recycle — and a back line that holds ~15 m behind the engagement
+    while MIDFIELD presses. Ours: 1.7 short options average (support
+    caps at 2 and supportSpot tethers men to deformed HOMES, not to the
+    carrier — raising the cap to 3 measured 1.3, WORSE, because the
+    third man stands at his lane spot 20 m away); and a flat
+    backStepPenaltyM 12 in the election measured MORE back pressing
+    (24% vs 7% of press ticks) because zone-appropriate back pressing
+    (the wing FB in his own channel) is not "jumping" — the discipline
+    needed is zone-ENTRY semantics, not a line tax. TWO DESIGNED ROUNDS:
+    (a) proximity-banded support (supportSpot constrained to an 8-16 m
+    ring with angle spread + a behind-ball outlet slot) — global, rondo/
+    grid pins re-roll, builder live; (b) press election by zone entry
+    (a back wins only when the carrier crosses his line's depth band,
+    a mid otherwise steps out even if slightly farther) — replaces the
+    reverted flat penalty. Builder's truncated third item ("defenders
+    do not take ada…") awaiting completion.
+13. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
