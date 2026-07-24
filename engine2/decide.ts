@@ -610,6 +610,11 @@ export const supportSpot = (
   bodies: readonly BodyState[],
   home: Vec2,
   objective: 'keep' | 'score',
+  /** targets already CLAIMED by teammates this tick — run lanes, other
+   * support spots, box slots. The claims channel was runner-to-runner
+   * only, so a supporter, a runner and a box man converged on one spot
+   * with each system blind to the others (the tick-688 triple stack). */
+  claimed?: readonly Vec2[],
 ): Vec2 => {
   const opponents = bodies.filter((b) => b.team !== mate.team);
   const mates = bodies.filter((b) => b.team === mate.team && b.id !== mate.id);
@@ -638,6 +643,12 @@ export const supportSpot = (
     const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;
+    if (claimed) {
+      for (const c of claimed) {
+        const cd = Math.hypot(c.x - cand.x, c.y - cand.y);
+        if (cd < 7) crowd += (7 - cd) * 0.35;
+      }
+    }
     // TRIANGLE SPREAD (the builder's frame: supporters approached from
     // their home directions — same-side men stacked on one line, no
     // angles): a candidate within ~40° of another mate's bearing from
@@ -726,10 +737,15 @@ export const runPlan = (
   for (const y of seams) {
     const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
     let score = clear - 0.15 * Math.abs(y - GOAL.centerY) - 0.22 * Math.abs(y - mate.pos.y);
-    // a seam a running teammate already owns is CROWDED — spread the runs
+    // a seam a running teammate already owns is effectively VETOED — the
+    // soft penalty (0.45/m) still lost to the own-position anchor and
+    // 46% of multi-runner ticks ran the same lane; a claimed seam now
+    // outranks only an empty candidate list
     if (claimedYs) {
       for (const cy of claimedYs) {
-        if (Math.abs(cy - y) < 9) score -= (9 - Math.abs(cy - y)) * 0.45;
+        const cd = Math.abs(cy - y);
+        if (cd < 4) score -= 8;
+        else if (cd < 9) score -= (9 - cd) * 0.7;
       }
     }
     if (score > bestScore) {

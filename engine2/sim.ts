@@ -230,6 +230,8 @@ export class Sim {
     // action labels are per-tick — clear them up front so brain-less scenarios
     // (which skip decidePhase) don't carry a stale header/block/handball label
     this.actionLabels.clear();
+    this.attackClaims.get('home')!.length = 0;
+    this.attackClaims.get('away')!.length = 0;
     // 0. PERCEPTION: refresh every brain's last-seen picture (cone +
     // peripheral + the awareness-paced scan) before any decisions read it
     this.updatePerception();
@@ -2320,7 +2322,8 @@ export class Sim {
                 if (rid === id) continue;
                 const rb2 = this.byId.get(rid);
                 if (!rb2 || rb2.team !== body.team) continue;
-                claimedYs.push(this.runPhase.get(rid)?.dartY ?? rb2.pos.y);
+                const rst = this.runPhase.get(rid);
+                claimedYs.push(rst ? (rst.phase === 'dart' ? rst.dartY : (rst.laneY ?? rst.dartY)) : rb2.pos.y);
               }
             }
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.perceivedBodies(id), this.keepers, claimedYs) : null;
@@ -2392,6 +2395,7 @@ export class Sim {
                 this.assign(body, { type: 'hold' });
               }
               this.actionLabels.set(id, 'box');
+              this.attackClaims.get(body.team)!.push(station);
               this.attackIdle.add(id);
             } else if (plan) {
               // the RUN CYCLE: approach → RIDE the line (reload, jog) →
@@ -2417,10 +2421,12 @@ export class Sim {
               if (!st) {
                 const gave = this.lastGiveTick.get(id);
                 const oneTwo = gave !== undefined && this.tick - gave <= 12;
-                st = { phase: oneTwo ? 'dart' : 'ride', since: this.tick, dartY: plan.dartY, lineX: plan.lineX };
+                st = { phase: oneTwo ? 'dart' : 'ride', since: this.tick, dartY: plan.dartY, lineX: plan.lineX, laneY: plan.target.y };
                 this.runPhase.set(id, st);
               }
               st.lineX = plan.lineX;
+              st.laneY = plan.target.y; // the LIVE lane — claims went stale
+              // at the last dart's y while riders converged on a fresh seam
               const straight = Math.abs(st.dartY - body.pos.y) < 2;
               const atDartEnd = straight
                 ? (sign > 0 ? body.pos.x >= plan.lineX - 0.2 : body.pos.x <= plan.lineX + 0.2)
@@ -2434,6 +2440,7 @@ export class Sim {
                 st.phase = 'ride';
                 st.since = this.tick;
               }
+              this.attackClaims.get(body.team)!.push({ x: dartX, y: st.phase === 'dart' ? st.dartY : plan.target.y });
               if (st.phase === 'dart') {
                 this.assign(body, {
                   type: 'moveTo',
@@ -2459,7 +2466,9 @@ export class Sim {
               // 1891 in the census, and the triangles never formed)
               const spot = supportSpot(
                 body, carrierBody, this.perceivedBodies(id), this.homes.get(id) ?? body.pos, objective,
+                this.attackClaims.get(body.team),
               );
+              this.attackClaims.get(body.team)!.push(spot);
               const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
               this.attackIdle.add(id);
               if (d > 1.4) {
@@ -3079,6 +3088,11 @@ export class Sim {
    * identical inputs (each defender simulates the others' claims), so
    * organized defense reads as coached communication. Perception gates
    * the ATTACKING decisions: what you haven't seen can cut your pass. */
+  /** attack targets claimed THIS tick (run lanes, support spots, box
+   * slots) — the cross-system half of the claims channel: sequential
+   * processing means later brains see earlier claims, deterministic */
+  private readonly attackClaims = new Map<'home' | 'away', Vec2[]>([['home', []], ['away', []]]);
+
   private readonly perception = new Map<string, Map<string, { x: number; y: number; vx: number; vy: number; tick: number }>>();
 
   private scanPeriod(b: BodyState): number {
