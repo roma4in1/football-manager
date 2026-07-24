@@ -1257,13 +1257,21 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     }
     const allCandidates: Array<{ arrive: number; leadExtraS: number; destOverride?: Vec2 }> = [...candidates];
     if (riderBehind) {
-      // both weights die IN the space (riderArriveCap): an overhit thread
-      // is a dead ball, not a pass
-      allCandidates.push({ arrive: Math.min(softArrive + 1, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
-      // the DRIVEN thread (passing.md #9/#13): a faster ball through the
-      // same gap — less flight time beats closing defenders; the receiver
-      // pays the hot-arrival tax instead
-      allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: riderBehind });
+      // the SEAM FAN (the builder's LB–CB scene): the thread is not owed
+      // to the runner's own column — a breach point a few meters to
+      // either side may run through a WIDE-OPEN seam in the line while
+      // his column is a defender's chest. Each seam dest is priced by
+      // the same lane completion; the runner ANGLES his dart onto the
+      // winner (the receive reflex chases the ball, not the column).
+      for (const dy of [0, -4, 4, -7, 7]) {
+        const rd = { x: riderBehind.x, y: riderBehind.y + dy };
+        if (dy !== 0 && !inBounds(rd, 2)) continue;
+        // both weights die IN the space (riderArriveCap): an overhit
+        // thread is a dead ball, not a pass; the DRIVEN variant
+        // (passing.md #9/#13) trades a hot arrival for less flight time
+        allCandidates.push({ arrive: Math.min(softArrive + 1, riderArriveCap), leadExtraS: 0, destOverride: rd });
+        allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: rd });
+      }
     }
     for (const { arrive: arrive0, leadExtraS, destOverride } of allCandidates) {
       // in a bounded grid, weight the ball to DIE INSIDE (the grid's first
@@ -1351,10 +1359,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // ...and the RELEASE GATE (L5E): even a darting runner is not yet a
       // through-ball target until he is UP TO SPEED — the overhit tail came
       // from balls played while the runner was still accelerating (measured:
-      // launch 13.6 past a striker at 3.5 m/s → overrun → dead). No weight
-      // constant fixes this; the release waits for the run.
+      // launch 13.6 past a striker at 3.5 m/s → overrun → dead). The gate
+      // is PRICED, not flat (the builder's "pass earlier": the flat 0.25
+      // suppressed the open-seam window while the shadow converged, then
+      // released the late ball into his arms 7/8): the discount eases as
+      // the runner winds up, so a wide-open early seam can outbid the
+      // suppression while a marginal early ball stays buried.
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
-      const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
+      const ridingWait = waitingRunners?.has(mate.id)
+        ? 0.25
+        : notUpToSpeed ? 0.25 + 0.75 * Math.min(1, mate.speed / 5) : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
@@ -1374,7 +1388,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
             if (t <= 0.12 || t >= 0.92) return false;
             const px = here.x + t * (landing.x - here.x);
             const py = here.y + t * (landing.y - here.y);
-            return Math.hypot(o.pos.x - px, o.pos.y - py) < 2.2;
+            // NOW or CONVERGING (momentum doesn't delete the man, and it
+            // doesn't excuse him either — the shadow half a second from
+            // the lane is the blocker the bend/loft exists to beat; the
+            // current-position gate watched him cut the "clear" ball 7/8)
+            const dNow = Math.hypot(o.pos.x - px, o.pos.y - py);
+            const dProj = Math.hypot(o.pos.x + o.vel.x * 0.5 - px, o.pos.y + o.vel.y * 0.5 - py);
+            return Math.min(dNow, dProj) < 2.2;
           }) ?? null
         : null;
       if (laneBlocker) {

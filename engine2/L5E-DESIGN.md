@@ -382,7 +382,27 @@ breaking, break it toward whichever intent most degrades the carrier's top
    (approach→feint→burst-knock at the rider, elite only) and mostly
    LOSES to the covered contact — correct for the drill; the beat's
    winning stage is open space and the keeper round-around (next arc).
-9. Roles as weight vectors (Part V ↔ roles.md).
+9. **The PASSING-MENU round (builder-directed, Jul 24)**. Shipped: the
+   honest aerial menu (092dd35f — time-race aerialCompletion with
+   mid-flight cuts and keeper claims; measured: unmarked aerial receives
+   are 12/12 even at touch 6, so the ctrl tax fell 0.78→~1.0; the old
+   model chose lofts 8/8 that completed 1/8; the cross scene gained its
+   keeper per the match-shaped rule and the striker now claims 9/10) +
+   the CURL in the menu (honest, thus rare: the stylised Magnus bows
+   ~1 m mid-chord — cannot round a dead-center man; SPIN-PHYSICS BUILDER
+   CALL recorded: raising the gameplay bend is a visual-style dial that
+   reopens the curve pins) + the seam fan (thread dests ±4/±7 off the
+   runner's column, priced per lane) + the priced release gate (the
+   early-seam discount eases with runner speed, replacing flat ×0.25) +
+   the projected laneBlocker gate (a converging shadow counts).
+   **The remaining truth in duel-2v2-fullbacks-heavy (LB cuts 7/8)**:
+   the ball is PRICED at decision time (lane open, LB 3.5 m off) and
+   STRUCK 0.3 s later via turn-then-strike into his converged position —
+   a DECISION-TO-EXECUTION LAG defect no menu dial reaches. Next
+   mechanism when it hurts enough: the STRIKE-ABORT — re-check the lane
+   at execution and check out of a died pass, the passing twin of the
+   committed-feint rule.
+10. Roles as weight vectors (Part V ↔ roles.md).
 
 ## 3. Loose-ball pursuit arbitration + separation
 
