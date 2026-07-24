@@ -70,6 +70,9 @@ export const DUEL = {
    * completability) — it re-prices lane ranking everywhere, a
    * builder-live round. */
   behindInsurance: 0.35,
+  /** the LOCAL GAME radius (the m11 verdict): board duties only for
+   * defenders this near the carrier — the rest are team shape */
+  localGameR: 30,
   /** the ANTICIPATORY mark (builder physics, Jul 23 — the duel's
    * momentum rule applied to marking): a marker who steps toward his
    * man is too late on the dart by momentum alone. The station DROPS
@@ -998,7 +1001,19 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
   // side; lane spots only claim the men beyond him.
   // LINE units (pressing ≤ 0.3) keep L5c shape.
   if (pressing > 0.3 && firstIsEngaged) {
-    const covers = unit.filter((b) => b.id !== nearest.id);
+    // THE LOCAL GAME (the m11 pilot verdict: every duty fired globally —
+    // ten defenders marking across the whole pitch, nobody holding a
+    // line): the duty board is for the LOCAL unit only; everyone beyond
+    // localGameR falls through to holdShape. Drill casts sit inside the
+    // radius, so the small scenes are untouched.
+    const covers = unit.filter((b) => b.id !== nearest.id &&
+      Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR);
+    if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
+      return {
+        kind: 'holdShape',
+        target: shapeSpot(defender, bodies, ball, homes, unit.map((b) => b.id), instructions.lineHeight ?? 0.5),
+      };
+    }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
     const gd = Math.hypot(og.x - cf.x, og.y - cf.y) || 1;
@@ -1017,7 +1032,8 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // the same danger the lane logic prices
     const others = bodies.filter((b) => b.team === defender.team);
     const marks = bodies
-      .filter((o) => o.team === carrier.team && o.id !== carrier.id)
+      .filter((o) => o.team === carrier.team && o.id !== carrier.id &&
+        Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y) < 28)
       .map((o) => {
         const dist0 = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
         const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, others, dist0, o);
