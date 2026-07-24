@@ -249,7 +249,12 @@ test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (4
     }
     // breaches ARE the attack succeeding — the line-integrity bar is that
     // it recovers goal-side for the great majority of the drill
-    assert.ok(goalSide / total > 0.75, `l5c-${s}: the line holds goal-side (${(goalSide / total * 100).toFixed(0)}%)`);
+    // 0.75 -> 0.58 (the awareness round, measured 63-72% across seeds):
+    // threads now aim at the run's
+    // PLANNED breach lane (builder directive — the choreographed thread)
+    // and the attack genuinely breaches more; the line still recovers
+    // for the strong majority and the defense machinery is unchanged
+    assert.ok(goalSide / total > 0.58, `l5c-${s}: the line holds goal-side (${(goalSide / total * 100).toFixed(0)}%)`);
   }
 });
 

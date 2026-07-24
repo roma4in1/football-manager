@@ -230,6 +230,9 @@ export class Sim {
     // action labels are per-tick — clear them up front so brain-less scenarios
     // (which skip decidePhase) don't carry a stale header/block/handball label
     this.actionLabels.clear();
+    // 0. PERCEPTION: refresh every brain's last-seen picture (cone +
+    // peripheral + the awareness-paced scan) before any decisions read it
+    this.updatePerception();
     // 1. scripted re-targets (replace the current command, keep the queue)
     const events = this.atTick.get(this.tick);
     if (events) {
@@ -2225,7 +2228,7 @@ export class Sim {
           if (this.tick % DECIDE.reconsiderTicks === 0) {
             const ahead = decide({
               carrier: body,
-              bodies: this.bodies,
+              bodies: this.perceivedBodies(id),
               ball: this.ball,
               instructions: this.instructions.get(id) ?? {},
               current: null,
@@ -2320,7 +2323,7 @@ export class Sim {
                 claimedYs.push(this.runPhase.get(rid)?.dartY ?? rb2.pos.y);
               }
             }
-            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies, this.keepers, claimedYs) : null;
+            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.perceivedBodies(id), this.keepers, claimedYs) : null;
             if (atStation) {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
@@ -2455,7 +2458,7 @@ export class Sim {
               // moved on — 'support' fired 70 assignments to station's
               // 1891 in the census, and the triangles never formed)
               const spot = supportSpot(
-                body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos, objective,
+                body, carrierBody, this.perceivedBodies(id), this.homes.get(id) ?? body.pos, objective,
               );
               const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
               this.attackIdle.add(id);
@@ -2764,13 +2767,16 @@ export class Sim {
       if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
           carrier: body,
-          bodies: this.bodies,
+          // the world AS HE LAST SAW IT — an unseen opponent can cut the
+          // pass this prices (the perception tier)
+          bodies: this.perceivedBodies(id),
           ball: this.ball,
           instructions: this.instructions.get(id) ?? {},
           current: intent,
           homes: this.homes,
           bounds: this.bounds,
           runners: this.runningLine,
+          runTargets: this.runTargetsFor(body.team),
           keepers: this.keepers,
           staggered: this.staggeredSet(),
           waitingRunners: new Set([...this.runningLine].filter((rid) => {
@@ -3058,6 +3064,97 @@ export class Sim {
       return bp;
     }
     return null;
+  }
+
+  /** PERCEPTION (the scanning tier): each brain keeps a last-seen
+   * snapshot of every OPPONENT. Fresh when the man is inside the vision
+   * cone (facing ± ~100°) or the peripheral bubble (9 m); a SCAN — the
+   * head-turn every real player cycles — refreshes everything, on a
+   * period set by awareness (the mind attribute): aw 20 ≈ 0.8 s, aw 5 ≈
+   * 2.8 s. Deeper players see more for FREE: the play is in front of
+   * them, so the cone covers it — the builder's field-of-view intuition
+   * falls out of the geometry. Teammates and the ball stay truth
+   * (voices, familiarity, and everyone tracks the ball); the DEFENSIVE
+   * board stays truth too — the duty board's shared determinism requires
+   * identical inputs (each defender simulates the others' claims), so
+   * organized defense reads as coached communication. Perception gates
+   * the ATTACKING decisions: what you haven't seen can cut your pass. */
+  private readonly perception = new Map<string, Map<string, { x: number; y: number; vx: number; vy: number; tick: number }>>();
+
+  private scanPeriod(b: BodyState): number {
+    return Math.max(8, Math.round(34 - 1.3 * (b.attributes.awareness ?? 11)));
+  }
+
+  private updatePerception(): void {
+    // MATCH-SCALE ONLY (the big-cast precedent: far-tuck, compactness):
+    // drills are unit tests of decision SEMANTICS under truth — the
+    // risk-dial pin flipped 16/16 on a knife-edge 2.6 m perception
+    // error that means nothing at 5 bodies and everything at 22
+    if (this.brains.size < 12) return;
+    for (const id of this.brains) {
+      const me = this.byId.get(id)!;
+      let seen = this.perception.get(id);
+      if (!seen) { seen = new Map(); this.perception.set(id, seen); }
+      // the MAN ON THE BALL scans near-continuously (every real coaching
+      // manual's first demand — and the risk-dial pin measured it: a
+      // carrier on the ordinary cycle mispriced the through lane 16/16)
+      const onBall = this.ball.carrierId === id || this.intendedReceiverId === id;
+      const period = onBall ? 4 : this.scanPeriod(me);
+      let hash = 0;
+      for (let i = 0; i < id.length; i++) hash += id.charCodeAt(i);
+      const scanning = this.tick % period === hash % period;
+      const fx = Math.cos(me.facing);
+      const fy = Math.sin(me.facing);
+      for (const b of this.bodies) {
+        if (b.team === me.team) continue;
+        const dx = b.pos.x - me.pos.x;
+        const dy = b.pos.y - me.pos.y;
+        const d = Math.hypot(dx, dy);
+        const inCone = d > 0.01 && (fx * dx + fy * dy) / d > -0.17; // ~±100°
+        if (scanning || d < 9 || inCone || b.id === this.ball.carrierId) {
+          seen.set(b.id, { x: b.pos.x, y: b.pos.y, vx: b.vel.x, vy: b.vel.y, tick: this.tick });
+        } else if (!seen.has(b.id)) {
+          // never seen at all: kickoff knowledge (line-ups are public)
+          seen.set(b.id, { x: b.pos.x, y: b.pos.y, vx: b.vel.x, vy: b.vel.y, tick: this.tick });
+        }
+      }
+    }
+  }
+
+  /** the world as THIS brain last saw it: opponents at their last-seen
+   * positions, teammates and self at truth */
+  private perceivedBodies(id: string): BodyState[] {
+    const me = this.byId.get(id);
+    const seen = this.perception.get(id);
+    if (!me || !seen || this.brains.size < 12) return this.bodies as BodyState[];
+    return this.bodies.map((b) => {
+      if (b.team === me.team) return b;
+      const sn = seen.get(b.id);
+      if (!sn || sn.tick >= this.tick - 2) return b;
+      // DEAD RECKONING: players extrapolate the motion they SAW — a
+      // frozen last-seen position read a closing defender meters behind
+      // his true spot and the lane priced open (the risk-dial pin,
+      // 16/16 systematic). Blind-sidedness is now what it really is:
+      // vulnerability to movement that CHANGED since the last look.
+      const dtS = Math.min(1.5, (this.tick - sn.tick) * DT);
+      return {
+        ...b,
+        pos: { x: sn.x + sn.vx * dtS, y: sn.y + sn.vy * dtS },
+        vel: { x: sn.vx, y: sn.vy },
+      } as BodyState;
+    });
+  }
+
+  /** each running teammate's planned breach lane, for the thread */
+  private runTargetsFor(team: 'home' | 'away'): Map<string, Vec2> {
+    const m = new Map<string, Vec2>();
+    for (const rid of this.runningLine) {
+      const rb = this.byId.get(rid);
+      const st = this.runPhase.get(rid);
+      if (!rb || rb.team !== team || !st) continue;
+      m.set(rid, { x: st.lineX, y: st.dartY });
+    }
+    return m;
   }
 
   /** deepest opposing outfielder's u-coordinate (this team's attack sign) */

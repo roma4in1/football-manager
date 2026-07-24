@@ -40,6 +40,12 @@ export interface BodyAttributes {
   tackling: number; // L3: winning physical contests for a glued ball
   strength: number; // L3: tackle weight + shield width (with balance)
   stamina: number; // reserved: the effort model reads it in the later pass
+  /** the MIND (perception tier): scanning frequency and therefore how
+   * fresh this player's picture of the OPPONENTS is. Optional — casts
+   * without it get a league-average 11. Higher = shorter scan cycle =
+   * decisions priced against near-truth; lower = stale reads, blind-side
+   * vulnerability, late line judgments. */
+  awareness?: number;
 }
 
 /** Derived stance — read-only presentation/debug signal, never an input. */

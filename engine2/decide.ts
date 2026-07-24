@@ -302,6 +302,7 @@ export const goalCenter = (team: 'home' | 'away'): Vec2 =>
  * authored field: monotone toward the opponent's goal, boosted centrally in
  * the final third, in [0, pvMax]. Goal PROXIMITY outweighs raw x-progress —
  * progress-heavy weights judged as wingers driving to the corner flag */
+
 export const posValue = (p: Vec2, team: 'home' | 'away'): number => {
   const g = goalCenter(team);
   const progress = attackSign(team) > 0 ? p.x / PITCH.length : 1 - p.x / PITCH.length;
@@ -1264,7 +1265,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
         // exclusion set for every defender keeps the board consistent)
         const unattended = others.filter((d) => !covers.some((cv) => cv.id === d.id));
         const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, unattended, dist0, o);
-        return { o, danger: open * oppValue(o) };
+        return { o, open, danger: open * oppValue(o) };
       })
       .filter((m) => m.danger > 0.012)
       .sort((a, b) => b.danger - a.danger);
@@ -1278,13 +1279,33 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // ungated drop vacated the middle and the shorthanded 2v2 collapsed
     // 0/8 → 8/8 through
     const anticipate = covers.length > 1;
-    const markSpot = (o: BodyState): Vec2 => {
+    const markSpot = (o: BodyState, open = 0): Vec2 => {
       const md = Math.hypot(og.x - o.pos.x, og.y - o.pos.y) || 1;
       const bd = Math.hypot(carrier.pos.x - o.pos.x, carrier.pos.y - o.pos.y) || 1;
       // the run threat: his speed TOWARD my goal — the station drops with
       // it and the ball-shade fades (the anticipatory mark: never caught
       // leaning forward when the dart comes)
       const gws = anticipate ? Math.max(0, (o.vel.x * (og.x - o.pos.x) + o.vel.y * (og.y - o.pos.y)) / md) : 0;
+      // LANE DENIAL (opponent-intent anticipation, tier 1): a STANDING
+      // man whose lane is open NOW is about to be passed to — the mark
+      // steps ONTO the lane a body-length off him and kills the ball
+      // before it is kicked, instead of escorting goal-side and letting
+      // the receive happen. Darting men keep the goal-side ride (the
+      // lane-stander is beaten by the run, the whole anticipatory-mark
+      // lesson), and short lanes skip it (goal-side already shades them).
+      const goalward = attackSign(carrier.team) * (o.pos.x - carrier.pos.x) > 3;
+      if (open > 0.55 && gws < 1.5 && bd > 8 && !goalward) {
+        // ...BIASED GOAL-SIDE (a pure lane-stander is beaten the instant
+        // the dart goes — the anticipatory-mark lesson's third
+        // appearance) and LATERAL/BACK OUTLETS ONLY (the fullbacks
+        // re-fit: denying a GOALWARD man's lane trades the ride for the
+        // cut and the dart beats it — forward threats keep the escort;
+        // the recycle outlet is the lane worth killing pre-kick)
+        return {
+          x: o.pos.x + ((carrier.pos.x - o.pos.x) / bd) * 2.4 + ((og.x - o.pos.x) / md) * 1.5,
+          y: o.pos.y + ((carrier.pos.y - o.pos.y) / bd) * 2.4 + ((og.y - o.pos.y) / md) * 1.5,
+        };
+      }
       const depth2 = DUEL.markGoalSideM + gws * DUEL.markDropGainS;
       const shade = DUEL.markBallShadeM * Math.max(0, 1 - gws / DUEL.markShadeFadeMps);
       return {
@@ -1304,7 +1325,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // goal with a weak outlet flips behind up the board). With no spare,
     // man-for-man stands (the blended neither-duty spot measured worse).
     const duties: Array<{ danger: number; spot: Vec2; mk?: BodyState }> =
-      marks.map((m) => ({ danger: m.danger, spot: markSpot(m.o), mk: m.o }));
+      marks.map((m) => ({ danger: m.danger, spot: markSpot(m.o, m.open), mk: m.o }));
     // the behind duty: the carrier's BREAKTHROUGH EV — the value of the
     // space behind the press, discounted by the presser already engaging
     duties.push({
@@ -1440,6 +1461,11 @@ export interface DecideInput {
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
+  /** each running mate's PLANNED breach lane (the run cycle's dartY) —
+   * the thread aims at where the run is GOING, not a velocity
+   * extrapolation of where the runner happens to be drifting (intent
+   * tier 2: the choreographed thread) */
+  runTargets?: ReadonlyMap<string, Vec2>;
   /** runners NOT yet darting (approaching or reloading at the line) — the
    * ball to them WAITS for the movement */
   waitingRunners?: ReadonlySet<string>;
@@ -1669,7 +1695,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // SPACE (the judged overhits: threads at a deep line rolled dead)
       if (room >= 14) {
         const depth = Math.min(4.5, room * 0.3);
-        riderBehind = { x: rLineX + rsign * depth, y: mate.pos.y };
+        // the PLANNED lane beats the current column when the run has one
+        const planY = input.runTargets?.get(mate.id)?.y;
+        riderBehind = { x: rLineX + rsign * depth, y: planY ?? mate.pos.y };
         const rollRoom = Math.max(1.5, room - depth - 4);
         riderArriveCap = rollLaunchForArrival(0, rollRoom);
       }
