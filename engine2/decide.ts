@@ -1139,8 +1139,18 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // — the board must prefer the man whose zone the duty sits in)
     const zoneCost = (b: BodyState, at: Vec2): number => {
       const h = homes.get(b.id);
+      if (!h) return Math.hypot(b.pos.x - at.x, b.pos.y - at.y);
+      // VACANCY DANGER (builder direction): the gap a defender leaves by
+      // taking this duty is itself a danger — priced by how far the duty
+      // drags him from his zone AND whether opponents lurk near the zone
+      // he'd vacate. Shape retention becomes an EV force, not a leash.
+      let lurkers = 0;
+      for (const o of bodies) {
+        if (o.team === defender.team) continue;
+        if (Math.hypot(o.pos.x - h.x, o.pos.y - h.y) < 16) lurkers++;
+      }
       return Math.hypot(b.pos.x - at.x, b.pos.y - at.y) +
-        (h ? DUEL.dutyZoneW * Math.hypot(at.x - h.x, at.y - h.y) : 0);
+        DUEL.dutyZoneW * Math.hypot(at.x - h.x, at.y - h.y) * (1 + 0.7 * Math.min(2, lurkers));
     };
     const covers = unit.filter((b) => b.id !== nearest.id &&
       Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR)
@@ -1166,15 +1176,35 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // press, 5-7/8 through in the 2v2 probe): free opponents ranked by
     // the same danger the lane logic prices
     const others = bodies.filter((b) => b.team === defender.team);
+    // the DANGER-EV (the builder's symmetry, completed): duties price in
+    // the ATTACK'S OWN CURRENCY — a mark is worth the receivable value
+    // it removes (his reachability × his position's value, the same
+    // models the attacker prices with). The old 0.4 completability
+    // floor made a harmless 45 m outlet as "dangerous" as a live one —
+    // the recorded mark-scale limit, retired here.
+    // priced at the PROJECTED receive point (0.8 s ahead): a darting
+    // runner's danger lives where he will take the ball, not where he
+    // is — current-spot pricing let the behind duty's xG outgrow the
+    // mark late in attacks and the lone cover abandoned the runner
+    const oppValue = (o: BodyState): number => {
+      const px2 = { x: o.pos.x + o.vel.x * 0.8, y: o.pos.y + o.vel.y * 0.8 };
+      return posValue(px2, carrier.team) +
+        0.8 * xG(px2, carrier.team, bodies.filter((b) => b.team === defender.team));
+    };
     const marks = bodies
       .filter((o) => o.team === carrier.team && o.id !== carrier.id &&
         Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y) < 28)
       .map((o) => {
         const dist0 = Math.hypot(o.pos.x - carrier.pos.x, o.pos.y - carrier.pos.y);
-        const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, others, dist0, o);
-        return { o, danger: open * (0.4 + posValue(o.pos, carrier.team)) };
+        // priced AS IF UNATTENDED: openness excludes the covers being
+        // allocated (the shadowSpot lesson again — a defender standing
+        // near the lane saw "closed, no danger" and LEFT it; the same
+        // exclusion set for every defender keeps the board consistent)
+        const unattended = others.filter((d) => !covers.some((cv) => cv.id === d.id));
+        const open = dist0 < 3 ? 0 : passCompletion(carrier.pos, o.pos, 11, unattended, dist0, o);
+        return { o, danger: open * oppValue(o) };
       })
-      .filter((m) => m.danger > 0.05)
+      .filter((m) => m.danger > 0.012)
       .sort((a, b) => b.danger - a.danger);
     // the mark's L (I.1 + I.13): goal-side of the man AND shaded toward
     // the ball — behind-only marking watched 7-8/8 passes arrive freely
@@ -1213,8 +1243,11 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // man-for-man stands (the blended neither-duty spot measured worse).
     const duties: Array<{ danger: number; spot: Vec2; mk?: BodyState }> =
       marks.map((m) => ({ danger: m.danger, spot: markSpot(m.o), mk: m.o }));
+    // the behind duty: the carrier's BREAKTHROUGH EV — the value of the
+    // space behind the press, discounted by the presser already engaging
     duties.push({
-      danger: (0.4 + posValue(carrier.pos, carrier.team)) * DUEL.behindInsurance,
+      danger: (posValue(behind, carrier.team) +
+        0.8 * xG(behind, carrier.team, bodies.filter((b) => b.team === defender.team))) * DUEL.behindInsurance * 1.2,
       spot: behind,
     });
     duties.sort((a, b) => b.danger - a.danger);

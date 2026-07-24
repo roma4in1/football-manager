@@ -2489,7 +2489,8 @@ export class Sim {
           // SHAPE (the line). Contact stays L3's contain/tackle machinery.
           if (carrierBody && carrierBody.team !== body.team &&
             (this.instructions.get(id)?.objective) !== 'keep' &&
-            (body.command.type === 'hold' || this.shapeHolding.has(id) || this.pressingIds.has(id)) &&
+            (body.command.type === 'hold' || this.shapeHolding.has(id) || this.pressingIds.has(id) ||
+              this.runningLine.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             const lostAt = this.lostPossessionAt.get(body.team) ?? -999;
@@ -2511,6 +2512,8 @@ export class Sim {
               return b2.team === body.team && this.tick > (this.scriptedUntil.get(bid) ?? -1) &&
                 (this.instructions.get(bid)?.objective) !== 'keep';
             }).map((bid) => this.byId.get(bid)!);
+            this.runningLine.delete(id);
+            this.runPhase.delete(id);
             const di = decideDefense({
               defender: body, carrier: carrierBody, bodies: this.bodies, ball: this.ball,
               instructions: this.instructions.get(id) ?? {}, unit,
@@ -2563,7 +2566,8 @@ export class Sim {
           // commands. Both teams now hold their block-shifted stations
           // through the scramble.
           if (!carrierBody && this.ball.phase !== 'dead' &&
-            (body.command.type === 'hold' || this.attackIdle.has(id) || this.shapeHolding.has(id)) &&
+            (body.command.type === 'hold' || this.attackIdle.has(id) || this.shapeHolding.has(id) ||
+              this.runningLine.has(id)) &&
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1) &&
             this.homes.has(id)) {
