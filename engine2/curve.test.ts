@@ -5,6 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
 import { kickBall, solveCurl, stepBall, type BallState } from './ball.ts';
@@ -38,7 +39,7 @@ test('a curled pass bends AROUND a defender on the direct line to the receiver',
   let cleared = 0;
   let received = 0;
   for (let s = 0; s < 8; s++) {
-    const sim = new Sim(scenarioByName('curled-pass'), `cv-${s}`);
+    const sim = new Sim(scenarioByName('curled-pass'), seedFor('cv', s));
     let maxDev = 0;
     let minDefDist = 99;
     let launched = false;
@@ -66,7 +67,7 @@ test('a curling GROUND through ball splits the centre backs and bends to the win
   let onGround = 0;
   let received = 0;
   for (let s = 0; s < 8; s++) {
-    const sim = new Sim(scenarioByName('curled-through'), `ct-${s}`);
+    const sim = new Sim(scenarioByName('curled-through'), seedFor('ct', s));
     let cbClear = 99;
     let maxZ = 0;
     let maxY = 34;
