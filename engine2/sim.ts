@@ -1998,8 +1998,35 @@ export class Sim {
             this.tick % DECIDE.reconsiderTicks === 0 &&
             this.tick > (this.scriptedUntil.get(id) ?? -1)) {
             const objective = (this.instructions.get(id)?.objective) ?? 'score';
-            const plan = objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
-            if (plan) {
+            // BOX OCCUPATION (the crossing game's missing half — the
+            // refinement round): with my carrier WIDE and ADVANCED, the
+            // advanced central attacker does not come short for feet — he
+            // HOLDS the box at the spot zone, attacking the delivery.
+            // Support logic walked him out every time and no honest cast
+            // could produce a cross.
+            const boxSign = attackSign(body.team);
+            const boxGoalX = boxSign > 0 ? PITCH.length : 0;
+            const boxOccupy = objective === 'score' &&
+              Math.abs(carrierBody.pos.y - PITCH.width / 2) >= DECIDE.crossWideM &&
+              (boxSign > 0 ? PITCH.length - carrierBody.pos.x : carrierBody.pos.x) <= DECIDE.crossAdvanceM &&
+              (boxSign > 0 ? PITCH.length - body.pos.x : body.pos.x) <= 24 &&
+              Math.abs(body.pos.y - PITCH.width / 2) < DECIDE.crossWideM;
+            const plan = !boxOccupy && objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
+            if (boxOccupy) {
+              this.runPhase.delete(id);
+              this.runningLine.delete(id);
+              const station = {
+                x: boxGoalX - boxSign * 12,
+                y: PITCH.width / 2 + (body.pos.y >= PITCH.width / 2 ? 2.5 : -2.5),
+              };
+              const dSt = Math.hypot(station.x - body.pos.x, station.y - body.pos.y);
+              if (dSt > 1.4) {
+                this.assign(body, { type: 'moveTo', target: station, regime: dSt > 7 ? 'run' : 'jog' });
+              } else if (body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
+              }
+              this.actionLabels.set(id, 'box');
+            } else if (plan) {
               // the RUN CYCLE: approach → RIDE the line (reload, jog) →
               // DART (sprint diagonally across the blind side into the
               // adjacent seam — pace is built BEFORE the ball is played;

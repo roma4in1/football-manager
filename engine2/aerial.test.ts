@@ -178,31 +178,35 @@ test('CHEST control: a fast ball crossing chest height is cushioned down OR boun
   assert.ok(cushioned >= 1 && bounced >= 1, `both a clean control and a bounce-off occur (${cushioned} cushion, ${bounced} off)`);
 });
 
-test('the DELIVERY DECISION: the wide carrier finds his striker against a real box (feet or air, honestly priced)', () => {
-  // HISTORY (Jul 24, the brain-refinement round): this pin used to demand
-  // an aerial cross ≥8/10 — a behavior the OLD aerial mispricing produced
-  // (0.986 lanes the CB actually cut; floats rolling into a keeperless
-  // net). With honest pricing (presence cuts, keeper claims, hang races)
-  // and a real box (keeper + marker), the EV correctly refuses the cross
-  // from this cast: the striker's SUPPORT brain walks him out for feet —
-  // BOX OCCUPATION (hold the box while a wide carrier is advanced) is
-  // the missing off-ball behavior, recorded in the L5E ledger. Until it
-  // exists, the honest claim is the DELIVERY: the winger gets the ball
-  // to his striker against keeper+marker+cb+fb, by whichever route
-  // prices true. wb seeds LEAD (the pinning discipline — the old cd-only
-  // seeds hid a t0 screamer the builder caught on wb-0).
+test('the CROSS DECISION: the striker HOLDS the box and the wide carrier delivers the aerial ball to him', () => {
+  // HISTORY (Jul 24, the brain-refinement round): the old pin's crosses
+  // were phantoms of the aerial mispricing (0.986 lanes the CB cut;
+  // floats rolling into a keeperless net) and cd-only seeds hid a t0
+  // screamer the builder caught on wb-0. With honest pricing + a real
+  // box (keeper, marker, cb, fb), the cross only came BACK when BOX
+  // OCCUPATION landed: the striker holds the spot zone instead of
+  // walking out for feet, and the aerial delivery is the priced-true
+  // ball. All three claims are visible: the held box, the flighted
+  // delivery, the striker collecting it.
+  let crossed = 0;
   let delivered = 0;
-  const seeds = ['wb-0', 'wb-1', 'wb-2', 'cd-0', 'cd-1', 'cd-2', 'cd-3', 'cd-4', 'cd-5', 'cd-6'];
-  for (const seed of seeds) {
-    const sim = new Sim(scenarioByName('cross-decision'), seed);
-    let passed = false;
+  let boxHeld = 0;
+  for (let s = 0; s < 10; s++) {
+    const sim = new Sim(scenarioByName('cross-decision'), seedFor('cd', s));
+    let sawAir = false;
+    let held = false;
     for (let t = 0; t < 60; t++) {
       const f = sim.step();
-      if (f.bodies.find((b) => b.id === 'winger')?.action?.startsWith('pass→striker')) passed = true;
-      if (passed && sim.ball.carrierId === 'striker') { delivered++; break; }
+      if (f.bodies.find((b) => b.id === 'striker')?.action === 'box') held = true;
+      if (sim.ball.phase === 'airborne' && sim.ball.kickerId === 'winger') sawAir = true;
+      if (sawAir && sim.ball.carrierId === 'striker') { delivered++; break; }
     }
+    if (sawAir) crossed++;
+    if (held) boxHeld++;
   }
-  assert.ok(delivered >= 7, `the winger finds his striker against the real box (${delivered}/10)`);
+  assert.ok(boxHeld >= 9, `the striker HOLDS the box while his carrier is wide (${boxHeld}/10)`);
+  assert.ok(crossed >= 8, `the delivery goes AERIAL — the honest cross (${crossed}/10)`);
+  assert.ok(delivered >= 7, `the striker collects the delivery (${delivered}/10)`);
 });
 
 test('the SWITCH DECISION: a walled-in wide carrier floats a long ball to the far flank', () => {
