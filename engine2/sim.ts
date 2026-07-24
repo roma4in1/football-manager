@@ -998,7 +998,7 @@ export class Sim {
     const gap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
     if (gap > BALL.controlRadiusM) return; // a running touch is the pinch's domain
     for (const b of this.bodies) {
-      if (b.id === carrier.id || b.team === carrier.team) continue;
+      if (b.id === carrier.id || b.team === carrier.team || this.sentOff.has(b.id)) continue;
       // intent to win the ball: the chase, OR machine ownership — the
       // duelRide presser (moveTo, ridden per tick) could reach ENGAGE
       // via the running challenge and still never tackle (this gate
@@ -1022,6 +1022,40 @@ export class Sim {
       if (reach > lungeReach) continue;
       this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
       this.telemetry?.({ t: 'tackle', tick: this.tick });
+      if (this.brains.size >= 12 && !this.sentOff.has(b.id)) {
+        const sp = Math.hypot(carrier.vel.x, carrier.vel.y);
+        const hx = sp > 0.5 ? carrier.vel.x / sp : Math.cos(carrier.facing);
+        const hy = sp > 0.5 ? carrier.vel.y / sp : Math.sin(carrier.facing);
+        const behind = hx * (b.pos.x - carrier.pos.x) + hy * (b.pos.y - carrier.pos.y) < 0;
+        const lunging = dst?.state === 'engage' || reach > TECH.tackleReachM;
+        const pFoul = Math.min(0.5,
+          0.035 * (behind ? 2.2 : 1) + (lunging ? 0.03 : 0) +
+          Math.max(0, 10 - b.attributes.tackling) * 0.003);
+        if (this.rng.chance(pFoul, this.tick, b.id, 'foul')) {
+          this.ball.phase = 'dead';
+          this.ball.carrierId = null;
+          this.ball.vel = { x: 0, y: 0 };
+          this.ball.vz = 0;
+          this.ball.z = 0;
+          this.pendingFreeKick = { team: carrier.team, spot: { x: carrier.pos.x, y: carrier.pos.y } };
+          const n1 = (this.foulCounts.get(b.id) ?? 0) + 1;
+          this.foulCounts.set(b.id, n1);
+          const harsh = behind && lunging;
+          let card: 'yellow' | 'red' | null = null;
+          if ((harsh && this.rng.chance(0.5, this.tick, b.id, 'card')) || n1 === 3) {
+            if (this.yellows.has(b.id) && !this.keepers.has(b.id)) {
+              card = 'red';
+              this.sendOff(b.id);
+            } else {
+              card = 'yellow';
+              this.yellows.add(b.id);
+            }
+          }
+          this.actionLabels.set(b.id, card ? `foul·${card}` : 'foul');
+          this.telemetry?.({ t: 'foul', tick: this.tick, by: b.id, on: carrier.id, behind, lunging, card });
+          continue;
+        }
+      }
       const winP = tackleWinProbability(b.attributes, carrier.attributes) /
         (1 + TECH.tackleCarrierSpeedFactor * carrier.speed);
       // the failed lunge is the BEATEN moment (L5E): planted, and the
@@ -1974,6 +2008,7 @@ export class Sim {
     let best: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
+      if (this.sentOff.has(b.id)) continue; // off the pitch, out of the game
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
       // a RESTART is the awarded team's put-back: the other side stands
       // off until the lock expires (L8-minimal)
@@ -2630,7 +2665,7 @@ export class Sim {
             this.runningLine.delete(id);
             this.runPhase.delete(id);
             const di = decideDefense({
-              defender: body, carrier: carrierBody, bodies: this.bodies, ball: this.ball,
+              defender: body, carrier: carrierBody, bodies: this.activeBodies(), ball: this.ball,
               instructions: this.instructions.get(id) ?? {}, unit,
               pressingIds: this.pressingIds, inCounterpress,
               justReceived: this.tick - this.carrierSince <= 8, homes: this.homes,
@@ -3138,6 +3173,21 @@ export class Sim {
    * TAGGED; if a tagged man is the first of his team to take the ball,
    * the whistle goes — dead ball, free kick to the defenders at the
    * spot. Tags clear when the other team touches or the ball dies. */
+  /** THE FOUL LAW (match scale, riding the tackle machinery): every
+   * tackle roll first risks an illegal contact — priced up when the
+   * challenge comes FROM BEHIND, when it is a LUNGE, and when the feet
+   * are clumsy (low tackling). A foul is a dead ball and a free kick to
+   * the fouled team at the spot (the pendingFreeKick plumbing), plus
+   * the card ledger: a harsh foul (behind + lunge) risks a straight
+   * yellow, the third personal foul earns one, the second yellow is
+   * red — the man is SENT OFF (out of the brains, parked at his own
+   * corner, invisible to every decision). Keepers cap at yellow (no
+   * replacement machinery). Penalties are the recorded next step —
+   * a box foul currently awards the free kick at the spot. */
+  private readonly foulCounts = new Map<string, number>();
+  private readonly yellows = new Set<string>();
+  private readonly sentOff = new Set<string>();
+
   private readonly offsideTagged = new Set<string>();
   private offsideKickTeam: 'home' | 'away' | null = null;
   private pendingFreeKick: { team: 'home' | 'away'; spot: Vec2 } | null = null;
@@ -3173,7 +3223,7 @@ export class Sim {
         this.offsideTagged.clear();
         this.offsideKickTeam = kb.team;
         const sgn = attackSign(kb.team);
-        const oppUs = this.bodies.filter((b) => b.team !== kb.team)
+        const oppUs = this.bodies.filter((b) => b.team !== kb.team && !this.sentOff.has(b.id))
           .map((b) => b.pos.x * sgn).sort((a, b) => b - a);
         const secondLastU = oppUs[1] ?? Infinity;
         const ballU = this.ball.pos.x * sgn;
@@ -3197,6 +3247,28 @@ export class Sim {
   private readonly attackClaims = new Map<'home' | 'away', Vec2[]>([['home', []], ['away', []]]);
 
   private readonly perception = new Map<string, Map<string, { x: number; y: number; vx: number; vy: number; tick: number }>>();
+
+  /** red card: out of every decision system, parked at his own corner */
+  private sendOff(id: string): void {
+    this.sentOff.add(id);
+    this.brains.delete(id);
+    this.pressingIds.delete(id);
+    this.shapeHolding.delete(id);
+    this.attackIdle.delete(id);
+    this.runningLine.delete(id);
+    this.runPhase.delete(id);
+    this.steppingIds.delete(id);
+    const b = this.byId.get(id);
+    if (b) {
+      const sgn = attackSign(b.team);
+      this.assign(b, { type: 'moveTo', target: { x: sgn > 0 ? 3 : PITCH.length - 3, y: 3 }, regime: 'jog' });
+    }
+  }
+
+  /** the pitch as decisions see it — the sent-off man does not exist */
+  private activeBodies(): BodyState[] {
+    return this.sentOff.size ? this.bodies.filter((b) => !this.sentOff.has(b.id)) : (this.bodies as BodyState[]);
+  }
 
   private scanPeriod(b: BodyState): number {
     return Math.max(8, Math.round(34 - 1.3 * (b.attributes.awareness ?? 11)));
@@ -3243,8 +3315,8 @@ export class Sim {
   private perceivedBodies(id: string): BodyState[] {
     const me = this.byId.get(id);
     const seen = this.perception.get(id);
-    if (!me || !seen || this.brains.size < 12) return this.bodies as BodyState[];
-    return this.bodies.map((b) => {
+    if (!me || !seen || this.brains.size < 12) return this.activeBodies();
+    return this.activeBodies().map((b) => {
       if (b.team === me.team) return b;
       const sn = seen.get(b.id);
       if (!sn || sn.tick >= this.tick - 2) return b;
@@ -3279,7 +3351,7 @@ export class Sim {
     const sgn = attackSign(team);
     let u = Infinity;
     for (const b of this.bodies) {
-      if (b.team === team || this.keepers.has(b.id)) continue;
+      if (b.team === team || this.keepers.has(b.id) || this.sentOff.has(b.id)) continue;
       u = Math.min(u, b.pos.x * sgn);
     }
     return u;
