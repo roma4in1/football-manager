@@ -1103,6 +1103,16 @@ export interface DecideInput {
 
 /** the full scored option table — exported for tests and probes (decide()
  * returns its head after inertia) */
+/** the shared PASS-UTILITY shape (the refinement round: five hand-copies
+ * across ground/loft/curl/cross/switch had begun to drift) — completion-
+ * weighted value minus turnover, plus the risk-scaled progress term,
+ * floored by the meets penalty. Algebraically identical to the copies. */
+const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turnoverW: number, passFloor: number): number => {
+  const meets = pC >= passFloor ? 1 : 0.25 + 0.45 * risk;
+  const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pv - pvHere);
+  return (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pv - (1 - pC) * turnoverW * pv) + uProg) * meets;
+};
+
 export const evaluateOptions = (input: DecideInput): Intent[] => {
   const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds, keepers } = input;
   const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
@@ -1354,8 +1364,6 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // sub-floor lanes are taxed, but the tax RIDES RISK — "the best pass
       // is not always the safest" (passing.md): a speculative player keeps
       // the threaded splitting ball live; a safe one buries it
-      const meets = pC >= passFloor ? 1 : 0.25 + 0.45 * risk;
-      const uProg = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvThere - pvHere);
       // the ball to a RIDING runner waits for his movement — you play the
       // through ball when the dart goes, not while he stands on the line.
       // EXCEPT the ball into his run's PATH (destOverride): the first-time
@@ -1377,7 +1385,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // rates. The original measurement stands.)
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
-      const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
+      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor) * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
@@ -1418,9 +1426,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const pCa = aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl;
         let pvL = value(landing, mate.id);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uProgL = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvL - pvHere);
-        const meetsL = pCa >= passFloor ? 1 : 0.25 + 0.45 * risk;
-        const uL = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCa * pvL - (1 - pCa) * turnoverW * pvL) + uProgL) * meetsL;
+        const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor);
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg };
         }
@@ -1445,9 +1451,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const pCk = curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing);
           let pvK = value(landing, mate.id);
           pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-          const uProgK = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvK - pvHere);
-          const meetsK = pCk >= passFloor ? 1 : 0.25 + 0.45 * risk;
-          const uK = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCk * pvK - (1 - pCk) * turnoverW * pvK) + uProgK) * meetsK;
+          const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor);
           if (!bestPass || uK > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK };
           }
@@ -1485,9 +1489,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const pCc = aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl;
           let pvC = value(cross, mate.id);
           pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-          const uProgC = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvC - pvHere);
-          const meetsC = pCc >= passFloor ? 1 : 0.25 + 0.45 * risk;
-          const uC = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCc * pvC - (1 - pCc) * turnoverW * pvC) + uProgC) * meetsC;
+          const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor);
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg };
           }
@@ -1512,9 +1514,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const pCs = aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl;
         let pvS = value(land, mate.id);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uProgS = DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pvS - pvHere);
-        const meetsS = pCs >= passFloor ? 1 : 0.25 + 0.45 * risk;
-        const uS = (DECIDE.possessionDiscount * DECIDE.passFriction * (pCs * pvS - (1 - pCs) * turnoverW * pvS) + uProgS) * meetsS;
+        const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor);
         if (!bestPass || uS > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg };
         }
