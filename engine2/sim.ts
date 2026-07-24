@@ -248,7 +248,43 @@ export class Sim {
     // 1c. L7 — keepers self-position on the ball–goal line (after decide so a
     // keeper with the ball at his feet is decision- or script-owned that tick)
     if (this.keeperHolding && this.ball.carrierId !== this.keeperHolding) this.keeperHolding = null;
-    if (this.restartTaker && this.ball.carrierId !== null) this.restartTaker = null;
+    if (this.restartTaker && (this.ball.carrierId !== null ||
+      this.ball.kickerId === this.restartTaker)) {
+      // the taker has it (or already played it — the quick free kick:
+      // claim and first-time pass land in one tick, and resolving only
+      // on carrier-sight left the lock up with the taker's own receiver
+      // barred from the ball) — the ceremony resolves
+      if (this.ball.carrierId === this.restartTaker && this.restartType === 'throw-in') {
+        // the THROW-IN FORM: two-handed, released above the head, to the
+        // best near mate — and offside-exempt (the law's own rule)
+        const tk = this.byId.get(this.restartTaker)!;
+        let bestM: { m: BodyState; score: number } | null = null;
+        for (const m of this.bodies) {
+          if (m.team !== tk.team || m.id === tk.id || this.sentOff.has(m.id)) continue;
+          const dm = Math.hypot(m.pos.x - tk.pos.x, m.pos.y - tk.pos.y);
+          if (dm < 3 || dm > 22) continue;
+          let free = Infinity;
+          for (const o2 of this.bodies) {
+            if (o2.team === tk.team) continue;
+            free = Math.min(free, Math.hypot(o2.pos.x - m.pos.x, o2.pos.y - m.pos.y));
+          }
+          const score = Math.min(1, free / 8) - dm * 0.015;
+          if (!bestM || score > bestM.score) bestM = { m, score };
+        }
+        if (bestM) {
+          const lead = { x: bestM.m.pos.x + bestM.m.vel.x * 0.4, y: bestM.m.pos.y + bestM.m.vel.y * 0.4 };
+          const dT = Math.hypot(lead.x - tk.pos.x, lead.y - tk.pos.y);
+          kickBall(this.ball, lead, Math.max(8, Math.min(14, rollLaunchForArrival(5, dT))), 16, tk.id, this.tick);
+          this.ball.z = 2.1; // released above the head
+          this.intendedReceiverId = bestM.m.id;
+          this.offsideExemptTick = this.tick;
+          this.actionLabels.set(tk.id, 'throw-in');
+        }
+      }
+      this.restartTaker = null;
+      this.restartType = null;
+      this.restartLock = null;
+    }
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
     if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
     this.keeperPhase();
@@ -850,21 +886,34 @@ export class Sim {
         let spot: Vec2;
         const p = this.ball.pos;
         if (this.pendingFreeKick) {
-          // an offside (or future foul) free kick: defenders restart at the spot
+          // an offside or foul free kick: the fouled side restarts at the spot
           award = this.pendingFreeKick.team;
           spot = {
             x: Math.max(2, Math.min(PITCH.length - 2, this.pendingFreeKick.spot.x)),
             y: Math.max(2, Math.min(PITCH.width - 2, this.pendingFreeKick.spot.y)),
           };
+          // the PENALTY approximation: a foul in the defending box awards
+          // the spot itself — 11 m, central, the taker unopposed by the
+          // taker-only claim rule (the census: a raw box-spot free kick
+          // was a free shot from 5 m; until the full ceremony exists the
+          // spot kick is the honest stand-in)
+          if (spot.x < 16.5 && award === 'away' && Math.abs(spot.y - PITCH.width / 2) < 20) {
+            spot = { x: 11, y: PITCH.width / 2 };
+          } else if (spot.x > PITCH.length - 16.5 && award === 'home' && Math.abs(spot.y - PITCH.width / 2) < 20) {
+            spot = { x: PITCH.length - 11, y: PITCH.width / 2 };
+          }
+          this.restartType = 'free-kick';
           this.pendingFreeKick = null;
         } else if (this.goals.length > this.lastGoalCount) {
           // kickoff: the conceding side restarts from the centre
           award = this.goals[this.goals.length - 1].against;
           spot = { x: PITCH.length / 2, y: PITCH.width / 2 };
           this.lastGoalCount = this.goals.length;
+          this.restartType = 'kickoff';
         } else if (p.y < 0 || p.y > PITCH.width) {
           // throw-in at the touchline spot
           spot = { x: Math.max(2, Math.min(PITCH.length - 2, p.x)), y: p.y < 0 ? 1 : PITCH.width - 1 };
+          this.restartType = 'throw-in';
         } else {
           // over a goal line: corner for the attacker, goal-kick for the
           // defender of that end (home defends x=0)
@@ -872,24 +921,43 @@ export class Sim {
           const defenderOfEnd: 'home' | 'away' = endX === 0 ? 'home' : 'away';
           if (award === defenderOfEnd) {
             spot = { x: endX === 0 ? 6 : PITCH.length - 6, y: PITCH.width / 2 + (p.y >= PITCH.width / 2 ? 6 : -6) };
+            this.restartType = 'goal-kick';
             for (const kid of this.keepers) {
               const kb = this.byId.get(kid);
               if (kb && kb.team === award) this.restartTaker = kid;
             }
           } else {
             spot = { x: endX === 0 ? 1 : PITCH.length - 1, y: p.y >= PITCH.width / 2 ? PITCH.width - 1 : 1 };
+            this.restartType = 'corner';
           }
         }
+        // every non-goal-kick restart gets its nearest awarded OUTFIELD
+        // taker; the ceremonies quiet the transition instinct (a restart
+        // is organized, not a scramble — counterpress labels on the
+        // award side's own ball were the builder's 'reset issues' frame)
+        if (this.restartType && this.restartType !== 'goal-kick') {
+          let bestT: { id: string; d: number } | null = null;
+          for (const bid of this.brains) {
+            const bb = this.byId.get(bid)!;
+            if (bb.team !== award || this.keepers.has(bid) || this.sentOff.has(bid)) continue;
+            const d = Math.hypot(bb.pos.x - spot.x, bb.pos.y - spot.y);
+            if (!bestT || d < bestT.d) bestT = { id: bid, d };
+          }
+          this.restartTaker = bestT?.id ?? null;
+        }
+        this.lostPossessionAt.set('home', -999);
+        this.lostPossessionAt.set('away', -999);
         this.ball.pos = { x: spot.x, y: spot.y };
         this.ball.vel = { x: 0, y: 0 };
         this.ball.z = 0;
         this.ball.vz = 0;
         this.ball.phase = 'rolling';
         this.ball.kickerId = null;
-        // a goal kick gets a longer claim window (the keeper WALKS to his
-        // ball while opponents retreat — 20 ticks let a striker camp the
-        // box and steal the restart at expiry, straight into a shot)
-        this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 40 : 20) };
+        // the lock holds until the TAKER claims (a long ceiling backstops
+        // a stranded taker) — a timed expiry handed restarts to whichever
+        // opponent camped the spot (the census: an away striker taking
+        // home's free kick at their own box)
+        this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 200 : 20) };
         this.deadSinceTick = -1;
       }
     } else {
@@ -992,6 +1060,10 @@ export class Sim {
   private resolveTackles(): void {
     const carrier = this.ball.carrierId ? this.byId.get(this.ball.carrierId) : undefined;
     if (!carrier) return;
+    // the kick is FREE: no tackle exists during a restart ceremony — the
+    // census caught the taker claiming his free kick and being stripped
+    // the same instant by the defender the foul spot naturally stands on
+    if (this.restartTaker) return;
     // a keeper with the ball IN HIS HANDS is untouchable — no tackle exists
     // against a held ball (the pinch already cannot reach a glued ball)
     if (this.keeperHolding === carrier.id) return;
@@ -2009,6 +2081,7 @@ export class Sim {
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (this.sentOff.has(b.id)) continue; // off the pitch, out of the game
+      if (this.restartTaker && b.id !== this.restartTaker) continue; // the taker's ball
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
       // a RESTART is the awarded team's put-back: the other side stands
       // off until the lock expires (L8-minimal)
@@ -2571,11 +2644,43 @@ export class Sim {
                 if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myD) closerChase++;
               }
             }
-            if (ownBall || this.ball.phase === 'dead' ||
-              (this.ball.carrierId === null && closerChase >= 2)) {
+            if ((ownBall || this.ball.phase === 'dead' ||
+              (this.ball.carrierId === null && closerChase >= 2)) &&
+              this.restartTaker !== id) {
+              // (the taker is never released — his 'closer' mates are
+              // barred from the ball, and the demotion left a restart
+              // standing unclaimed for 12 s in the census)
               this.assign(body, { type: 'hold' });
               this.pressingIds.delete(id);
               this.actionLabels.set(id, 'release');
+            }
+          }
+          // RESTART CEREMONY, both sides: the taker walks to his ball;
+          // opponents near the spot back off (nobody contests a restart)
+          if (this.restartTaker === id && this.ball.carrierId === null &&
+            this.ball.phase !== 'dead' &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
+            this.actionLabels.set(id, 'take');
+            continue;
+          }
+          if (this.restartTaker && this.ball.carrierId === null && this.ball.phase !== 'dead' &&
+            this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            const tkB = this.byId.get(this.restartTaker);
+            if (tkB && body.team !== tkB.team) {
+              const dRb = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+              if (dRb < 9) {
+                const ang = Math.atan2(body.pos.y - this.ball.pos.y, body.pos.x - this.ball.pos.x);
+                const back = {
+                  x: Math.max(2, Math.min(PITCH.length - 2, this.ball.pos.x + Math.cos(ang) * 10.5)),
+                  y: Math.max(2, Math.min(PITCH.width - 2, this.ball.pos.y + Math.sin(ang) * 10.5)),
+                };
+                this.assign(body, { type: 'moveTo', target: back, regime: 'jog' });
+                this.actionLabels.set(id, 'retreat');
+                continue;
+              }
             }
           }
           // L5d COUNTERPRESS (before everything): the 5–8 s transition
@@ -2792,9 +2897,14 @@ export class Sim {
             this.tick > (this.scriptedUntil.get(id) ?? -1) &&
             this.homes.has(id)) {
             const home = this.homes.get(id)!;
-            const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
-              0.5, this.teamBrainCount(body.team) + 1,
-              this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined);
+            // KICKOFF RESET: both teams return to their formation homes
+            // while the taker walks to the centre — the ceremony every
+            // real match starts (and restarts) with
+            const st = this.restartType === 'kickoff'
+              ? { x: home.x, y: home.y }
+              : blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
+                0.5, this.teamBrainCount(body.team) + 1,
+                this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined);
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             if (dSt > 1.6) {
@@ -3191,6 +3301,14 @@ export class Sim {
   private readonly offsideTagged = new Set<string>();
   private offsideKickTeam: 'home' | 'away' | null = null;
   private pendingFreeKick: { team: 'home' | 'away'; spot: Vec2 } | null = null;
+  /** RESTART CEREMONIES: every restart has a designated taker and a
+   * type; the ball is claimable by the TAKER ALONE (real football never
+   * gives the opponent your throw-in — the census caught an away
+   * striker taking home's free kick at their own box), opponents
+   * retreat from the spot, kickoffs reset both teams to their homes,
+   * and throw-ins are thrown (two-handed, offside-exempt per the law). */
+  private restartType: 'kickoff' | 'throw-in' | 'corner' | 'goal-kick' | 'free-kick' | null = null;
+  private offsideExemptTick = -1;
 
   private updateOffside(): void {
     if (this.brains.size < 12) return;
@@ -3217,7 +3335,8 @@ export class Sim {
       }
     }
     // the flag: tag at the moment of every kick
-    if (this.ball.lastKickTick === this.tick && this.ball.kickerId) {
+    if (this.ball.lastKickTick === this.tick && this.ball.kickerId &&
+      this.tick !== this.offsideExemptTick) {
       const kb = this.byId.get(this.ball.kickerId);
       if (kb) {
         this.offsideTagged.clear();
