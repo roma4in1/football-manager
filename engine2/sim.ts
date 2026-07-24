@@ -2201,22 +2201,23 @@ export class Sim {
             this.pressingIds.delete(id);
           }
           // a STRAY ball (loose, dying, unclaimed, nobody sent to it) is
-          // collected by the nearest idle brain — deflected passes died
-          // untouched with players standing over them (the audit)
+          // RACED by each team's nearest brain — deflected passes died
+          // untouched with players standing over them (the audit), and at
+          // match spacing the old 8 m radius DEADLOCKED an entire 11v11
+          // around a neutral kickoff ball for 18+ seconds (the m11 pilot's
+          // first finding): a neutral ball is always somebody's to go for.
           if (body.command.type === 'hold' && this.ball.carrierId === null &&
             this.ball.phase !== 'dead' && this.intendedReceiverId === null &&
             Math.hypot(this.ball.vel.x, this.ball.vel.y) < 3) {
-            const d = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
-            if (d < 8) {
-              const nearestBrain = [...this.brains].reduce((best, bid) => {
-                const b = this.byId.get(bid)!;
-                const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
-                return bd < best.d ? { id: bid, d: bd } : best;
-              }, { id: '', d: Infinity });
-              if (nearestBrain.id === id) {
-                this.assign(body, { type: 'chaseBall', regime: 'run' });
-                this.actionLabels.set(id, 'collect');
-              }
+            const nearestOfTeam = [...this.brains].reduce((best, bid) => {
+              const b = this.byId.get(bid)!;
+              if (b.team !== body.team) return best;
+              const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
+              return bd < best.d ? { id: bid, d: bd } : best;
+            }, { id: '', d: Infinity });
+            if (nearestOfTeam.id === id) {
+              this.assign(body, { type: 'chaseBall', regime: nearestOfTeam.d > 10 ? 'sprint' : 'run' });
+              this.actionLabels.set(id, 'collect');
             }
           }
         }
