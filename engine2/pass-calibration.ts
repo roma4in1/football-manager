@@ -14,17 +14,22 @@
 
 /** multiplicative shrink per bucket (type/dist band), identity = 1 */
 export const PASS_CALIBRATION: Readonly<Record<string, number>> = {
-  // IDENTITY, deliberately — the fitted table is real but ONE-SIDED.
-  // Fitted from learning/run-89068-300x3000.jsonl (300 matches, ~4900
-  // events) against possession retention:
-  //   ground/short 0.74  ground/mid 0.72  ground/long 0.87
-  //   driven-loft  0.52 / 0.55 / 0.64   float 0.52 / 0.77
-  //   curl 0.59 / 0.65 / 0.71
-  // APPLYING it alone broke the pass-carry equilibrium (measured: the
-  // wall-pass playmaker carried 120 straight ticks — every pass utility
-  // shrank while the CARRY model kept its own unmeasured optimism).
-  // The carry side must be fitted from the same ledger first; then both
-  // tables land together and the equilibrium moves honestly.
+  // IDENTITY — the application is deliberately HELD. The full verdict
+  // cycle ran (fit -> apply -> measure the football -> reject):
+  // applying the fitted tables collapsed passes/match 47.7 -> 20.8 —
+  // dribble-ball, the empirical proof of the CIRCULARITY: the carry
+  // survival (0.87-0.93/step even in traffic) is inflated by a defense
+  // that converts poorly, so calibrating to it rewards exactly the
+  // football the reference work steers away from.
+  // THE CONVERGENCE PLAN: improve defensive CONVERSION first (strips in
+  // traffic raise true carry hazard), re-batch, re-fit — the tables
+  // land when the measured equilibrium passes MORE, not less.
+  // Fitted values (run-91744, 300 matches): ground .74/.73/.88,
+  // driven-loft .41/.58/.64, float .30/.55/.82, curl .57/.65/.75;
+  // carry step-survival by density [0.93, 0.88, 0.89, 0.87] with
+  // advance/tick 0.28 -> 0.20 m (traffic slows ~28%, not the legacy
+  // tax's ~55% — the open-field 0.930 independently re-derived the
+  // hand-fitted 0.92).
 };
 
 export const calibratePass = (
@@ -43,4 +48,15 @@ export const calibratePass = (
   const k = PASS_CALIBRATION[`${type}/${d}`] ?? 1;
   const kEff = 1 - (1 - k) * Math.max(0, Math.min(1, density));
   return Math.max(0.02, Math.min(0.98, pC * kEff));
+};
+
+/** carry RETENTION by local pressure (density 0..1 → bucket 0..3),
+ * fitted from the same ledger as the pass table — the BOTH-SIDED rule:
+ * the two tables land together or not at all. Null = legacy algebra. */
+export const CARRY_RETENTION: ReadonlyArray<number> | null = null;
+
+export const carryRetention = (pressure: number): number | null => {
+  if (!CARRY_RETENTION) return null;
+  const b = Math.max(0, Math.min(3, Math.round(pressure * 3)));
+  return CARRY_RETENTION[b] ?? null;
 };

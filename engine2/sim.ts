@@ -101,6 +101,7 @@ export class Sim {
    * Null in normal play; zero cost when unset. */
   public telemetry: ((ev: Record<string, unknown>) => void) | null = null;
   private openPass: { tick: number; pC?: number; dist: number; loft: number; spin: number; kicker: string; receiver: string } | null = null;
+  private openCarry: { tick: number; carrier: string; density: number; startU: number } | null = null;
   /** L8-minimal restarts (match scale only): when the ball died and who
    * is awarded the put-back; claims are team-locked briefly */
   private deadSinceTick = -1;
@@ -2075,6 +2076,37 @@ export class Sim {
    * a brain never enter here — scripts own them entirely. */
   private decidePhase(): void {
     if (this.brains.size === 0) return;
+    // telemetry: carry segments — from a brain's claim to release/strip/dead
+    if (this.telemetry) {
+      const c = this.ball.carrierId;
+      if (this.openCarry) {
+        // a segment SURVIVES the dribble's own touch-and-collect cycle
+        // (carrierId flickers null between touches — closing there read
+        // open-field retention at 0.24, a pure taxonomy artifact): close
+        // only on the carrier's own kick, another body's claim, or death
+        const oc = this.openCarry;
+        const prev = this.byId.get(oc.carrier);
+        const now = c ? this.byId.get(c) : undefined;
+        let outcome: string | null = null;
+        if (this.openPass && this.openPass.kicker === oc.carrier) outcome = 'released';
+        else if (c && c !== oc.carrier) outcome = now && prev && now.team === prev.team ? 'teammate' : 'stripped';
+        else if (this.ball.phase === 'dead') outcome = 'dead';
+        if (outcome) {
+          const pb = this.byId.get(oc.carrier);
+          const endU = pb ? pb.pos.x * attackSign(pb.team) : oc.startU;
+          this.telemetry({ t: 'carry', dur: this.tick - oc.tick, density: oc.density, outcome, adv: endU - oc.startU });
+          this.openCarry = null;
+        }
+      }
+      if (!this.openCarry && c && this.brains.has(c)) {
+        const cb0 = this.byId.get(c)!;
+        let nOpp = 0;
+        for (const b of this.bodies) {
+          if (b.team !== cb0.team && Math.hypot(b.pos.x - cb0.pos.x, b.pos.y - cb0.pos.y) < 12) nOpp++;
+        }
+        this.openCarry = { tick: this.tick, carrier: c, density: Math.min(1, nOpp / 3), startU: cb0.pos.x * attackSign(cb0.team) };
+      }
+    }
     // telemetry: resolve the open pass when anyone claims or the ball dies
     if (this.openPass && this.telemetry) {
       const c = this.ball.carrierId;

@@ -17,7 +17,7 @@
 import { DT, PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
 import { loftApex, loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveCurl, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
-import { calibratePass } from './pass-calibration.ts';
+import { calibratePass, carryRetention } from './pass-calibration.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
 /** L5E — the duel state machine's numbers (design: L5E-DESIGN.md). The
@@ -1831,15 +1831,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       x: Math.min(bounds ? bounds.x1 - 1 : PITCH.length - 0.5, Math.max(bounds ? bounds.x0 + 1 : 0.5, here.x + Math.cos(ang) * DECIDE.carryCommandM)),
       y: Math.min(bounds ? bounds.y1 - 1 : PITCH.width - 0.5, Math.max(bounds ? bounds.y0 + 1 : 0.5, here.y + Math.sin(ang) * DECIDE.carryCommandM)),
     };
-    let u = DECIDE.possessionDiscount * (
-      // pressure taxes the spot, but momentum and control mean a defender
-      // meters away is a problem, not half your value (the judged
-      // dribble-away-from-everyone)
-      pv * (1 - 0.55 * pressure) * 0.92 -
-      // carrying into reach risks the tackle — risk-scaled turnover, same
-      // family as the pass penalty (dodging is not free)
-      turnoverW * pv * pressure * DECIDE.carryTurnoverGain
-    );
+    // the FITTED retention replaces the hand-constants when the memory
+    // space's carry table is applied (the both-sided rule) — legacy
+    // algebra otherwise; R(0) of the legacy form is the same 0.92
+    const fittedR = carryRetention(pressure);
+    let u = fittedR !== null
+      ? DECIDE.possessionDiscount * (pv * fittedR - turnoverW * pv * (1 - fittedR) * DECIDE.carryTurnoverGain)
+      : DECIDE.possessionDiscount * (
+        pv * (1 - 0.55 * pressure) * 0.92 -
+        turnoverW * pv * pressure * DECIDE.carryTurnoverGain
+      );
     // the DRIVE credit: when GENUINELY UNPRESSURED a carrier is free to run
     // the ball forward, and that progression should read like a pass's does
     // — otherwise a marginal square/forward ball to an open mate beats simply

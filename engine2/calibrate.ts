@@ -37,6 +37,18 @@ const table = [...agg.entries()].map(([b, a]) => ({
   realized: a.done / a.n,
 })).map((r) => ({ ...r, gap: Number.isNaN(r.priced) ? 0 : r.realized - r.priced }))
   .sort((x, y) => Math.abs(y.gap) * y.n - Math.abs(x.gap) * x.n);
+type CEv = { t: string; dur: number; density: number; outcome: string };
+const carries = readFileSync(path, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as CEv)
+  .filter((e) => e.t === 'carry' && e.dur >= 3);
+if (carries.length) {
+  console.log(`carries: ${carries.length}`);
+  for (const b of [0, 1, 2, 3]) {
+    const set = carries.filter((e) => Math.round(e.density * 3) === b);
+    if (!set.length) continue;
+    const kept = set.filter((e) => e.outcome === 'released' || e.outcome === 'teammate').length;
+    console.log(`  carry density ${b}/3: n=${set.length}  retained ${(kept / set.length).toFixed(2)}`);
+  }
+}
 console.log(`passes: ${rows.length}`);
 for (const r of table) {
   console.log(`${r.bucket.padEnd(18)} n=${String(r.n).padStart(5)}  priced ${Number.isNaN(r.priced) ? '  -  ' : r.priced.toFixed(2)}  realized ${r.realized.toFixed(2)}  gap ${r.gap >= 0 ? '+' : ''}${r.gap.toFixed(2)}`);
