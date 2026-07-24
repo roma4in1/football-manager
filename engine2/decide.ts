@@ -1026,7 +1026,7 @@ export type DefenseIntent =
   | { kind: 'press'; approach: Vec2 | null; label: 'press' | 'counterpress' }
   | { kind: 'delay'; hold: Vec2 }
   | { kind: 'cover'; target: Vec2 }
-  | { kind: 'mark'; target: Vec2; urgent: boolean }
+  | { kind: 'mark'; target: Vec2; urgent: boolean; mkId?: string }
   | { kind: 'interceptLane'; target: Vec2 }
   | { kind: 'holdShape'; target: Vec2 };
 
@@ -1426,7 +1426,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
         if (duty.mk) {
           const md2 = Math.hypot(og.x - duty.mk.pos.x, og.y - duty.mk.pos.y) || 1;
           const gws2 = (duty.mk.vel.x * (og.x - duty.mk.pos.x) + duty.mk.vel.y * (og.y - duty.mk.pos.y)) / md2;
-          return { kind: 'mark', target: duty.spot, urgent: gws2 > 3 };
+          return { kind: 'mark', target: duty.spot, urgent: gws2 > 3, mkId: duty.mk.id };
         }
         return { kind: 'cover', target: duty.spot };
       }

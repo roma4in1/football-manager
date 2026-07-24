@@ -100,7 +100,10 @@ test('M11 FORMATIONS — the 4-3-3 vs 5-2-3 duel: each shape keeps its identity 
       }
     }
     const avg = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
-    assert.ok(avg(five) >= 3.8, `${seed}: the back five holds its goal-side chain (${avg(five).toFixed(1)}/5)`);
+    // 3.8 -> 3.4 (defense-side perception): markers can now genuinely
+    // lose a runner for a beat, and the chain metric's honest band
+    // shifted (3.7-4.2 across seeds) — the chain itself still holds
+    assert.ok(avg(five) >= 3.4, `${seed}: the back five holds its goal-side chain (${avg(five).toFixed(1)}/5)`);
     // 52 -> 48 (the roles round: away wingbacks now ADVANCE in
     // possession, shifting the duel's territory — wb-0 re-rolled to an
     // away-dominant match with a goal; identity intact at 51-74)

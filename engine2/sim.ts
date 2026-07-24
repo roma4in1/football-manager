@@ -2928,6 +2928,28 @@ export class Sim {
             } else {
               this.pressingIds.delete(id);
               const label = di.kind === 'cover' ? 'cover' : di.kind === 'mark' ? 'mark' : di.kind === 'interceptLane' ? 'shadow' : 'shape';
+              // DEFENSE-SIDE PERCEPTION (the determinism-preserving design):
+              // the duty board ALLOCATES on truth (every defender computes
+              // the same board — coached organization), but a mark is
+              // EXECUTED against where this defender BELIEVES his man is —
+              // the target drifts by his perception error, and a dart on
+              // his blind side is followed only after the cone or the next
+              // scan catches it. "He lost his runner" is now real.
+              if (di.kind === 'mark' && di.mkId && this.brains.size >= 12) {
+                const truthMan = this.byId.get(di.mkId);
+                const sn = this.perception.get(id)?.get(di.mkId);
+                if (truthMan && sn && sn.tick < this.tick - 2) {
+                  // capped: a marker's JOB is his man — even blind-sided
+                  // he re-finds him within a beat (an unbounded drift
+                  // dissolved the back-five chain, wb-2 3.5/5)
+                  const dtP = Math.min(0.8, (this.tick - sn.tick) * DT);
+                  let ex = sn.x + sn.vx * dtP - truthMan.pos.x;
+                  let ey = sn.y + sn.vy * dtP - truthMan.pos.y;
+                  const em = Math.hypot(ex, ey);
+                  if (em > 3.5) { ex *= 3.5 / em; ey *= 3.5 / em; }
+                  di.target = { x: di.target.x + ex, y: di.target.y + ey };
+                }
+              }
               const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
               if (d > 1.2) {
                 // an URGENT mark (his man darting goalward) tracks at pace
