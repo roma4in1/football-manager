@@ -121,7 +121,7 @@ export interface PlayInstructions {
 
 export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
-  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
+  | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number; pC?: number }
   | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
   | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
   | { kind: 'beat'; dest: Vec2; side: number; utility: number }
@@ -1379,7 +1379,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       const u = (DECIDE.possessionDiscount * DECIDE.passFriction * (pC * pvThere - (1 - pC) * turnoverW * pvThere) + uProg) * meets * ridingWait;
       if (!bestPass || u > bestPass.utility) {
-        bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u };
+        bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
     }
     // ── the LOFTED ball: a chip / driven loft OVER a ground defender in the

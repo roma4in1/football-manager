@@ -2392,6 +2392,22 @@ export class Sim {
             // never had the ball.
             if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
             body.command = { type: 'hold', facing: strikeDir };
+          } else if (reach <= TECH.kickReachM && intent.kind === 'pass' && intent.pC !== undefined &&
+            !intent.loftDeg && !intent.spin &&
+            passCompletion(body.pos, intent.dest, intent.speedMps,
+              this.bodies.filter((o) => o.team !== body.team),
+              Math.hypot(intent.dest.x - body.pos.x, intent.dest.y - body.pos.y),
+              this.byId.get(intent.receiverId), body.attributes.passing) <
+              Math.min(0.15, intent.pC * 0.45)) {
+            // the STRIKE-ABORT (the refinement round): the lane is priced
+            // at DECISION time and struck ~0.3 s later — a shadow can
+            // converge in between (the LB cutting the 'clear' thread 7/8).
+            // A lane that has COLLAPSED since pricing (not merely a bad
+            // lane knowingly chosen — that would abort-loop) pulls the
+            // pass; the player checks out and re-decides.
+            this.intents.delete(id);
+            this.actionLabels.set(id, 'check');
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
