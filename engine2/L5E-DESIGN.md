@@ -138,6 +138,91 @@ the micro-session:**
    not an EV bonus. Build it as a small attacker-side state (APPROACH →
    FEINT → BURST) in its own session, judged in the workbench per step.
 
+**Third exploration (Jul 23) — the beat scaffold built, findings, reverted to
+a patch (patches/beat-scaffold.patch has the full working code: the beat
+intent, the approach→feint→burst executor, the free-run pricing, the
+live-rider knock discount). What it established:**
+
+- **THE DRILL WAS A SCRIPT**: the front-duel attacker had no brain — every
+  attacker-side EV lever ever probed (knock, beat, collision tax, isolation)
+  was DEAD CODE in the drill built to show it. "Both duel sides must be
+  brains" was the brief's ground rule §6, unapplied. With a brain, the knock
+  fires 8/8 immediately.
+- **KICK-AND-RUSH IS REAL**: a brained HEAVY-feet attacker knocks past the
+  backpedaling rider 16/16 — the knock needs no touch skill and the
+  give-ground machine cannot turn fast enough to catch the race. Real
+  football agrees (route one works vs a lone retreating man); the missing
+  counter is defensive: cover/angling, and a concede that STOPS (a defender
+  who won't backpedal forever), not more attacker nerfs.
+- **PRICING IS GLOBAL**: the free-run bonus made wall-pass carriers knock
+  past their wall — every duel-pricing term reshapes ALL open play. The
+  micro-session must run the full suite per dial, and the beat/knock pricing
+  needs a context gate (a genuine LAST-man/free-run situation, not any
+  frontman).
+- **The beat itself never outranked** carry/knock in any probe — its EV story
+  (the manufactured knock) needs the knock's live-rider discount AND the
+  free-run context to be top — i.e., the three pieces only work as a set,
+  with the defensive concede-stop landing alongside. One coupled unit, again.
+- The pinch's engage-gate INVERTED the skill split (heavy's long touches
+  became safe) and never helped close control — the pinch stays ungated; the
+  close-control deficit is the COLLISION, whose true fix is the beat's
+  APPROACH phase (slow into the arc).
+
+### The COVERED DUEL (builder-chosen acceptance) — the next defensive work item
+
+The builder chose COVER over walls for the head-on drill (real football forces
+duels with cover, not corridors). Building it exposed the real hole, bigger
+than any drill: **the defense cannot contain a brained attacker even 2v1.**
+Trace evidence (Jul 23): the press election parks the presser in moveTo
+(pressApproach) so the duel machine (chaseBall-gated) never rides him; force-
+assigning chaseBall inside duel range did not change outcomes — the presser
+TRAILS every lateral cut and both skill levels sail through 16/16. The
+press-election ↔ duel-machine integration versus a MOVING, deciding carrier is
+one coupled work item with the covered drill as its acceptance:
+  - the elected presser belongs to the MACHINE from election (not from
+    chaseBall range) — approach, ride, and engage as one continuum;
+  - the ride must hold a CUTTING carrier (the lateral trail is the beat's
+    free win today — fix the defense first, then measure the beat honestly);
+  - cover positioning (the second man) must close the outflank lane, which
+    pressCoverSpots may already express — verify.
+Do this dial-by-dial with the workbench open (wb seeds, builder judging live) —
+three probe-only blocks have now bounced off it.
+
+### THE DEFENSIVE BRAIN (builder direction, Jul 23) — the real shape of the fix
+
+The asymmetry, named by the builder: the attacker has an EV brain (decide.ts);
+the defender has hardcoded machinery. Audited: `pressScore` uses ZERO
+attributes (distance + the team pressing dial only); every DUEL dial is a
+constant (all defenders jockey at 4.5, fill patience in 3.5 s, engage at 2.6);
+attributes enter defense only at contact (`tackleWinProbability`); roles.md
+sits unwired. `brain: 'onBall'` says it out loud — only on-ball decisions were
+ever designed.
+
+**decideDefense — symmetry with decide:**
+- Per defender per reconsider tick, choose a defensive INTENT: `press` (first
+  man) / `contain` (the machine executes the ride) / `cover` (second-man
+  spot) / `mark` (a runner) / `interceptLane` / `drop` (recover) /
+  `holdShape`. Team coordination (one presser, cover assignment) stays an
+  election — but scored, not hardcoded.
+- **Attributes drive the dials** (per-player, not constants):
+  tackling → pressure fill rate (a strong tackler engages sooner);
+  agility/balance → jockey cap + engage range (nimble rides tighter);
+  pace → track confidence + concede rate (a SLOW defender drops earlier —
+  real football). Schema candidates recorded: `positioning`, `aggression`
+  (defensive IQ has no attribute today), alongside finishing/shotPower.
+- **Tactics drive the weights** (the instructions surface): pressing +
+  lineHeight (exist), plus marking scheme, engagement line, compactness —
+  the L6 story: management controls driving the behavioral sim.
+- **Roles weight the intents** (BodyInit.role, from roles.md): a CB weights
+  cover/drop/mark; a FB contains wide and tracks; a DM screens lanes. A role
+  is a weight vector over intents, not a position.
+- **The machine becomes the executor** of press/contain intents — the exact
+  decide→executor split the attacker has. This dissolves the chaseBall-gating
+  hole structurally: the brain owns the defender, the machine runs his state.
+
+Acceptance: the covered duel (above) defends honestly; the beat is then
+measured against a competent defense; pressScore retires into decideDefense.
+
 ## 3. Loose-ball pursuit arbitration + separation
 
 Two stacked teammates run the same loose ball, end 0.7 m apart, then each
