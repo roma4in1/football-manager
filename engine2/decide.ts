@@ -1183,8 +1183,13 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       const deep = h ? (zSign > 0 ? h.x <= zCx + 0.5 : h.x >= zCx - 0.5) : false;
       if (deep) {
         // his line's depth band: from his own goal out to his line's
-        // height + a stride — the carrier must be INSIDE it
-        const lineU = h ? h.x * zSign : 0;
+        // height + a stride — the carrier must be INSIDE it. The height
+        // is where the line ACTUALLY STANDS (his position), not his
+        // formation home: under the danger-driven line the back line
+        // lives 30 m above its homes, and the home-based band left a
+        // fullback standing ON the carrier ineligible to press while a
+        // midfielder sprinted in from ten (the tick-614 frame)
+        const lineU = Math.max(h ? h.x * zSign : 0, b.pos.x * zSign);
         const carU = carrier.pos.x * zSign;
         const entered = carU <= lineU + 10;
         if (!entered) return best; // hold the line; midfield steps
