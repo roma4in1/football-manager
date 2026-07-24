@@ -2310,7 +2310,17 @@ export class Sim {
               advSign * (body.pos.x - carrierBody.pos.x) > -18;
             const advancedRunner = (advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3) || lateArrival;
             const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
-            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies, this.keepers) : null;
+            let claimedYs: number[] | undefined;
+            if (!boxOccupy && !atStation && objective === 'score') {
+              claimedYs = [];
+              for (const rid of this.runningLine) {
+                if (rid === id) continue;
+                const rb2 = this.byId.get(rid);
+                if (!rb2 || rb2.team !== body.team) continue;
+                claimedYs.push(this.runPhase.get(rid)?.dartY ?? rb2.pos.y);
+              }
+            }
+            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies, this.keepers, claimedYs) : null;
             if (atStation) {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
@@ -2524,12 +2534,15 @@ export class Sim {
               });
 
               // the PURSUIT CAP (the m11 swarm: seven chasers at once):
-              // the two nearest hunt; everyone else keeps his structure
+              // the two nearest hunt; everyone else keeps his structure.
+              // Ranked by INTERCEPT TIME — on a rolling ball, distance to
+              // the current spot elects the wrong man (the tick-802 race)
+              const myMeet = this.interceptPoint(body).tMeet;
               let closerCp = 0;
               for (const bid of teamBrains) {
                 if (bid === id) continue;
                 const b2 = this.byId.get(bid)!;
-                if (Math.hypot(this.ball.pos.x - b2.pos.x, this.ball.pos.y - b2.pos.y) < myBallDist) closerCp++;
+                if (this.interceptPoint(b2).tMeet < myMeet) closerCp++;
               }
               // vs a CARRIED ball, ONE man commits (the elected press is
               // the second layer — two counterpressors + a presser was
@@ -2721,14 +2734,19 @@ export class Sim {
               (takerB && takerB.team === body.team)) {
               // not our restart — or the KEEPER's: hold shape while it is put back in
             } else {
+            // elected by INTERCEPT TIME, not distance to the current spot
+            // (the tick-802 frame: the man beside a rolling ball's future
+            // path lost the race election to a mate nearer where the ball
+            // WAS, and stood watching him arrive second)
             const nearestOfTeam = [...this.brains].reduce((best, bid) => {
               const b = this.byId.get(bid)!;
               if (b.team !== body.team) return best;
-              const bd = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
-              return bd < best.d ? { id: bid, d: bd } : best;
-            }, { id: '', d: Infinity });
+              const bt = this.interceptPoint(b).tMeet;
+              return bt < best.t ? { id: bid, t: bt } : best;
+            }, { id: '', t: Infinity });
             if (nearestOfTeam.id === id) {
-              this.assign(body, { type: 'chaseBall', regime: nearestOfTeam.d > 10 ? 'sprint' : 'run' });
+              const bd = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
+              this.assign(body, { type: 'chaseBall', regime: bd > 10 ? 'sprint' : 'run' });
               this.actionLabels.set(id, 'collect');
             }
             }

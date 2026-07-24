@@ -667,6 +667,11 @@ export const runPlan = (
   carrier: BodyState,
   bodies: readonly BodyState[],
   keepers?: ReadonlySet<string>,
+  /** y-lanes already claimed by TEAMMATES on active runs — the seam
+   * scorer had no notion of them, so forwards with similar positions
+   * all solved for the same best seam and STACKED (the tick-589 pile:
+   * two wingers occupying one blade of grass) */
+  claimedYs?: readonly number[],
 ): { target: Vec2; lineX: number; dartY: number } | null => {
   const sign = attackSign(mate.team);
   // the KEEPER IS NOT THE LINE (the m11 run-game killer, found via the
@@ -719,7 +724,13 @@ export const runPlan = (
   let bestScore = -Infinity;
   for (const y of seams) {
     const clear = lineDefs.length ? Math.min(...lineDefs.map((d) => Math.abs(d - y))) : 10;
-    const score = clear - 0.15 * Math.abs(y - GOAL.centerY) - 0.22 * Math.abs(y - mate.pos.y);
+    let score = clear - 0.15 * Math.abs(y - GOAL.centerY) - 0.22 * Math.abs(y - mate.pos.y);
+    // a seam a running teammate already owns is CROWDED — spread the runs
+    if (claimedYs) {
+      for (const cy of claimedYs) {
+        if (Math.abs(cy - y) < 9) score -= (9 - Math.abs(cy - y)) * 0.45;
+      }
+    }
     if (score > bestScore) {
       bestScore = score;
       chanY = y;
