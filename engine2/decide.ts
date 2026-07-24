@@ -627,9 +627,18 @@ export const supportSpot = (
     const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;
+    // TRIANGLE SPREAD (the builder's frame: supporters approached from
+    // their home directions — same-side men stacked on one line, no
+    // angles): a candidate within ~40° of another mate's bearing from
+    // the carrier is crowding the SAME passing lane, wherever he stands
+    const candAng = Math.atan2(cand.y - carrier.pos.y, cand.x - carrier.pos.x);
     for (const m of mates) {
       const md = Math.hypot(m.pos.x - cand.x, m.pos.y - cand.y);
       if (md < 6) crowd += (6 - md) / 6;
+      const mAng = Math.atan2(m.pos.y - carrier.pos.y, m.pos.x - carrier.pos.x);
+      const dAng = Math.abs(((candAng - mAng + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const mDist = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
+      if (dAng < 0.7 && mDist < 20) crowd += (0.7 - dAng) / 0.7 * 0.8;
     }
     const u = lane * 0.6 + val * 1.2 - crowd * 0.12;
     if (u > bestU) {
@@ -1214,10 +1223,20 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       let bd = Infinity;
       for (const id of free) {
         const b = covers.find((x) => x.id === id)!;
+        // the DUTY LEASH (the h-cb1 frame: a dropping striker towed the
+        // CB into midfield — the press got a leash, the duties never
+        // did): at team scale nobody claims a duty beyond 18 m of his
+        // home; an unclaimable duty goes unassigned and the dropper is
+        // the next line's problem. Deterministic and identical in every
+        // defender's simulation of the shared assignment.
+        if (unit.length >= 5) {
+          const h = homes.get(id);
+          if (h && Math.hypot(spot.x - h.x, spot.y - h.y) > 26) continue; // 26 = shift cap 18 + local 8 (raw homes, shifted block)
+        }
         const d = zoneCost(b, spot);
         if (d < bd) { bd = d; best = id; }
       }
-      free.delete(best);
+      if (best) free.delete(best);
       return best;
     };
     for (const duty of duties) {
