@@ -544,7 +544,7 @@ export class Sim {
               } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM &&
                 this.tick >= (duel.beatenUntil ?? 0)) {
                 duel.state = 'engage';
-              } else if ((duel.closeTicks ?? 0) >= 5 && dToCar <= 2.2 &&
+              } else if ((duel.closeTicks ?? 0) >= 3 && dToCar <= 2.4 &&
                 this.tick >= (duel.beatenUntil ?? 0)) {
                 // the RUNNING CHALLENGE (the escort-conversion root, the
                 // queue's last item: a rider goal-side within touching
@@ -568,7 +568,7 @@ export class Sim {
                   duel.state = carrierB.speed > DUEL.trackEnterMps || closingSp > 3.2 ? 'track' : 'jockey';
                 }
               }
-              duel.closeTicks = dToCar < 2.2 && (duel.state === 'jockey' || duel.state === 'track')
+              duel.closeTicks = dToCar < 2.4 && (duel.state === 'jockey' || duel.state === 'track')
                 ? (duel.closeTicks ?? 0) + 1 : 0;
               this.duels.set(body.id, duel);
               // targets — computed from the carrier's PROJECTED position
@@ -639,10 +639,23 @@ export class Sim {
         external: body.command.type === 'chaseBall' || duelRide ? live : undefined,
         steer: fetching ? live : undefined,
         carrying: isCarrier,
+        // the DRIBBLE SPEED COST (the convergence loop's physics find:
+        // carriers ran at FULL sprint with the ball glued, so equal-pace
+        // riders could never close and every carry survived by
+        // construction): carrying caps at ~89-96% of sprint, scaled by
+        // the dribbling attribute — the first true kinematic attribute
+        // effect (skill = speed retained with the ball)
         carrySpeedCapMps: isCarrier
-          ? (this.beatExec?.carrierId === body.id && this.beatExec.phase === 'approach'
-            ? Math.min(this.dribbleArriveCap(body) ?? 4.2, 4.2)
-            : this.dribbleArriveCap(body))
+          ? Math.min(
+            // scaled from the COMMANDED regime — sprint-anchored never
+            // bound for run-regime match carriers (byte-identical
+            // ledgers proved it a no-op)
+            regimeCapMps(body.attributes.pace,
+              (body.command.type === 'moveTo' || body.command.type === 'followPath' || body.command.type === 'chaseBall')
+                ? body.command.regime : 'run') * (0.87 + 0.005 * body.attributes.dribbling),
+            (this.beatExec?.carrierId === body.id && this.beatExec.phase === 'approach'
+              ? Math.min(this.dribbleArriveCap(body) ?? 4.2, 4.2)
+              : this.dribbleArriveCap(body)) ?? Infinity)
           : undefined,
         stand: standing,
         brakeAtTarget: timedCap !== undefined || brakeIntoLine,
@@ -951,16 +964,29 @@ export class Sim {
     if (gap > BALL.controlRadiusM) return; // a running touch is the pinch's domain
     for (const b of this.bodies) {
       if (b.id === carrier.id || b.team === carrier.team) continue;
-      if (b.command.type !== 'chaseBall') continue; // intent to win the ball
+      // intent to win the ball: the chase, OR machine ownership — the
+      // duelRide presser (moveTo, ridden per tick) could reach ENGAGE
+      // via the running challenge and still never tackle (this gate
+      // predates ownership; the conversion loop measured the hole)
+      if (b.command.type !== 'chaseBall' && !this.pressingIds.has(b.id)) continue;
       if ((this.tackleCooldown.get(b.id) ?? -1) > this.tick) continue;
-      // a DUELIST tackles only from ENGAGE — the committed close. Proximity
-      // alone lunged on contact and skipped the jockey entirely (the machine
-      // never got to be seen; bodies without a duel record tackle as before)
+      // a DUELIST tackles from any GOAL-SIDE riding state in true reach —
+      // the engage-only gate throttled match conversion to 38 rolls per
+      // 300 s against 386 close-contact ticks (the funnel measurement);
+      // recover/staggered still never lunge (a trailing or planted man
+      // has no tackle), and the drills keep their jockey texture because
+      // reach itself stays the hard gate.
       const dst = this.duels.get(b.id);
-      if (dst && dst.state !== 'engage') continue;
+      if (dst && (dst.state === 'recover' || dst.state === 'staggered')) continue;
       const reach = Math.hypot(this.ball.pos.x - b.pos.x, this.ball.pos.y - b.pos.y);
-      if (reach > TECH.tackleReachM) continue;
+      // an ENGAGE commit is a LUNGE — a slide reaches ~2 m, not the
+      // standing poke's 1.2 (the funnel: the machine rides at the 2.0 m
+      // hold, architecturally OUTSIDE its own tackle range; 38 rolls in
+      // 300 s of match)
+      const lungeReach = dst?.state === 'engage' ? 2.0 : TECH.tackleReachM;
+      if (reach > lungeReach) continue;
       this.tackleCooldown.set(b.id, this.tick + TECH.tackleCooldownTicks);
+      this.telemetry?.({ t: 'tackle', tick: this.tick });
       const winP = tackleWinProbability(b.attributes, carrier.attributes) /
         (1 + TECH.tackleCarrierSpeedFactor * carrier.speed);
       // the failed lunge is the BEATEN moment (L5E): planted, and the
