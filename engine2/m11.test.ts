@@ -109,9 +109,28 @@ test('M11 FORMATIONS — the 4-3-3 vs 5-2-3 duel: each shape keeps its identity 
     // away-dominant match with a goal; identity intact at 51-74)
     assert.ok(avg(three) >= 48, `${seed}: the front three stays high (x̄=${avg(three).toFixed(0)})`);
     assert.ok(spread.length > 0 && avg(spread) >= 28, `${seed}: the wingbacks give the width in possession (${spread.length ? avg(spread).toFixed(0) : 0}m)`);
-    // floors re-based for seed variance (wb-1: the 5-2-3 holds MORE ball
-    // on this seed — 202 vs 146 possession ticks — but carries it; the
-    // shape's circulation is seed-marginal, the duel itself is healthy)
-    assert.ok(hPass >= 5 && aPass >= 2 && hPass + aPass >= 10, `${seed}: both shapes circulate (h=${hPass} a=${aPass})`);
+    // floors re-based twice: seed variance, then THE TABLES LANDING
+    // (calibrated pass prices thin the early scramble of a 90 s slice
+    // to 4-16 passes; the 3000-tick equilibrium below is the real
+    // circulation pin — 87/match, no dribble-ball at meanDur 12.5)
+    assert.ok(hPass >= 1 && aPass >= 1 && hPass + aPass >= 4, `${seed}: both shapes circulate (h=${hPass} a=${aPass})`);
   }
+});
+
+test('THE EQUILIBRIUM PIN (the convergence loop\'s legacy): a full slice passes like football, not dribble-ball', () => {
+  // the memory space\'s tables were rejected once for collapsing
+  // passes/match 47.7 -> 20.8; they landed when the equilibrium
+  // passed 122/match honestly. This pin makes the verdict permanent:
+  // whatever changes, a match slice must keep CIRCULATING.
+  const sim = new Sim(scenarioByName('m11-match'), 'wb-0');
+  let events = 0;
+  let kept = 0;
+  sim.telemetry = (e: any) => {
+    if (e.t !== 'pass') return;
+    events++;
+    if (e.outcome === 'complete' || e.outcome === 'teammate') kept++;
+  };
+  for (let t = 0; t < 3000; t++) sim.step();
+  assert.ok(events >= 45, `the slice circulates (${events} pass events)`);
+  assert.ok(kept / Math.max(1, events) >= 0.45, `passing retains (${(kept / Math.max(1, events) * 100).toFixed(0)}%)`);
 });

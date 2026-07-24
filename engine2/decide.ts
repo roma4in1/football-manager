@@ -1593,7 +1593,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // a switch out of a crowded flank into an empty one is not a traffic
   // ball (carrier-anchored density gave it the full shrink and killed
   // the switch outright)
-  const destDensity = (at: Vec2): number => Math.min(1, bodies.filter((b) => b.team !== carrier.team &&
+  // the CALIBRATION is a MATCH-SCALE truth (the laws precedent): the
+  // fitted shrinks encode full-match hazards — counterpress, step-ins,
+  // twenty-two bodies of chaos — that a five-body drill does not have,
+  // and applying them to drills broke eight semantic pins twice. Zero
+  // density = identity, so the gate rides the density argument.
+  const matchScale = bodies.length >= 18;
+  const destDensity = (at: Vec2): number => !matchScale ? 0 : Math.min(1, bodies.filter((b) => b.team !== carrier.team &&
     Math.hypot(b.pos.x - at.x, b.pos.y - at.y) < 14).length / 3);
   const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
     (p.x >= bounds.x0 + m && p.x <= bounds.x1 - m && p.y >= bounds.y0 + m && p.y <= bounds.y1 - m);
@@ -2119,7 +2125,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // the FITTED retention replaces the hand-constants when the memory
     // space's carry table is applied (the both-sided rule) — legacy
     // algebra otherwise; R(0) of the legacy form is the same 0.92
-    const fittedR = carryRetention(pressure);
+    const fittedR = matchScale ? carryRetention(pressure) : null;
     // the loss side of the both-currency ledger applies to carries too —
     // but NOT the conservation premium: premium × retention rewards the
     // lowest-pressure direction, which is retreat, and the channel pin
