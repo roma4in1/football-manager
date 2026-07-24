@@ -2130,8 +2130,21 @@ export class Sim {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               const home = this.homes.get(id) ?? body.pos;
-              const st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
-                this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1);
+              // the RECYCLE OUTLET (the EAFC mesh's constant third body):
+              // the CLOSEST stationer stands behind the ball at ~10 m —
+              // the safe under-ball option every reference frame shows
+              let st;
+              if (closerMates === 3) {
+                const gSign = attackSign(body.team);
+                st = {
+                  x: Math.max(2, Math.min(PITCH.length - 2, carrierBody.pos.x - gSign * 9)),
+                  y: Math.max(2, Math.min(PITCH.width - 2, carrierBody.pos.y + (home.y >= carrierBody.pos.y ? 4 : -4))),
+                };
+                this.actionLabels.set(id, 'outlet');
+              } else {
+                st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, attackSign(body.team),
+                  this.instructions.get(id)?.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1);
+              }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
               if (dSt > 1.6) {

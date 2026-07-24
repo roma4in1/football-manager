@@ -602,12 +602,17 @@ export const supportSpot = (
 ): Vec2 => {
   const opponents = bodies.filter((b) => b.team !== mate.team);
   const mates = bodies.filter((b) => b.team === mate.team && b.id !== mate.id);
-  // the home DEFORMS toward the ball (structure follows play)
+  // the home DEFORMS toward the ball (structure follows play). In SCORE
+  // mode the base sits ON THE MESH RING around the carrier (the EAFC
+  // frames: 3-4 short options within 8-15 m; home-anchored support left
+  // the carrier one pass short of a triangle) — approached from the
+  // supporter's natural side so the mesh keeps its angles.
   const dx = carrier.pos.x - home.x;
   const dy = carrier.pos.y - home.y;
   const dd = Math.hypot(dx, dy) || 1;
-  const shift = Math.min(dd * 0.3, objective === 'keep' ? 3 : 8);
-  const base = { x: home.x + (dx / dd) * shift, y: home.y + (dy / dd) * shift };
+  const base = objective === 'keep'
+    ? { x: home.x + (dx / dd) * Math.min(dd * 0.3, 3), y: home.y + (dy / dd) * Math.min(dd * 0.3, 3) }
+    : { x: carrier.pos.x - (dx / dd) * Math.min(dd, 12), y: carrier.pos.y - (dy / dd) * Math.min(dd, 12) };
   let best: Vec2 = base;
   let bestU = -Infinity;
   for (let i = -1; i < 8; i++) {
@@ -618,6 +623,7 @@ export const supportSpot = (
     if (cand.x < 1 || cand.x > PITCH.length - 1 || cand.y < 1 || cand.y > PITCH.width - 1) continue;
     const dist = Math.hypot(cand.x - carrier.pos.x, cand.y - carrier.pos.y);
     if (dist < 4) continue; // an outlet is not a crowd around the carrier
+    if (objective === 'score' && dist > 17) continue; // the mesh ring: short options only
     const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;
@@ -1008,9 +1014,12 @@ export const blockStation = (
       // visible rest chain behind the ball). lineHeight is the tactics
       // hook: a higher line squeezes the rest band up; the fundamentals
       // (a band exists) are not optional.
-      const restDeep = 24 + (1 - lineHeight) * 10; // deepest station behind the ball
+      // tightened to the EAFC density (three probes showed the short-
+      // option mesh is a GEOMETRY product: at their ~40 m envelope, 3-4
+      // teammates sit within 16 m of the carrier by construction)
+      const restDeep = 16 + (1 - lineHeight) * 8; // deepest station behind the ball
       if (u < ballU - restDeep) x = (ballU - restDeep) * sign;
-      if (u > ballU + 12) x = (ballU + 12) * sign; // stations don't lead the ball (runs/box do)
+      if (u > ballU + 10) x = (ballU + 10) * sign; // stations don't lead the ball (runs/box do)
     }
     x = Math.max(2, Math.min(PITCH.length - 2, x));
   }
