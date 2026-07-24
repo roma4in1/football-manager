@@ -25,7 +25,10 @@ for (const e of rows) {
   const a = agg.get(b) ?? { n: 0, priced: 0, pricedN: 0, done: 0 };
   a.n++;
   if (e.pC !== undefined) { a.priced += e.pC; a.pricedN++; }
-  if (e.outcome === 'complete') a.done++;
+  // pC prices TURNOVER risk in the utility: a ball collected by a
+  // DIFFERENT teammate retains possession and is not a failure of the
+  // price (the first fit counted it one and broke eight pins)
+  if (e.outcome === 'complete' || e.outcome === 'teammate') a.done++;
   agg.set(b, a);
 }
 const table = [...agg.entries()].map(([b, a]) => ({
@@ -37,4 +40,13 @@ const table = [...agg.entries()].map(([b, a]) => ({
 console.log(`passes: ${rows.length}`);
 for (const r of table) {
   console.log(`${r.bucket.padEnd(18)} n=${String(r.n).padStart(5)}  priced ${Number.isNaN(r.priced) ? '  -  ' : r.priced.toFixed(2)}  realized ${r.realized.toFixed(2)}  gap ${r.gap >= 0 ? '+' : ''}${r.gap.toFixed(2)}`);
+}
+if (process.argv.includes('--emit')) {
+  // the fitted table: multiplicative shrink realized/priced, clamped,
+  // only for buckets with real support
+  const entries = table.filter((r) => r.n >= 30 && !Number.isNaN(r.priced) && r.priced > 0.05)
+    .map((r) => `  '${r.bucket}': ${Math.max(0.3, Math.min(1.2, r.realized / r.priced)).toFixed(2)},`);
+  console.log('\n// paste into PASS_CALIBRATION:\n{');
+  console.log(entries.join('\n'));
+  console.log('}');
 }

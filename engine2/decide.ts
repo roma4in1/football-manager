@@ -17,6 +17,7 @@
 import { DT, PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
 import { loftApex, loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveCurl, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
+import { calibratePass } from './pass-calibration.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
 /** L5E — the duel state machine's numbers (design: L5E-DESIGN.md). The
@@ -1363,6 +1364,12 @@ const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turno
 
 export const evaluateOptions = (input: DecideInput): Intent[] => {
   const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds, keepers } = input;
+  // hazard density for the calibration lives where the ball is GOING —
+  // a switch out of a crowded flank into an empty one is not a traffic
+  // ball (carrier-anchored density gave it the full shrink and killed
+  // the switch outright)
+  const destDensity = (at: Vec2): number => Math.min(1, bodies.filter((b) => b.team !== carrier.team &&
+    Math.hypot(b.pos.x - at.x, b.pos.y - at.y) < 14).length / 3);
   const inBounds = (p: Vec2, m = 0.5): boolean => !bounds ||
     (p.x >= bounds.x0 + m && p.x <= bounds.x1 - m && p.y >= bounds.y0 + m && p.y <= bounds.y1 - m);
   const roomToBound = (from2: Vec2, dir: { x: number; y: number }): number => {
@@ -1633,6 +1640,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // rates. The original measurement stands.)
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
+      pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest));
       const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor) * ridingWait;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
@@ -1671,7 +1679,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         // aerial control is HARDER than a ground receive — a dropping ball
         // is taxed by the taker's first touch (silk feet cushion it)
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-        const pCa = aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl;
+        const pCa = calibratePass(loftDeg, 0, dLoft,
+          aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl, destDensity(landing));
         let pvL = value(landing, mate.id);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor);
@@ -1696,7 +1705,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const speedK = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax,
             rollLaunchForArrival(Math.min(softArrive + 1, riderBehind ? riderArriveCap : Infinity), dLoft)));
           const aimK = solveCurl(here, landing, spinK, speedK);
-          const pCk = curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing);
+          const pCk = calibratePass(0, spinK, dLoft,
+            curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing), destDensity(landing));
           let pvK = value(landing, mate.id);
           pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor);
@@ -1734,9 +1744,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           if (!intoBox || dCross < 8 || !inBounds(cross, 0.8)) continue;
           const speedC = solveLoftSpeed(dCross, loftDeg);
           const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-          const pCc = aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl;
+          const pCc = calibratePass(loftDeg, 0, dCross,
+            aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl, destDensity(cross));
           let pvC = value(cross, mate.id);
-          pvC += 0.6 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
+          // 0.6 -> 1.0 under the calibrated regime: crosses are LOW-
+          // COMPLETION HIGH-VALUE by nature — the old weight was fitted
+          // when pC pretended the box was safe
+          pvC += 1.0 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor);
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
@@ -1759,7 +1773,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
         const speedS = solveLoftSpeed(dSwitch, loftDeg);
         const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
-        const pCs = aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl;
+        const pCs = calibratePass(loftDeg, 0, dSwitch,
+          aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land));
         let pvS = value(land, mate.id);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor);
