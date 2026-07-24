@@ -2296,7 +2296,7 @@ export class Sim {
             }
             const advancedRunner = advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 2;
             const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
-            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies) : null;
+            const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.bodies, this.keepers) : null;
             if (atStation) {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
@@ -2414,16 +2414,20 @@ export class Sim {
             } else {
               this.runPhase.delete(id);
               this.runningLine.delete(id);
-              if (body.command.type === 'hold') {
-                const spot = supportSpot(
-                  body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos, objective,
-                );
-                const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
-                this.attackIdle.add(id);
-                if (d > 1.4) {
-                  this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
-                  this.actionLabels.set(id, 'support');
-                }
+              // support RE-EVALUATES like a station does (the hold gate
+              // froze supporters mid-walk on stale targets while play
+              // moved on — 'support' fired 70 assignments to station's
+              // 1891 in the census, and the triangles never formed)
+              const spot = supportSpot(
+                body, carrierBody, this.bodies, this.homes.get(id) ?? body.pos, objective,
+              );
+              const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
+              this.attackIdle.add(id);
+              if (d > 1.4) {
+                this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
+                this.actionLabels.set(id, 'support');
+              } else if (body.command.type !== 'hold') {
+                this.assign(body, { type: 'hold' });
               }
             }
           }

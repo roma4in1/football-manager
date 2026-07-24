@@ -663,9 +663,15 @@ export const runPlan = (
   mate: BodyState,
   carrier: BodyState,
   bodies: readonly BodyState[],
+  keepers?: ReadonlySet<string>,
 ): { target: Vec2; lineX: number; dartY: number } | null => {
   const sign = attackSign(mate.team);
-  const opponents = bodies.filter((b) => b.team !== mate.team);
+  // the KEEPER IS NOT THE LINE (the m11 run-game killer, found via the
+  // support census: zero darts in any 11v11, ever): with him counted,
+  // the "last defender" sits on his own goal line, room-in-behind reads
+  // ~5 m, and the run game gates itself off at exactly the scale it was
+  // built for. Offside runs ride the last OUTFIELD man.
+  const opponents = bodies.filter((b) => b.team !== mate.team && !keepers?.has(b.id));
   if (opponents.length === 0) return null;
   // the last defender's line (deepest opponent toward the attacked goal)
   const lineX = sign > 0
