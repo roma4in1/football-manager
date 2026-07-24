@@ -537,6 +537,14 @@ export class Sim {
               } else if (duel.pressure >= 1 && dToCar <= DUEL.engageM &&
                 this.tick >= (duel.beatenUntil ?? 0)) {
                 duel.state = 'engage';
+              } else if ((duel.closeTicks ?? 0) >= 5 && dToCar <= 2.2 &&
+                this.tick >= (duel.beatenUntil ?? 0)) {
+                // the RUNNING CHALLENGE (the escort-conversion root, the
+                // queue's last item: a rider goal-side within touching
+                // distance for half a second makes his play — riders DO
+                // tackle at pace; waiting for the patience meter let a
+                // carrier be escorted 35 m to the box)
+                duel.state = 'engage';
               } else {
                 // JOCKEY only while a square backpedal can hold the gap. Too
                 // hot — the carrier escaping at pace OR closing faster than
@@ -553,6 +561,8 @@ export class Sim {
                   duel.state = carrierB.speed > DUEL.trackEnterMps || closingSp > 3.2 ? 'track' : 'jockey';
                 }
               }
+              duel.closeTicks = dToCar < 2.2 && (duel.state === 'jockey' || duel.state === 'track')
+                ? (duel.closeTicks ?? 0) + 1 : 0;
               this.duels.set(body.id, duel);
               // targets — computed from the carrier's PROJECTED position
               // (0.4 s ahead): the jockey LEADS the retreat, matching the
@@ -889,7 +899,7 @@ export class Sim {
   /** support sides taken this tick — two supporters must NOT share a spot
    * (both computed the same natural side and made twin runs, judged) */
   private readonly supportSides = new Map<'home' | 'away', number[]>();
-  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number }>();
+  private readonly duels = new Map<string, { state: 'recover' | 'jockey' | 'track' | 'engage' | 'staggered'; pressure: number; goalSide: boolean; plantedUntil?: number; beatenUntil?: number; closeTicks?: number }>();
   /** pre-movement positions this tick — claims sweep the ball's path in the
    * RECEIVER'S FRAME (a charging receiver adds his own ~0.6 m/tick; testing
    * against his end position alone skips the reach window) */
