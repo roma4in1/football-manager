@@ -3263,6 +3263,7 @@ export class Sim {
       if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
           carrier: body,
+          heldTicks: this.tick - this.carrierSince,
           // the world AS HE LAST SAW IT — an unseen opponent can cut the
           // pass this prices (the perception tier)
           bodies: this.perceivedBodies(id),

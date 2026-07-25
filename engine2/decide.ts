@@ -1567,6 +1567,10 @@ export interface DecideInput {
   /** mates currently RIDING the line on an L5b run — their meaningful ball
    * is into the space behind, regardless of current (jogging) speed */
   runners?: ReadonlySet<string>;
+  /** ticks this carrier has held the ball — the EAFC reference (all five
+   * radar movies): possession NEVER stands still; the shield is a beat,
+   * not a stance, and it EXPIRES */
+  heldTicks?: number;
   /** each running mate's PLANNED breach lane (the run cycle's dartY) —
    * the thread aims at where the run is GOING, not a velocity
    * extrapolation of where the runner happens to be drifting (intent
@@ -2227,13 +2231,20 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   for (const o of opponents) {
     nearOppD = Math.min(nearOppD, Math.hypot(o.pos.x - here.x, o.pos.y - here.y));
   }
+  // ...and the shield EXPIRES (the EAFC verdict, all five reference
+  // movies: possession never stands still — the carry-duration p90 was
+  // 38 ticks, four-second holds the radar footage simply does not
+  // contain): full price for the first second, fading to a quarter by
+  // three — the held ball is FORCED back into the pass/carry market
+  const heldT = input.heldTicks ?? 0;
+  const shieldFade = Math.max(0.25, 1 - Math.max(0, heldT - 10) / 20);
   options.push({
     kind: 'shield',
     // the conservation premium reaches here too — shield IS retention
     // (with the premium on carries but not the shield, the channel's
     // elite carried INTO the pincer instead of riding it out)
     utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * (pvHere * 0.2 + 0.9 * retainW)) *
-      (livePress ? 0.45 : 1) * (nearOppD > 6 ? 0.2 : 1),
+      (livePress ? 0.45 : 1) * (nearOppD > 6 ? 0.2 : 1) * shieldFade,
   });
 
   // the KNOCK-AND-GO (L5E): jockeyed by a FRONTMAN with space behind him —
