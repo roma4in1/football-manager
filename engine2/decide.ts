@@ -2175,12 +2175,20 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // shield's appeal collapses and the best move wins instead
   const livePress = opponents.some((o) =>
     Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 3);
+  // ...and shielding with NOBODY NEAR is not football at any price (the
+  // builder's frame: carriers standing over the ball in open grass) —
+  // beyond 6 m of the nearest opponent the shield is a dead option
+  let nearOppD = Infinity;
+  for (const o of opponents) {
+    nearOppD = Math.min(nearOppD, Math.hypot(o.pos.x - here.x, o.pos.y - here.y));
+  }
   options.push({
     kind: 'shield',
     // the conservation premium reaches here too — shield IS retention
     // (with the premium on carries but not the shield, the channel's
     // elite carried INTO the pincer instead of riding it out)
-    utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * (pvHere * 0.2 + 0.9 * retainW)) * (livePress ? 0.45 : 1),
+    utility: (DECIDE.shieldUtility + DECIDE.possessionDiscount * (pvHere * 0.2 + 0.9 * retainW)) *
+      (livePress ? 0.45 : 1) * (nearOppD > 6 ? 0.2 : 1),
   });
 
   // the KNOCK-AND-GO (L5E): jockeyed by a FRONTMAN with space behind him —

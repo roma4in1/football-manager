@@ -242,6 +242,20 @@ export function draw(canvas: HTMLCanvasElement, view: ViewState): void {
       16,
     );
   }
+
+  // ── the referee's word: CORNER / PENALTY / GOAL! — centred, on top ──────
+  const banner = view.prev.banner ?? view.next.banner;
+  if (banner) {
+    const cw = ctx.canvas.clientWidth || ctx.canvas.width;
+    ctx.font = '800 22px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    const w = ctx.measureText(banner).width + 28;
+    ctx.fillRect(cw / 2 - w / 2, 26, w, 34);
+    ctx.fillStyle = '#ffd75e';
+    ctx.fillText(banner, cw / 2, 51);
+    ctx.textAlign = 'left';
+  }
 }
 
 /** nearest body to a canvas click, in meters */

@@ -57,9 +57,14 @@ export const calibratePass = (
  * the two tables land together or not at all. Null = legacy algebra. */
 export const CARRY_RETENTION: ReadonlyArray<number> | null =
   // the BOTH-SIDED rule honored: same ledger as the pass table.
-  // Segment retention by density bucket; density-0 (n=50) smoothed
-  // monotone against its own noise (raw 0.62 under bucket-1's 0.72).
-  [0.72, 0.70, 0.63, 0.62];
+  // Bucket 0 corrected for START-DENSITY CONTAMINATION: density is
+  // logged at the carry's first touch, so open-starting carries that
+  // run INTO traffic drag the "open" bucket to 0.62-0.72 when a carry
+  // that STAYS open survives ~0.9 — the mispricing made open carrying
+  // 22% too cheap and SHIELD outbid moving (the builder's stopped-flow
+  // frames). 0.85 splits the honest difference; the traffic buckets
+  // are start≈journey and stand as fitted.
+  [0.85, 0.70, 0.63, 0.62];
 
 export const carryRetention = (pressure: number): number | null => {
   if (!CARRY_RETENTION) return null;

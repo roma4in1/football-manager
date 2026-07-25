@@ -240,6 +240,7 @@ export class Sim {
       this.ball.vz = 0;
       this.ball.z = 0;
       this.pendingKickoffTeam = 'away';
+      this.bannerText = 'HALF-TIME';
       this.restartTaker = null;
       this.restartType = null;
       this.restartPenalty = false;
@@ -376,6 +377,7 @@ export class Sim {
       this.restartPenalty = false;
       this.restartLock = null;
       this.wallSpots.clear();
+      this.bannerText = null;
     }
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
     if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
@@ -949,6 +951,7 @@ export class Sim {
       if (Math.abs(yAt - GOAL.centerY) <= GOAL.mouthHalfWidthM && zAt <= GOAL.barZ) {
         // the team DEFENDING this end conceded (home attacks +x, defends x=0)
         this.goals.push({ tick: this.tick, against: lineX === 0 ? 'home' : 'away', y: yAt, z: zAt });
+        this.bannerText = 'GOAL!';
       }
     }
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
@@ -1049,6 +1052,13 @@ export class Sim {
         }
         this.lostPossessionAt.set('home', -999);
         this.lostPossessionAt.set('away', -999);
+        this.bannerText = this.restartPenalty ? 'PENALTY'
+          : this.restartType === 'kickoff' ? (this.half === 2 && this.tick <= this.halfTick + 60 ? 'SECOND HALF' : 'KICKOFF')
+          : this.restartType === 'throw-in' ? 'THROW-IN'
+          : this.restartType === 'corner' ? 'CORNER'
+          : this.restartType === 'goal-kick' ? 'GOAL KICK'
+          : this.restartType === 'free-kick' ? 'FREE KICK'
+          : this.bannerText;
         this.wallSpots.clear();
         if (this.restartType === 'free-kick' && !this.restartPenalty) {
           const g = goalCenter(award);
@@ -1083,6 +1093,7 @@ export class Sim {
         // opponent camped the spot (the census: an away striker taking
         // home's free kick at their own box)
         this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 200 : 20) };
+        this.restartSetupUntil = this.tick + (this.restartTaker ? 30 : 0);
         this.deadSinceTick = -1;
       }
     } else {
@@ -1249,6 +1260,7 @@ export class Sim {
             }
           }
           this.actionLabels.set(b.id, card ? `foul·${card}` : 'foul');
+          this.bannerText = card === 'red' ? 'FOUL — RED CARD' : card === 'yellow' ? 'FOUL — YELLOW' : 'FOUL';
           this.telemetry?.({ t: 'foul', tick: this.tick, by: b.id, on: carrier.id, behind, lunging, card });
           continue;
         }
@@ -2221,6 +2233,7 @@ export class Sim {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (this.sentOff.has(b.id)) continue; // off the pitch, out of the game
       if (this.restartTaker && b.id !== this.restartTaker) continue; // the taker's ball
+      if (this.restartTaker && this.tick < this.restartSetupUntil) continue; // teams still setting
       if (b.id === this.ball.kickerId && this.tick < this.ball.kickerLockUntilTick) continue;
       // a RESTART is the awarded team's put-back: the other side stands
       // off until the lock expires (L8-minimal)
@@ -2828,6 +2841,43 @@ export class Sim {
                 const outX = nearHome ? GOAL.boxDepthM + 2.5 : PITCH.length - GOAL.boxDepthM - 2.5;
                 this.assign(body, { type: 'moveTo', target: { x: outX, y: Math.max(6, Math.min(PITCH.width - 6, body.pos.y)) }, regime: 'jog' });
                 this.actionLabels.set(id, 'clear-box');
+                continue;
+              }
+            }
+            // the ATTACK sets its box before a delivery restart: the three
+            // most advanced teammates take the slots while the taker waits
+            if (tkB && body.team === tkB.team && id !== this.restartTaker &&
+              (this.restartType === 'corner' ||
+                (this.restartType === 'free-kick' && !this.restartPenalty &&
+                  Math.hypot(goalCenter(tkB.team).x - this.ball.pos.x, goalCenter(tkB.team).y - this.ball.pos.y) <= 40))) {
+              const bSign = attackSign(body.team);
+              const bGoalX = bSign > 0 ? PITCH.length : 0;
+              let aheadCt = 0;
+              for (const bid2 of this.brains) {
+                if (bid2 === id || bid2 === this.restartTaker) continue;
+                const b3 = this.byId.get(bid2)!;
+                if (b3.team !== body.team) continue;
+                if (bSign * (b3.pos.x - body.pos.x) > 0) aheadCt++;
+              }
+              if (aheadCt < 3) {
+                const slots2 = [
+                  { x: bGoalX - bSign * 11, y: PITCH.width / 2 },
+                  { x: bGoalX - bSign * 7, y: PITCH.width / 2 - 6 },
+                  { x: bGoalX - bSign * 7, y: PITCH.width / 2 + 6 },
+                ];
+                const st2 = { ...slots2[aheadCt] };
+                // onside at free kicks (corners are exempt by law)
+                if (this.restartType === 'free-kick') {
+                  const oppU3 = this.bodies.filter((b3) => b3.team !== body.team && !this.sentOff.has(b3.id))
+                    .map((b3) => b3.pos.x * bSign).sort((a2, b4) => b4 - a2);
+                  const line3 = oppU3[1];
+                  if (line3 !== undefined && st2.x * bSign > line3 - 1) st2.x = (line3 - 1) * bSign;
+                }
+                const dSt2 = Math.hypot(st2.x - body.pos.x, st2.y - body.pos.y);
+                if (dSt2 > 1.5) this.assign(body, { type: 'moveTo', target: st2, regime: dSt2 > 9 ? 'run' : 'jog' });
+                else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+                this.attackIdle.add(id);
+                this.actionLabels.set(id, 'box');
                 continue;
               }
             }
@@ -3492,6 +3542,11 @@ export class Sim {
    * retreat from the spot, kickoffs reset both teams to their homes,
    * and throw-ins are thrown (two-handed, offside-exempt per the law). */
   private restartType: 'kickoff' | 'throw-in' | 'corner' | 'goal-kick' | 'free-kick' | null = null;
+  /** the referee's word for the workbench header */
+  private bannerText: string | null = null;
+  /** teams SET THEMSELVES before a restart is taken (builder): claims
+   * are frozen for a beat after placement while both sides organize */
+  private restartSetupUntil = -1;
   private restartPenalty = false;
   /** HALVES: which half we are in, and the queued half-start kickoff
    * (the opening ceremony and the second-half handover to away) */
@@ -3523,6 +3578,7 @@ export class Sim {
           spot: { x: cb.pos.x, y: cb.pos.y },
         };
         this.actionLabels.set(cb.id, 'offside');
+        this.bannerText = 'OFFSIDE';
         this.offsideTagged.clear();
         this.offsideKickTeam = null;
         return;
@@ -3782,6 +3838,7 @@ export class Sim {
       tick: this.tick,
       t: this.tick * DT,
       bodies,
+      ...(this.bannerText ? { banner: this.bannerText } : {}),
       ball: {
         x: this.ball.pos.x,
         y: this.ball.pos.y,

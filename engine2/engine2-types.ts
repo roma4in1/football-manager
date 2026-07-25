@@ -113,6 +113,9 @@ export interface Frame {
   t: number;
   bodies: FrameBody[];
   ball: FrameBall;
+  /** the referee's word — 'CORNER', 'PENALTY', 'GOAL!' … shown by the
+   * workbench during whistles and ceremonies */
+  banner?: string;
 }
 
 export interface FrameBall {
