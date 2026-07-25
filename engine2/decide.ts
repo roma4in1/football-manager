@@ -1139,7 +1139,12 @@ export const blockStation = (
         // the offside trap: the pressed carrier cannot play the killer
         // ball, and the lurker must retreat or die offside.
         const lineTarget = Math.min(oppDeepU + trapUp, ballU - 10);
-        if (x * sign < lineTarget) x = lineTarget * sign;
+        // a line is a LINE (the tick-141 scatter: push-only equalizing
+        // raised the low stations but left block-shifted ones 20 m
+        // above the target — a diagonal, not a back line): every line
+        // member SNAPS to the shared target; the zonal shading then
+        // distributes them along it
+        x = lineTarget * sign;
         x = Math.max(2, Math.min(PITCH.length - 2, x));
       }
     } else {

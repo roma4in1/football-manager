@@ -22,8 +22,8 @@ const F442: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<s
   { slot: 'gk', x: 5, y: 34 },
   { slot: 'lb', x: 18, y: 55 }, { slot: 'cb1', x: 16, y: 42 },
   { slot: 'cb2', x: 16, y: 26 }, { slot: 'rb', x: 18, y: 13 },
-  { slot: 'lm', x: 40, y: 55 }, { slot: 'cm1', x: 38, y: 42 },
-  { slot: 'cm2', x: 38, y: 26 }, { slot: 'rm', x: 40, y: 13 },
+  { slot: 'lm', x: 40, y: 55, instr: { holdWidth: true } }, { slot: 'cm1', x: 38, y: 42 },
+  { slot: 'cm2', x: 38, y: 26 }, { slot: 'rm', x: 40, y: 13, instr: { holdWidth: true } },
   { slot: 'st1', x: 58, y: 42 }, { slot: 'st2', x: 58, y: 26 },
 ];
 
