@@ -9,7 +9,7 @@
  * PILOT family: the duel/defense contexts — judged in the workbench
  * before the remaining scenario families are swept.
  */
-import type { ScenarioDef } from '../engine2-types.ts';
+import { PITCH, type ScenarioDef } from '../engine2-types.ts';
 
 const out = { pace: 13, acceleration: 13, agility: 13, balance: 13, dribbling: 13, firstTouch: 13, passing: 13, tackling: 13, strength: 13, stamina: 13 };
 const gloves = { ...out, agility: 15, firstTouch: 14, pace: 12 };
@@ -39,6 +39,23 @@ const F433: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<s
 ];
 
 /** 5-2-3: a back five with wingbacks, a double pivot, a front three */
+/** the MANAGER-PLACEMENT proof preset: a 4-2-3-1 whose key players are
+ * placed ANYWHERE per phase — a false nine dropping into midfield in
+ * build-up, an attacking mid surging to the box edge in the final
+ * third, a left back bombing high when pressing and pinning deep in the
+ * low block. Not derivable from any rigid formation band: the point. */
+const F4231X: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown>; phases?: Record<string, { x: number; y: number }> }> = [
+  { slot: 'gk', x: 5, y: 34 },
+  { slot: 'lb', x: 18, y: 55, phases: { high: { x: 60, y: 60 }, low: { x: 12, y: 53 } } },
+  { slot: 'cb1', x: 16, y: 42 }, { slot: 'cb2', x: 16, y: 26 },
+  { slot: 'rb', x: 18, y: 13 },
+  { slot: 'dm1', x: 32, y: 40 }, { slot: 'dm2', x: 32, y: 28 },
+  { slot: 'lw', x: 52, y: 55, instr: { holdWidth: true } },
+  { slot: 'am', x: 46, y: 34, phases: { final: { x: 75, y: 34 } } },
+  { slot: 'rw', x: 52, y: 13, instr: { holdWidth: true } },
+  { slot: 'st', x: 58, y: 34, phases: { build: { x: 40, y: 34 }, final: { x: 88, y: 34 } } },
+];
+
 const F523: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown> }> = [
   { slot: 'gk', x: 5, y: 34 },
   { slot: 'lwb', x: 20, y: 58, instr: { joinAttack: 0.8, holdWidth: true } }, { slot: 'cb1', x: 15, y: 46 },
@@ -49,8 +66,8 @@ const F523: ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<s
   { slot: 'rw', x: 54, y: 16, instr: { holdWidth: true } },
 ];
 
-export const FORMATIONS: Readonly<Record<string, ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown> }>>> = {
-  '442': F442, '433': F433, '523': F523,
+export const FORMATIONS: Readonly<Record<string, ReadonlyArray<{ slot: string; x: number; y: number; instr?: Record<string, unknown>; phases?: Record<string, { x: number; y: number }> }>>> = {
+  '442': F442, '433': F433, '523': F523, '4231x': F4231X,
 };
 
 export interface SituationDef {
@@ -74,11 +91,15 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
   description: def.description,
   durationTicks: def.durationTicks,
   bodies: (['home', 'away'] as const).flatMap((team) =>
-    (FORMATIONS[(team === 'home' ? def.homeFormation : def.awayFormation) ?? '442'] ?? F442).map(({ slot, x, y, instr }) => {
+    (FORMATIONS[(team === 'home' ? def.homeFormation : def.awayFormation) ?? '442'] ?? F442).map(({ slot, x, y, instr, phases }) => {
       const id = `${team === 'home' ? 'h' : 'a'}-${slot}`;
       const px = team === 'home' ? x : 105 - x;
       const p = def.place?.[id] ?? { x: px, y };
       const isGk = slot === 'gk';
+      // manager phase placements mirror with the team like everything else
+      const ph = phases
+        ? Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, { x: team === 'home' ? v.x : PITCH.length - v.x, y: v.y }]))
+        : undefined;
       return {
         id,
         team,
@@ -86,6 +107,7 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
         facing: team === 'home' ? 0 : Math.PI,
         attributes: isGk ? gloves : out,
         ...(isGk ? { keeper: true as const } : { brain: 'onBall' as const }),
+        ...(ph ? { phaseHomes: ph } : {}),
         instructions: {
           pressing: team === 'home' ? (def.homePressing ?? 0.5) : (def.awayPressing ?? 0.5),
           lineHeight: 0.5,
@@ -172,4 +194,18 @@ export const m11Formations = matchSituation({
   awayFormation: '523',
 });
 
-export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations];
+/** the MANAGER-PLACEMENT proof match: the phase-authored 4-2-3-1x
+ * against a stock 4-4-2 — the pin asserts players FOLLOW the authored
+ * placements phase by phase */
+export const m11Placement = matchSituation({
+  name: 'm11-4231x-442',
+  description: 'The manager-placement proof: home plays a 4-2-3-1 with per-phase authored positions (false nine drops in build, AM surges in the final third, LB bombs in the high press). Judge whether players follow the manager, not the formation.',
+  durationTicks: 900,
+  ball: { pos: { x: 52.5, y: 34 } },
+  homePressing: 0.6,
+  awayPressing: 0.6,
+  homeFormation: '4231x',
+  awayFormation: '442',
+});
+
+export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations, m11Placement];

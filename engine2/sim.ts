@@ -83,6 +83,8 @@ export class Sim {
    * Kickoff staging keeps the base formation. Manager per-slot overrides
    * are the recorded next hook. Match scale only. */
   private readonly baseHomes = new Map<string, Vec2>();
+  /** manager-authored per-phase placements — override the derived bands */
+  private readonly phaseHomeOverrides = new Map<string, Partial<Record<string, Vec2>>>();
   private readonly teamPhase = new Map<'home' | 'away', 'build' | 'progress' | 'final' | 'high' | 'mid' | 'low'>();
   private lastPossessTeam: 'home' | 'away' | null = null;
   /** phase changes COMMIT only after persisting (the settled lesson —
@@ -145,6 +147,13 @@ export class Sim {
       const span = Math.max(1, maxU - minU);
       const [t0, t1] = Sim.PHASE_BANDS[phase];
       for (const b of outs) {
+        // the MANAGER'S placement outranks the derivation — anywhere on
+        // the field, per phase (the rigid-formation weakness retired)
+        const ov = this.phaseHomeOverrides.get(b.id)?.[phase];
+        if (ov) {
+          this.homeTargets.set(b.id, { x: ov.x, y: ov.y });
+          continue;
+        }
         const bh = this.baseHomes.get(b.id)!;
         const u = t0 + ((bh.x * sgn - minU) / span) * (t1 - t0);
         const x = Math.max(3, Math.min(PITCH.length - 3, u * sgn + (sgn > 0 ? 0 : PITCH.length)));
@@ -273,6 +282,7 @@ export class Sim {
       if (b.instructions) this.instructions.set(b.id, { ...b.instructions });
       this.homes.set(b.id, { ...b.pos });
       this.baseHomes.set(b.id, { ...b.pos });
+      if (b.phaseHomes) this.phaseHomeOverrides.set(b.id, b.phaseHomes);
     }
     for (const ev of def.script) {
       const body = this.byId.get(ev.bodyId);
@@ -2710,7 +2720,7 @@ export class Sim {
             // on his flank; electing him into a CENTRAL late arrival was
             // eroding the width identity round by round (47 -> 33 -> 21 m)
             const lateArrival = carrierProg2 > 50 && moreAdvanced < 4 &&
-              advSign * (body.pos.x - carrierBody.pos.x) > -22 &&
+              advSign * (body.pos.x - carrierBody.pos.x) > -(10 + 24 * (this.instructions.get(id)?.roam ?? 0.5)) &&
               this.instructions.get(id)?.holdWidth !== true;
             const advancedRunner = (advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3) || lateArrival;
             // THREE supporters (builder: 'increase the short passing and
@@ -2918,6 +2928,7 @@ export class Sim {
               // 1891 in the census, and the triangles never formed)
               const spot = supportSpot(
                 body, carrierBody, this.perceivedBodies(id), this.homes.get(id) ?? body.pos, objective,
+                this.instructions.get(id)?.roam ?? 0.5,
                 this.attackClaims.get(body.team),
               );
               this.attackClaims.get(body.team)!.push(spot);

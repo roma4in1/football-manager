@@ -156,6 +156,11 @@ export interface PlayInstructions {
    * stay wide... to open up the pitch'): exempt from the lateral
    * block-shift and the far-tuck while the team has the ball. */
   holdWidth?: boolean;
+  /** RUNNING AREA (builder: 'a player follows the managers commands,
+   * running areas'): 0..1, default 0.5 — how far this player ranges off
+   * his placement into the local game (support ring, late arrivals).
+   * 0 = stays home; 1 = free role. */
+  roam?: number;
   /** SET-PIECE hooks (builder: takers and styles manager-customizable).
    * setPieceTaker biases the ceremony's taker election to this player;
    * the styles steer the taker's execution — 'auto' prices by geometry. */
@@ -626,6 +631,8 @@ export const supportSpot = (
   bodies: readonly BodyState[],
   home: Vec2,
   objective: 'keep' | 'score',
+  /** the manager's roam leash, 0..1 (default 0.5) */
+  roam = 0.5,
   /** targets already CLAIMED by teammates this tick — run lanes, other
    * support spots, box slots. The claims channel was runner-to-runner
    * only, so a supporter, a runner and a box man converged on one spot
@@ -655,7 +662,7 @@ export const supportSpot = (
     if (cand.x < 1 || cand.x > PITCH.length - 1 || cand.y < 1 || cand.y > PITCH.width - 1) continue;
     const dist = Math.hypot(cand.x - carrier.pos.x, cand.y - carrier.pos.y);
     if (dist < 4) continue; // an outlet is not a crowd around the carrier
-    if (objective === 'score' && dist > 17) continue; // the mesh ring: short options only
+    if (objective === 'score' && dist > 11 + 12 * roam) continue; // the mesh ring, scaled by the manager's leash
     const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;

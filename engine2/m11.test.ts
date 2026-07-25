@@ -135,3 +135,32 @@ test('THE EQUILIBRIUM PIN (the convergence loop\'s legacy): a full slice passes 
   assert.ok(events >= 45, `the slice circulates (${events} pass events)`);
   assert.ok(kept / Math.max(1, events) >= 0.45, `passing retains (${(kept / Math.max(1, events) * 100).toFixed(0)}%)`);
 });
+
+test('THE MANAGER PLACEMENT PIN: players follow authored phase positions, not the formation', () => {
+  // the 4-2-3-1x authors a false nine (build: drop to x=40; final: surge
+  // to x=88) and a phase-split left back (high: x=60; low: x=12). The
+  // pin asserts the PHASE DELTA — mean position shifts no rigid
+  // formation band would produce. Storyboarded wb-0..2: st build d̄
+  // 6.6-14.1 off the authored spot with station shifts orbiting it.
+  const acc: Record<string, number[]> = { stBuild: [], stFinal: [], lbHigh: [], lbLow: [] };
+  for (const seed of ['wb-0', 'wb-1', 'wb-2']) {
+    const sim = new Sim(scenarioByName('m11-4231x-442'), seed);
+    for (let t = 0; t < 900; t++) {
+      sim.step();
+      if (t % 5 !== 0) continue;
+      const ph = (sim as any).teamPhase?.get('home');
+      const st = sim.bodies.find((b) => b.id === 'h-st')!;
+      const lb = sim.bodies.find((b) => b.id === 'h-lb')!;
+      if (ph === 'build') acc.stBuild.push(st.pos.x);
+      if (ph === 'final') acc.stFinal.push(st.pos.x);
+      if (ph === 'high') acc.lbHigh.push(lb.pos.x);
+      if (ph === 'low') acc.lbLow.push(lb.pos.x);
+    }
+  }
+  const avg = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
+  assert.ok(acc.stBuild.length >= 10 && acc.stFinal.length >= 10, `both authored striker phases occurred (${acc.stBuild.length}/${acc.stFinal.length})`);
+  assert.ok(avg(acc.stFinal) - avg(acc.stBuild) >= 18, `the false nine drops in build and surges in the final third (Δ=${(avg(acc.stFinal) - avg(acc.stBuild)).toFixed(1)}m)`);
+  if (acc.lbHigh.length >= 10 && acc.lbLow.length >= 10) {
+    assert.ok(avg(acc.lbHigh) - avg(acc.lbLow) >= 15, `the left back splits high press from low block (Δ=${(avg(acc.lbHigh) - avg(acc.lbLow)).toFixed(1)}m)`);
+  }
+});

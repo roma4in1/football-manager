@@ -55,6 +55,12 @@ export interface BodyInit {
   id: string;
   team: 'home' | 'away';
   pos: Vec2;
+  /** MANAGER PHASE PLACEMENTS (builder: 'managers can place players
+   * anywhere on the field for any phase... rigid 443 or 523 commands
+   * will not work'): absolute per-phase homes. Any phase authored here
+   * OVERRIDES the derived band-map; unauthored phases keep the
+   * derivation. Keys: build|progress|final|high|mid|low. */
+  phaseHomes?: Partial<Record<'build' | 'progress' | 'final' | 'high' | 'mid' | 'low', Vec2>>;
   /** radians, 0 = +x; defaults to facing the pitch centre */
   facing?: number;
   attributes: BodyAttributes;
