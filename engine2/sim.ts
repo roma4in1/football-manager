@@ -345,6 +345,26 @@ export class Sim {
         }
         // act === 'short': leave the ball with the taker's brain
       }
+      // KICKOFF RULE (builder): the taker must PASS — the classic tap
+      // back to a teammate, never a solo carry off the spot
+      if (this.ball.carrierId === this.restartTaker && this.restartType === 'kickoff') {
+        const tk0 = this.byId.get(this.restartTaker)!;
+        let near: { m: BodyState; d: number } | null = null;
+        for (const m of this.bodies) {
+          if (m.team !== tk0.team || m.id === tk0.id || this.keepers.has(m.id) || this.sentOff.has(m.id)) continue;
+          const dm = Math.hypot(m.pos.x - tk0.pos.x, m.pos.y - tk0.pos.y);
+          if (dm < 2 || dm > 30) continue;
+          // prefer the man BEHIND the spot (the tap back)
+          const behind0 = attackSign(tk0.team) * (m.pos.x - tk0.pos.x) < 0 ? 0 : 8;
+          if (!near || dm + behind0 < near.d) near = { m, d: dm + behind0 };
+        }
+        if (near) {
+          kickBall(this.ball, { x: near.m.pos.x, y: near.m.pos.y },
+            Math.max(7, Math.min(12, rollLaunchForArrival(4, Math.hypot(near.m.pos.x - tk0.pos.x, near.m.pos.y - tk0.pos.y)))), 0, tk0.id, this.tick);
+          this.intendedReceiverId = near.m.id;
+          this.actionLabels.set(tk0.id, 'kickoff');
+        }
+      }
       if (this.ball.carrierId === this.restartTaker && this.restartType === 'throw-in') {
         // the THROW-IN FORM: two-handed, released above the head, to the
         // best near mate — and offside-exempt (the law's own rule)
@@ -2584,10 +2604,13 @@ export class Sim {
             // THIRD the LATE ARRIVAL joins them — a fourth man level or
             // up to 18 m behind the carrier attacking the line from deep
             const carrierProg2 = advSign > 0 ? carrierBody.pos.x : PITCH.length - carrierBody.pos.x;
-            const lateArrival = carrierProg2 > 55 && moreAdvanced < 4 &&
-              advSign * (body.pos.x - carrierBody.pos.x) > -18;
+            const lateArrival = carrierProg2 > 50 && moreAdvanced < 4 &&
+              advSign * (body.pos.x - carrierBody.pos.x) > -22;
             const advancedRunner = (advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3) || lateArrival;
-            const atStation = closerMates >= 2 && !boxOccupy && !advancedRunner;
+            // THREE supporters (builder: 'increase the short passing and
+            // midfielder runs/support when attacking') — the third man is
+            // what turns a wall into a triangle with an exit
+            const atStation = closerMates >= 3 && !boxOccupy && !advancedRunner;
             let claimedYs: number[] | undefined;
             if (!boxOccupy && !atStation && objective === 'score') {
               claimedYs = [];
@@ -2608,7 +2631,7 @@ export class Sim {
               // the CLOSEST stationer stands behind the ball at ~10 m —
               // the safe under-ball option every reference frame shows
               let st;
-              if (closerMates === 3) {
+              if (closerMates === 4) {
                 const gSign = attackSign(body.team);
                 st = {
                   x: Math.max(2, Math.min(PITCH.length - 2, carrierBody.pos.x - gSign * 9)),
@@ -3704,6 +3727,22 @@ export class Sim {
         if (inBox) {
           this.teleport(b, {
             x: nearHome ? GOAL.boxDepthM + 2.5 : PITCH.length - GOAL.boxDepthM - 2.5,
+            y: Math.max(6, Math.min(PITCH.width - 6, b.pos.y)),
+          });
+        }
+      }
+    }
+    // GOAL-KICK RULE (builder): no opponent inside the box while it is
+    // taken — staged straight out to the edge
+    if (this.restartType === 'goal-kick') {
+      const nearHome = spot.x < PITCH.length / 2;
+      for (const b of this.bodies) {
+        if (b.team === award || this.sentOff.has(b.id)) continue;
+        const inBox = (nearHome ? b.pos.x < GOAL.boxDepthM + 1 : b.pos.x > PITCH.length - GOAL.boxDepthM - 1) &&
+          Math.abs(b.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 1;
+        if (inBox) {
+          this.teleport(b, {
+            x: nearHome ? GOAL.boxDepthM + 3 : PITCH.length - GOAL.boxDepthM - 3,
             y: Math.max(6, Math.min(PITCH.width - 6, b.pos.y)),
           });
         }

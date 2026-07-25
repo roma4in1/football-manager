@@ -1743,7 +1743,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // real chance with a CLEAN lane is taken — measured ~6 passed-up
     // xG>0.12 moments per match with carry-to-better outbidding the
     // strike the better spot was FOR
-    const finisher = xGHere >= 0.12 && laneFactor >= 0.7 ? 1.35 : 1;
+    // ...and INSIDE THE BOX the crowd is not a veto (builder frame: the
+    // striker carrying at the six-yard line instead of shooting): a box
+    // shot through traffic deflects, spills, and scores — the lane tax
+    // floors at 0.5 there, and a real chance fires crowd or no crowd
+    const inBoxShot = dGoal <= 16.5;
+    const laneEff = inBoxShot ? Math.max(0.5, laneFactor) : laneFactor;
+    const finisher = (xGHere >= 0.12 && laneFactor >= 0.7) || (inBoxShot && xGHere >= 0.12) ? 1.45 : 1;
     // the CURLED FINISH (builder: 'increase curving physics'): from a
     // real angle the across-goal shot BENDS into the far corner — the
     // arc bows away from the keeper's reach and comes back inside the
@@ -1755,7 +1761,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       shotSpin = crossG > 0 ? 45 : -45;
       shotAim = solveCurl(here, dest, shotSpin, DECIDE.shotSpeedMps);
     }
-    options.push({ kind: 'shoot', dest: shotAim, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor * finisher, spin: shotSpin || undefined });
+    options.push({ kind: 'shoot', dest: shotAim, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneEff * finisher, spin: shotSpin || undefined });
     // the CHIP (L7's counter): a keeper RUSHED OFF HIS LINE leaves the goal
     // open in z, not y — loft it over him, dropping under the bar. The guard
     // figure is the last opponent near the goal mouth; the chip exists only
