@@ -3002,7 +3002,13 @@ export class Sim {
               // the two nearest hunt; everyone else keeps his structure.
               // Ranked by INTERCEPT TIME — on a rolling ball, distance to
               // the current spot elects the wrong man (the tick-802 race)
-              const myMeet = this.interceptPoint(body).tMeet;
+              // a BACK-LINE defender counterpresses only when CLEARLY
+              // first (+0.5 s handicap): the election was position-blind
+              // and a CB who happened to be near the flip point hunted
+              // into the opponent corner 40 m from his line partner (the
+              // tick-293 spacing frame) while midfielders stood by
+              const myMeet = this.interceptPoint(body).tMeet +
+                (this.backLineHome(id, body.team) ? 0.5 : 0);
               let closerCp = 0;
               for (const bid of teamBrains) {
                 if (bid === id) continue;
