@@ -1288,8 +1288,17 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
         if (o.team === defender.team) continue;
         if (Math.hypot(o.pos.x - h.x, o.pos.y - h.y) < 16) lurkers++;
       }
+      // the ZONE is where the defender's line ACTUALLY STANDS, not his
+      // formation home (the home-anchor family's THIRD member, after the
+      // press band and the block shift): with the danger line pushed to
+      // halfway, a CB's home sat 20 m behind him and the man BETWEEN the
+      // centre-backs cost phantom displacement nobody would pay — the
+      // between-CBs striker went unmarked (the tick-178 frame)
+      const zoneD = Math.min(
+        Math.hypot(at.x - h.x, at.y - h.y),
+        Math.hypot(at.x - b.pos.x, at.y - b.pos.y) + 4);
       return Math.hypot(b.pos.x - at.x, b.pos.y - at.y) +
-        DUEL.dutyZoneW * Math.hypot(at.x - h.x, at.y - h.y) * (1 + 0.7 * Math.min(2, lurkers));
+        DUEL.dutyZoneW * zoneD * (1 + 0.7 * Math.min(2, lurkers));
     };
     const covers = unit.filter((b) => b.id !== nearest.id &&
       Math.hypot(b.pos.x - carrier.pos.x, b.pos.y - carrier.pos.y) < DUEL.localGameR)
@@ -1496,6 +1505,33 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
     if (pressed) trapUp = 1.2;
   }
   const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep, true, 1, false, trapUp);
+  // ZONAL MARKING ON THE LINE (the tick-178 frame: the striker BETWEEN
+  // the centre-backs, unmarked — the duty board's claimant pool is
+  // carrier-local and the line often sits outside it): a line defender
+  // SHADES onto the threat standing in his own zone — nearest line
+  // member takes him, the others hold width. Measured 57-60% of central
+  // line-zone threats had nobody within 3.5 m before this.
+  if (isBackLine && unit.length >= 8) {
+    let threat: BodyState | null = null;
+    for (const o of bodies) {
+      if (o.team === defender.team || keepers?.has(o.id)) continue;
+      if (Math.abs(o.pos.x * sgnD - st.x * sgnD) > 7) continue;
+      if (Math.abs(o.pos.y - st.y) > 8) continue;
+      if (!threat || Math.abs(o.pos.y - st.y) < Math.abs(threat.pos.y - st.y)) threat = o;
+    }
+    if (threat) {
+      // am I the line member closest to him? (both CBs converging on one
+      // striker would open both channels)
+      let mine = true;
+      for (const b of unit) {
+        if (b.id === defender.id || keepers?.has(b.id)) continue;
+        const bh = homes.get(b.id);
+        if (!bh || bh.x * sgnD > deepestHome + 6) continue;
+        if (Math.abs(b.pos.y - threat.pos.y) < Math.abs(defender.pos.y - threat.pos.y) - 0.5) { mine = false; break; }
+      }
+      if (mine) st.y = st.y + (threat.pos.y - st.y) * 0.7;
+    }
+  }
   // VACANCY ROTATION (the builder's dragged-CB principle, second half:
   // "the position he leaves open gets covered immediately by a teammate
   // who then leaves their position to be covered, etc"): a shape-holder

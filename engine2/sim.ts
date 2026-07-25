@@ -2789,7 +2789,14 @@ export class Sim {
                 // knock-past lesson's FOURTH appearance, and it gutted
                 // both line speed and the release gate's up-to-speed
                 // check); the phase still ends at the seam itself
-                const overshootY = bent
+                // ...but only a genuinely LATERAL dart overshoots — when
+                // the seam is where the runner already stands, an 8 m
+                // overshoot sent him sprinting AWAY from the very gap he
+                // owned (the tick-178 frame: the striker between the CBs
+                // running across the gap instead of attacking it); the
+                // straight dart pumps in and out of the line instead
+                const lateral = Math.abs(st.dartY - body.pos.y) > 3;
+                const overshootY = bent && lateral
                   ? st.dartY + Math.sign(st.dartY - body.pos.y || 1) * 8
                   : st.dartY;
                 this.assign(body, {
