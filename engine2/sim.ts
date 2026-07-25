@@ -85,6 +85,13 @@ export class Sim {
   private readonly baseHomes = new Map<string, Vec2>();
   private readonly teamPhase = new Map<'home' | 'away', 'build' | 'progress' | 'final' | 'high' | 'mid' | 'low'>();
   private lastPossessTeam: 'home' | 'away' | null = null;
+  /** phase changes COMMIT only after persisting (the settled lesson —
+   * scrum possession flips re-homed both teams several times in
+   * seconds) and homes GLIDE to the new band instead of snapping
+   * (every station target on the pitch jumped at once — the builder's
+   * 'more chaotic now') */
+  private readonly pendingPhase = new Map<'home' | 'away', { phase: string; since: number }>();
+  private readonly homeTargets = new Map<string, Vec2>();
 
   // fitted against the EAFC envelope (~40 m both-team): each band keeps
   // a team span of ~34-44 m — the first cut stretched to 48+ and the
@@ -119,7 +126,15 @@ export class Sim {
         }
       }
       const phase = seq[idx];
-      if (phase === cur) continue;
+      if (phase === cur) { this.pendingPhase.delete(team); continue; }
+      // persistence: the new phase must hold 15 ticks before committing
+      const pend = this.pendingPhase.get(team);
+      if (!pend || pend.phase !== phase) {
+        this.pendingPhase.set(team, { phase, since: this.tick });
+        continue;
+      }
+      if (this.tick - pend.since < 15) continue;
+      this.pendingPhase.delete(team);
       this.teamPhase.set(team, phase);
       // re-derive this team's homes into the phase band
       const outs = this.bodies.filter((b) => b.team === team && !this.keepers.has(b.id) && this.baseHomes.has(b.id));
@@ -133,7 +148,7 @@ export class Sim {
         const bh = this.baseHomes.get(b.id)!;
         const u = t0 + ((bh.x * sgn - minU) / span) * (t1 - t0);
         const x = Math.max(3, Math.min(PITCH.length - 3, u * sgn + (sgn > 0 ? 0 : PITCH.length)));
-        this.homes.set(b.id, { x, y: bh.y });
+        this.homeTargets.set(b.id, { x, y: bh.y }); // homes GLIDE there
       }
     }
   }
@@ -330,6 +345,15 @@ export class Sim {
     this.updatePerception();
     // 0b. PHASES: the six-phase homes follow possession and territory
     this.updatePhases();
+    // ...gliding, not snapping (6%/tick ≈ settled in ~3 s)
+    for (const [hid, tgt] of this.homeTargets) {
+      const h = this.homes.get(hid);
+      if (!h) continue;
+      const dx = tgt.x - h.x;
+      const dy = tgt.y - h.y;
+      if (Math.abs(dx) + Math.abs(dy) < 0.3) { this.homes.set(hid, tgt); this.homeTargets.delete(hid); continue; }
+      this.homes.set(hid, { x: h.x + dx * 0.06, y: h.y + dy * 0.06 });
+    }
     // 1. scripted re-targets (replace the current command, keep the queue)
     const events = this.atTick.get(this.tick);
     if (events) {
