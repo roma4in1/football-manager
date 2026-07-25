@@ -972,6 +972,11 @@ export class Sim {
         // the team DEFENDING this end conceded (home attacks +x, defends x=0)
         this.goals.push({ tick: this.tick, against: lineX === 0 ? 'home' : 'away', y: yAt, z: zAt });
         this.bannerText = 'GOAL!';
+      } else if (Math.abs(yAt - GOAL.centerY) <= GOAL.mouthHalfWidthM + 4 && zAt <= GOAL.barZ + 2.5) {
+        // NEAR MISS (builder: 'shots hit the goal say goal-kick' — the
+        // workbench lerps 10 Hz frames, and a ball passing just wide can
+        // LOOK in; the engine's call needs its own word)
+        this.bannerText = 'OFF TARGET';
       }
     }
     if (this.ball.phase !== 'dead' && this.ball.carrierId === null &&
@@ -994,8 +999,9 @@ export class Sim {
       if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
       const hN = this.teamBrainCount('home');
       const aN = this.teamBrainCount('away');
+      const deadWait = this.goals.length > this.lastGoalCount ? 40 : 15; // the GOAL! banner gets its celebration
       if (hN >= 8 && aN >= 8 && this.bounds === undefined &&
-        this.tick - this.deadSinceTick >= 15) {
+        this.tick - this.deadSinceTick >= deadWait) {
         const lastTeam = this.ball.kickerId ? this.byId.get(this.ball.kickerId)?.team : undefined;
         let award: 'home' | 'away' = lastTeam === 'home' ? 'away' : 'home';
         let spot: Vec2;
@@ -2581,9 +2587,14 @@ export class Sim {
             // could produce a cross.
             const boxSign = attackSign(body.team);
             const boxGoalX = boxSign > 0 ? PITCH.length : 0;
+            // the SWEATY RUN (builder: 'a square pass to open man in the
+            // box to eliminate the goalkeeper completely'): box occupation
+            // also arms for a CENTRAL advanced carrier — the cutback and
+            // the square ball need bodies IN the box, not just at crosses
+            const carrierGoalDist = boxSign > 0 ? PITCH.length - carrierBody.pos.x : carrierBody.pos.x;
             const boxOccupy = objective === 'score' &&
-              Math.abs(carrierBody.pos.y - PITCH.width / 2) >= DECIDE.crossWideM &&
-              (boxSign > 0 ? PITCH.length - carrierBody.pos.x : carrierBody.pos.x) <= DECIDE.crossAdvanceM &&
+              (Math.abs(carrierBody.pos.y - PITCH.width / 2) >= DECIDE.crossWideM || carrierGoalDist <= 22) &&
+              carrierGoalDist <= DECIDE.crossAdvanceM &&
               (boxSign > 0 ? PITCH.length - body.pos.x : body.pos.x) <= 24 &&
               Math.abs(body.pos.y - PITCH.width / 2) < DECIDE.crossWideM;
             // the TWO most advanced teammates keep the RUN GAME even

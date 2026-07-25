@@ -2282,6 +2282,14 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           let pKnock = isKeeper
             ? Math.max(0, Math.min(1, (clear - 1.6) / 1.4))
             : Math.max(0, Math.min(1, (clear - 0.5) / 1.2));
+          // ROUND-THE-KEEPER is a BREAKAWAY move (builder): alone with the
+          // keeper it is football; in a crowded box the dribble-around is
+          // a turnover machine — with any outfield defender within 12 m
+          // the shot, chip or square ball owns the moment
+          if (isKeeper && opponents.some((o2) => o2.id !== fm.id && !input.keepers?.has(o2.id) &&
+            Math.hypot(o2.pos.x - here.x, o2.pos.y - here.y) < 12)) {
+            pKnock *= 0.15;
+          }
           if (beaten) pKnock = Math.min(1, pKnock + 0.3);
           // vs a LIVE rider the geometric clearance lies — he moves WITH you
           // and covers the push (knock fired 8/8 and converted ~0: the knock
