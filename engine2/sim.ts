@@ -1093,7 +1093,9 @@ export class Sim {
         // opponent camped the spot (the census: an away striker taking
         // home's free kick at their own box)
         this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 200 : 20) };
-        this.restartSetupUntil = this.tick + (this.restartTaker ? 30 : 0);
+        this.stageRestart(award, spot);
+        // staged positions need only a readability beat, not a walk
+        this.restartSetupUntil = this.tick + (this.restartTaker ? 12 : 0);
         this.deadSinceTick = -1;
       }
     } else {
@@ -3616,6 +3618,76 @@ export class Sim {
   private readonly attackClaims = new Map<'home' | 'away', Vec2[]>([['home', []], ['away', []]]);
 
   private readonly perception = new Map<string, Map<string, { x: number; y: number; vx: number; vy: number; tick: number }>>();
+
+  /** RESTART STAGING (builder: 'players should be able to teleport to
+   * positions... before restart'): ceremony-critical roles are PLACED
+   * at the whistle — the taker behind his ball, the wall on its line,
+   * box crowds in their slots, penalty areas cleared, kickoff formations
+   * at their homes — instead of walking cross-pitch while the game
+   * waits. Everyone else keeps moving naturally. */
+  private teleport(b: BodyState, to: Vec2): void {
+    b.pos = { x: Math.max(1, Math.min(PITCH.length - 1, to.x)), y: Math.max(1, Math.min(PITCH.width - 1, to.y)) };
+    b.vel = { x: 0, y: 0 };
+    b.speed = 0;
+    this.assign(b, { type: 'hold' });
+    this.runningLine.delete(b.id);
+    this.runPhase.delete(b.id);
+    this.steppingIds.delete(b.id);
+    this.duels.delete(b.id);
+    this.pressingIds.delete(b.id);
+  }
+
+  private stageRestart(award: 'home' | 'away', spot: Vec2): void {
+    const tk = this.restartTaker ? this.byId.get(this.restartTaker) : undefined;
+    if (this.restartType === 'kickoff') {
+      for (const b of this.bodies) {
+        if (this.sentOff.has(b.id)) continue;
+        const home = this.homes.get(b.id);
+        if (home) this.teleport(b, home);
+      }
+      if (tk) this.teleport(tk, { x: spot.x - attackSign(award) * 1.2, y: spot.y });
+      return;
+    }
+    if (tk) {
+      const sgn = attackSign(award);
+      this.teleport(tk, { x: spot.x - sgn * 1.4, y: spot.y });
+    }
+    for (const [wid, ws] of this.wallSpots) {
+      const wb = this.byId.get(wid);
+      if (wb) this.teleport(wb, ws);
+    }
+    if (this.restartPenalty) {
+      const nearHome = spot.x < PITCH.length / 2;
+      for (const b of this.bodies) {
+        if (b.id === this.restartTaker || this.keepers.has(b.id) || this.sentOff.has(b.id)) continue;
+        const inBox = (nearHome ? b.pos.x < GOAL.boxDepthM + 1 : b.pos.x > PITCH.length - GOAL.boxDepthM - 1) &&
+          Math.abs(b.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 1;
+        if (inBox) {
+          this.teleport(b, {
+            x: nearHome ? GOAL.boxDepthM + 2.5 : PITCH.length - GOAL.boxDepthM - 2.5,
+            y: Math.max(6, Math.min(PITCH.width - 6, b.pos.y)),
+          });
+        }
+      }
+    }
+    if (this.restartType === 'corner' ||
+      (this.restartType === 'free-kick' && !this.restartPenalty && tk &&
+        Math.hypot(goalCenter(award).x - spot.x, goalCenter(award).y - spot.y) <= 40)) {
+      const sgn = attackSign(award);
+      const gX = sgn > 0 ? PITCH.length : 0;
+      const atk = [...this.brains]
+        .map((bid) => this.byId.get(bid)!)
+        .filter((b) => b.team === award && b.id !== this.restartTaker && !this.sentOff.has(b.id))
+        .sort((a, b) => sgn * (b.pos.x - a.pos.x))
+        .slice(0, 3);
+      const slots = [
+        { x: gX - sgn * 11, y: PITCH.width / 2 },
+        { x: gX - sgn * 7, y: PITCH.width / 2 - 6 },
+        { x: gX - sgn * 7, y: PITCH.width / 2 + 6 },
+      ];
+      atk.forEach((b, i) => this.teleport(b, slots[i]));
+    }
+  }
 
   /** red card: out of every decision system, parked at his own corner */
   private sendOff(id: string): void {

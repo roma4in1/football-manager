@@ -1721,7 +1721,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // the line eats the shot the EV was pricing at face xG (the 16/16-saved
     // shot kept outbidding round-the-keeper)
     const laneFactor = Math.max(0.3, Math.min(1, 0.3 + 0.7 * (destClearRaw - 0.6) / 1.4));
-    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor });
+    // the FINISHER (builder: 'not shooting in favourable angles'): a
+    // real chance with a CLEAN lane is taken — measured ~6 passed-up
+    // xG>0.12 moments per match with carry-to-better outbidding the
+    // strike the better spot was FOR
+    const finisher = xGHere >= 0.12 && laneFactor >= 0.7 ? 1.35 : 1;
+    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor * finisher });
     // the CHIP (L7's counter): a keeper RUSHED OFF HIS LINE leaves the goal
     // open in z, not y — loft it over him, dropping under the bar. The guard
     // figure is the last opponent near the goal mouth; the chip exists only
@@ -1931,7 +1936,12 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // rates. The original measurement stands.)
       const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
-      pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest));
+      // a DARTING runner receives in stride — he has already beaten the
+      // crowd the density counts, and the arrival-race model prices the
+      // cut honestly on its own; full shrink double-counted the box and
+      // buried the final through ball (builder)
+      const dartRx = runners?.has(mate.id) && mate.speed >= 4 ? 0.5 : 1;
+      pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest) * dartRx);
       const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait * offsideTax;
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
