@@ -1810,7 +1810,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // floors at 0.5 there, and a real chance fires crowd or no crowd
     const inBoxShot = dGoal <= 16.5;
     const laneEff = inBoxShot ? Math.max(0.5, laneFactor) : laneFactor;
-    const finisher = (xGHere >= 0.12 && laneFactor >= 0.7) || (inBoxShot && xGHere >= 0.12) ? 1.45 : 1;
+    // volume (builder: 'shooting not high enough'): the finisher fires
+    // at any real chance with a clean lane, and a MODEST base appetite
+    // lifts every in-range shot so the EV picks the strike over one more
+    // touch a little sooner (real players shoot on sight more than an
+    // expected-value optimum does)
+    // the finisher fires at any real chance with a clean lane (a touch
+    // more generous than before); no blanket appetite — that fired
+    // low-xG shots and CRATERED goals (1.5 -> 0.5). Volume comes from
+    // more THREADS creating better chances, not more hopeful strikes.
+    const finisher = (xGHere >= 0.11 && laneEff >= 0.65) || (inBoxShot && xGHere >= 0.11) ? 1.5 : 1;
     // the CURLED FINISH (builder: 'increase curving physics'): from a
     // real angle the across-goal shot BENDS into the far corner — the
     // arc bows away from the keeper's reach and comes back inside the
@@ -2030,7 +2039,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // discount was tried Jul 24 and REVERTED same day: the builder's eye
       // caught the overhit tail returning — slow-releases fed the cut
       // rates. The original measurement stands.)
-      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 4.0;
+      // the thread releases a hair earlier (builder: more through balls)
+      // — a runner at 3.4 m/s is committed enough to run onto it
+      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 3.4;
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       // a DARTING runner receives in stride — he has already beaten the
       // crowd the density counts, and the arrival-race model prices the

@@ -497,6 +497,7 @@ export class Sim {
       this.restartType = null;
       this.restartPenalty = false;
       this.restartLock = null;
+      this.goalKickPending = null;
       this.wallSpots.clear();
       this.bannerText = null;
     }
@@ -1220,6 +1221,8 @@ export class Sim {
         // opponent camped the spot (the census: an away striker taking
         // home's free kick at their own box)
         this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 200 : 20) };
+        // a goal kick keeps opponents OUT OF THE BOX until it is struck
+        if (this.restartType === 'goal-kick') this.goalKickPending = award;
         this.stageRestart(award, spot);
         // staged positions need only a readability beat, not a walk
         this.restartSetupUntil = this.tick + (this.restartTaker ? 12 : 0);
@@ -3068,6 +3071,52 @@ export class Sim {
               }
             }
           }
+          // KEEPER STANDOFF (builder: 'players gathering around GK, they
+          // should stay away, sort of repelled'): a keeper HOLDING the
+          // ball in his hands is untouchable — pressing him is wasted
+          // motion and looked like a scrum. Opponents inside 7 m ring
+          // OUT to the edge and hold; one man may shadow the release
+          // from 7 m but no closer. Also applies while a GOAL-KICK taker
+          // (a keeper) has not yet kicked.
+          if (this.brains.size >= 12 && this.tick % DECIDE.reconsiderTicks === 0 &&
+            this.tick > (this.scriptedUntil.get(id) ?? -1)) {
+            const heldKeeper = this.keeperHolding ? this.byId.get(this.keeperHolding) : undefined;
+            const gkTaker = (this.restartType === 'goal-kick' && this.restartTaker)
+              ? this.byId.get(this.restartTaker) : undefined;
+            const shield = heldKeeper ?? gkTaker;
+            // the whole BOX is off-limits during a pending goal kick
+            if (this.goalKickPending && this.goalKickPending !== body.team) {
+              const nearHome = (this.goalKickPending === 'home');
+              const inBox = (nearHome ? body.pos.x < GOAL.boxDepthM + 1 : body.pos.x > PITCH.length - GOAL.boxDepthM - 1) &&
+                Math.abs(body.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 1;
+              if (inBox) {
+                const edge = { x: nearHome ? GOAL.boxDepthM + 2.5 : PITCH.length - GOAL.boxDepthM - 2.5, y: Math.max(6, Math.min(PITCH.width - 6, body.pos.y)) };
+                const dE = Math.hypot(edge.x - body.pos.x, edge.y - body.pos.y);
+                if (dE > 1) this.assign(body, { type: 'moveTo', target: edge, regime: 'run' });
+                else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+                this.pressingIds.delete(id);
+                this.actionLabels.set(id, 'box-out');
+                continue;
+              }
+            }
+            if (shield && shield.team !== body.team) {
+              const dK = Math.hypot(shield.pos.x - body.pos.x, shield.pos.y - body.pos.y);
+              if (dK < 7) {
+                const ang = Math.atan2(body.pos.y - shield.pos.y, body.pos.x - shield.pos.x) ||
+                  (attackSign(body.team) > 0 ? Math.PI : 0);
+                const ring = {
+                  x: Math.max(2, Math.min(PITCH.length - 2, shield.pos.x + Math.cos(ang) * 7.5)),
+                  y: Math.max(2, Math.min(PITCH.width - 2, shield.pos.y + Math.sin(ang) * 7.5)),
+                };
+                const dRing = Math.hypot(ring.x - body.pos.x, ring.y - body.pos.y);
+                if (dRing > 1) this.assign(body, { type: 'moveTo', target: ring, regime: 'jog' });
+                else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+                this.pressingIds.delete(id);
+                this.actionLabels.set(id, 'standoff');
+                continue;
+              }
+            }
+          }
           // L5d COUNTERPRESS (before everything): the 5–8 s transition
           // instinct — chase the ball you just lost (loose OR opponent-
           // carried), overriding stale attack commands; organized defense
@@ -3732,6 +3781,9 @@ export class Sim {
    * are frozen for a beat after placement while both sides organize */
   private restartSetupUntil = -1;
   private restartPenalty = false;
+  /** the defending team of a goal kick not yet taken — opponents may
+   * not enter the box until the keeper strikes (builder) */
+  private goalKickPending: 'home' | 'away' | null = null;
   /** HALVES: which half we are in, and the queued half-start kickoff
    * (the opening ceremony and the second-half handover to away) */
   half = 1;

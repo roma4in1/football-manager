@@ -173,7 +173,7 @@ export const m11SecondBall = matchSituation({
 export const m11Match = matchSituation({
   name: 'm11-match',
   description: 'A full 11v11 match slice from a neutral centre ball — restarts keep play flowing. The self-play harness stage; also the workbench\'s longest look at everything at once.',
-  durationTicks: 900,
+  durationTicks: 2700,
   ball: { pos: { x: 52.5, y: 34 } },
   homePressing: 0.6,
   awayPressing: 0.6,
@@ -186,7 +186,7 @@ export const m11Match = matchSituation({
 export const m11Formations = matchSituation({
   name: 'm11-433-523',
   description: 'A full 11v11 slice: home 4-3-3 vs away 5-2-3 from a neutral centre ball. Judge the front three against the back five, the wingbacks\' dual role, and the pivot battle.',
-  durationTicks: 900,
+  durationTicks: 2700,
   ball: { pos: { x: 52.5, y: 34 } },
   homePressing: 0.6,
   awayPressing: 0.6,
@@ -200,7 +200,7 @@ export const m11Formations = matchSituation({
 export const m11Placement = matchSituation({
   name: 'm11-4231x-442',
   description: 'The manager-placement proof: home plays a 4-2-3-1 with per-phase authored positions (false nine drops in build, AM surges in the final third, LB bombs in the high press). Judge whether players follow the manager, not the formation.',
-  durationTicks: 900,
+  durationTicks: 2700,
   ball: { pos: { x: 52.5, y: 34 } },
   homePressing: 0.6,
   awayPressing: 0.6,
