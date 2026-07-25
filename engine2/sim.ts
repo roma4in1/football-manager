@@ -73,6 +73,70 @@ export class Sim {
   private intendedReceiverId: string | null = null;
   /** initial positions — the 'keep' objective's drill stations */
   private readonly homes = new Map<string, Vec2>();
+  /** THE PHASE-TACTICS LAYER (builder direction, recorded): six phases —
+   * possession build/progress/final, defense high/mid/low — detected
+   * from possession x ball third (4 m hysteresis). Per-phase homes are
+   * DERIVED by band-mapping each base home along the team axis, and the
+   * live `homes` map swaps on phase change: every anchor in the engine
+   * (stations, zone costs, depth bands, vacancy) becomes phase-correct
+   * BY CONSTRUCTION — the home-anchor bug class retires wholesale.
+   * Kickoff staging keeps the base formation. Manager per-slot overrides
+   * are the recorded next hook. Match scale only. */
+  private readonly baseHomes = new Map<string, Vec2>();
+  private readonly teamPhase = new Map<'home' | 'away', 'build' | 'progress' | 'final' | 'high' | 'mid' | 'low'>();
+  private lastPossessTeam: 'home' | 'away' | null = null;
+
+  // fitted against the EAFC envelope (~40 m both-team): each band keeps
+  // a team span of ~34-44 m — the first cut stretched to 48+ and the
+  // measured envelope grew to 43.5 (the bands must COMPRESS, phases
+  // migrate the block, the ball-relative clamps do the fine shaping)
+  private static readonly PHASE_BANDS: Record<string, [number, number]> = {
+    build: [10, 52], progress: [24, 66], final: [40, 88],
+    high: [34, 78], mid: [22, 60], low: [10, 44],
+  };
+
+  private updatePhases(): void {
+    if (this.brains.size < 12) return;
+    const cb = this.ball.carrierId ? this.byId.get(this.ball.carrierId)
+      : this.intendedReceiverId ? this.byId.get(this.intendedReceiverId) : undefined;
+    if (cb && !this.keepers.has(cb.id)) this.lastPossessTeam = cb.team;
+    else if (cb) this.lastPossessTeam = cb.team;
+    const poss = this.lastPossessTeam;
+    if (!poss) return;
+    for (const team of ['home', 'away'] as const) {
+      const sgn = attackSign(team);
+      const prog = sgn > 0 ? this.ball.pos.x : PITCH.length - this.ball.pos.x;
+      const inPoss = team === poss;
+      const cur = this.teamPhase.get(team);
+      // thirds at 35/70 with 4 m hysteresis against the current phase
+      const seq = inPoss ? (['build', 'progress', 'final'] as const) : (['low', 'mid', 'high'] as const);
+      let idx = prog < 35 ? 0 : prog < 70 ? 1 : 2;
+      if (cur && seq.includes(cur as never)) {
+        const curIdx = seq.indexOf(cur as never);
+        if (idx !== curIdx) {
+          const boundary = idx > curIdx ? (curIdx === 0 ? 35 : 70) : (curIdx === 2 ? 70 : 35);
+          if (Math.abs(prog - boundary) < 4) idx = curIdx; // hold inside the buffer
+        }
+      }
+      const phase = seq[idx];
+      if (phase === cur) continue;
+      this.teamPhase.set(team, phase);
+      // re-derive this team's homes into the phase band
+      const outs = this.bodies.filter((b) => b.team === team && !this.keepers.has(b.id) && this.baseHomes.has(b.id));
+      if (outs.length < 7) continue;
+      const us = outs.map((b) => this.baseHomes.get(b.id)!.x * sgn);
+      const minU = Math.min(...us);
+      const maxU = Math.max(...us);
+      const span = Math.max(1, maxU - minU);
+      const [t0, t1] = Sim.PHASE_BANDS[phase];
+      for (const b of outs) {
+        const bh = this.baseHomes.get(b.id)!;
+        const u = t0 + ((bh.x * sgn - minU) / span) * (t1 - t0);
+        const x = Math.max(3, Math.min(PITCH.length - 3, u * sgn + (sgn > 0 ? 0 : PITCH.length)));
+        this.homes.set(b.id, { x, y: bh.y });
+      }
+    }
+  }
   /** drill boundaries, when the scenario defines a positional grid */
   private bounds?: { x0: number; y0: number; x1: number; y1: number };
   /** last scripted atTick per body — a body with a FUTURE scripted command
@@ -193,6 +257,7 @@ export class Sim {
       if (b.keeper) this.keepers.add(b.id);
       if (b.instructions) this.instructions.set(b.id, { ...b.instructions });
       this.homes.set(b.id, { ...b.pos });
+      this.baseHomes.set(b.id, { ...b.pos });
     }
     for (const ev of def.script) {
       const body = this.byId.get(ev.bodyId);
@@ -263,6 +328,8 @@ export class Sim {
     // 0. PERCEPTION: refresh every brain's last-seen picture (cone +
     // peripheral + the awareness-paced scan) before any decisions read it
     this.updatePerception();
+    // 0b. PHASES: the six-phase homes follow possession and territory
+    this.updatePhases();
     // 1. scripted re-targets (replace the current command, keep the queue)
     const events = this.atTick.get(this.tick);
     if (events) {
@@ -3213,8 +3280,9 @@ export class Sim {
             // real match starts (and restarts) with
             const looseTrap = this.bodies.some((b2) => b2.team === body.team &&
               Math.hypot(b2.pos.x - this.ball.pos.x, b2.pos.y - this.ball.pos.y) < 3) ? 1.2 : -0.5;
+            const kb0 = this.baseHomes.get(id) ?? home;
             const st = this.restartType === 'kickoff'
-              ? { x: home.x, y: home.y }
+              ? { x: kb0.x, y: kb0.y }
               : blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
                 0.5, this.teamBrainCount(body.team) + 1,
                 this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined,
@@ -3714,8 +3782,8 @@ export class Sim {
         Math.hypot(o.pos.x - tx, o.pos.y - ty) < 0.75);
       if (!clash) break;
       const ang = Math.atan2(ty - clash.pos.y, tx - clash.pos.x) || (tries * 1.1);
-      tx = Math.max(1, Math.min(PITCH.length - 1, clash.pos.x + Math.cos(ang) * 0.85));
-      ty = Math.max(1, Math.min(PITCH.width - 1, clash.pos.y + Math.sin(ang) * 0.85));
+      tx = Math.max(1, Math.min(PITCH.length - 1, clash.pos.x + Math.cos(ang) * 1.1));
+      ty = Math.max(1, Math.min(PITCH.width - 1, clash.pos.y + Math.sin(ang) * 1.1));
     }
     b.pos = { x: tx, y: ty };
     b.vel = { x: 0, y: 0 };
@@ -3733,7 +3801,7 @@ export class Sim {
     if (this.restartType === 'kickoff') {
       for (const b of this.bodies) {
         if (this.sentOff.has(b.id)) continue;
-        const home = this.homes.get(b.id);
+        const home = this.baseHomes.get(b.id) ?? this.homes.get(b.id);
         if (home) this.teleport(b, home);
       }
       // the KICKOFF LAW (builder): no opponent inside the centre circle
