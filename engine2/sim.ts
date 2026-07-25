@@ -3160,11 +3160,14 @@ export class Sim {
             // KICKOFF RESET: both teams return to their formation homes
             // while the taker walks to the centre — the ceremony every
             // real match starts (and restarts) with
+            const looseTrap = this.bodies.some((b2) => b2.team === body.team &&
+              Math.hypot(b2.pos.x - this.ball.pos.x, b2.pos.y - this.ball.pos.y) < 3) ? 1.2 : -0.5;
             const st = this.restartType === 'kickoff'
               ? { x: home.x, y: home.y }
               : blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
                 0.5, this.teamBrainCount(body.team) + 1,
-                this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined);
+                this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined,
+                true, 1, false, looseTrap);
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             if (dSt > 1.6) {

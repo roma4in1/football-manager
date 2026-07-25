@@ -1090,6 +1090,9 @@ export const blockStation = (
   oppThreat = 1,
   /** possession width hold: skip the lateral slide + far-tuck */
   holdWidth = false,
+  /** the LINE-HOLD offset vs the deepest opponent (defense only):
+   * -0.5 = hold level; +1.2 = the offside trap's step past him */
+  trapUp = -0.5,
 ): Vec2 => {
   const kx = possession ? 0.7 : 0.45;
   let capX = possession ? 30 : 18;
@@ -1126,7 +1129,16 @@ export const blockStation = (
       // Offside (the law, this same round) is what makes the pushed
       // line defensible — the lurker in behind is now a dead ball.
       if (oppDeepU !== undefined) {
-        const lineTarget = Math.min(oppDeepU - 3, ballU - 14);
+        // HOLDING THE LINE (builder: 'offside traps... holding the
+        // line'): the old -3 m cushion was a DOWNWARD RATCHET — bent
+        // runners ride OUR line, so the deepest opponent is always a
+        // step shallower than us, the cushion said drop, the runners
+        // followed us down, and both groups spiraled from the play.
+        // A real line holds LEVEL with the last attacker (trapUp -0.5);
+        // with the carrier PRESSED it STEPS PAST him (trapUp +1.2) —
+        // the offside trap: the pressed carrier cannot play the killer
+        // ball, and the lurker must retreat or die offside.
+        const lineTarget = Math.min(oppDeepU + trapUp, ballU - 10);
         if (x * sign < lineTarget) x = lineTarget * sign;
         x = Math.max(2, Math.min(PITCH.length - 2, x));
       }
@@ -1465,6 +1477,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
   const isBackLine = myHome !== undefined && !keepers?.has(defender.id) &&
     myHome.x * sgnD <= deepestHome + 6;
   let oppDeep: number | undefined;
+  let trapUp = -0.5;
   // MATCH SCALE ONLY (unit >= 8): the pushed line is defensible only
   // UNDER the offside law, which is itself match-gated — in a drill the
   // lurker in behind is legal and the high line is the old suicide
@@ -1476,8 +1489,13 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       oppDeep = Math.min(oppDeep, b.pos.x * sgnD);
     }
     if (!Number.isFinite(oppDeep)) oppDeep = undefined;
+    // THE TRAP: with the carrier under a teammate's pressure the killer
+    // ball is off — the whole line steps PAST the deepest runner
+    const pressed = bodies.some((b) => b.team === defender.team &&
+      Math.hypot(b.pos.x - ball.pos.x, b.pos.y - ball.pos.y) < 3);
+    if (pressed) trapUp = 1.2;
   }
-  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep);
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep, true, 1, false, trapUp);
   // VACANCY ROTATION (the builder's dragged-CB principle, second half:
   // "the position he leaves open gets covered immediately by a teammate
   // who then leaves their position to be covered, etc"): a shape-holder
