@@ -2615,8 +2615,12 @@ export class Sim {
             // THIRD the LATE ARRIVAL joins them — a fourth man level or
             // up to 18 m behind the carrier attacking the line from deep
             const carrierProg2 = advSign > 0 ? carrierBody.pos.x : PITCH.length - carrierBody.pos.x;
+            // width-holders are exempt — the chalk-line wingback overlaps
+            // on his flank; electing him into a CENTRAL late arrival was
+            // eroding the width identity round by round (47 -> 33 -> 21 m)
             const lateArrival = carrierProg2 > 50 && moreAdvanced < 4 &&
-              advSign * (body.pos.x - carrierBody.pos.x) > -22;
+              advSign * (body.pos.x - carrierBody.pos.x) > -22 &&
+              this.instructions.get(id)?.holdWidth !== true;
             const advancedRunner = (advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3) || lateArrival;
             // THREE supporters (builder: 'increase the short passing and
             // midfielder runs/support when attacking') — the third man is
@@ -3725,6 +3729,20 @@ export class Sim {
         if (this.sentOff.has(b.id)) continue;
         const home = this.homes.get(b.id);
         if (home) this.teleport(b, home);
+      }
+      // the KICKOFF LAW (builder): no opponent inside the centre circle
+      // or past halfway — homes are own-half by construction, but a home
+      // near the circle edge gets pushed clear
+      for (const b of this.bodies) {
+        if (b.team === award || this.sentOff.has(b.id)) continue;
+        const dC = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+        if (dC < 10.2) {
+          // push toward his own half until clear of the circle
+          const ownDir = -attackSign(b.team);
+          const dy = b.pos.y - spot.y;
+          const dxNeed = Math.sqrt(Math.max(1, 10.5 * 10.5 - dy * dy));
+          this.teleport(b, { x: spot.x + ownDir * dxNeed, y: b.pos.y });
+        }
       }
       if (tk) this.teleport(tk, { x: spot.x - attackSign(award) * 1.2, y: spot.y });
       return;

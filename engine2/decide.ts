@@ -1543,6 +1543,12 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       if (b.id === defender.id) continue;
       const bh = homes.get(b.id);
       if (!bh) continue;
+      // LATERAL displacement only (the home-anchor family's FOURTH
+      // member — the tick-103 cross-field CB run): with the line pushed
+      // to halfway every back is permanently 20 m+ from his formation
+      // home in x, so the depth-based trigger fired constantly and the
+      // midpoint slide yanked stations backward-across the pitch. A
+      // vacated CHANNEL is a y-fact; the line owns x.
       const away = Math.hypot(b.pos.x - bh.x, b.pos.y - bh.y);
       if (away < 12) continue; // he is home enough
       const myDistToHisZone = Math.hypot(st.x - bh.x, st.y - bh.y);
@@ -1553,7 +1559,10 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       const sgn = attackSign(defender.team);
       const deeperVacancy = bh.x * sgn <= mh.x * sgn + 1;
       if (deeperVacancy && myDistToHisZone < 15 && Math.abs(bh.y - ball.pos.y) < 25) {
-        st.x = (st.x + bh.x) / 2;
+        // the x-slide only when we PLAY near our homes (deep block:
+        // stations = homes, dropping to the vacated flank is real); at
+        // the pushed line the formation home is 20 m of history
+        if (Math.abs(bh.x - st.x) < 8) st.x = (st.x + bh.x) / 2;
         st.y = (st.y + bh.y) / 2;
         break;
       }
