@@ -167,7 +167,7 @@ export interface PlayInstructions {
 export type Intent =
   | { kind: 'carry'; target: Vec2; regime: 'run' | 'sprint'; utility: number; dir: number }
   | { kind: 'pass'; receiverId: string; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number; pC?: number }
-  | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number }
+  | { kind: 'shoot'; dest: Vec2; speedMps: number; utility: number; loftDeg?: number; spin?: number }
   | { kind: 'knock'; dest: Vec2; speedMps: number; utility: number }
   | { kind: 'beat'; dest: Vec2; side: number; utility: number }
   | { kind: 'shield'; utility: number }
@@ -210,7 +210,7 @@ export const DECIDE = {
    * within the validated band (curve scenarios: 52–85); range bounded by
    * roll reach (a 17 m/s ball dies ~31 m). The bend needs room to work:
    * under ~10 m there is no arc, beyond ~30 the ball dies on the line. */
-  curlSpin: 70,
+  curlSpin: 90,
   curlMinM: 10,
   curlMaxM: 30,
   /** the lane margin (s) an opponent needs to make the intercept — sampled
@@ -1726,7 +1726,18 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // xG>0.12 moments per match with carry-to-better outbidding the
     // strike the better spot was FOR
     const finisher = xGHere >= 0.12 && laneFactor >= 0.7 ? 1.35 : 1;
-    options.push({ kind: 'shoot', dest, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor * finisher });
+    // the CURLED FINISH (builder: 'increase curving physics'): from a
+    // real angle the across-goal shot BENDS into the far corner — the
+    // arc bows away from the keeper's reach and comes back inside the
+    // post. Aim = the Magnus-solved point; the executor spins it.
+    let shotSpin = 0;
+    let shotAim = dest;
+    if (Math.abs(offCentre) > 5 && Math.sign(dest.y - GOAL.centerY) !== Math.sign(offCentre)) {
+      const crossG = (dest.x - here.x) * (g.y - here.y) - (dest.y - here.y) * (g.x - here.x);
+      shotSpin = crossG > 0 ? 45 : -45;
+      shotAim = solveCurl(here, dest, shotSpin, DECIDE.shotSpeedMps);
+    }
+    options.push({ kind: 'shoot', dest: shotAim, speedMps: DECIDE.shotSpeedMps, utility: xGHere * laneFactor * finisher, spin: shotSpin || undefined });
     // the CHIP (L7's counter): a keeper RUSHED OFF HIS LINE leaves the goal
     // open in z, not y — loft it over him, dropping under the bar. The guard
     // figure is the last opponent near the goal mouth; the chip exists only

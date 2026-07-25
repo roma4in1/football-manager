@@ -2704,10 +2704,25 @@ export class Sim {
               const hoverX = sign > 0
                 ? Math.min(plan.target.x, plan.lineX - 5)
                 : Math.max(plan.target.x, plan.lineX + 5);
-              // the dart aims THROUGH the line (a target AT it arrive-brakes
-              // the runner to a walk at the breach moment — the knock-past
-              // lesson's third appearance); the phase ends as he reaches it
-              const dartX = sign > 0 ? plan.lineX + 2 : plan.lineX - 2;
+              // THE BENT RUN (builder: 'attackers always sprint through
+              // lines to decoy, attract, or have enough speed'): the dart
+              // sprints TO the line and RIDES ALONG IT at full pace —
+              // never crossing early (an early breach is a tag, and the
+              // old +2 m target taught the run game timidity). The BREACH
+              // is the receive reflex's job the moment the thread is in
+              // flight — by then crossing is legal, and the runner hits
+              // it already at top speed. The decoy value is free: a man
+              // sprinting the line drags its defenders whether or not
+              // the ball ever comes. (Still THROUGH-aimed relative to
+              // his approach — a target AT his feet arrive-brakes.)
+              // ...and the bend exists BECAUSE of the offside law — in a
+              // drill (no law) the through-line dart IS the right run,
+              // and bending it broke two drill pins instantly
+              const ballComing = this.intendedReceiverId === id;
+              const bent = this.brains.size >= 12 && !ballComing;
+              const dartX = !bent
+                ? (sign > 0 ? plan.lineX + (ballComing ? 10 : 2) : plan.lineX - (ballComing ? 10 : 2))
+                : (sign > 0 ? plan.lineX - 0.4 : plan.lineX + 0.4);
               const atHover = Math.abs(body.pos.x - hoverX) < 1.6;
               let st = this.runPhase.get(id);
               if (!st) {
@@ -2734,9 +2749,18 @@ export class Sim {
               }
               this.attackClaims.get(body.team)!.push({ x: dartX, y: st.phase === 'dart' ? st.dartY : plan.target.y });
               if (st.phase === 'dart') {
+                // the bent run rides ALONG the line — overshoot the seam
+                // laterally so the sprint never arrive-brakes (aiming AT
+                // the line braked the runner to a walk on it: the
+                // knock-past lesson's FOURTH appearance, and it gutted
+                // both line speed and the release gate's up-to-speed
+                // check); the phase still ends at the seam itself
+                const overshootY = bent
+                  ? st.dartY + Math.sign(st.dartY - body.pos.y || 1) * 8
+                  : st.dartY;
                 this.assign(body, {
                   type: 'moveTo',
-                  target: { x: dartX, y: st.dartY },
+                  target: { x: dartX, y: Math.max(2, Math.min(PITCH.width - 2, overshootY)) },
                   regime: 'sprint',
                 });
                 this.actionLabels.set(id, 'dart');
@@ -3384,7 +3408,7 @@ export class Sim {
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
-            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' ? (intent.spin ?? 0) : 0);
+            kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.spin ?? 0) : 0);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
@@ -3626,7 +3650,19 @@ export class Sim {
    * at their homes — instead of walking cross-pitch while the game
    * waits. Everyone else keeps moving naturally. */
   private teleport(b: BodyState, to: Vec2): void {
-    b.pos = { x: Math.max(1, Math.min(PITCH.length - 1, to.x)), y: Math.max(1, Math.min(PITCH.width - 1, to.y)) };
+    // never land ON someone — the interpenetration invariant holds even
+    // through staging
+    let tx = Math.max(1, Math.min(PITCH.length - 1, to.x));
+    let ty = Math.max(1, Math.min(PITCH.width - 1, to.y));
+    for (let tries = 0; tries < 6; tries++) {
+      const clash = this.bodies.find((o) => o.id !== b.id &&
+        Math.hypot(o.pos.x - tx, o.pos.y - ty) < 0.75);
+      if (!clash) break;
+      const ang = Math.atan2(ty - clash.pos.y, tx - clash.pos.x) || (tries * 1.1);
+      tx = Math.max(1, Math.min(PITCH.length - 1, clash.pos.x + Math.cos(ang) * 0.85));
+      ty = Math.max(1, Math.min(PITCH.width - 1, clash.pos.y + Math.sin(ang) * 0.85));
+    }
+    b.pos = { x: tx, y: ty };
     b.vel = { x: 0, y: 0 };
     b.speed = 0;
     this.assign(b, { type: 'hold' });
