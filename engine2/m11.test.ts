@@ -147,7 +147,11 @@ test('THE MANAGER PLACEMENT PIN: players follow authored phase positions, not th
   const acc: Record<string, number[]> = { stBuild: [], stFinal: [], lbHigh: [], lbLow: [] };
   for (const seed of ['wb-0', 'wb-1', 'wb-2']) {
     const sim = new Sim(scenarioByName('m11-4231x-442'), seed);
-    for (let t = 0; t < 900; t++) {
+    // the full slice (2700) so both authored phases are sampled — home
+    // finishes more since the keeper-set drive damp, so build-up is
+    // rarer per unit time; the DELTA is the claim, the window just
+    // needs enough of each phase to measure it
+    for (let t = 0; t < 2700; t++) {
       sim.step();
       if (t % 5 !== 0) continue;
       const ph = (sim as any).teamPhase?.get('home');

@@ -1696,6 +1696,18 @@ const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turno
 
 export const evaluateOptions = (input: DecideInput): Intent[] => {
   const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds, keepers } = input;
+  // KEEPER SET-NESS (the tick-128 fix): near goal, driving PAST a
+  // shootable chance is greed when the keeper is home on his line — the
+  // shot is on, take it. When the keeper is beaten or off his line the
+  // net is opening and the drive to it is right (breakaways untouched).
+  // 1 = keeper set on his line, 0 = keeper stranded/out.
+  const oppGoalX = attackSign(carrier.team) > 0 ? PITCH.length : 0;
+  let keeperSet = 1;
+  for (const b of bodies) {
+    if (b.team === carrier.team || !keepers?.has(b.id)) continue;
+    const off = Math.abs(b.pos.x - oppGoalX);
+    keeperSet = Math.max(0, Math.min(1, 1 - (off - 2) / 8)); // set within 2 m, gone by 10 m
+  }
   // hazard density for the calibration lives where the ball is GOING —
   // a switch out of a crowded flank into an empty one is not a traffic
   // ball (carrier-anchored density gave it the full shrink and killed
@@ -2310,7 +2322,16 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     if (!keep && (pressure < DECIDE.drivePressureCeil || driveAtGoal)) {
       let pvDrive = value(runThrough, carrier.id);
       if (gdT < DECIDE.shootRangeM * 1.3) pvDrive += 0.38 * xG(runThrough, team, opponents);
-      u += DECIDE.possessionDiscount * DECIDE.driveGain * Math.max(0, pvDrive - pvHere);
+      // DON'T DRIVE PAST A GOOD SHOT (tick-128), but DO drive to
+      // manufacture one: the damp fires only when a genuinely good chance
+      // is ALREADY in hand (xG here) AND the keeper is set — then the
+      // strike wins. From a half-chance the drive is undamped, so
+      // carrying INTO the box still creates shots (volume). Match scale
+      // (the shot/duel drills keep the raw balance).
+      const shotNow = bodies.length >= 18 && dGoal < DECIDE.shootRangeM
+        ? xG(here, team, opponents) : 0;
+      const driveDamp = 1 - 0.7 * keeperSet * Math.min(1, shotNow / 0.18);
+      u += DECIDE.possessionDiscount * DECIDE.driveGain * Math.max(0, pvDrive - pvHere) * driveDamp;
     }
     options.push({ kind: 'carry', target: runThrough, regime: carryRegime, utility: u, dir: ang });
   }
