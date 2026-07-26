@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, pivotShift, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -2780,6 +2780,23 @@ export class Sim {
                 st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, sgnB,
                   instr.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1,
                   oppU, settled, oppThreat, instr.holdWidth === true);
+                // CB STEPS TO CDM (builder): in BUILD-UP a centre-back
+                // pushes into the pivot — station shifts forward toward
+                // the DM line and toward center. Only in our own half
+                // (build-up), tactical-adhered, back-line only.
+                const stepEff = this.backLineHome(id, body.team)
+                  ? adhere(instr.stepUp ?? 0, 0, body.attributes.tactical ?? 11) : 0;
+                const buildup = (sgnB > 0 ? this.ball.pos.x : PITCH.length - this.ball.pos.x) < 45;
+                if (stepEff > 0 && buildup) st = pivotShift(st, sgnB, stepEff * 14, stepEff * 0.7);
+                // INVERTED FULLBACK (builder): a wide back tucks INSIDE
+                // in possession (into the pivot half-space) rather than
+                // overlapping — inward pull, not forward. underlap>0.6 on
+                // a back-line WIDE player reads as the invert instruction.
+                const isWideBack = this.backLineHome(id, body.team) &&
+                  Math.abs((this.baseHomes.get(id)?.y ?? 34) - PITCH.width / 2) > 12;
+                const invEff = isWideBack
+                  ? Math.max(0, adhere(instr.underlap ?? 0.5, 0.5, body.attributes.tactical ?? 11) - 0.6) / 0.4 : 0;
+                if (invEff > 0) st = pivotShift(st, sgnB, invEff * 6, invEff * 0.6);
               }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { adhere, evaluateOptions, keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
+import { adhere, evaluateOptions, keepValue, passCompletion, pivotShift, posValue, supportSpot, xG } from './decide.ts';
 import type { BodyState, Frame } from './engine2-types.ts';
 
 const mkBody = (id: string, team: 'home' | 'away', x: number, y: number, vx = 0, vy = 0): BodyState => ({
@@ -343,4 +343,21 @@ test('SLIDER: passChannel weights central vs wide, gegenpress scales the hunt (b
     return n;
   };
   assert.ok(cp(0.95) > cp(0.05) * 1.2, 'high gegenpress hunts measurably more than low');
+});
+
+test('SLIDER: CB step-up drives forward+inward, inverted fullback tucks inside (both tactical-gated)', () => {
+  // stepUp / invert are pivot shifts — unit-pinned (the emergent body is
+  // confounded: a stepped-up CB changes the whole build-up). Home sign +.
+  const base = { x: 16, y: 42 };
+  const stepped = pivotShift(base, 1, adhere(1.0, 0, 18) * 14, adhere(1.0, 0, 18) * 0.7);
+  const dross = pivotShift(base, 1, adhere(1.0, 0, 4) * 14, adhere(1.0, 0, 4) * 0.7);
+  assert.ok(stepped.x > base.x + 10, `step-up drives a CB forward into the pivot (${base.x} -> ${stepped.x.toFixed(1)})`);
+  assert.ok(Math.abs(stepped.y - 34) < Math.abs(base.y - 34), `and inward toward center (${base.y} -> ${stepped.y.toFixed(1)})`);
+  assert.ok(stepped.x - base.x > dross.x - base.x + 5, `tactical gates it (disc +${(stepped.x - base.x).toFixed(1)} > dross +${(dross.x - base.x).toFixed(1)})`);
+
+  // inverted fullback: the invEff pulls a wide back inside (measured
+  // emergent too: LB width-from-center 16.5 overlap -> 9.9 invert)
+  const fbBase = { x: 20, y: 56 };
+  const inverted = pivotShift(fbBase, 1, 0.4 * 6, 0.4 * 0.6);
+  assert.ok(Math.abs(inverted.y - 34) < Math.abs(fbBase.y - 34) - 2, `inverted FB tucks inside (${fbBase.y} -> ${inverted.y.toFixed(1)})`);
 });

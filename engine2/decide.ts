@@ -363,6 +363,16 @@ export const goalCenter = (team: 'home' | 'away'): Vec2 =>
  * follows the plan; a 5 mostly reverts to instinct. This is the single
  * gate every tunable instruction passes through, the twin of awareness
  * gating perception. */
+/** the possession-station PIVOT SHIFT (CB-to-CDM step-up + inverted
+ * fullback): move a station FORWARD (toward the attacked goal) and/or
+ * INWARD (toward center). Pure so the sim applies it and the pin
+ * verifies it deterministically (emergent body readouts are confounded
+ * — the shifted player changes the whole build-up). */
+export const pivotShift = (st: Vec2, sign: number, forward: number, inward: number): Vec2 => ({
+  x: st.x + sign * forward,
+  y: st.y + (PITCH.width / 2 - st.y) * inward,
+});
+
 export const adhere = (instructed: number, neutral: number, tactical = 11): number => {
   const disc = Math.max(0, Math.min(1, tactical / 20));
   return neutral + (instructed - neutral) * disc;
