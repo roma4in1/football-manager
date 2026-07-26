@@ -3095,6 +3095,7 @@ export class Sim {
                 if (dE > 1) this.assign(body, { type: 'moveTo', target: edge, regime: 'run' });
                 else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
                 this.pressingIds.delete(id);
+                this.shapeHolding.add(id);
                 this.actionLabels.set(id, 'box-out');
                 continue;
               }
@@ -3112,6 +3113,7 @@ export class Sim {
                 if (dRing > 1) this.assign(body, { type: 'moveTo', target: ring, regime: 'jog' });
                 else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
                 this.pressingIds.delete(id);
+                this.shapeHolding.add(id); // re-enters the defending chain when the ring lifts
                 this.actionLabels.set(id, 'standoff');
                 continue;
               }
@@ -3158,6 +3160,8 @@ export class Sim {
               // and a CB who happened to be near the flip point hunted
               // into the opponent corner 40 m from his line partner (the
               // tick-293 spacing frame) while midfielders stood by
+              // a back-line defender counterpresses only when clearly
+              // first (+0.5 s handicap): the line holds, mids press
               const myMeet = this.interceptPoint(body).tMeet +
                 (this.backLineHome(id, body.team) ? 0.5 : 0);
               let closerCp = 0;
