@@ -2955,6 +2955,7 @@ export class Sim {
                 adhere(inst.roam ?? 0.5, 0.5, tac),
                 this.attackClaims.get(body.team),
                 adhere(inst.underlap ?? 0.5, 0.5, tac),
+                adhere((inst.overloadSide ?? 0) / 2 + 0.5, 0.5, tac) * 2 - 1,
               );
               this.attackClaims.get(body.team)!.push(spot);
               const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);

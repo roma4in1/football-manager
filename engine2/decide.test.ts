@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { adhere, blockStation, evaluateOptions, keepValue, passCompletion, pivotShift, posValue, supportSpot, xG } from './decide.ts';
+import { adhere, blockStation, decideDefense, evaluateOptions, keepValue, passCompletion, pivotShift, posValue, supportSpot, xG } from './decide.ts';
 import type { BodyState, Frame } from './engine2-types.ts';
 
 const mkBody = (id: string, team: 'home' | 'away', x: number, y: number, vx = 0, vy = 0): BodyState => ({
@@ -386,4 +386,35 @@ test('SLIDER: tempo shoots/releases earlier, compactness tightens the block, sho
   const tight = blockStation(home, centroid, ballPos, false, 1, 0.5, 11, undefined, true, 1, false, -0.5, 0.95);
   const loose = blockStation(home, centroid, ballPos, false, 1, 0.5, 11, undefined, true, 1, false, -0.5, 0.05);
   assert.ok((tight.y - home.y) > (loose.y - home.y) + 1, `compact deforms harder toward the ball side (tight +${(tight.y - home.y).toFixed(1)} > loose +${(loose.y - home.y).toFixed(1)})`);
+});
+
+test('SLIDER: overload loads a flank, man-marking sits tighter than zonal', () => {
+  // overloadSide pulls support toward a flank — a RIGHT overload (+1)
+  // moves the support spot toward low y vs a LEFT overload (-1)
+  const carrier = mkBody('c', 'home', 55, 34);
+  const bodies = [carrier, mkBody('m', 'home', 60, 34), mkBody('o', 'away', 62, 40)];
+  const yAt = (overloadSide: number): number =>
+    supportSpot(bodies[1], carrier, bodies, { x: 40, y: 34 }, 'score', 0.8, undefined, 0.5, overloadSide).y;
+  assert.ok(yAt(1) < yAt(-1) - 1, `right overload loads low y vs left (${yAt(1).toFixed(1)} < ${yAt(-1).toFixed(1)})`);
+
+  // man-marking sits tighter to the runner than zonal (half the
+  // goal-side gap). Two covers so the zonal board anticipates (drops
+  // off); man-mark stays tight.
+  const def = mkBody('d', 'home', 30, 34);
+  const carrier2 = mkBody('a', 'away', 50, 34);
+  const runner = mkBody('r', 'away', 40, 40); // the man to mark
+  const cover1 = mkBody('d2', 'home', 28, 30);
+  const cover2 = mkBody('d3', 'home', 28, 38);
+  const unit = [def, cover1, cover2];
+  const homes = new Map([['d', { x: 30, y: 34 }], ['d2', { x: 28, y: 30 }], ['d3', { x: 28, y: 38 }]]);
+  const ball = { pos: carrier2.pos, carrierId: 'a', phase: 'carried' as const, z: 0, vz: 0, vel: { x: 0, y: 0 }, kickerId: null, kickerLockUntilTick: 0, touchParity: false, spin: 0 };
+  const markDist = (marking: 'zonal' | 'man'): number => {
+    const di = decideDefense({ defender: def, carrier: carrier2, bodies: [def, carrier2, runner, cover1, cover2], ball,
+      instructions: { marking }, unit, pressingIds: new Set(), inCounterpress: false, justReceived: false, homes });
+    if (di.kind !== 'mark' && di.kind !== 'cover') return 99;
+    return Math.hypot(di.target.x - runner.pos.x, di.target.y - runner.pos.y);
+  };
+  const man = markDist('man');
+  const zonal = markDist('zonal');
+  assert.ok(man <= zonal, `man-marking sits at least as tight as zonal (man ${man.toFixed(1)} <= zonal ${zonal.toFixed(1)})`);
 });

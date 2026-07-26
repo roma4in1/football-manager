@@ -695,6 +695,9 @@ export const supportSpot = (
   /** the underlap/overlap channel bias already tactical-adhered, 0..1
    * (0.5 neutral, >0.5 inside/underlap, <0.5 outside/overlap) */
   channel = 0.5,
+  /** overload side, -1 load LEFT (high y) .. +1 load RIGHT (low y), 0
+   * neutral — pulls the support toward a chosen flank */
+  overloadSide = 0,
 ): Vec2 => {
   const opponents = bodies.filter((b) => b.team !== mate.team);
   const mates = bodies.filter((b) => b.team === mate.team && b.id !== mate.id);
@@ -750,7 +753,10 @@ export const supportSpot = (
     const candInside = (cand.y - carrier.pos.y) * toCenter; // >0 = inside of carrier
     const chan = (channel - 0.5) * 2; // -1 overlap .. +1 underlap
     const channelU = chan * candInside * 0.12;
-    const u = lane * 0.6 + val * 1.2 - crowd * 0.12 + channelU;
+    // OVERLOAD SIDE: reward the loaded flank. +1 loads RIGHT (low y),
+    // -1 loads LEFT (high y). A candidate on the loaded side scores up.
+    const loadU = overloadSide === 0 ? 0 : -overloadSide * (cand.y - PITCH.width / 2) * 0.006;
+    const u = lane * 0.6 + val * 1.2 - crowd * 0.12 + channelU + loadU;
     if (u > bestU) {
       bestU = u;
       best = cand;
@@ -1446,7 +1452,11 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     // run; as the LONE cover you stay touch-tight and gamble — the
     // ungated drop vacated the middle and the shorthanded 2v2 collapsed
     // 0/8 → 8/8 through
-    const anticipate = covers.length > 1;
+    // MARKING scheme (Claude's slider): 'man' marks TIGHT to the runner
+    // (half the goal-side gap, no anticipatory drop-off — he tracks his
+    // man); 'zonal' (default) keeps the anticipatory space.
+    const manMark = instructions.marking === 'man';
+    const anticipate = covers.length > 1 && !manMark;
     const markSpot = (o: BodyState, open = 0): Vec2 => {
       const md = Math.hypot(og.x - o.pos.x, og.y - o.pos.y) || 1;
       const bd = Math.hypot(carrier.pos.x - o.pos.x, carrier.pos.y - o.pos.y) || 1;
@@ -1474,7 +1484,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
           y: o.pos.y + ((carrier.pos.y - o.pos.y) / bd) * 2.4 + ((og.y - o.pos.y) / md) * 1.5,
         };
       }
-      const depth2 = DUEL.markGoalSideM + gws * DUEL.markDropGainS;
+      const depth2 = (manMark ? DUEL.markGoalSideM * 0.5 : DUEL.markGoalSideM) + gws * DUEL.markDropGainS;
       const shade = DUEL.markBallShadeM * Math.max(0, 1 - gws / DUEL.markShadeFadeMps);
       return {
         x: o.pos.x + ((og.x - o.pos.x) / md) * depth2 + ((carrier.pos.x - o.pos.x) / bd) * shade,
