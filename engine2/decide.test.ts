@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
+import { adhere, keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
 import type { BodyState, Frame } from './engine2-types.ts';
 
 const mkBody = (id: string, team: 'home' | 'away', x: number, y: number, vx = 0, vy = 0): BodyState => ({
@@ -277,4 +277,41 @@ test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => 
     totalTransfers += transfers;
   }
   assert.ok(totalTransfers >= 16, `passer-to-passer transfers across 4 seeds (${totalTransfers})`);
+});
+
+test('INSTRUCTION CONTRAST (the acceptance instrument): the underlap slider moves the support channel, and tactical gates how far', () => {
+  // the builder's contract: a manager slider must MEASURABLY and
+  // MONOTONICALLY move behavior, and how faithfully a player follows it
+  // is his tactical attribute. This pin is the template every tunable
+  // instruction is verified against — unit-isolated on supportSpot so
+  // the signal is clean (the emergent match readout is confounded: the
+  // slider changes the whole trajectory).
+  const rb = mkBody('rb', 'home', 50, 16); // a right back on the bottom flank
+  const carrier = mkBody('c', 'home', 55, 34); // central carrier
+  const bodies = [rb, carrier, mkBody('o1', 'away', 60, 30), mkBody('o2', 'away', 62, 40)];
+  const home = { x: 18, y: 13 };
+  const yAt = (channel: number): number => supportSpot(rb, carrier, bodies, home, 'score', 0.8, undefined, channel).y;
+  const overlap = yAt(0.0);
+  const neutral = yAt(0.5);
+  const underlap = yAt(1.0);
+  // higher y = more inside/central for a bottom-flank player
+  assert.ok(overlap <= neutral && neutral <= underlap, `monotone: overlap ${overlap.toFixed(1)} <= neutral ${neutral.toFixed(1)} <= underlap ${underlap.toFixed(1)}`);
+  assert.ok(underlap - overlap >= 4, `the slider has real bite (Δ=${(underlap - overlap).toFixed(1)}m)`);
+
+  // TACTICAL GATING lives in adhere() — the single gate every slider
+  // passes through: a disciplined player executes the instruction, an
+  // undisciplined one reverts toward his neutral default. (The unit
+  // spot is discretized onto a candidate ring, so gating is asserted at
+  // the value the executor consumes, not the snapped output.)
+  const instructed = 1.0;
+  const neutralV = 0.5;
+  const disc = adhere(instructed, neutralV, 18);
+  const dross = adhere(instructed, neutralV, 4);
+  assert.ok(Math.abs(disc - instructed) < Math.abs(dross - instructed),
+    `the disciplined player follows the plan more faithfully (disc ${disc.toFixed(2)} vs dross ${dross.toFixed(2)}, instructed ${instructed})`);
+  assert.ok(Math.abs(dross - neutralV) < Math.abs(disc - neutralV),
+    `the undisciplined player reverts toward neutral (dross ${dross.toFixed(2)} nearer ${neutralV} than disc ${disc.toFixed(2)})`);
+  assert.equal(adhere(instructed, neutralV, 20), instructed, 'a 20 follows the plan exactly');
+  // ...and the gated value still drives the spot monotonically
+  assert.ok(yAt(dross) <= yAt(disc), `the gated channel still moves the spot in order (${yAt(dross).toFixed(1)} <= ${yAt(disc).toFixed(1)})`);
 });

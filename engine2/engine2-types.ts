@@ -46,6 +46,13 @@ export interface BodyAttributes {
    * decisions priced against near-truth; lower = stale reads, blind-side
    * vulnerability, late line judgments. */
   awareness?: number;
+  /** TACTICAL DISCIPLINE (builder: 'how strictly a player follows the
+   * instruction should be based on the tactical attribute'): how
+   * faithfully this player executes the manager's instructions. Every
+   * tunable slider is read as neutral + (instructed - neutral) *
+   * (tactical/20) — a 20 follows the plan precisely, a 5 drifts most of
+   * the way back to his instinctive default. Optional, league-average 11. */
+  tactical?: number;
 }
 
 /** Derived stance — read-only presentation/debug signal, never an input. */

@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -2723,7 +2723,7 @@ export class Sim {
             // on his flank; electing him into a CENTRAL late arrival was
             // eroding the width identity round by round (47 -> 33 -> 21 m)
             const lateArrival = carrierProg2 > 50 && moreAdvanced < 4 &&
-              advSign * (body.pos.x - carrierBody.pos.x) > -(10 + 24 * (this.instructions.get(id)?.roam ?? 0.5)) &&
+              advSign * (body.pos.x - carrierBody.pos.x) > -(10 + 24 * adhere(this.instructions.get(id)?.roam ?? 0.5, 0.5, body.attributes.tactical ?? 11)) &&
               this.instructions.get(id)?.holdWidth !== true;
             const advancedRunner = (advSign * (body.pos.x - carrierBody.pos.x) > 2 && moreAdvanced < 3) || lateArrival;
             // THREE supporters (builder: 'increase the short passing and
@@ -2771,7 +2771,8 @@ export class Sim {
                 const settled = this.tick - gainedAt > 25 && cPress > 4;
                 const instr = this.instructions.get(id) ?? {};
                 const sgnB = attackSign(body.team);
-                const restBound = this.backLineHome(id, body.team) && (instr.joinAttack ?? 0) < 0.6;
+                const joinEff = adhere(instr.joinAttack ?? 0, 0, body.attributes.tactical ?? 11);
+                const restBound = this.backLineHome(id, body.team) && joinEff < 0.6;
                 const oppU = restBound ? this.oppDeepestU(body.team) : undefined;
                 // threat 1 at our box edge, fading to 0.3 by halfway
                 const oppProg = oppU === undefined ? 1 : oppU + (sgnB > 0 ? 0 : PITCH.length);
@@ -2929,10 +2930,13 @@ export class Sim {
               // froze supporters mid-walk on stale targets while play
               // moved on — 'support' fired 70 assignments to station's
               // 1891 in the census, and the triangles never formed)
+              const tac = body.attributes.tactical ?? 11;
+              const inst = this.instructions.get(id) ?? {};
               const spot = supportSpot(
                 body, carrierBody, this.perceivedBodies(id), this.homes.get(id) ?? body.pos, objective,
-                this.instructions.get(id)?.roam ?? 0.5,
+                adhere(inst.roam ?? 0.5, 0.5, tac),
                 this.attackClaims.get(body.team),
+                adhere(inst.underlap ?? 0.5, 0.5, tac),
               );
               this.attackClaims.get(body.team)!.push(spot);
               const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);

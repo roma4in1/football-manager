@@ -167,6 +167,12 @@ export interface PlayInstructions {
   setPieceTaker?: boolean;
   freeKickStyle?: 'auto' | 'short' | 'shoot' | 'cross' | 'long';
   cornerStyle?: 'cross' | 'short';
+  /** UNDERLAP / OVERLAP (builder: 'RB should push up for underlapping
+   * support runs'): the support/run channel bias, 0..1. 0.5 neutral;
+   * >0.5 seeks the INSIDE channel (underlap — between the opponent
+   * lines, toward center); <0.5 hugs the OUTSIDE (overlap — the
+   * touchline beyond the winger). Pairs with joinAttack (push up). */
+  underlap?: number;
 }
 
 export type Intent =
@@ -323,6 +329,17 @@ export const goalCenter = (team: 'home' | 'away'): Vec2 =>
  * authored field: monotone toward the opponent's goal, boosted centrally in
  * the final third, in [0, pvMax]. Goal PROXIMITY outweighs raw x-progress —
  * progress-heavy weights judged as wingers driving to the corner flag */
+
+/** TACTICAL ADHERENCE (builder): a player executes a slider only as
+ * faithfully as his tactical attribute allows — the instructed value is
+ * pulled back toward the NEUTRAL default by (1 - tactical/20). A 20
+ * follows the plan; a 5 mostly reverts to instinct. This is the single
+ * gate every tunable instruction passes through, the twin of awareness
+ * gating perception. */
+export const adhere = (instructed: number, neutral: number, tactical = 11): number => {
+  const disc = Math.max(0, Math.min(1, tactical / 20));
+  return neutral + (instructed - neutral) * disc;
+};
 
 export const posValue = (p: Vec2, team: 'home' | 'away'): number => {
   const g = goalCenter(team);
@@ -638,6 +655,9 @@ export const supportSpot = (
    * only, so a supporter, a runner and a box man converged on one spot
    * with each system blind to the others (the tick-688 triple stack). */
   claimed?: readonly Vec2[],
+  /** the underlap/overlap channel bias already tactical-adhered, 0..1
+   * (0.5 neutral, >0.5 inside/underlap, <0.5 outside/overlap) */
+  channel = 0.5,
 ): Vec2 => {
   const opponents = bodies.filter((b) => b.team !== mate.team);
   const mates = bodies.filter((b) => b.team === mate.team && b.id !== mate.id);
@@ -685,7 +705,15 @@ export const supportSpot = (
       const mDist = Math.hypot(m.pos.x - carrier.pos.x, m.pos.y - carrier.pos.y);
       if (dAng < 0.7 && mDist < 20) crowd += (0.7 - dAng) / 0.7 * 0.8;
     }
-    const u = lane * 0.6 + val * 1.2 - crowd * 0.12;
+    // CHANNEL BIAS (underlap/overlap): reward the candidate's side vs
+    // the pitch center relative to this player's own flank. Underlap
+    // (channel>0.5) pulls toward center AND ahead; overlap (<0.5) hugs
+    // the touchline. Neutral (0.5) adds nothing.
+    const toCenter = mate.pos.y <= PITCH.width / 2 ? 1 : -1; // sign to move inside
+    const candInside = (cand.y - carrier.pos.y) * toCenter; // >0 = inside of carrier
+    const chan = (channel - 0.5) * 2; // -1 overlap .. +1 underlap
+    const channelU = chan * candInside * 0.12;
+    const u = lane * 0.6 + val * 1.2 - crowd * 0.12 + channelU;
     if (u > bestU) {
       bestU = u;
       best = cand;
