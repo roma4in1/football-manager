@@ -3140,10 +3140,16 @@ export class Sim {
             // they just lost (it is literally the rondo's rule); the keep
             // gate below only blocks ORGANIZED defense
             const myBallDist = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
-            if (this.tick - lostAt <= 60 && (oppHasIt || looseBall) &&
+            // GEGENPRESS (builder): the counterpress instruction scales
+            // the 5-second-rule window, its radius, and how many hunt —
+            // tactical-adhered (a disciplined presser executes the plan)
+            const cpI = adhere(this.instructions.get(id)?.counterpress ?? 0.5, 0.5, body.attributes.tactical ?? 11);
+            const cpWindow = 40 + Math.round(cpI * 60); // 40..100 ticks
+            const cpRadius = 10 + cpI * 12; // 10..22 m
+            if (this.tick - lostAt <= cpWindow && (oppHasIt || looseBall) &&
               this.tick % DECIDE.reconsiderTicks === 0 &&
               this.tick > (this.scriptedUntil.get(id) ?? -1) &&
-              myBallDist < 15 &&
+              myBallDist < cpRadius &&
               // a restart is not a transition — the counterpress instinct
               // ignored the claim lock and hunted the other team's ball
               !(this.restartLock && this.tick < this.restartLock.until && body.team !== this.restartLock.team)) {
@@ -3177,7 +3183,7 @@ export class Sim {
               // vs a CARRIED ball, ONE man commits (the elected press is
               // the second layer — two counterpressors + a presser was
               // the judged double-commit); loose balls keep the pair
-              if ((oppHasIt ? closerCp < 1 : closerCp < 2) || myBallDist < 3) {
+              if ((oppHasIt ? closerCp < (cpI > 0.7 ? 2 : 1) : closerCp < 2) || myBallDist < 3) {
                 if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'sprint' });
                 this.pressingIds.add(id); // a pressing state — demotable
                 this.actionLabels.set(id, 'counterpress');

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { adhere, keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
+import { adhere, evaluateOptions, keepValue, passCompletion, posValue, supportSpot, xG } from './decide.ts';
 import type { BodyState, Frame } from './engine2-types.ts';
 
 const mkBody = (id: string, team: 'home' | 'away', x: number, y: number, vx = 0, vy = 0): BodyState => ({
@@ -314,4 +314,33 @@ test('INSTRUCTION CONTRAST (the acceptance instrument): the underlap slider move
   assert.equal(adhere(instructed, neutralV, 20), instructed, 'a 20 follows the plan exactly');
   // ...and the gated value still drives the spot monotonically
   assert.ok(yAt(dross) <= yAt(disc), `the gated channel still moves the spot in order (${yAt(dross).toFixed(1)} <= ${yAt(disc).toFixed(1)})`);
+});
+
+test('SLIDER: passChannel weights central vs wide, gegenpress scales the hunt (both tactical-gated)', () => {
+  // passChannel — the option table's central pass gains vs a wide one as
+  // the slider rises (unit-isolated: emergent choice depends on geometry)
+  const mk2 = (id: string, x: number, y: number): BodyState => mkBody(id, 'home', x, y);
+  const carrier = mkBody('c', 'home', 55, 34);
+  const central = mk2('m1', 68, 34);
+  const wide = mk2('m2', 62, 60);
+  const bodies = [carrier, central, wide, mkBody('o', 'away', 63, 47)];
+  const ball = { pos: carrier.pos, carrierId: 'c', phase: 'carried' as const, z: 0, vz: 0, vel: { x: 0, y: 0 }, kickerId: null, kickerLockUntilTick: 0, touchParity: false, spin: 0 };
+  const uOf = (passChannel: number, rid: string): number => {
+    const opts = evaluateOptions({ carrier, bodies, ball, instructions: { passChannel }, current: null, keepers: new Set() });
+    const p2 = opts.filter((o) => o.kind === 'pass' && (o as any).receiverId === rid);
+    return p2.length ? Math.max(...p2.map((o) => o.utility)) : 0;
+  };
+  const centralGain = uOf(0.95, 'm1') / Math.max(1e-6, uOf(0.05, 'm1'));
+  const wideGain = uOf(0.95, 'm2') / Math.max(1e-6, uOf(0.05, 'm2'));
+  assert.ok(centralGain > wideGain, `central pref lifts the central ball more (central x${centralGain.toFixed(2)} > wide x${wideGain.toFixed(2)})`);
+
+  // gegenpress — counterpress ticks scale with the intensity slider
+  const cp = (counterpress: number): number => {
+    let n = 0;
+    const sim = new Sim(scenarioByName('m11-match'), 'gp-0');
+    for (const b of sim.bodies) sim.instructions.set(b.id, { ...(sim.instructions.get(b.id) ?? {}), counterpress });
+    for (let t = 0; t < 1200; t++) { const f = sim.step(); for (const b of f.bodies) if (b.action === 'counterpress') n++; }
+    return n;
+  };
+  assert.ok(cp(0.95) > cp(0.05) * 1.2, 'high gegenpress hunts measurably more than low');
 });

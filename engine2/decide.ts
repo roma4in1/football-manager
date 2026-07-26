@@ -173,6 +173,33 @@ export interface PlayInstructions {
    * lines, toward center); <0.5 hugs the OUTSIDE (overlap — the
    * touchline beyond the winger). Pairs with joinAttack (push up). */
   underlap?: number;
+  /** PASS CHANNEL (builder: central penetration vs wide): 0..1, 0.5
+   * neutral. >0.5 values the CENTRAL through ball (splitting the lines);
+   * <0.5 values the WIDE switch/cross. Weights the pass menu. */
+  passChannel?: number;
+  /** GEGENPRESS (builder): counterpress intensity 0..1, default 0.5 —
+   * scales the transition-hunt window, radius, and how many chase. 1 =
+   * swarm the ball you just lost; 0 = drop and reset. */
+  counterpress?: number;
+  /** CB STEP-UP (builder: 'CB who steps up to play CDM'): 0..1, a
+   * centre-back's licence to push into the pivot in build-up. Like
+   * joinAttack but into MIDFIELD, not the flank. */
+  stepUp?: number;
+  /** TEMPO / DIRECTNESS: 0..1, 0.5 neutral. High = vertical, release
+   * early, short shield; low = patient, hold and circulate. */
+  tempo?: number;
+  /** COMPACTNESS: 0..1, how tightly the block squeezes its span
+   * (pairs with lineHeight). 1 = narrow/short, 0 = stretched. */
+  compactness?: number;
+  /** SHOOT ON SIGHT: 0..1, 0.5 neutral. High = a poacher who shoots
+   * early; low = works a better chance. Scales the finisher threshold. */
+  shootOnSight?: number;
+  /** OVERLOAD SIDE: -1 load the LEFT (high y), +1 the RIGHT (low y), 0
+   * neutral — biases support/shift toward a flank. */
+  overloadSide?: number;
+  /** MARKING: 'zonal' (default, the duty board) or 'man' (track a fixed
+   * opponent). */
+  marking?: 'zonal' | 'man';
 }
 
 export type Intent =
@@ -1786,6 +1813,14 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // nobody to conserve THROUGH — the premium just distorted the take-on
   // (the channel's 1-v-pair reverts to the pure duel economy)
   const retainW = keep || mates.length === 0 ? 0 : DECIDE.retainValue * (1 + 1.2 * pressHere) * buildup;
+  // PASS CHANNEL (builder: central vs wide): a multiplier on a pass by
+  // its destination — central+forward balls scale up with passChannel,
+  // wide balls scale down (and vice versa). Tactical-adhered upstream.
+  const chanPref = (adhere(instructions.passChannel ?? 0.5, 0.5, carrier.attributes.tactical) - 0.5) * 2; // -1 wide .. +1 central
+  const passChannelMul = (dest: Vec2): number => {
+    const centralness = 1 - Math.min(1, Math.abs(dest.y - PITCH.width / 2) / 24); // 1 central, 0 touchline
+    return 1 + chanPref * (centralness - 0.5) * 0.5;
+  };
   // RECEIVER FREEDOM (the danger-EV's mirror): a one-step EV undervalues
   // the open deep man — his position is worth little but his FREEDOM is
   // the whole next action (the free CB can pick any forward ball; the
@@ -2089,7 +2124,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // buried the final through ball (builder)
       const dartRx = runners?.has(mate.id) && mate.speed >= 4 ? 0.5 : 1;
       pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest) * dartRx);
-      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait * offsideTax;
+      const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait * offsideTax * passChannelMul(dest);
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
@@ -2199,7 +2234,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           // COMPLETION HIGH-VALUE by nature — the old weight was fitted
           // when pC pretended the box was safe
           pvC += 1.0 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-          const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor, keep ? pvC : lossVal(cross), retainW);
+          const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor, keep ? pvC : lossVal(cross), retainW) * passChannelMul(cross);
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
           }
@@ -2225,7 +2260,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land));
         let pvS = value(land, mate.id) + freedom(land);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
-        const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor, keep ? pvS : lossVal(land), retainW);
+        const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor, keep ? pvS : lossVal(land), retainW) * passChannelMul(land);
         if (!bestPass || uS > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg, pC: pCs };
         }
