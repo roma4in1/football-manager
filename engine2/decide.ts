@@ -1165,9 +1165,15 @@ export const blockStation = (
   /** the LINE-HOLD offset vs the deepest opponent (defense only):
    * -0.5 = hold level; +1.2 = the offside trap's step past him */
   trapUp = -0.5,
+  /** COMPACTNESS (Claude's slider, 0..1, 0.5 neutral): tightens this
+   * station's ball-relative pull — the block squeezes toward the ball
+   * line (narrow/short) or spreads (0). Already tactical-adhered. */
+  compact = 0.5,
 ): Vec2 => {
-  const kx = possession ? 0.7 : 0.45;
-  let capX = possession ? 30 : 18;
+  // compactness scales the pull toward the ball line: >0.5 tighter
+  const compactMul = 1 + (compact - 0.5) * 0.8; // 0.6 .. 1.4
+  const kx = (possession ? 0.7 : 0.45) * compactMul;
+  let capX = (possession ? 30 : 18) / compactMul;
   // HIGH BLOCK vs the deep build-up (the tick-534 frame: the ball at the
   // opponent goal line and the defending block still sitting 50 m off in
   // its own half — the 18 m slide cap strands it): the farther the ball
@@ -1181,8 +1187,8 @@ export const blockStation = (
   // ball-side; a far winger tucks toward the box edge rather than
   // holding the touchline) — roughly double the old lateral slide
   const big = teamSize >= 8;
-  const ky = big ? 0.45 : 0.3;
-  const capY = big ? 16 : possession ? 10 : 8;
+  const ky = (big ? 0.45 : 0.3) * compactMul;
+  const capY = (big ? 16 : possession ? 10 : 8) / compactMul;
   let x = Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx))));
   if (sign !== 0) {
     const u = x * sign;
@@ -1382,7 +1388,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
-      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers) };
+      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical)) };
     }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
@@ -1535,13 +1541,13 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const lane = shadowSpot(defender, carrier, bodies);
     if (lane) return { kind: 'interceptLane', target: lane };
   }
-  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers) };
+  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical)) };
 };
 
 /** defensive off-board shape: the block station (formation lines sliding
  * with the ball) — shapeSpot was an L5c small-line tool and read as "no
  * structure" at eleven */
-const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>): Vec2 => {
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5): Vec2 => {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -1581,7 +1587,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       Math.hypot(b.pos.x - ball.pos.x, b.pos.y - ball.pos.y) < 3);
     if (pressed) trapUp = 1.2;
   }
-  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep, true, 1, false, trapUp);
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep, true, 1, false, trapUp, compact);
   // ZONAL MARKING ON THE LINE (the tick-178 frame: the striker BETWEEN
   // the centre-backs, unmarked — the duty board's claimant pool is
   // carrier-local and the line often sits outside it): a line defender
@@ -1827,6 +1833,13 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // its destination — central+forward balls scale up with passChannel,
   // wide balls scale down (and vice versa). Tactical-adhered upstream.
   const chanPref = (adhere(instructions.passChannel ?? 0.5, 0.5, carrier.attributes.tactical) - 0.5) * 2; // -1 wide .. +1 central
+  // TEMPO / DIRECTNESS (Claude's slider): high = release early, shield
+  // less; low = patient. Tactical-adhered. Drives the shield fade and
+  // the thread-release readiness below.
+  const tempoEff = adhere(instructions.tempo ?? 0.5, 0.5, carrier.attributes.tactical);
+  // SHOOT ON SIGHT (Claude's slider): high = a poacher, shoots from a
+  // lower xG; low = works a better chance. Shifts the finisher gate.
+  const sosEff = adhere(instructions.shootOnSight ?? 0.5, 0.5, carrier.attributes.tactical);
   const passChannelMul = (dest: Vec2): number => {
     const centralness = 1 - Math.min(1, Math.abs(dest.y - PITCH.width / 2) / 24); // 1 central, 0 touchline
     return 1 + chanPref * (centralness - 0.5) * 0.5;
@@ -1904,7 +1917,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     // more generous than before); no blanket appetite — that fired
     // low-xG shots and CRATERED goals (1.5 -> 0.5). Volume comes from
     // more THREADS creating better chances, not more hopeful strikes.
-    const finisher = (xGHere >= 0.11 && laneEff >= 0.65) || (inBoxShot && xGHere >= 0.11) ? 1.5 : 1;
+    const sosThresh = 0.16 - sosEff * 0.10; // 0.16 patient .. 0.06 poacher
+    const finisher = (xGHere >= sosThresh && laneEff >= 0.65) || (inBoxShot && xGHere >= sosThresh) ? 1.5 : 1;
     // the CURLED FINISH (builder: 'increase curving physics'): from a
     // real angle the across-goal shot BENDS into the far corner — the
     // arc bows away from the keeper's reach and comes back inside the
@@ -2126,7 +2140,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // rates. The original measurement stands.)
       // the thread releases a hair earlier (builder: more through balls)
       // — a runner at 3.4 m/s is committed enough to run onto it
-      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < 3.4;
+      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < (4.4 - tempoEff * 2); // 4.4 patient .. 2.4 vertical
+
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       // a DARTING runner receives in stride — he has already beaten the
       // crowd the density counts, and the arrival-race model prices the
@@ -2399,7 +2414,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // contain): full price for the first second, fading to a quarter by
   // three — the held ball is FORCED back into the pass/carry market
   const heldT = input.heldTicks ?? 0;
-  const shieldFade = Math.max(0.25, 1 - Math.max(0, heldT - 10) / 20);
+  const shieldFade = Math.max(0.25, 1 - Math.max(0, heldT - (10 - tempoEff * 8)) / (20 - tempoEff * 10));
   options.push({
     kind: 'shield',
     // the conservation premium reaches here too — shield IS retention

@@ -2779,7 +2779,8 @@ export class Sim {
                 const oppThreat = Math.max(0.3, Math.min(1, 1 - (oppProg - 15) / 35));
                 st = blockStation(home, this.teamCentroid(body.team), this.ball.pos, true, sgnB,
                   instr.lineHeight ?? 0.5, this.teamBrainCount(body.team) + 1,
-                  oppU, settled, oppThreat, instr.holdWidth === true);
+                  oppU, settled, oppThreat, instr.holdWidth === true, -0.5,
+                  adhere(instr.compactness ?? 0.5, 0.5, body.attributes.tactical ?? 11));
                 // CB STEPS TO CDM (builder): in BUILD-UP a centre-back
                 // pushes into the pivot — station shifts forward toward
                 // the DM line and toward center. Only in our own half

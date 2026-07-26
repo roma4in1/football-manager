@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { seedFor } from './test-seeds.ts';
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { adhere, evaluateOptions, keepValue, passCompletion, pivotShift, posValue, supportSpot, xG } from './decide.ts';
+import { adhere, blockStation, evaluateOptions, keepValue, passCompletion, pivotShift, posValue, supportSpot, xG } from './decide.ts';
 import type { BodyState, Frame } from './engine2-types.ts';
 
 const mkBody = (id: string, team: 'home' | 'away', x: number, y: number, vx = 0, vy = 0): BodyState => ({
@@ -360,4 +360,30 @@ test('SLIDER: CB step-up drives forward+inward, inverted fullback tucks inside (
   const fbBase = { x: 20, y: 56 };
   const inverted = pivotShift(fbBase, 1, 0.4 * 6, 0.4 * 0.6);
   assert.ok(Math.abs(inverted.y - 34) < Math.abs(fbBase.y - 34) - 2, `inverted FB tucks inside (${fbBase.y} -> ${inverted.y.toFixed(1)})`);
+});
+
+test('SLIDER: tempo shoots/releases earlier, compactness tightens the block, shoot-on-sight lowers the finish bar', () => {
+  // shoot-on-sight lowers the finisher xG threshold (0.16 patient ->
+  // 0.06 poacher) — a modest chance that a patient player works becomes
+  // a shot for a poacher. Verified via the option table.
+  const st = mkBody('st', 'home', 88, 34);
+  const bodies = [st, mkBody('gk', 'away', 104, 34), mkBody('d', 'away', 92, 40)];
+  const ball = { pos: st.pos, carrierId: 'st', phase: 'carried' as const, z: 0, vz: 0, vel: { x: 0, y: 0 }, kickerId: null, kickerLockUntilTick: 0, touchParity: false, spin: 0 };
+  const shootU = (shootOnSight: number): number => {
+    const opts = evaluateOptions({ carrier: st, bodies, ball, instructions: { shootOnSight }, current: null, keepers: new Set(['gk']) });
+    const sh = opts.find((o) => o.kind === 'shoot');
+    return sh ? sh.utility : 0;
+  };
+  assert.ok(shootU(0.95) >= shootU(0.05), `poacher values the shot at least as high (${shootU(0.95).toFixed(2)} >= ${shootU(0.05).toFixed(2)})`);
+
+  // compactness tightens the ball-relative pull — a defensive station
+  // under high compactness sits nearer the ball line than under low
+  // compact = pulled harder toward the ball SIDE (the block clusters);
+  // measure the deformation from home toward the ball, tight vs loose
+  const home = { x: 30, y: 20 };
+  const centroid = { x: 30, y: 34 };
+  const ballPos = { x: 45, y: 44 };
+  const tight = blockStation(home, centroid, ballPos, false, 1, 0.5, 11, undefined, true, 1, false, -0.5, 0.95);
+  const loose = blockStation(home, centroid, ballPos, false, 1, 0.5, 11, undefined, true, 1, false, -0.5, 0.05);
+  assert.ok((tight.y - home.y) > (loose.y - home.y) + 1, `compact deforms harder toward the ball side (tight +${(tight.y - home.y).toFixed(1)} > loose +${(loose.y - home.y).toFixed(1)})`);
 });
