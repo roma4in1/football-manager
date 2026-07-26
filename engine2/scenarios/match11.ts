@@ -83,6 +83,13 @@ export interface SituationDef {
   /** formation table names (FORMATIONS keys), default '442' */
   homeFormation?: string;
   awayFormation?: string;
+  /** team-wide instruction overrides (merged onto every outfielder) —
+   * the manager's tactical identity for the showcase/monitor */
+  homeInstr?: Record<string, unknown>;
+  awayInstr?: Record<string, unknown>;
+  /** team tactical attribute (how faithfully they execute the instr) */
+  homeTactical?: number;
+  awayTactical?: number;
 }
 
 export const matchSituation = (def: SituationDef): ScenarioDef => ({
@@ -105,12 +112,16 @@ export const matchSituation = (def: SituationDef): ScenarioDef => ({
         team,
         pos: p,
         facing: team === 'home' ? 0 : Math.PI,
-        attributes: isGk ? gloves : out,
+        attributes: {
+          ...(isGk ? gloves : out),
+          tactical: team === 'home' ? (def.homeTactical ?? 11) : (def.awayTactical ?? 11),
+        },
         ...(isGk ? { keeper: true as const } : { brain: 'onBall' as const }),
         ...(ph ? { phaseHomes: ph } : {}),
         instructions: {
           pressing: team === 'home' ? (def.homePressing ?? 0.5) : (def.awayPressing ?? 0.5),
           lineHeight: 0.5,
+          ...((team === 'home' ? def.homeInstr : def.awayInstr) ?? {}),
           ...(instr ?? {}),
         },
       };
@@ -208,4 +219,24 @@ export const m11Placement = matchSituation({
   awayFormation: '442',
 });
 
-export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations, m11Placement];
+/** THE TACTICAL SHOWCASE (builder monitor): two opposed identities so
+ * the sliders are VISIBLE. Home = a high-pressing, high-line,
+ * central-penetration, gegenpressing side of DISCIPLINED players
+ * (tactical 17) — they execute the plan. Away = a deep, compact,
+ * counter-attacking, wide side of LESS disciplined players (tactical 8)
+ * — the same instructions, looser execution. Watch the two shapes
+ * diverge, and run the monitor on it to read every system at once. */
+export const m11Showcase = matchSituation({
+  name: 'm11-showcase',
+  description: 'Tactical showcase: home high-press/high-line/central/gegenpress (disciplined, tactical 17) vs away deep-block/compact/counter/wide (looser, tactical 8). Watch the sliders express — run monitor.ts on it for the full dashboard.',
+  durationTicks: 2700,
+  ball: { pos: { x: 52.5, y: 34 } },
+  homePressing: 0.7,
+  awayPressing: 0.2,
+  homeInstr: { lineHeight: 0.78, compactness: 0.4, counterpress: 0.7, passChannel: 0.75, tempo: 0.7, risk: 0.6, shootOnSight: 0.6 },
+  awayInstr: { lineHeight: 0.2, compactness: 0.85, counterpress: 0.2, passChannel: 0.3, tempo: 0.35, risk: 0.35, holdWidth: true },
+  homeTactical: 17,
+  awayTactical: 8,
+});
+
+export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations, m11Placement, m11Showcase];
