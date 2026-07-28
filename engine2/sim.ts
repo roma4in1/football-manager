@@ -87,6 +87,13 @@ export class Sim {
   private readonly phaseHomeOverrides = new Map<string, Partial<Record<string, Vec2>>>();
   private readonly teamPhase = new Map<'home' | 'away', 'build' | 'progress' | 'final' | 'high' | 'mid' | 'low'>();
   private lastPossessTeam: 'home' | 'away' | null = null;
+  /** possession team last tick — to detect the FLIP instant and unfreeze
+   * actors stuck on a stale positioning moveTo (the generalised freeze:
+   * 34% of actors fail every re-eval gate at the flip because a plain
+   * moveTo matches none; they finish a walk decided when the OTHER team
+   * had the ball). Extends the pattern the attacking sets already use
+   * (idle actors re-decide) to the transition instant. */
+  private prevPossessForFlip: 'home' | 'away' | null = null;
   /** phase changes COMMIT only after persisting (the settled lesson —
    * scrum possession flips re-homed both teams several times in
    * seconds) and homes GLIDE to the new band instead of snapping
@@ -355,6 +362,25 @@ export class Sim {
     this.updatePerception();
     // 0b. PHASES: the six-phase homes follow possession and territory
     this.updatePhases();
+    // 0c. FLIP UNFREEZE (the possession-flip freeze, 34%): at the instant
+    // possession changes, an actor on a stale positioning moveTo (in NO
+    // re-eval set — the freeze condition) is set to HOLD, which the idle
+    // branches pick up next tick to re-decide his station for the NEW
+    // possession state. Actively-engaged actors (pressing, stepping,
+    // racing the ball, the carrier/receiver) keep their commitment.
+    if (this.brains.size >= 12 && this.lastPossessTeam && this.lastPossessTeam !== this.prevPossessForFlip) {
+      for (const id of this.brains) {
+        const b = this.byId.get(id)!;
+        if (b.command.type !== 'moveTo') continue;
+        if (this.pressingIds.has(id) || this.steppingIds.has(id) ||
+          this.ball.carrierId === id || this.intendedReceiverId === id ||
+          this.tick <= (this.scriptedUntil.get(id) ?? -1)) continue;
+        // in an active set? then he is already re-deciding — leave him
+        if (this.shapeHolding.has(id) || this.runningLine.has(id) || this.attackIdle.has(id)) continue;
+        this.assign(b, { type: 'hold' });
+      }
+    }
+    this.prevPossessForFlip = this.lastPossessTeam;
     // ...gliding, not snapping (6%/tick ≈ settled in ~3 s)
     for (const [hid, tgt] of this.homeTargets) {
       const h = this.homes.get(hid);
