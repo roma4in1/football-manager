@@ -1511,6 +1511,40 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
         0.8 * xG(behind, carrier.team, bodies.filter((b) => b.team === defender.team))) * DUEL.behindInsurance * 1.2,
       spot: behind,
     });
+    // THE SCREEN (the off-ball defending pass — builder-scoped, ZONAL and
+    // proactive, NOT reactive man-chasing): the diagnosis found the 'man
+    // in the hole' at the top of the box unmarked (86% of shooters, deep
+    // line low + midfield high, nobody in the pocket). One defender holds
+    // that pocket POSITIONALLY — central, in front of the six-yard line,
+    // ~16 m from our goal, shaded toward the ball — so the edge-of-box
+    // receiver meets a body. Only when the attack is genuinely near our
+    // box (a real threat), and priced by the SHOT xG from the pocket so
+    // a spare midfielder claims it, not a back who'd leave the line.
+    const dBallOwnGoal = Math.hypot(og.x - ball.pos.x, og.y - ball.pos.y);
+    if (unit.length >= 8 && dBallOwnGoal < 34) {
+      const sgnS = attackSign(defender.team);
+      // the zone: top of the box, central, shaded toward the ball
+      const zoneY = Math.max(20, Math.min(PITCH.width - 20, GOAL.centerY + (ball.pos.y - GOAL.centerY) * 0.4));
+      const zoneX = og.x + sgnS * 14;
+      // GOAL-SIDE of whoever is IN the pocket (the receiver collects
+      // goal-side of a fixed zone — the screener must be between him and
+      // our goal, ~1.5 m, not parked ball-side of him). Still one zonal
+      // duty (occupy the pocket); it just reads who's standing in it.
+      let occupant: BodyState | undefined;
+      let occD = 9;
+      for (const o of bodies) {
+        if (o.team === defender.team || o.id === carrier.id) continue;
+        const dz = Math.hypot(o.pos.x - zoneX, o.pos.y - zoneY);
+        if (dz < occD) { occD = dz; occupant = o; }
+      }
+      const pocket = occupant
+        ? { x: occupant.pos.x - sgnS * 1.5, y: occupant.pos.y + Math.sign(GOAL.centerY - occupant.pos.y) * 0.5 }
+        : { x: zoneX, y: zoneY };
+      duties.push({
+        danger: (0.9 * xG(pocket, carrier.team, bodies.filter((b) => b.team === defender.team)) + 0.02) * 0.9,
+        spot: pocket,
+      });
+    }
     duties.sort((a, b) => b.danger - a.danger);
     const free = new Set(covers.map((b) => b.id));
     const claim = (spot: Vec2): string => {

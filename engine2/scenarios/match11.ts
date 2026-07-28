@@ -154,6 +154,30 @@ export const m11WingDuel = matchSituation({
 /** the CENTRAL DRIVE in match context: an away midfielder carries at the
  * heart of the home block — the channel-duel story with a real line
  * behind and runners either side. */
+/** THE SCREEN, made VISIBLE (builder: 'you should be able to SEE a
+ * player holding that pocket before the ball arrives, at slow-mo'): an
+ * away side works the ball on the edge of the home box with a receiver
+ * loitering in the top-of-box POCKET. Watch h-cm2 (or the spare) drop
+ * to screen that pocket goal-side of the lurker BEFORE the ball is
+ * played to him — the off-ball defending behavior, legible. */
+export const m11Screen = matchSituation({
+  name: 'm11-screen',
+  description: 'The off-ball SCREEN, made visible: an away attack on the edge of the home box with a receiver in the top-of-box pocket. Watch a home midfielder hold that pocket goal-side of the lurker before the ball arrives — proactive screening, not a reactive chase. Judge at 0.25x with overlays on.',
+  durationTicks: 300,
+  place: {
+    // away attacks toward x=0 (home's goal); the pocket is the top of
+    // home's box at x~16, the lurker just inside it
+    'a-cm1': { x: 31, y: 40 },   // the carrier, edge of box wide
+    'a-st1': { x: 17, y: 34 },   // the pocket lurker (top of home box, central)
+    'a-st2': { x: 13, y: 44 },   // a second box runner
+    'a-cm2': { x: 39, y: 28 },
+    'h-cm1': { x: 24, y: 40 },
+    'h-cm2': { x: 26, y: 30 },   // the screener candidate
+  },
+  ball: { carrier: 'a-cm1' },
+  homePressing: 0.6,
+});
+
 export const m11CentralDrive = matchSituation({
   name: 'm11-central-drive',
   description: '11v11: an away carrier drives centrally at the home block. Judge the press election, the block compacting, the duty board around a real line.',
@@ -239,4 +263,4 @@ export const m11Showcase = matchSituation({
   awayTactical: 8,
 });
 
-export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations, m11Placement, m11Showcase];
+export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations, m11Placement, m11Showcase, m11Screen];
