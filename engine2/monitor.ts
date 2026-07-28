@@ -10,6 +10,21 @@
  *   node --experimental-strip-types monitor.ts [scenario] [matches] [ticks]
  *   node --experimental-strip-types monitor.ts m11-showcase 6
  */
+// COUNTER DEFINITIONS (the audit — real-world equivalent in parens):
+//  EVENTS (counted once per occurrence): passes (telemetry, ~900-1200
+//    combined/90), goals, fouls/cards, shots (RISING-EDGE of the shoot
+//    label = a struck attempt, ~25/90 — NOT shoot-label ticks),
+//    offsides (~2.5/90), set-piece deliveries, keeper distributions,
+//    restarts (banner rising-edge). All rising-edge or telemetry.
+//  OCCUPANCY (share of time/ticks, NOT counts): possession %, phase
+//    shares, off-ball ACTIVITY labels (player-tick share — 'station 40%'
+//    means 40% of player-ticks, has NO per-match-event meaning), the
+//    shape envelope (sampled).
+//  DEFINITION CAVEAT: 'carries' counts telemetry SEGMENTS incl. brief
+//    <3 m controls (89% are <3 m); real 'carry' stats count 5 m+
+//    PROGRESSIVE runs only — the progressive line is the comparable one.
+//  RULE: never present an OCCUPANCY number as a per-match COUNT (that
+//    confusion caused the shot 4x and carry 10x inflations).
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
 import { attackSign } from './decide.ts';
@@ -46,7 +61,7 @@ const bump = (r: Record<string, number>, k: string): void => { r[k] = (r[k] ?? 0
 for (let m = 0; m < matches; m++) {
   const sim = new Sim(def, `mon-${m}`);
   let lastBanner: string | null = null;
-  const shooting = new Set<string>();
+  let prevLabels = new Set<string>(); // per-actor labels last tick (for rising-edge events)
   sim.telemetry = (e: { t: string;[k: string]: unknown }) => {
     if (e.t === 'pass') {
       A.passes++;
@@ -71,21 +86,31 @@ for (let m = 0; m < matches; m++) {
       else if (['THROW-IN', 'CORNER', 'GOAL KICK', 'FREE KICK', 'PENALTY', 'KICKOFF', 'SECOND HALF', 'OFFSIDE', 'HALF-TIME'].includes(banner)) bump(A.restarts, banner);
       lastBanner = banner;
     }
-    // per-body action labels
-    for (const b of f.bodies) if (b.action !== 'shoot' && b.action !== 'fk-shot' && b.action !== 'penalty') shooting.delete(b.id);
+    // per-body action labels. CRITICAL DISTINCTION (the definitional-audit
+    // fix — two 4-10x inflations came from confusing these): a label is an
+    // OCCUPANCY signal (it shows every tick the actor is in that state).
+    // A discrete EVENT (a shot, an offside, a set-piece delivery, a keeper
+    // distribution) must be counted on the RISING EDGE (the tick the label
+    // first appears per actor), NOT every tick it persists. A.labels stays
+    // raw occupancy (player-ticks) and is rendered as a SHARE, not a count.
+    const eventLabels = new Set(['shoot', 'fk-shot', 'penalty', 'offside', 'throw-in', 'corner-cross',
+      'fk-cross', 'fk-long', 'throw', 'loop-throw', 'drop', 'punt', 'keeper-clear', 'keeper-pass', 'kickoff']);
+    const nowLabels = new Set<string>();
     for (const b of f.bodies) {
       const a = b.action;
       if (!a) continue;
-      bump(A.labels, a);
-      // shots = STRUCK shots (rising edge of the shoot label per player) —
-      // NOT every shoot-label tick (a shot's wind-up spans several ticks,
-      // which 4x-inflated the count)
-      const isShot = a === 'shoot' || a === 'fk-shot' || a === 'penalty';
-      if (isShot && !shooting.has(b.id)) { A.shots++; shooting.add(b.id); }
-      if (a === 'offside') A.offsides++;
-      if (['throw-in', 'corner-cross', 'fk-cross', 'fk-shot', 'fk-long', 'penalty'].includes(a)) bump(A.setpieces, a);
-      if (['throw', 'loop-throw', 'drop', 'punt', 'keeper-clear', 'keeper-pass', 'kickoff'].includes(a)) bump(A.keeper, a);
+      bump(A.labels, a); // OCCUPANCY (player-ticks) — rendered as a share
+      const key = `${b.id}:${a}`;
+      if (eventLabels.has(a)) nowLabels.add(key);
+      // rising edge = event this actor was NOT in this state last tick
+      if (!prevLabels.has(key)) {
+        if (a === 'shoot' || a === 'fk-shot' || a === 'penalty') A.shots++;
+        if (a === 'offside') A.offsides++;
+        if (['throw-in', 'corner-cross', 'fk-cross', 'fk-shot', 'fk-long', 'penalty'].includes(a)) bump(A.setpieces, a);
+        if (['throw', 'loop-throw', 'drop', 'punt', 'keeper-clear', 'keeper-pass', 'kickoff'].includes(a)) bump(A.keeper, a);
+      }
     }
+    prevLabels = nowLabels;
     // threads: a completed pass to a runner beyond the ball in the final third — approximate from labels
     // phase occupancy + envelope (sampled)
     if (t % 20 === 0 && c) {
@@ -141,8 +166,9 @@ for (const ph of ['build', 'progress', 'final', 'high', 'mid', 'low']) {
 }
 console.log('\nSHAPE');
 console.log(bar('outfield envelope p50 (m)', `${p50}  (EAFC ref ≈ 40)`));
-console.log('\nOFF-BALL ACTIVITY  (top labels, per match)');
+console.log('\nOFF-BALL ACTIVITY  (OCCUPANCY — share of outfield player-ticks, NOT event counts)');
+const labelTotal = Object.values(A.labels).reduce((s2, v) => s2 + v, 0);
 for (const [k, v] of Object.entries(A.labels).sort((a, b) => b[1] - a[1]).slice(0, 14)) {
-  console.log(bar(k, per(v)));
+  console.log(bar(k, `${(v / labelTotal * 100).toFixed(1)}%`));
 }
 console.log('');
