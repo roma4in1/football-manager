@@ -39,6 +39,7 @@ const dur = ticks || def.durationTicks;
 
 interface Agg {
   poss: Record<'home' | 'away', number>;
+  possessions: number;
   passes: number; retained: number; fwd: number; sq: number; back: number;
   carries: number; carryDur: number; carryAdv: number;
   shots: number; threads: number; goals: Record<'home' | 'away', number>;
@@ -51,7 +52,7 @@ interface Agg {
   envelope: number[];
 }
 const A: Agg = {
-  poss: { home: 0, away: 0 }, passes: 0, retained: 0, fwd: 0, sq: 0, back: 0,
+  poss: { home: 0, away: 0 }, possessions: 0, passes: 0, retained: 0, fwd: 0, sq: 0, back: 0,
   carries: 0, carryDur: 0, carryAdv: 0, shots: 0, threads: 0, goals: { home: 0, away: 0 },
   fouls: 0, yellows: 0, reds: 0, offsides: 0, restarts: {}, setpieces: {}, keeper: {},
   labels: {}, phase: {}, envelope: [],
@@ -62,6 +63,7 @@ for (let m = 0; m < matches; m++) {
   const sim = new Sim(def, `mon-${m}`);
   let lastBanner: string | null = null;
   let prevLabels = new Set<string>(); // per-actor labels last tick (for rising-edge events)
+  let curPossTeam: 'home' | 'away' | null = null; // possession-count: a possession = one team controlling, gain->loss
   sim.telemetry = (e: { t: string;[k: string]: unknown }) => {
     if (e.t === 'pass') {
       A.passes++;
@@ -79,6 +81,10 @@ for (let m = 0; m < matches; m++) {
     // possession
     const c = sim.ball.carrierId;
     if (c) { const cb = sim.bodies.find((b) => b.id === c); if (cb && !cb.id.includes('gk')) A.poss[cb.team]++; }
+    // possession COUNT (a headline 'is this a game' metric — 1040/90 vs
+    // real ~200-260 was the compact expression of the 4-5x turnover churn)
+    const holder = c ? sim.bodies.find((b) => b.id === c) : (sim.intendedReceiverId ? sim.bodies.find((b) => b.id === sim.intendedReceiverId) : undefined);
+    if (holder && !holder.id.includes('gk') && holder.team !== curPossTeam) { A.possessions++; curPossTeam = holder.team; }
     // banners → restart types + goals
     const banner = f.banner ?? null;
     if (banner && banner !== lastBanner) {
@@ -146,6 +152,11 @@ console.log('\nCARRYING  (per match)');
 console.log(bar('count', per(A.carries)));
 console.log(bar('mean duration (ticks)', A.carries ? (A.carryDur / A.carries).toFixed(1) : '—'));
 console.log(bar('mean advance (m)', A.carries ? (A.carryAdv / A.carries).toFixed(1) : '—'));
+console.log('\nMATCH TEXTURE  (per 90 — the "is this a game" headline)');
+const to90 = (n: number): string => (n / matches * (5400 / (dur / 10))).toFixed(0);
+console.log(bar('possessions / 90', `${to90(A.possessions)}  (real ~200-260)`));
+console.log(bar('shots / 90', `${to90(A.shots)}  (real ~25)`));
+console.log(bar('goals / 90', `${to90(A.goals.home + A.goals.away)}  (real ~2.7)`));
 console.log('\nATTACK  (per match)');
 console.log(bar('shots', per(A.shots)));
 console.log(bar('goals home / away', `${per(A.goals.home)} / ${per(A.goals.away)}`));
