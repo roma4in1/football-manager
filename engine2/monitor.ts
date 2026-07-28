@@ -46,6 +46,7 @@ const bump = (r: Record<string, number>, k: string): void => { r[k] = (r[k] ?? 0
 for (let m = 0; m < matches; m++) {
   const sim = new Sim(def, `mon-${m}`);
   let lastBanner: string | null = null;
+  const shooting = new Set<string>();
   sim.telemetry = (e: { t: string;[k: string]: unknown }) => {
     if (e.t === 'pass') {
       A.passes++;
@@ -71,11 +72,16 @@ for (let m = 0; m < matches; m++) {
       lastBanner = banner;
     }
     // per-body action labels
+    for (const b of f.bodies) if (b.action !== 'shoot' && b.action !== 'fk-shot' && b.action !== 'penalty') shooting.delete(b.id);
     for (const b of f.bodies) {
       const a = b.action;
       if (!a) continue;
       bump(A.labels, a);
-      if (a === 'shoot' || a === 'fk-shot' || a === 'penalty') A.shots++;
+      // shots = STRUCK shots (rising edge of the shoot label per player) —
+      // NOT every shoot-label tick (a shot's wind-up spans several ticks,
+      // which 4x-inflated the count)
+      const isShot = a === 'shoot' || a === 'fk-shot' || a === 'penalty';
+      if (isShot && !shooting.has(b.id)) { A.shots++; shooting.add(b.id); }
       if (a === 'offside') A.offsides++;
       if (['throw-in', 'corner-cross', 'fk-cross', 'fk-shot', 'fk-long', 'penalty'].includes(a)) bump(A.setpieces, a);
       if (['throw', 'loop-throw', 'drop', 'punt', 'keeper-clear', 'keeper-pass', 'kickoff'].includes(a)) bump(A.keeper, a);

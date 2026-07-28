@@ -2229,7 +2229,12 @@ export class Sim {
       const reach = BALL.keeperReachBaseM + BALL.keeperReachAgility * k.attributes.agility + spread;
       const { d, at } = this.sweptApproach(k, from);
       if (d > reach) continue;
-      const catchable = speed <= BALL.keeperCatchBase + BALL.keeperCatchTouch * k.attributes.firstTouch &&
+      // the raised catch floor (a keeper HOLDS a routine shot) is a
+      // MATCH-SCALE realism fix — the 1v1 drills pin the raw physics of a
+      // stranded keeper (who should NOT catch a shot past him). At match
+      // scale the base is higher; drills keep the 9 m/s floor.
+      const catchBase = this.brains.size >= 12 ? 19 : BALL.keeperCatchBase; // match keeper holds firmer shots
+      const catchable = speed <= catchBase + BALL.keeperCatchTouch * k.attributes.firstTouch &&
         ball.z <= BALL.keeperCatchMaxZ;
       ball.pos = { x: at.x, y: at.y };
       ball.vz = 0;
@@ -2257,12 +2262,29 @@ export class Sim {
             .sort((a, b2) => Math.hypot(a.pos.x - at.x, a.pos.y - at.y) - Math.hypot(b2.pos.x - at.x, b2.pos.y - at.y))[0];
           side = opp ? -Math.sign(opp.pos.y - at.y) || 1 : 1;
         }
-        const ang = Math.atan2(at.y - own.y, at.x - own.x) +
-          side * BALL.keeperParryWideRad +
-          this.rng.gauss(0, 0.35, this.tick, k.id, 'parry');
-        const sp = speed * BALL.keeperParryKeep;
+        // TIP IT OUT (the recycle fix, MATCH SCALE): a diving parry
+        // concedes the CORNER — pushed beyond the byline wide of the
+        // post, not palmed into the six-yard box for the rebound (44% of
+        // shots recycled; corners ~0). The 1v1 DRILLS pin the raw parry
+        // physics (a stranded keeper's parry must not save everything by
+        // tipping out), so they keep the old wide-into-play.
+        let ang: number;
+        let sp: number;
+        if (this.brains.size >= 12) {
+          const sgnK = attackSign(k.team);
+          const bylineX = sgnK > 0 ? -0.5 : PITCH.length + 0.5;
+          const postSide = Math.sign(at.y - GOAL.centerY) || side || 1;
+          const target = { x: bylineX, y: GOAL.centerY + postSide * (GOAL.mouthHalfWidthM + 2.5) };
+          ang = Math.atan2(target.y - at.y, target.x - at.x) +
+            this.rng.gauss(0, 0.25, this.tick, k.id, 'parry');
+          sp = Math.max(speed * 0.7, 9); // match parry keeps pace to leave the pitch
+        } else {
+          ang = Math.atan2(at.y - own.y, at.x - own.x) + side * 0.7 +
+            this.rng.gauss(0, 0.35, this.tick, k.id, 'parry');
+          sp = speed * 0.35;
+        }
         ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
-        ball.vz = sp * 0.25;
+        ball.vz = sp * 0.22;
         ball.z = 0.01;
         ball.phase = 'airborne';
         ball.carrierId = null;
@@ -2315,8 +2337,20 @@ export class Sim {
     // both deflect loose, but a body not trying to block scrubs less pace off
     const isCollision = kickerTeam !== undefined && best.body.team === kickerTeam;
     const keep = isCollision ? BALL.collisionDeflectKeep : BALL.blockDeflectKeep;
-    const ang = Math.atan2(ball.vel.y, ball.vel.x) + Math.PI +
-      this.rng.gauss(0, 0.8, this.tick, best.body.id, 'block');
+    // a teammate COLLISION reflects (accidental); an opponent BLOCK is a
+    // defender getting a body in the way — it deflects roughly AWAY from
+    // his own goal (a clearance direction), wide spread, NOT back at the
+    // shooter (the +PI reflection fed the shot straight back for the
+    // rebound — the recycle loop that made shots 27x real). A block that
+    // caroms over the byline is a corner; toward a mate is cleared.
+    let ang: number;
+    if (isCollision) {
+      ang = Math.atan2(ball.vel.y, ball.vel.x) + Math.PI + this.rng.gauss(0, 0.8, this.tick, best.body.id, 'block');
+    } else {
+      const ownGoal = goalCenter(best.body.team);
+      const away = Math.atan2(best.body.pos.y - ownGoal.y, best.body.pos.x - ownGoal.x);
+      ang = away + this.rng.gauss(0, 0.9, this.tick, best.body.id, 'block');
+    }
     const sp = speed * keep;
     ball.pos = { x: best.at.x, y: best.at.y };
     ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };

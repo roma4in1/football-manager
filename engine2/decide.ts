@@ -2542,12 +2542,24 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     }
   }
 
-  // CLEAR — deep and pressured only: escape beats a forced turnover
+  // CLEAR — deep and pressured: escape beats a forced turnover.
   const ownProgress = attackSign(team) > 0 ? here.x / PITCH.length : 1 - here.x / PITCH.length;
   const pressed = opponents.some((o) => Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < DECIDE.clearPressureM);
-  if (!keep && ownProgress < DECIDE.clearMaxX && pressed) {
-    const dest = { x: attackSign(team) > 0 ? here.x + 30 : here.x - 30, y: here.y < GOAL.centerY ? 8 : PITCH.width - 8 };
-    options.push({ kind: 'clear', dest, speedMps: 18, utility: DECIDE.clearUtility + (1 - risk) * 0.05 });
+  // OWN-BOX EMPHATIC CLEARANCE (match scale — the shot-recycle fix): a
+  // defender who wins the loose ball in his own six-yard chaos gets it
+  // OUT (over the touchline for a throw, upfield, behind for a corner
+  // conceded) instead of dwelling and feeding the rebound. Match-gated:
+  // the 1v1 keeper drills pin the raw striker/keeper physics.
+  const gOwn = goalCenter(team);
+  const boxPressed = bodies.length >= 18 && Math.hypot(gOwn.x - here.x, gOwn.y - here.y) < 20 &&
+    opponents.some((o) => Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 8);
+  if (!keep && ((ownProgress < DECIDE.clearMaxX && pressed) || boxPressed)) {
+    const sgn = attackSign(team);
+    const dest = boxPressed
+      ? { x: here.x + sgn * 22, y: here.y < GOAL.centerY ? -4 : PITCH.width + 4 }
+      : { x: sgn > 0 ? here.x + 30 : here.x - 30, y: here.y < GOAL.centerY ? 8 : PITCH.width - 8 };
+    const u = (boxPressed ? DECIDE.clearUtility * 4 : DECIDE.clearUtility) + (1 - risk) * 0.05;
+    options.push({ kind: 'clear', dest, speedMps: boxPressed ? 22 : 18, utility: u });
   }
 
   options.sort((a, b) => b.utility - a.utility);

@@ -129,10 +129,10 @@ export const BALL = {
   keeperNearPostShadeM: 1.2,
   keeperReachBaseM: 1.1,
   keeperReachAgility: 0.035, // agility 20 → 2.05 m dive radius
-  keeperCatchBase: 9, // catchable ball speed floor...
+  keeperCatchBase: 9, // catchable ball speed floor (the raw 1v1 physics; the MATCH-scale keeper holds firmer shots — see sim catchBase)...
   keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~13.9 m/s)
   keeperCatchMaxZ: 2.2, // a stinger above this is parried, not held
-  keeperParryKeep: 0.35, // a parry scrubs the shot's pace like a block
+  keeperParryKeep: 0.35, // a parry scrubs pace (raw drill physics; the match-scale parry keeps more and tips out — see sim)
   /** a parry is turned WIDE of the play, not pushed straight back out — a
    * central palm-back tees up the arriving runner (the sweeper finding) */
   keeperParryWideRad: 0.7,
