@@ -263,6 +263,10 @@ export const DECIDE = {
    * Priced so the safe recycle beats a marginal forward ball but never
    * outbids a genuine thread (whose pv delta dwarfs it). */
   retainValue: 0.07,
+  /** OPTION VALUE (finding #3): a not-forward pass earns credit for the
+   * forward LANE it opens at the destination vs here — the switch/angle
+   * value a one-step destination-EV is blind to. Scales the square ball. */
+  optionValueGain: 0.08,
   turnoverRiskGain: 0.55,
   /** completion floor a pass must clear, risk-scaled */
   passFloorBase: 0.8, // a safety-first player wants near-certainty (re-seated as the lane model got honest)
@@ -1900,6 +1904,28 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
     }
     return 0.035 * buildup * Math.min(1, nearest / 12);
   };
+  // FORWARD OPENNESS at a position: nearest opponent in the ~forward cone
+  // toward goal (0 = crowded ahead, 1 = a clear lane forward)
+  const sgnFwd = attackSign(team);
+  const forwardOpen = (at: Vec2): number => {
+    let nearest = Infinity;
+    for (const o of opponents) {
+      const dx = (o.pos.x - at.x) * sgnFwd;
+      if (dx < -1) continue; // behind the position — irrelevant to going forward
+      const dy = o.pos.y - at.y;
+      if (Math.abs(dy) > 14) continue; // outside the forward channel
+      nearest = Math.min(nearest, Math.hypot(dx, dy));
+    }
+    return Math.min(1, nearest / 18);
+  };
+  const openHere = forwardOpen(here);
+  // OPTION VALUE (the retention/square fix — builder finding #3): the
+  // one-step EV values a pass by its DESTINATION, so a SQUARE ball (dest
+  // pv ~= here) is dominated by forward (progress) and back (safest
+  // retention) and never chosen — square stuck at 17% vs real 35%. But
+  // real square balls are played for the OPTION they create: switching
+  // the angle to a man with a CLEARER FORWARD LANE. Credit a not-forward
+  // pass by how much MORE forward-open the destination is than here.
   const turnoverW = DECIDE.turnoverBase - DECIDE.turnoverRiskGain * risk;
   // under a LIVE press, standards drop — you take the 60% ball rather
   // than dying with it (measured: good-enough passes existed at 12/49
@@ -2143,7 +2169,14 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const comfy = 5.5 + 0.35 * mate.attributes.firstTouch;
       pC *= 1 - 0.04 * Math.max(0, arrTrue - comfy);
       if (pC < passFloor * 0.55) continue; // hopeless lanes don't reach scoring
-      let pvThere = value(dest, mate.id) + freedom(dest);
+      const du0 = (dest.x - here.x) * sgnFwd;
+      // SQUARE only (|du|<=4): a back pass ceding territory should not
+      // earn option value too (it over-inflated the backward share).
+      // MATCH SCALE — the duel/mark DRILLS pin square-pass semantics
+      // under the raw EV (the switch/angle value is an 11v11 behavior).
+      const optionVal = keep || Math.abs(du0) > 4 || bodies.length < 18 ? 0
+        : DECIDE.optionValueGain * Math.max(0, forwardOpen(dest) - openHere);
+      let pvThere = value(dest, mate.id) + freedom(dest) + optionVal;
       // CHANCE CREATION (passing.md's pass score): a ball to a teammate in
       // a shooting position carries his shot's value — the square/cutback
       // into the centre was invisible to the EV without it
