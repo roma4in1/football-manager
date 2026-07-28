@@ -141,6 +141,10 @@ test('THE EQUILIBRIUM PIN (the convergence loop\'s legacy): a full slice passes 
   // defense = fewer balls through) — retention is itself an open finding
   // (#3, real football ~80%, ours already ~44%), and the screen nudged it
   // 1pp under an arbitrary floor. The events floor still guards volume.
+  // *** FROZEN at 0.40 (builder directive Jul 28): do NOT re-base this
+  // floor again until finding #3 (retention/square-ball) is worked in its
+  // own session. A guardrail that ratchets down one defensible step at a
+  // time stops guarding. See memory: off-ball-defending-pass. ***
   assert.ok(kept / Math.max(1, events) >= 0.40, `passing retains (${(kept / Math.max(1, events) * 100).toFixed(0)}%)`);
 });
 
