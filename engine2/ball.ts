@@ -41,6 +41,13 @@ export interface BallState {
   lastKickTick?: number;
   /** alternating-foot texture: flips each touch */
   touchParity: boolean;
+  /** execution SPRAY of the current flight: distance between the kicker's
+   * AIMED destination and the noisy realized target. The intended receiver
+   * anticipated the aimed line — a sprayed ball arrives off his read and is
+   * received awkwardly; a defender reacts to the ACTUAL line and owes
+   * nothing (the asymmetry that lets skill express without arming the
+   * defense). Set by the kick sites; kickBall resets it. */
+  sprayM?: number;
 }
 
 export const BALL = {
@@ -518,4 +525,5 @@ export function kickBall(ball: BallState, target: Vec2, speedMps: number, loftDe
   ball.kickerLockUntilTick = tick + BALL.kickerLockTicks;
   ball.lastKickTick = tick;
   ball.spin = spin;
+  ball.sprayM = 0;
 }

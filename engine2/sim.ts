@@ -1058,6 +1058,7 @@ export class Sim {
           // DECIDED kicks (the chooser knows his own facing)
           const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
           kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick, k.kick.spin ?? 0);
+          this.ball.sprayM = Math.hypot(noisy.target.x - k.kick.target.x, noisy.target.y - k.kick.target.y);
         }
       }
     }
@@ -1502,6 +1503,7 @@ export class Sim {
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
       kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick, pending.spin ?? 0);
+      this.ball.sprayM = Math.hypot(noisy.target.x - pending.dest.x, noisy.target.y - pending.dest.y);
       if (pending.receiverId) {
         this.intendedReceiverId = pending.receiverId;
         this.lastGiveTick.set(carrier.id, this.tick);
@@ -1752,6 +1754,7 @@ export class Sim {
     const chestZ = (BALL.claimMaxZ + BALL.headMinZ) / 2;
     const touch = resolveFirstTouch(
       this.rng, this.tick, w.id, w.attributes, arrivalDir, ballSpeed, chestZ, pressured, w.speed,
+      w.id === this.intendedReceiverId ? this.ball.sprayM ?? 0 : 0,
     );
     ball.pos = { x: best.at.x, y: best.at.y };
     ball.vz = 0;
@@ -2530,9 +2533,13 @@ export class Sim {
     const pressured = this.bodies.some((o) =>
       o.team !== best.body.team &&
       Math.hypot(o.pos.x - best.body.pos.x, o.pos.y - best.body.pos.y) <= TECH.touchPressureRangeM);
+    // the awkward-ball tax: only the INTENDED man pays for the kicker's
+    // spray — he anticipated the AIMED line; anyone else (defender,
+    // stray teammate) reads the ball as it actually travels
+    const spray = best.body.id === this.intendedReceiverId ? this.ball.sprayM ?? 0 : 0;
     const touch = resolveFirstTouch(
       this.rng, this.tick, best.body.id, best.body.attributes, arrivalDir, ballSpeed, this.ball.z, pressured,
-      best.body.speed,
+      best.body.speed, spray,
     );
     this.ball.pos = { x: best.at.x, y: best.at.y };
     this.ball.vz = 0;
@@ -3755,6 +3762,7 @@ export class Sim {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
             kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.spin ?? 0) : 0);
+            this.ball.sprayM = Math.hypot(noisy.target.x - intent.dest.x, noisy.target.y - intent.dest.y);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
