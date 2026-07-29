@@ -312,6 +312,12 @@ export const DECIDE = {
   loftChipDeg: 42,
   aerialControlBase: 0.86,
   aerialControlTouchGain: 0.01,
+  /** the DELIVERY side of the same pricing: the loft/cross/switch lands
+   * where the KICKER'S foot sends it — 1.0 at the same passing-14 baseline
+   * the ground precision term uses (a long diagonal is the widest skill
+   * separator in real football; it was priced kicker-blind). */
+  loftDeliveryBase: 0.86,
+  loftDeliveryPassGain: 0.01,
   /** the CROSS: a wide, advanced carrier whips an aerial ball into the box for
    * an attacker's run — a DRIVEN (fast, flat) or FLOATED (high, hang-time)
    * delivery, both solved to land on his run. Fires from wide + advanced into a
@@ -522,8 +528,12 @@ export const passCompletion = (
   const lane = Math.max(0.02, Math.min(0.98, p));
   // long balls complete less even into space (execution noise grows with
   // distance) — but an OPEN 35m lane is still a good ball; the old 18m soft
-  // cap taxed every through ball to death regardless of the lane
-  const range = 1 / (1 + Math.max(0, receiverDist - 26) / 30);
+  // cap taxed every through ball to death regardless of the lane. The reach
+  // is the PASSER'S: scatter grows with distance at a rate his foot sets
+  // (the selection half of skill expression — a poor passer should DECLINE
+  // the 30 m ball a good one attempts, not attempt it and eat a handicap)
+  const reach = 26 + (passerSkill - 14) * 0.6;
+  const range = 1 / (1 + Math.max(0, receiverDist - reach) / 30);
   return lane * range;
 };
 
@@ -727,7 +737,8 @@ export const supportSpot = (
     const dist = Math.hypot(cand.x - carrier.pos.x, cand.y - carrier.pos.y);
     if (dist < 4) continue; // an outlet is not a crowd around the carrier
     if (objective === 'score' && dist > 11 + 12 * roam) continue; // the mesh ring, scaled by the manager's leash
-    const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate);
+    const lane = passCompletion(carrier.pos, cand, rollLaunchForArrival(6, dist), opponents, dist, mate,
+      carrier.attributes.passing);
     const val = objective === 'keep' ? keepValue(cand, opponents, home) : posValue(cand, mate.team);
     let crowd = 0;
     if (claimed) {
@@ -2263,7 +2274,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const speedL = solveLoftSpeed(dLoft, loftDeg);
         // aerial control is HARDER than a ground receive — a dropping ball
         // is taxed by the taker's first touch (silk feet cushion it)
-        const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+        const ctrl = (DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch) *
+          (DECIDE.loftDeliveryBase + DECIDE.loftDeliveryPassGain * carrier.attributes.passing);
         const pCa = calibratePass(loftDeg, 0, dLoft,
           aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl, destDensity(landing));
         let pvL = value(landing, mate.id) + freedom(landing);
@@ -2328,7 +2340,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const dCross = Math.hypot(cross.x - here.x, cross.y - here.y);
           if (!intoBox || dCross < 8 || !inBounds(cross, 0.8)) continue;
           const speedC = solveLoftSpeed(dCross, loftDeg);
-          const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+          const ctrl = (DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch) *
+          (DECIDE.loftDeliveryBase + DECIDE.loftDeliveryPassGain * carrier.attributes.passing);
           const pCc = calibratePass(loftDeg, 0, dCross,
             aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl, destDensity(cross));
           let pvC = value(cross, mate.id) + freedom(cross);
@@ -2357,7 +2370,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const dSwitch = Math.hypot(land.x - here.x, land.y - here.y);
       if (farWide && dSwitch >= DECIDE.switchMinM && inBounds(land, 0.8)) {
         const speedS = solveLoftSpeed(dSwitch, loftDeg);
-        const ctrl = DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch;
+        const ctrl = (DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch) *
+          (DECIDE.loftDeliveryBase + DECIDE.loftDeliveryPassGain * carrier.attributes.passing);
         const pCs = calibratePass(loftDeg, 0, dSwitch,
           aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land));
         let pvS = value(land, mate.id) + freedom(land);
@@ -2642,7 +2656,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const arr = DECIDE.passArriveMps + 0.5 * ahead.speed + 4.5;
       const spd = Math.max(DECIDE.passSpeedMin, Math.min(DECIDE.passSpeedMax, rollLaunchForArrival(arr, dist0)));
       const dest2 = { x: ahead.pos.x + ahead.vel.x * 0.8, y: ahead.pos.y + ahead.vel.y * 0.8 };
-      const pC2 = passCompletion(here, dest2, spd, opponents, dist0, ahead);
+      const pC2 = passCompletion(here, dest2, spd, opponents, dist0, ahead, carrier.attributes.passing);
       const pv2 = value(dest2, mate.id);
       const u2 = DECIDE.possessionDiscount * DECIDE.passFriction * (pC2 * pv2 - (1 - pC2) * turnoverW * pv2) +
         DECIDE.possessionDiscount * risk * DECIDE.riskProgressGain * Math.max(0, pv2 - pvHere);
