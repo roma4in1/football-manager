@@ -1409,7 +1409,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
-      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical)) };
+      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical), ball.carrierId ?? undefined) };
     }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
@@ -1600,13 +1600,75 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const lane = shadowSpot(defender, carrier, bodies);
     if (lane) return { kind: 'interceptLane', target: lane };
   }
-  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical)) };
+  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical), ball.carrierId ?? undefined) };
+};
+
+/** ZONE ENGAGEMENT for the block's non-line shape-holders (the
+ * 13%-pressured finding: nearest-opponent-at-reception p50 5.8-7.6 m in
+ * EVERY third — the block slid with the ball but nobody stood near the
+ * ball's OPTIONS; a training exercise, not a match). The same pattern the
+ * back line's shade and the screen shipped with: a shape-holder whose
+ * ZONE an opponent occupies stations GOAL-SIDE of him instead of at pure
+ * block geometry. Positioning only — no duty, no election, no chase
+ * (knob (1) of the engagement doctrine; commit-during-flight stays
+ * parked). Self-limiting: only opponents inside the zone window shade,
+ * so the far-side tuck keeps its EAFC central density and the envelope
+ * its size. CALLED FROM BOTH the defending chain (carrier held) AND the
+ * sim's no-carrier station branch — the first build shaded only the
+ * former and the flight-time re-station ERASED it before every
+ * reception, the exact moment pressure is measured (and felt). */
+export const zoneEngageShade = (
+  st: Vec2,
+  defender: BodyState,
+  bodies: readonly BodyState[],
+  /** teammates eligible to take the same threat (same duty class, line
+   * excluded by the caller) — nearest man shades, the rest hold block */
+  claimPool: readonly BodyState[],
+  keepers?: ReadonlySet<string>,
+  /** ONLY a COUPLED carrier is the press's problem — the carrier-CONTEXT
+   * during a flight is the intended receiver, and excluding him reverted
+   * his shader to block geometry for exactly the second the ball flew
+   * (the eraser, found twice: first in the sim's station branch, then
+   * here) */
+  carrierId?: string,
+  /** ball position: a claimant within 6 m of it is on carrier-local duty
+   * (press/cover/shadow) and will NOT take the zone threat — counting
+   * him as the taker was silently killing ~half the shades */
+  ballPos?: Vec2,
+): Vec2 => {
+  const sgnD = attackSign(defender.team);
+  let threat: BodyState | null = null;
+  let tDist = Infinity;
+  for (const o of bodies) {
+    if (o.team === defender.team || keepers?.has(o.id)) continue;
+    if (o.id === carrierId) continue;
+    const du = Math.abs(o.pos.x * sgnD - st.x * sgnD);
+    const dy = Math.abs(o.pos.y - st.y);
+    if (du > 9 || dy > 10) continue;
+    const d = Math.hypot(o.pos.x - st.x, o.pos.y - st.y);
+    if (d < tDist) { threat = o; tDist = d; }
+  }
+  if (!threat) return st;
+  for (const b of claimPool) {
+    if (ballPos && Math.hypot(b.pos.x - ballPos.x, b.pos.y - ballPos.y) < 6) continue;
+    if (Math.hypot(b.pos.x - threat.pos.x, b.pos.y - threat.pos.y) <
+      Math.hypot(defender.pos.x - threat.pos.x, defender.pos.y - threat.pos.y) - 0.5) return st;
+  }
+  // goal-side touch-tight: station ~1.8 m ball-side of our goal line
+  // through him — close enough that his reception is PRESSURED
+  const og = goalCenter(defender.team);
+  const gd = Math.hypot(og.x - threat.pos.x, og.y - threat.pos.y) || 1;
+  const gs = {
+    x: threat.pos.x + ((og.x - threat.pos.x) / gd) * 1.8,
+    y: threat.pos.y + ((og.y - threat.pos.y) / gd) * 1.8,
+  };
+  return { x: st.x + (gs.x - st.x) * 0.7, y: st.y + (gs.y - st.y) * 0.7 };
 };
 
 /** defensive off-board shape: the block station (formation lines sliding
  * with the ball) — shapeSpot was an L5c small-line tool and read as "no
  * structure" at eleven */
-const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5): Vec2 => {
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5, carrierId?: string): Vec2 => {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -1673,6 +1735,14 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       }
       if (mine) st.y = st.y + (threat.pos.y - st.y) * 0.7;
     }
+  } else if (unit.length >= 8) {
+    const claimPool = unit.filter((b) => {
+      if (b.id === defender.id || keepers?.has(b.id)) return false;
+      const bh = homes.get(b.id);
+      return !!bh && bh.x * sgnD > deepestHome + 6; // line members shade via their own rule
+    });
+    const shaded = zoneEngageShade(st, defender, bodies, claimPool, keepers, carrierId, ball.pos);
+    st.x = shaded.x; st.y = shaded.y;
   }
   // VACANCY ROTATION (the builder's dragged-CB principle, second half:
   // "the position he leaves open gets covered immediately by a teammate
