@@ -52,6 +52,7 @@ interface Agg {
   envelope: number[];
   receptions: number; pressedReceptions: number;
   recvDir: Record<'fwd' | 'sq' | 'back', { n: number; pressed: number }>;
+  oldPredReceptions: number; passCompletes: number;
 }
 const A: Agg = {
   poss: { home: 0, away: 0 }, possessions: 0, passes: 0, retained: 0, fwd: 0, sq: 0, back: 0,
@@ -59,6 +60,7 @@ const A: Agg = {
   fouls: 0, yellows: 0, reds: 0, offsides: 0, restarts: {}, setpieces: {}, keeper: {},
   labels: {}, phase: {}, envelope: [], receptions: 0, pressedReceptions: 0,
   recvDir: { fwd: { n: 0, pressed: 0 }, sq: { n: 0, pressed: 0 }, back: { n: 0, pressed: 0 } },
+  oldPredReceptions: 0, passCompletes: 0,
 };
 const bump = (r: Record<string, number>, k: string): void => { r[k] = (r[k] ?? 0) + 1; };
 
@@ -73,6 +75,7 @@ for (let m = 0; m < matches; m++) {
   sim.telemetry = (e: { t: string;[k: string]: unknown }) => {
     if (e.t === 'pass') {
       A.passes++;
+      if (e.outcome === 'complete') A.passCompletes++;
       if (e.outcome === 'complete' || e.outcome === 'teammate') A.retained++;
       const du = (e.du as number) ?? 0;
       if (du > 4) A.fwd++; else if (du < -4) A.back++; else A.sq++;
@@ -120,6 +123,7 @@ for (let m = 0; m < matches; m++) {
         const near = sim.bodies.some((o) => o.team !== rb.team && !o.id.includes('gk') &&
           Math.hypot(o.pos.x - rb.pos.x, o.pos.y - rb.pos.y) <= 2.5);
         if (near) { A.pressedReceptions++; A.recvDir[dir].pressed++; }
+        if (sim.intendedReceiverId === c) A.oldPredReceptions++;
       }
     }
     prevCarrierForRecv = c;
@@ -190,6 +194,20 @@ console.log('\nCARRYING  (per match)');
 console.log(bar('count', per(A.carries)));
 console.log(bar('mean duration (ticks)', A.carries ? (A.carryDur / A.carries).toFixed(1) : '—'));
 console.log(bar('mean advance (m)', A.carries ? (A.carryAdv / A.carries).toFixed(1) : '—'));
+// METRIC SANITY (standing rule after the SIXTH definitional bug — the
+// reception predicate silently undercounting 25% of receptions, the
+// missed quarter pressured at 41% vs 12%: a pressure-BLIND ruler under
+// a pressure headline, found by luck not probe): every headline metric
+// re-validates against an a-priori-known property EVERY session. A FAIL
+// here means an instrument drifted from what it claims to measure —
+// fix the ruler before reading any number below.
+console.log('\nMETRIC SANITY (a priori properties, re-checked every run)');
+{
+  const s1 = A.receptions >= A.oldPredReceptions;
+  console.log(`  ${s1 ? 'PASS' : 'FAIL'}  robust receptions (${A.receptions}) >= old-predicate (${A.oldPredReceptions}); undercount gap ${(100 - A.oldPredReceptions / Math.max(1, A.receptions) * 100).toFixed(0)}% (the bug class this catches)`);
+  const s2 = A.receptions >= A.passCompletes * 0.85;
+  console.log(`  ${s2 ? 'PASS' : 'FAIL'}  receptions (${A.receptions}) track telemetry completions (${A.passCompletes}) — same event, two code paths; gross divergence = a ruler broke`);
+}
 console.log('\nMATCH TEXTURE  (per 90 — the "is this a game" headline)');
 const to90 = (n: number): string => (n / matches * (5400 / (dur / 10))).toFixed(0);
 console.log(bar('possessions / 90', `${to90(A.possessions)}  (real ~200-260)`));
