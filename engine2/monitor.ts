@@ -50,18 +50,20 @@ interface Agg {
   labels: Record<string, number>;
   phase: Record<string, number>;
   envelope: number[];
+  receptions: number; pressedReceptions: number;
 }
 const A: Agg = {
   poss: { home: 0, away: 0 }, possessions: 0, passes: 0, retained: 0, fwd: 0, sq: 0, back: 0,
   carries: 0, carryDur: 0, carryAdv: 0, shots: 0, threads: 0, goals: { home: 0, away: 0 },
   fouls: 0, yellows: 0, reds: 0, offsides: 0, restarts: {}, setpieces: {}, keeper: {},
-  labels: {}, phase: {}, envelope: [],
+  labels: {}, phase: {}, envelope: [], receptions: 0, pressedReceptions: 0,
 };
 const bump = (r: Record<string, number>, k: string): void => { r[k] = (r[k] ?? 0) + 1; };
 
 for (let m = 0; m < matches; m++) {
   const sim = new Sim(def, `mon-${m}`);
   let lastBanner: string | null = null;
+  let prevCarrierForRecv: string | null = null;
   let prevLabels = new Set<string>(); // per-actor labels last tick (for rising-edge events)
   let curPossTeam: 'home' | 'away' | null = null; // possession-count: a possession = one team controlling, gain->loss
   sim.telemetry = (e: { t: string;[k: string]: unknown }) => {
@@ -85,6 +87,20 @@ for (let m = 0; m < matches; m++) {
     // real ~200-260 was the compact expression of the 4-5x turnover churn)
     const holder = c ? sim.bodies.find((b) => b.id === c) : (sim.intendedReceiverId ? sim.bodies.find((b) => b.id === sim.intendedReceiverId) : undefined);
     if (holder && !holder.id.includes('gk') && holder.team !== curPossTeam) { A.possessions++; curPossTeam = holder.team; }
+    // PRESSURED RECEPTIONS (rising edge: the tick the intended man gains
+    // the ball) — the "is anyone actually defending" headline. 13% was the
+    // number that renamed five separate defending findings into one:
+    // the sim was a training exercise, not a match.
+    if (c && c !== prevCarrierForRecv && c === sim.intendedReceiverId) {
+      const rb = sim.bodies.find((b) => b.id === c);
+      if (rb && !rb.id.includes('gk')) {
+        A.receptions++;
+        const near = sim.bodies.some((o) => o.team !== rb.team && !o.id.includes('gk') &&
+          Math.hypot(o.pos.x - rb.pos.x, o.pos.y - rb.pos.y) <= 2.5);
+        if (near) A.pressedReceptions++;
+      }
+    }
+    prevCarrierForRecv = c;
     // banners → restart types + goals
     const banner = f.banner ?? null;
     if (banner && banner !== lastBanner) {
@@ -155,6 +171,7 @@ console.log(bar('mean advance (m)', A.carries ? (A.carryAdv / A.carries).toFixed
 console.log('\nMATCH TEXTURE  (per 90 — the "is this a game" headline)');
 const to90 = (n: number): string => (n / matches * (5400 / (dur / 10))).toFixed(0);
 console.log(bar('possessions / 90', `${to90(A.possessions)}  (real ~200-260)`));
+console.log(bar('pressured receptions', `${(A.pressedReceptions / Math.max(1, A.receptions) * 100).toFixed(0)}%  (opp ≤2.5m at gain; real roughly a third-to-half — 13% = training exercise, nobody close enough for anything to matter)`));
 console.log(bar('shots / 90', `${to90(A.shots)}  (real ~25)`));
 console.log(bar('goals / 90', `${to90(A.goals.home + A.goals.away)}  (real ~2.7)`));
 console.log('\nATTACK  (per match)');
