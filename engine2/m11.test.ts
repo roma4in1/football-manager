@@ -214,7 +214,10 @@ test('THE DO-NOT-DISTURB PINS (EAFC diagnostic): the danger-driven line reads co
   // the box), not calibration drift.
   const restLine: number[] = [];
   const boxLine: number[] = [];
-  for (const seed of ['dnd-0', 'dnd-1', 'dnd-2', 'dnd-3', 'dnd-4', 'dnd-5']) {
+  // 6 seeds wobbled +/-2.5m around the band top across builds (18.4 vs a
+  // 16-seed p50 of 13.9 — a wide underlying distribution); 12 seeds
+  // stabilise the p50. Band unchanged — correction, not exemption.
+  for (const seed of ['dnd-0', 'dnd-1', 'dnd-2', 'dnd-3', 'dnd-4', 'dnd-5', 'dnd-6', 'dnd-7', 'dnd-8', 'dnd-9', 'dnd-10', 'dnd-11']) {
     const sim = new Sim(scenarioByName('m11-match'), seed);
     let flip = -99;
     let last: string | null = null;

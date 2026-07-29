@@ -115,8 +115,16 @@ export const BALL = {
    * take the conservative edge. Contact out here is DEGRADED (the
    * toe-poke): the first touch pays a stretch penalty and pops loose
    * often. Replaces the hard eligibility cliff under which a defender at
-   * 0.95 m with elite anticipation was never CONSULTED. */
-  claimStretchM: 0.35,
+   * 0.95 m with elite anticipation was never CONSULTED.
+   * REVISED 0.35 -> 0.15 (preregistered): the first band assumed a full
+   * lunging STRIDE + lean, but a claim resolves within one 100 ms tick —
+   * no time to plant a step. Strideless reach = leg (~0.9) + lean
+   * (~0.15-0.2) = 1.0-1.15 m; midpoint 1.05. The 0.35 band's global
+   * interception boost spiked possessions 610->830 (the world's verdict
+   * that the reach went beyond physical). Fallback floor DECLARED: 0.10
+   * (1.00 m) and no lower — below that the contested band is too narrow
+   * for expression at current churn, which is a churn finding. */
+  claimStretchM: 0.10, // iteration 2 of 2: the declared 1.00 m floor
   /** L7 KEEPER — the save on the same xyz footing as the block, but with a
    * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
    * with firstTouch (a clean catch vs a parry). Attributes are the outfield
