@@ -2421,6 +2421,7 @@ export class Sim {
       if (carrierGap <= BALL.controlRadiusM) return;
     }
     let best: { body: BodyState; d: number; at: Vec2 } | null = null;
+    let blockBest: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
       if (this.sentOff.has(b.id)) continue; // off the pitch, out of the game
@@ -2440,6 +2441,25 @@ export class Sim {
         this.tick < this.ball.kickerLockUntilTick) {
         const intended = this.byId.get(this.intendedReceiverId);
         if (intended && b.team === intended.team) continue;
+        // the same fresh window gates the OPPONENT the other way: a ball
+        // released 0.1 s ago beats human reaction — he cannot READ and
+        // CONTROL it (the reach-discriminator: 73% of all cut passes died
+        // within 4 m of the boot, the "interceptor" standing p50 0.8 m from
+        // the origin, pocketing the release at zero reaction through the
+        // 0.9 m sweep). At best the ball strikes his FRAME and ricochets —
+        // a ground block, resolved below. His stab reach is the tighter
+        // groundBlockRadiusM; wider than that the ball simply goes by. A
+        // genuine downfield lane cut is untouched: flight past the window
+        // claims exactly as before. (Temporal gate only, no chaseBall
+        // exemption — a counterpresser IS on chaseBall, and his chase of
+        // the carrier grants no read on the ball's new path.) Three-way
+        // symmetry on one window: kicker can't retouch, teammates stand
+        // off, opponents block-not-control.
+        if (!carrier && intended && b.team !== intended.team) {
+          const { d, at } = segNearest(b);
+          if (d <= BALL.groundBlockRadiusM && (!blockBest || d < blockBest.d)) blockBest = { body: b, d, at };
+          continue;
+        }
       }
       // you never steal the ball off your OWN teammate's feet: only an
       // opponent pinches a carrier's live touch. Without this two stacked
@@ -2468,6 +2488,32 @@ export class Sim {
       if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && b.id < best.body.id)) {
         best = { body: b, d, at };
       }
+    }
+    // the GROUND BLOCK fires if no one claims — or if the blocker stands
+    // EARLIER along the flight than the claimer (the ball reaches his frame
+    // first; a 3 m give-and-go can put both in the same tick's sweep)
+    if (blockBest && (!best ||
+      Math.hypot(blockBest.at.x - from.x, blockBest.at.y - from.y) <
+      Math.hypot(best.at.x - from.x, best.at.y - from.y))) {
+      const bb = blockBest.body;
+      const speed = Math.hypot(this.ball.vel.x, this.ball.vel.y);
+      // same ricochet the airborne block uses: roughly AWAY from his own
+      // goal (the clearance direction, never back at the kicker), pace
+      // scrubbed, a low hop off the shins
+      const ownGoal = goalCenter(bb.team);
+      const ang = Math.atan2(bb.pos.y - ownGoal.y, bb.pos.x - ownGoal.x) +
+        this.rng.gauss(0, 0.9, this.tick, bb.id, 'block');
+      const sp = speed * BALL.blockDeflectKeep;
+      this.ball.pos = { x: blockBest.at.x, y: blockBest.at.y };
+      this.ball.vel = { x: Math.cos(ang) * sp, y: Math.sin(ang) * sp };
+      this.ball.vz = sp * 0.3;
+      this.ball.phase = 'airborne';
+      this.ball.carrierId = null;
+      this.ball.kickerId = bb.id;
+      this.ball.kickerLockUntilTick = this.tick + 4;
+      this.ball.spin = 0;
+      this.actionLabels.set(bb.id, 'block');
+      return;
     }
     if (!best) return;
     // the claim is a FIRST TOUCH at the meeting point (L3): control quality
@@ -3957,13 +4003,19 @@ export class Sim {
     // through staging
     let tx = Math.max(1, Math.min(PITCH.length - 1, to.x));
     let ty = Math.max(1, Math.min(PITCH.width - 1, to.y));
-    for (let tries = 0; tries < 6; tries++) {
+    // a RETREAT LINE stages many bodies onto one 1-D line (x pinned, own y
+    // kept): pushing away from clash A lands inside clash B and the loop
+    // ping-pongs along the line — so past a few tries the push SPIRALS
+    // (angle walks, radius grows) until it escapes the crowd
+    for (let tries = 0; tries < 12; tries++) {
       const clash = this.bodies.find((o) => o.id !== b.id &&
         Math.hypot(o.pos.x - tx, o.pos.y - ty) < 0.75);
       if (!clash) break;
-      const ang = Math.atan2(ty - clash.pos.y, tx - clash.pos.x) || (tries * 1.1);
-      tx = Math.max(1, Math.min(PITCH.length - 1, clash.pos.x + Math.cos(ang) * 1.1));
-      ty = Math.max(1, Math.min(PITCH.width - 1, clash.pos.y + Math.sin(ang) * 1.1));
+      const ang = (Math.atan2(ty - clash.pos.y, tx - clash.pos.x) || (tries * 1.1)) +
+        (tries > 3 ? (tries - 3) * 0.9 : 0);
+      const push = 1.1 + tries * 0.25;
+      tx = Math.max(1, Math.min(PITCH.length - 1, clash.pos.x + Math.cos(ang) * push));
+      ty = Math.max(1, Math.min(PITCH.width - 1, clash.pos.y + Math.sin(ang) * push));
     }
     b.pos = { x: tx, y: ty };
     b.vel = { x: 0, y: 0 };

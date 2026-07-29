@@ -94,6 +94,14 @@ export const BALL = {
   blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not deflected
   blockDeflectKeep: 0.35, // an OPPONENT'S block scrubs most of the pace off
   collisionDeflectKeep: 0.55, // a teammate not defending caroms more pace on
+  /** GROUND BLOCK: a just-released pass beats human reaction — inside the
+   * kicker-lock window an opponent cannot READ and CONTROL it; at best it
+   * strikes his frame and ricochets. His stab reach is this, not the full
+   * control radius: a ball passing 0.8 m from his boot 0.1 s after release
+   * simply goes by. (Without this, any release under press was pocketed at
+   * zero reaction through the 0.9 m claim sweep — 73% of all cut passes
+   * died within 4 m of the boot, interceptor p50 0.8 m from the origin.) */
+  groundBlockRadiusM: 0.45,
   /** L7 KEEPER — the save on the same xyz footing as the block, but with a
    * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
    * with firstTouch (a clean catch vs a parry). Attributes are the outfield
