@@ -43,6 +43,9 @@ export const TECH = {
    * body is where the real skill gap lives. */
   touchPopPerSprayM: 0.07,
   sprayPressureMult: 1.75,
+  /** a STRETCHED claim (contact beyond the 0.9 m control radius) is a
+   * toe-poke, not a gather — difficulty per metre of stretch */
+  touchPopPerStretchM: 0.9,
   /** a popped ball squirts this far, scattered around the arrival direction */
   popSpeedMinMps: 2.2,
   popSpeedMaxMps: 4.5,
@@ -107,6 +110,7 @@ export function touchPopProbability(
   pressured: boolean,
   receiverSpeed = 0,
   sprayM = 0,
+  stretchM = 0,
 ): number {
   const difficulty =
     TECH.touchPopBase +
@@ -114,6 +118,7 @@ export function touchPopProbability(
     TECH.touchPopPerMeterZ * ballZ +
     TECH.touchPopPerReceiverMps * receiverSpeed +
     TECH.touchPopPerSprayM * sprayM * (pressured ? TECH.sprayPressureMult : 1) +
+    TECH.touchPopPerStretchM * stretchM +
     (pressured ? TECH.touchPopPressure * (1 - TECH.pressureSkillRelief * (receiver.firstTouch / 20)) : 0);
   const relief = 1 - TECH.touchSkillRelief * (receiver.firstTouch / 20);
   return clamp01(difficulty * relief);
@@ -132,8 +137,9 @@ export function resolveFirstTouch(
   pressured: boolean,
   receiverSpeed = 0,
   sprayM = 0,
+  stretchM = 0,
 ): { pop: boolean; vel: Vec2 } {
-  const p = touchPopProbability(receiver, closingSpeed, ballZ, pressured, receiverSpeed, sprayM);
+  const p = touchPopProbability(receiver, closingSpeed, ballZ, pressured, receiverSpeed, sprayM, stretchM);
   if (rng.chance(p, tick, bodyId, 'first-touch')) {
     const dir = arrivalDir + rng.gauss(0, TECH.popScatterRad, tick, bodyId, 'touch-pop-dir');
     const speed = TECH.popSpeedMinMps +
