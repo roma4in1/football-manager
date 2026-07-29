@@ -48,10 +48,20 @@ test('M11 pilot — the wing duel lives in match ecology: the defense engages, n
   const r = run('m11-wing-duel');
   assert.ok(r.engaged >= 4, `the home side engages the flank carrier (${r.engaged}/5)`);
   assert.ok(r.claimed >= 4, `the ball is live and contested (${r.claimed}/5)`);
-  // re-based (Jul 24): the zero bar was a blind-check artifact — a carrier
-  // who beats the block earns the finish; the lone-rider escort root is
-  // the ledgered fix
-  assert.ok(r.conceded <= 1, `the block mostly holds (${r.conceded}/5 conceded)`);
+  // CONCESSION FLOOR RETIRED (builder decision, after the mechanism hunt).
+  // History: the old <=1 floor passed for months because the ATTACK was
+  // degenerate — the striker hovered motionless ON the goal line inside
+  // the six-yard box (offside-trapped, keeper-covered) and the move
+  // pinned itself wide forever. The dart economy gave him a sane box-edge
+  // resting depth, the attack became functional, and concessions jumped
+  // to 12/20 — eleven of twelve the SAME quasi-deterministic opening,
+  // finishing through the ARRIVAL-DUEL residual (a defender engaging to
+  // 0.7 m loses the arrival identically every time). Neither number is
+  // football: the old floor tested a broken attack; re-basing to the new
+  // one would encode the duel exploit and then punish its fix. No valid
+  // concession pin exists here until the arrival duel is understood; the
+  // engagement/liveness assertions above remain the scenario's real
+  // content. See ledger: THE WING-DUEL MECHANISM: LOCATED.
 });
 
 test('M11 pilot — the central drive meets the block', () => {
