@@ -32,6 +32,17 @@ export const TECH = {
   touchPopPerReceiverMps: 0.025,
   /** skill relief: firstTouch 20 removes this much of the difficulty */
   touchSkillRelief: 0.85, // deepened (judged: silk feet fumbled ~16% at pace — elite touches kill firm balls)
+  /** the AWKWARD-BALL tax: a sprayed pass arrives off the line the intended
+   * receiver read — he reaches, off-balance, and the touch is harder. Only
+   * the INTENDED man pays (a defender reads the ACTUAL line and owes
+   * nothing — the asymmetry that lets skill express without arming the
+   * defense). Measured before building: the world was spray-INDIFFERENT
+   * to 3.5 m (kept 77-82% flat) — the collection layer erased the entire
+   * execution gap between a passing-8 and a passing-18 foot (the global
+   * compressor). Pressure amplifies it: the awkward touch under a closing
+   * body is where the real skill gap lives. */
+  touchPopPerSprayM: 0.07,
+  sprayPressureMult: 1.75,
   /** a popped ball squirts this far, scattered around the arrival direction */
   popSpeedMinMps: 2.2,
   popSpeedMaxMps: 4.5,
@@ -95,12 +106,14 @@ export function touchPopProbability(
   ballZ: number,
   pressured: boolean,
   receiverSpeed = 0,
+  sprayM = 0,
 ): number {
   const difficulty =
     TECH.touchPopBase +
     TECH.touchPopPerMps * Math.max(0, closingSpeed - TECH.touchEasySpeedMps) +
     TECH.touchPopPerMeterZ * ballZ +
     TECH.touchPopPerReceiverMps * receiverSpeed +
+    TECH.touchPopPerSprayM * sprayM * (pressured ? TECH.sprayPressureMult : 1) +
     (pressured ? TECH.touchPopPressure * (1 - TECH.pressureSkillRelief * (receiver.firstTouch / 20)) : 0);
   const relief = 1 - TECH.touchSkillRelief * (receiver.firstTouch / 20);
   return clamp01(difficulty * relief);
@@ -118,8 +131,9 @@ export function resolveFirstTouch(
   ballZ: number,
   pressured: boolean,
   receiverSpeed = 0,
+  sprayM = 0,
 ): { pop: boolean; vel: Vec2 } {
-  const p = touchPopProbability(receiver, closingSpeed, ballZ, pressured, receiverSpeed);
+  const p = touchPopProbability(receiver, closingSpeed, ballZ, pressured, receiverSpeed, sprayM);
   if (rng.chance(p, tick, bodyId, 'first-touch')) {
     const dir = arrivalDir + rng.gauss(0, TECH.popScatterRad, tick, bodyId, 'touch-pop-dir');
     const speed = TECH.popSpeedMinMps +

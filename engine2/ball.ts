@@ -37,8 +37,17 @@ export interface BallState {
    * own kicker standing at the strike point */
   kickerId: string | null;
   kickerLockUntilTick: number;
+  /** tick of the most recent kick — the offside law reads it */
+  lastKickTick?: number;
   /** alternating-foot texture: flips each touch */
   touchParity: boolean;
+  /** execution SPRAY of the current flight: distance between the kicker's
+   * AIMED destination and the noisy realized target. The intended receiver
+   * anticipated the aimed line — a sprayed ball arrives off his read and is
+   * received awkwardly; a defender reacts to the ACTUAL line and owes
+   * nothing (the asymmetry that lets skill express without arming the
+   * defense). Set by the kick sites; kickBall resets it. */
+  sprayM?: number;
 }
 
 export const BALL = {
@@ -92,6 +101,14 @@ export const BALL = {
   blockMinSpeedMps: 9, // slower than this the ball is CONTROLLED, not deflected
   blockDeflectKeep: 0.35, // an OPPONENT'S block scrubs most of the pace off
   collisionDeflectKeep: 0.55, // a teammate not defending caroms more pace on
+  /** GROUND BLOCK: a just-released pass beats human reaction — inside the
+   * kicker-lock window an opponent cannot READ and CONTROL it; at best it
+   * strikes his frame and ricochets. His stab reach is this, not the full
+   * control radius: a ball passing 0.8 m from his boot 0.1 s after release
+   * simply goes by. (Without this, any release under press was pocketed at
+   * zero reaction through the 0.9 m claim sweep — 73% of all cut passes
+   * died within 4 m of the boot, interceptor p50 0.8 m from the origin.) */
+  groundBlockRadiusM: 0.45,
   /** L7 KEEPER — the save on the same xyz footing as the block, but with a
    * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
    * with firstTouch (a clean catch vs a parry). Attributes are the outfield
@@ -127,10 +144,10 @@ export const BALL = {
   keeperNearPostShadeM: 1.2,
   keeperReachBaseM: 1.1,
   keeperReachAgility: 0.035, // agility 20 → 2.05 m dive radius
-  keeperCatchBase: 9, // catchable ball speed floor...
+  keeperCatchBase: 9, // catchable ball speed floor (the raw 1v1 physics; the MATCH-scale keeper holds firmer shots — see sim catchBase)...
   keeperCatchTouch: 0.35, // ...+ per firstTouch (14 → holds up to ~13.9 m/s)
   keeperCatchMaxZ: 2.2, // a stinger above this is parried, not held
-  keeperParryKeep: 0.35, // a parry scrubs the shot's pace like a block
+  keeperParryKeep: 0.35, // a parry scrubs pace (raw drill physics; the match-scale parry keeps more and tips out — see sim)
   /** a parry is turned WIDE of the play, not pushed straight back out — a
    * central palm-back tees up the arriving runner (the sweeper finding) */
   keeperParryWideRad: 0.7,
@@ -506,5 +523,7 @@ export function kickBall(ball: BallState, target: Vec2, speedMps: number, loftDe
   ball.carrierId = null;
   ball.kickerId = kickerId;
   ball.kickerLockUntilTick = tick + BALL.kickerLockTicks;
+  ball.lastKickTick = tick;
   ball.spin = spin;
+  ball.sprayM = 0;
 }

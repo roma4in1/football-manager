@@ -40,6 +40,19 @@ export interface BodyAttributes {
   tackling: number; // L3: winning physical contests for a glued ball
   strength: number; // L3: tackle weight + shield width (with balance)
   stamina: number; // reserved: the effort model reads it in the later pass
+  /** the MIND (perception tier): scanning frequency and therefore how
+   * fresh this player's picture of the OPPONENTS is. Optional — casts
+   * without it get a league-average 11. Higher = shorter scan cycle =
+   * decisions priced against near-truth; lower = stale reads, blind-side
+   * vulnerability, late line judgments. */
+  awareness?: number;
+  /** TACTICAL DISCIPLINE (builder: 'how strictly a player follows the
+   * instruction should be based on the tactical attribute'): how
+   * faithfully this player executes the manager's instructions. Every
+   * tunable slider is read as neutral + (instructed - neutral) *
+   * (tactical/20) — a 20 follows the plan precisely, a 5 drifts most of
+   * the way back to his instinctive default. Optional, league-average 11. */
+  tactical?: number;
 }
 
 /** Derived stance — read-only presentation/debug signal, never an input. */
@@ -49,6 +62,12 @@ export interface BodyInit {
   id: string;
   team: 'home' | 'away';
   pos: Vec2;
+  /** MANAGER PHASE PLACEMENTS (builder: 'managers can place players
+   * anywhere on the field for any phase... rigid 443 or 523 commands
+   * will not work'): absolute per-phase homes. Any phase authored here
+   * OVERRIDES the derived band-map; unauthored phases keep the
+   * derivation. Keys: build|progress|final|high|mid|low. */
+  phaseHomes?: Partial<Record<'build' | 'progress' | 'final' | 'high' | 'mid' | 'low', Vec2>>;
   /** radians, 0 = +x; defaults to facing the pitch centre */
   facing?: number;
   attributes: BodyAttributes;
@@ -107,6 +126,9 @@ export interface Frame {
   t: number;
   bodies: FrameBody[];
   ball: FrameBall;
+  /** the referee's word — 'CORNER', 'PENALTY', 'GOAL!' … shown by the
+   * workbench during whistles and ceremonies */
+  banner?: string;
 }
 
 export interface FrameBall {
@@ -150,6 +172,9 @@ export interface ScenarioDef {
   ball?: { pos?: Vec2; carrier?: string };
   /** scripted strikes (L2) */
   kicks?: KickEvent[];
+  /** a real MATCH: opening kickoff ceremony (home), half-time at
+   * durationTicks/2, second-half kickoff to away */
+  halves?: boolean;
   /** optional drill BOUNDARIES (positional grids): a loose ball crossing
    * them goes dead, exactly like the pitch edge (restarts are L8's) */
   bounds?: { x0: number; y0: number; x1: number; y1: number };

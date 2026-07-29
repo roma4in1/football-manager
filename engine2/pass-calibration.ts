@@ -14,22 +14,24 @@
 
 /** multiplicative shrink per bucket (type/dist band), identity = 1 */
 export const PASS_CALIBRATION: Readonly<Record<string, number>> = {
-  // IDENTITY — the application is deliberately HELD. The full verdict
-  // cycle ran (fit -> apply -> measure the football -> reject):
-  // applying the fitted tables collapsed passes/match 47.7 -> 20.8 —
-  // dribble-ball, the empirical proof of the CIRCULARITY: the carry
-  // survival (0.87-0.93/step even in traffic) is inflated by a defense
-  // that converts poorly, so calibrating to it rewards exactly the
-  // football the reference work steers away from.
-  // THE CONVERGENCE PLAN: improve defensive CONVERSION first (strips in
-  // traffic raise true carry hazard), re-batch, re-fit — the tables
-  // land when the measured equilibrium passes MORE, not less.
-  // Fitted values (run-91744, 300 matches): ground .74/.73/.88,
-  // driven-loft .41/.58/.64, float .30/.55/.82, curl .57/.65/.75;
-  // carry step-survival by density [0.93, 0.88, 0.89, 0.87] with
-  // advance/tick 0.28 -> 0.20 m (traffic slows ~28%, not the legacy
-  // tax's ~55% — the open-field 0.930 independently re-derived the
-  // hand-fitted 0.92).
+  // THE TABLES LAND (run-57199, 30 matches, Jul 24) — the convergence
+  // plan's own criterion arrived: the first application was REJECTED
+  // when it collapsed passes/match 47.7 -> 20.8 (circularity: the old
+  // defense converted so poorly that carrying measured better than it
+  // was). The plan said the tables land when the equilibrium passes
+  // MORE — after the step-in, the conservation EV, the laws and the
+  // ceremonies, the measured equilibrium passes 122/match and the
+  // defense genuinely cuts (34% of open-play passes). The gaps are now
+  // HONEST hazard, not an artifact of a defense that couldn't convert.
+  'ground/mid': 0.68,
+  'ground/short': 0.74,
+  'ground/long': 0.69,
+  'driven-loft/long': 0.61,
+  'float/long': 0.51,
+  'curl/mid': 0.70,
+  'float/mid': 0.63,
+  'driven-loft/mid': 0.52,
+  'curl/short': 0.76,
 };
 
 export const calibratePass = (
@@ -53,7 +55,16 @@ export const calibratePass = (
 /** carry RETENTION by local pressure (density 0..1 → bucket 0..3),
  * fitted from the same ledger as the pass table — the BOTH-SIDED rule:
  * the two tables land together or not at all. Null = legacy algebra. */
-export const CARRY_RETENTION: ReadonlyArray<number> | null = null;
+export const CARRY_RETENTION: ReadonlyArray<number> | null =
+  // the BOTH-SIDED rule honored: same ledger as the pass table.
+  // Bucket 0 corrected for START-DENSITY CONTAMINATION: density is
+  // logged at the carry's first touch, so open-starting carries that
+  // run INTO traffic drag the "open" bucket to 0.62-0.72 when a carry
+  // that STAYS open survives ~0.9 — the mispricing made open carrying
+  // 22% too cheap and SHIELD outbid moving (the builder's stopped-flow
+  // frames). 0.85 splits the honest difference; the traffic buckets
+  // are start≈journey and stand as fitted.
+  [0.85, 0.70, 0.63, 0.62];
 
 export const carryRetention = (pressure: number): number | null => {
   if (!CARRY_RETENTION) return null;

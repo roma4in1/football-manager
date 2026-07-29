@@ -57,6 +57,11 @@ test('continuity everywhere: no body ever moves farther in one tick than physics
     // physics, not a teleport)
     const caps = new Map(def.bodies.map((b) => [b.id, topSpeedMps(b.attributes.pace) * DT + 0.5 + 1e-6]));
     for (let i = 1; i < frames.length; i++) {
+      // a RESTART PLACEMENT is a legal discontinuity (builder direction:
+      // staged ceremonies teleport the taker, the wall, the box crowd,
+      // kickoff formations) — detected as the dead-ball ending; every
+      // other tick keeps the physics invariant
+      if (frames[i - 1].ball.phase === 'dead' && frames[i].ball.phase !== 'dead') continue;
       for (const b of frames[i].bodies) {
         const p = body(frames[i - 1], b.id);
         const step = Math.hypot(b.x - p.x, b.y - p.y);
