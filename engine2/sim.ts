@@ -88,6 +88,12 @@ export class Sim {
   private readonly teamPhase = new Map<'home' | 'away', 'build' | 'progress' | 'final' | 'high' | 'mid' | 'low'>();
   private lastPossessTeam: 'home' | 'away' | null = null;
   private lastFlipTick = -999;
+  /** THE DART ECONOMY (L5b priced, the effort economy's second place):
+   * a dart that ends UNFED costs its runner a cooldown before the next
+   * launch — 59% of darts timed out unfed at the free 0.7s reload
+   * (ST ~540 darts/90 vs real 20-40; the cycle was a bare timer).
+   * Scaled by stamina (its second consumer): big engines reload faster. */
+  private readonly dartRest = new Map<string, number>();
   /** possession team last tick — to detect the FLIP instant and unfreeze
    * actors stuck on a stale positioning moveTo (the generalised freeze:
    * 34% of actors fail every re-eval gate at the flip because a plain
@@ -2918,6 +2924,7 @@ export class Sim {
                 claimedYs.push(rst ? (rst.phase === 'dart' ? rst.dartY : (rst.laneY ?? rst.dartY)) : rb2.pos.y);
               }
             }
+            const gaveT = this.lastGiveTick.get(id);
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.perceivedBodies(id), this.keepers, claimedYs) : null;
             if (atStation) {
               this.runPhase.delete(id);
@@ -3078,7 +3085,16 @@ export class Sim {
               const atDartEnd = straight
                 ? (sign > 0 ? body.pos.x >= plan.lineX - 0.2 : body.pos.x <= plan.lineX + 0.2)
                 : Math.abs(body.pos.y - st.dartY) < 1.2;
-              if (st.phase === 'ride' && atHover && this.tick - st.since >= 7) {
+              // LAUNCH TRIGGER (the probe's refinement: 59% of darts timed
+              // out UNFED — runs launched at nobody): a dart needs a FEEDER
+              // — a coupled carrier in range — not just a timer. The one-two
+              // keeps its instant launch (fed by construction).
+              const oneTwoNow = gaveT !== undefined && this.tick - gaveT <= 12;
+              const rested = this.brains.size < 12 || this.tick >= (this.dartRest.get(id) ?? 0);
+              const feeder = this.brains.size < 12 || (this.ball.carrierId !== null && carrierBody &&
+                Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 38);
+              if (st.phase === 'ride' && atHover && this.tick - st.since >= 7 &&
+                ((rested && feeder) || oneTwoNow)) {
                 st.phase = 'dart';
                 st.since = this.tick;
                 st.dartY = plan.dartY;
@@ -3086,6 +3102,13 @@ export class Sim {
                 (this.tick - st.since >= 26 || atDartEnd)) {
                 st.phase = 'ride';
                 st.since = this.tick;
+                // UNFED = the commitment cost falls due: cooldown before the
+                // next launch, stamina-scaled (real runs recur ~30-60s; the
+                // free reload was 0.7s)
+                if (this.brains.size >= 12 && this.intendedReceiverId !== id && this.ball.carrierId !== id) {
+                  const cd = 110 - ((body.attributes.stamina ?? 13) - 13) * 6;
+                  this.dartRest.set(id, this.tick + Math.max(50, cd));
+                }
               }
               this.attackClaims.get(body.team)!.push({ x: dartX, y: st.phase === 'dart' ? st.dartY : plan.target.y });
               if (st.phase === 'dart') {
@@ -3112,10 +3135,12 @@ export class Sim {
                 });
                 this.actionLabels.set(id, 'dart');
               } else {
+                const dHov = Math.hypot(hoverX - body.pos.x, plan.target.y - body.pos.y);
+                const mvR = this.stationMove(body, dHov, 1);
                 this.assign(body, {
                   type: 'moveTo',
                   target: { x: hoverX, y: plan.target.y },
-                  regime: atHover ? 'jog' : 'run',
+                  regime: atHover ? (this.brains.size >= 12 ? 'walk' : 'jog') : mvR.regime,
                 });
                 this.actionLabels.set(id, 'run');
               }
