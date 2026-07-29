@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, pivotShift, posValue, runPlan, supportSpot, zoneEngageShade, type Intent, type PlayInstructions } from './decide.ts';
+import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, pivotShift, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -66,11 +66,11 @@ export class Sim {
    * under the bar. The minimal seam L7 acceptance needs (saved vs beaten);
    * restarts stay L8's. `against` is the team whose goal it crossed. */
   readonly goals: { tick: number; against: 'home' | 'away'; y: number; z: number }[] = [];
-  private readonly instructions = new Map<string, PlayInstructions>();
+  readonly instructions = new Map<string, PlayInstructions>(); // public: the tactics harness and probes set these
   private readonly intents = new Map<string, Intent>();
   private readonly actionLabels = new Map<string, string>();
   /** the teammate a decided pass is flighted to — gets the receive reflex */
-  private intendedReceiverId: string | null = null;
+  intendedReceiverId: string | null = null; // public: the monitor's reception tagging reads it
   /** initial positions — the 'keep' objective's drill stations */
   private readonly homes = new Map<string, Vec2>();
   /** THE PHASE-TACTICS LAYER (builder direction, recorded): six phases —
@@ -179,7 +179,7 @@ export class Sim {
   /** the run's phase per runner: RIDE (reload at a jog, level with the
    * line) or DART (sprint diagonally across a defender's blind side into
    * the next seam — the ball is released while the runner is AT PACE) */
-  private readonly runPhase = new Map<string, { phase: 'ride' | 'dart'; since: number; dartY: number; lineX: number }>();
+  private readonly runPhase = new Map<string, { phase: 'ride' | 'dart'; since: number; dartY: number; lineX: number; laneY?: number }>();
   /** tick each brain last RELEASED a pass — the one-two: a giver near the
    * line bursts immediately (the give IS his trigger; no patient ride) */
   private readonly lastGiveTick = new Map<string, number>();
@@ -1903,9 +1903,12 @@ export class Sim {
               consider('kick', aerialCompletion(landing, m, opps), 0.5);
             }
           }
-          const best = pick && pick.kind === 'throw' ? { mate: pick.mate, d: pick.d } : null;
-          const loop = pick && pick.kind === 'loop' ? { mate: pick.mate, d: pick.d } : null;
-          const kickable = pick && pick.kind === 'kick' ? { mate: pick.mate, d: pick.d } : null;
+          // TS's flow analysis cannot see the closure's assignments to
+          // `pick` and narrows it to its initializer — read via assertion
+          const picked = pick as { kind: 'throw' | 'loop' | 'kick'; mate: BodyState; d: number; score: number } | null;
+          const best = picked && picked.kind === 'throw' ? { mate: picked.mate, d: picked.d } : null;
+          const loop = picked && picked.kind === 'loop' ? { mate: picked.mate, d: picked.d } : null;
+          const kickable = picked && picked.kind === 'kick' ? { mate: picked.mate, d: picked.d } : null;
           this.keeperHolding = null;
           if (best) {
             // the THROW — flat, fast, to feet, weighted by range

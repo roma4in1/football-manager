@@ -27,8 +27,6 @@
 //    confusion caused the shot 4x and carry 10x inflations).
 import { Sim } from './sim.ts';
 import { scenarioByName } from './scenarios/index.ts';
-import { attackSign } from './decide.ts';
-import { PITCH } from './engine2-types.ts';
 
 const scenario = process.argv[2] ?? 'm11-match';
 const matches = Number(process.argv[3] ?? 6);
@@ -72,7 +70,8 @@ for (let m = 0; m < matches; m++) {
   const recvDirTag = new Map<string, 'fwd' | 'sq' | 'back'>();
   let prevLabels = new Set<string>(); // per-actor labels last tick (for rising-edge events)
   let curPossTeam: 'home' | 'away' | null = null; // possession-count: a possession = one team controlling, gain->loss
-  sim.telemetry = (e: { t: string;[k: string]: unknown }) => {
+  sim.telemetry = (ev: Record<string, unknown>) => {
+    const e = ev as { t: string; [k: string]: unknown };
     if (e.t === 'pass') {
       A.passes++;
       if (e.outcome === 'complete') A.passCompletes++;
