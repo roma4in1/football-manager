@@ -87,6 +87,13 @@ export class Sim {
   private readonly phaseHomeOverrides = new Map<string, Partial<Record<string, Vec2>>>();
   private readonly teamPhase = new Map<'home' | 'away', 'build' | 'progress' | 'final' | 'high' | 'mid' | 'low'>();
   private lastPossessTeam: 'home' | 'away' | null = null;
+  private lastFlipTick = -999;
+  /** THE DART ECONOMY (L5b priced, the effort economy's second place):
+   * a dart that ends UNFED costs its runner a cooldown before the next
+   * launch — 59% of darts timed out unfed at the free 0.7s reload
+   * (ST ~540 darts/90 vs real 20-40; the cycle was a bare timer).
+   * Scaled by stamina (its second consumer): big engines reload faster. */
+  private readonly dartRest = new Map<string, number>();
   /** possession team last tick — to detect the FLIP instant and unfreeze
    * actors stuck on a stale positioning moveTo (the generalised freeze:
    * 34% of actors fail every re-eval gate at the flip because a plain
@@ -369,6 +376,7 @@ export class Sim {
     // possession state. Actively-engaged actors (pressing, stepping,
     // racing the ball, the carrier/receiver) keep their commitment.
     if (this.brains.size >= 12 && this.lastPossessTeam && this.lastPossessTeam !== this.prevPossessForFlip) {
+      this.lastFlipTick = this.tick;
       for (const id of this.brains) {
         const b = this.byId.get(id)!;
         if (b.command.type !== 'moveTo') continue;
@@ -2395,6 +2403,65 @@ export class Sim {
     this.actionLabels.set(best.body.id, isCollision ? 'collision' : 'block');
   }
 
+  /** THE EFFORT ECONOMY (L1's regimes, finally priced). REST IS THE
+   * DEFAULT WITH A COST TO LEAVE: a station-holder inside the deadband
+   * STANDS; departing rest and each regime escalation is justified only
+   * by urgency the SITUATION supplies — computed from ball/possession
+   * state here, never claimed by the mover (the utility board's
+   * demonstrated maximal-action bias would otherwise have everything
+   * claim urgency and the economy becomes a no-op with extra steps).
+   * This prices ONLY station-class repositioning — the flattener that
+   * was ~50% of every position's distance via the unpriced
+   * `d > 8 ? 'run' : 'jog'` default. Duties (press, chase, marks,
+   * recovery, the flight-step's sprint) keep their pace: they ARE the
+   * urgency. stamina's FIRST consumer: willingness to jog voluntarily
+   * scales with it (the fatigue model builds on this later — the
+   * sequencing the ledger locks). */
+  private stationMove(body: BodyState, d: number, minU: 0 | 1 | 2 = 0, target?: Vec2): { go: boolean; regime: 'walk' | 'jog' | 'run' } {
+    // MATCH SCALE ONLY (the drill rule): scenarios pin raw semantics —
+    // a 4-man line drill or a cross drill wants its original pace
+    if (this.brains.size < 12) return { go: d > 1.5, regime: d > 8 ? 'run' : 'jog' };
+    const team = body.team;
+    const poss = this.lastPossessTeam;
+    const defending = poss !== null && poss !== team;
+    const ownGoalX = team === 'home' ? 0 : PITCH.length;
+    const gd = Math.hypot(this.ball.pos.x - ownGoalX, this.ball.pos.y - PITCH.width / 2);
+    let u: 0 | 1 | 2 = minU;
+    if (this.tick - this.lastFlipTick < 30) u = defending ? 2 : (u < 1 ? 1 : u); // transition: reorg keeps pace
+    else if (defending) {
+      // the BACK LINE's stations track danger — a walked retreat lags the
+      // entry and the box phase cannot recover it (the box-entry pin
+      // tripped at 18.8 m); the line keeps its legs whenever the ball is
+      // in range. Real CB rest comes from slow circulation, not walked
+      // retreats. Others: never calm-class (the rest-line pin), urgent
+      // only at the box.
+      const line = this.backLineHome(body.id, team);
+      const tu = gd < 32 ? 2 : line && gd < 60 ? 2 : 1;
+      if (tu > u) u = tu as 0 | 1 | 2;
+    }
+    else {
+      const od = Math.hypot(this.ball.pos.x - (PITCH.length - ownGoalX), this.ball.pos.y - PITCH.width / 2);
+      if (od < 30 && u < 1) u = 1; // final-third attack: box/support arrivals keep a jog
+    }
+    // ATTACHMENT CLASS: an opponent standing at (or beside) my destination
+    // IS the situation supplying urgency — a shaded/goal-side station only
+    // works ATTAINED, and walking it lags the man it shades (measured: fwd
+    // pressure 28->17 when shades walked). Marks/shades keep their legs.
+    if (u < 2 && target) {
+      for (const o of this.bodies) {
+        if (o.team === team || this.keepers.has(o.id)) continue;
+        if (Math.hypot(o.pos.x - target.x, o.pos.y - target.y) <= 3.5) { u = 2; break; }
+      }
+    }
+    // stamina: high engines volunteer the jog sooner (no-op at 13)
+    const will = ((body.attributes.stamina ?? 13) - 13) * 0.4;
+    const dead = u === 2 ? 1.6 : u === 1 ? 2.6 : 3.5;
+    if (d <= dead) return { go: false, regime: 'walk' };
+    if (u === 0) return { go: true, regime: d <= 20 - will ? 'walk' : 'jog' };
+    if (u === 1) return { go: true, regime: d <= 9 - will ? 'walk' : d <= 18 ? 'jog' : 'run' };
+    return { go: true, regime: d <= 2.5 ? 'walk' : d <= 8 ? 'jog' : 'run' };
+  }
+
   private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ || this.ball.phase === 'dead') return;
     if (this.restartLock && this.tick >= this.restartLock.until) this.restartLock = null;
@@ -2857,6 +2924,7 @@ export class Sim {
                 claimedYs.push(rst ? (rst.phase === 'dart' ? rst.dartY : (rst.laneY ?? rst.dartY)) : rb2.pos.y);
               }
             }
+            const gaveT = this.lastGiveTick.get(id);
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.perceivedBodies(id), this.keepers, claimedYs) : null;
             if (atStation) {
               this.runPhase.delete(id);
@@ -2917,8 +2985,9 @@ export class Sim {
               }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
-              if (dSt > 1.6) {
-                this.assign(body, { type: 'moveTo', target: st, regime: dSt > 9 ? 'run' : 'jog' });
+              const mvSt = this.stationMove(body, dSt);
+              if (mvSt.go) {
+                this.assign(body, { type: 'moveTo', target: st, regime: mvSt.regime });
                 this.actionLabels.set(id, 'station');
               } else if (body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
@@ -2958,8 +3027,9 @@ export class Sim {
                 }
               }
               const dSt = Math.hypot(station.x - body.pos.x, station.y - body.pos.y);
-              if (dSt > 1.4) {
-                this.assign(body, { type: 'moveTo', target: station, regime: dSt > 7 ? 'run' : 'jog' });
+              const mvBx = this.stationMove(body, dSt);
+              if (mvBx.go) {
+                this.assign(body, { type: 'moveTo', target: station, regime: mvBx.regime });
               } else if (body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
               }
@@ -3015,7 +3085,16 @@ export class Sim {
               const atDartEnd = straight
                 ? (sign > 0 ? body.pos.x >= plan.lineX - 0.2 : body.pos.x <= plan.lineX + 0.2)
                 : Math.abs(body.pos.y - st.dartY) < 1.2;
-              if (st.phase === 'ride' && atHover && this.tick - st.since >= 7) {
+              // LAUNCH TRIGGER (the probe's refinement: 59% of darts timed
+              // out UNFED — runs launched at nobody): a dart needs a FEEDER
+              // — a coupled carrier in range — not just a timer. The one-two
+              // keeps its instant launch (fed by construction).
+              const oneTwoNow = gaveT !== undefined && this.tick - gaveT <= 12;
+              const rested = this.brains.size < 12 || this.tick >= (this.dartRest.get(id) ?? 0);
+              const feeder = this.brains.size < 12 || (this.ball.carrierId !== null && carrierBody &&
+                Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y) < 38);
+              if (st.phase === 'ride' && atHover && this.tick - st.since >= 7 &&
+                ((rested && feeder) || oneTwoNow)) {
                 st.phase = 'dart';
                 st.since = this.tick;
                 st.dartY = plan.dartY;
@@ -3023,6 +3102,13 @@ export class Sim {
                 (this.tick - st.since >= 26 || atDartEnd)) {
                 st.phase = 'ride';
                 st.since = this.tick;
+                // UNFED = the commitment cost falls due: cooldown before the
+                // next launch, stamina-scaled (real runs recur ~30-60s; the
+                // free reload was 0.7s)
+                if (this.brains.size >= 12 && this.intendedReceiverId !== id && this.ball.carrierId !== id) {
+                  const cd = 110 - ((body.attributes.stamina ?? 13) - 13) * 6;
+                  this.dartRest.set(id, this.tick + Math.max(50, cd));
+                }
               }
               this.attackClaims.get(body.team)!.push({ x: dartX, y: st.phase === 'dart' ? st.dartY : plan.target.y });
               if (st.phase === 'dart') {
@@ -3049,10 +3135,12 @@ export class Sim {
                 });
                 this.actionLabels.set(id, 'dart');
               } else {
+                const dHov = Math.hypot(hoverX - body.pos.x, plan.target.y - body.pos.y);
+                const mvR = this.stationMove(body, dHov, 1);
                 this.assign(body, {
                   type: 'moveTo',
                   target: { x: hoverX, y: plan.target.y },
-                  regime: atHover ? 'jog' : 'run',
+                  regime: atHover ? (this.brains.size >= 12 ? 'walk' : 'jog') : mvR.regime,
                 });
                 this.actionLabels.set(id, 'run');
               }
@@ -3076,8 +3164,9 @@ export class Sim {
               this.attackClaims.get(body.team)!.push(spot);
               const d = Math.hypot(spot.x - body.pos.x, spot.y - body.pos.y);
               this.attackIdle.add(id);
-              if (d > 1.4) {
-                this.assign(body, { type: 'moveTo', target: spot, regime: d > 7 ? 'run' : 'jog' });
+              const mvSp = this.stationMove(body, d);
+              if (mvSp.go) {
+                this.assign(body, { type: 'moveTo', target: spot, regime: mvSp.regime });
                 this.actionLabels.set(id, 'support');
               } else if (body.command.type !== 'hold') {
                 this.assign(body, { type: 'hold' });
@@ -3189,7 +3278,8 @@ export class Sim {
                   if (line3 !== undefined && st2.x * bSign > line3 - 1) st2.x = (line3 - 1) * bSign;
                 }
                 const dSt2 = Math.hypot(st2.x - body.pos.x, st2.y - body.pos.y);
-                if (dSt2 > 1.5) this.assign(body, { type: 'moveTo', target: st2, regime: dSt2 > 9 ? 'run' : 'jog' });
+                const mvB2 = this.stationMove(body, dSt2);
+                if (mvB2.go) this.assign(body, { type: 'moveTo', target: st2, regime: mvB2.regime });
                 else if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
                 this.attackIdle.add(id);
                 this.actionLabels.set(id, 'box');
@@ -3410,11 +3500,17 @@ export class Sim {
                 }
               }
               const d = Math.hypot(di.target.x - body.pos.x, di.target.y - body.pos.y);
-              if (d > 1.2) {
+              const shapeCalm = di.kind === 'holdShape' && !di.urgent;
+              const positional = di.kind === 'cover' || di.kind === 'interceptLane' ||
+                (di.kind === 'mark' && !di.urgent);
+              const mvHs = shapeCalm ? this.stationMove(body, d, 0, di.target)
+                : positional ? this.stationMove(body, d, 1, di.target) : null;
+              if (mvHs ? mvHs.go : d > 1.2) {
                 // an URGENT mark (his man darting goalward) tracks at pace
                 // from the anticipatory station — jogging the chase was the
                 // judged too-late-by-momentum
-                const regime = (di.kind === 'mark' || di.kind === 'holdShape') && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
+                const regime = mvHs ? mvHs.regime
+                  : (di.kind === 'mark' || di.kind === 'holdShape') && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
                 this.assign(body, { type: 'moveTo', target: di.target, regime });
                 this.shapeHolding.add(id);
                 this.actionLabels.set(id, label);
@@ -3522,8 +3618,9 @@ export class Sim {
                 true, 1, false, looseTrap);
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
-            if (dSt > 1.6) {
-              this.assign(body, { type: 'moveTo', target: st, regime: dSt > 9 ? 'run' : 'jog' });
+            const mvNc = this.stationMove(body, dSt, 0, st);
+            if (mvNc.go) {
+              this.assign(body, { type: 'moveTo', target: st, regime: mvNc.regime });
               this.actionLabels.set(id, 'station');
             } else if (body.command.type !== 'hold') {
               this.assign(body, { type: 'hold' });

@@ -49,6 +49,7 @@ interface Agg {
   phase: Record<string, number>;
   envelope: number[];
   receptions: number; pressedReceptions: number;
+  restSamples: number; restSlow: number;
   recvDir: Record<'fwd' | 'sq' | 'back', { n: number; pressed: number }>;
   oldPredReceptions: number; passCompletes: number;
 }
@@ -58,7 +59,7 @@ const A: Agg = {
   fouls: 0, yellows: 0, reds: 0, offsides: 0, restarts: {}, setpieces: {}, keeper: {},
   labels: {}, phase: {}, envelope: [], receptions: 0, pressedReceptions: 0,
   recvDir: { fwd: { n: 0, pressed: 0 }, sq: { n: 0, pressed: 0 }, back: { n: 0, pressed: 0 } },
-  oldPredReceptions: 0, passCompletes: 0,
+  oldPredReceptions: 0, passCompletes: 0, restSamples: 0, restSlow: 0,
 };
 const bump = (r: Record<string, number>, k: string): void => { r[k] = (r[k] ?? 0) + 1; };
 
@@ -66,6 +67,7 @@ for (let m = 0; m < matches; m++) {
   const sim = new Sim(def, `mon-${m}`);
   let lastBanner: string | null = null;
   let prevCarrierForRecv: string | null = null;
+  const posHist = new Map<string, { x: number; y: number; dead: boolean }[]>();
   let prevIntendedForRecv: string | null = null;
   const recvDirTag = new Map<string, 'fwd' | 'sq' | 'back'>();
   let prevLabels = new Set<string>(); // per-actor labels last tick (for rising-edge events)
@@ -126,6 +128,25 @@ for (let m = 0; m < matches; m++) {
       }
     }
     prevCarrierForRecv = c;
+    // THE REST METRIC (windowed 1s displacement, live-filtered, teleport-
+    // capped — bug #7: instantaneous b.speed misses teleports and jitter;
+    // real tracking systems smooth). Real football: 65-85% of time below
+    // 2 m/s. 19% was the inverted-occupancy finding; the effort economy
+    // moves it.
+    {
+      const deadNow = sim.ball.phase === 'dead';
+      for (const b of sim.bodies) {
+        if (b.id.includes('gk')) continue;
+        const h = posHist.get(b.id) ?? [];
+        h.push({ x: b.pos.x, y: b.pos.y, dead: deadNow });
+        while (h.length > 11) h.shift();
+        if (h.length === 11 && h.every((p) => !p.dead)) {
+          const dw = Math.hypot(b.pos.x - h[0].x, b.pos.y - h[0].y);
+          if (dw <= 11) { A.restSamples++; if (dw < 2) A.restSlow++; }
+        }
+        posHist.set(b.id, h);
+      }
+    }
     // banners → restart types + goals
     const banner = f.banner ?? null;
     if (banner && banner !== lastBanner) {
@@ -210,6 +231,7 @@ console.log('\nMETRIC SANITY (a priori properties, re-checked every run)');
 console.log('\nMATCH TEXTURE  (per 90 — the "is this a game" headline)');
 const to90 = (n: number): string => (n / matches * (5400 / (dur / 10))).toFixed(0);
 console.log(bar('possessions / 90', `${to90(A.possessions)}  (real ~200-260)`));
+console.log(bar('rest share', `${(A.restSlow / Math.max(1, A.restSamples) * 100).toFixed(0)}%  (time <2 m/s, windowed 1s, live-filtered; real ~65-85% — 19% was the no-rest inversion)`));
 {
   const pct = (d: { n: number; pressed: number }): string => `${(d.pressed / Math.max(1, d.n) * 100).toFixed(0)}%`;
   console.log(bar('pressured receptions', `fwd ${pct(A.recvDir.fwd)} / sq ${pct(A.recvDir.sq)} / back ${pct(A.recvDir.back)}  (opp ≤2.5m at gain — FWD is the one to contest; back free = conceded circulation, correct block behavior)`));
