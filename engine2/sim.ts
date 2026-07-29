@@ -3411,7 +3411,7 @@ export class Sim {
                 // an URGENT mark (his man darting goalward) tracks at pace
                 // from the anticipatory station — jogging the chase was the
                 // judged too-late-by-momentum
-                const regime = di.kind === 'mark' && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
+                const regime = (di.kind === 'mark' || di.kind === 'holdShape') && di.urgent ? 'sprint' : d > 8 ? 'run' : 'jog';
                 this.assign(body, { type: 'moveTo', target: di.target, regime });
                 this.shapeHolding.add(id);
                 this.actionLabels.set(id, label);

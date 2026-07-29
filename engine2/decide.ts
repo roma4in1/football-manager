@@ -1121,7 +1121,7 @@ export type DefenseIntent =
   | { kind: 'cover'; target: Vec2 }
   | { kind: 'mark'; target: Vec2; urgent: boolean; mkId?: string }
   | { kind: 'interceptLane'; target: Vec2 }
-  | { kind: 'holdShape'; target: Vec2 };
+  | { kind: 'holdShape'; target: Vec2; urgent?: boolean };
 
 export interface DefenseInput {
   defender: BodyState;
@@ -1409,7 +1409,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
-      return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical), ball.carrierId ?? undefined) };
+      return holdShapeIntent(defender, unit, homes, ball, bodies, input.keepers, instructions, carrier);
     }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
@@ -1600,7 +1600,28 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const lane = shadowSpot(defender, carrier, bodies);
     if (lane) return { kind: 'interceptLane', target: lane };
   }
-  return { kind: 'holdShape', target: defShapeTarget(defender, unit, homes, ball, bodies, input.keepers, adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical), ball.carrierId ?? undefined) };
+  return holdShapeIntent(defender, unit, homes, ball, bodies, input.keepers, instructions, carrier);
+};
+
+/** the holdShape duty with the FLIGHT-STEP (knob (2), preregistered):
+ * during a flight (no COUPLED carrier — the carrier-context is the
+ * intended receiver) a shape-holder whose shaded station has SNAPPED
+ * onto that receiver is already his closer — he steps his last meters
+ * at pace to arrive WITH the ball. THE CLOSER IS THE SHADER: no new
+ * duty, no election, no recruitment (the mine-check stays); a body
+ * farther than the snap radius never steps, so the failed chasing
+ * family (attempts two and four) cannot reproduce. Exposure is bounded
+ * to the ~1 s flight; the station reverts to the 1.8 m goal-side
+ * standoff the moment the ball couples. */
+const holdShapeIntent = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers: ReadonlySet<string> | undefined, instructions: PlayInstructions, carrier: BodyState): { kind: 'holdShape'; target: Vec2; urgent?: boolean } => {
+  const inFlight = ball.carrierId === null;
+  const target = defShapeTarget(defender, unit, homes, ball, bodies, keepers,
+    adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical),
+    ball.carrierId ?? undefined, inFlight ? carrier.id : undefined);
+  const urgent = inFlight &&
+    Math.hypot(target.x - carrier.pos.x, target.y - carrier.pos.y) < 3 &&
+    Math.hypot(defender.pos.x - carrier.pos.x, defender.pos.y - carrier.pos.y) < 7;
+  return { kind: 'holdShape', target, urgent };
 };
 
 /** ZONE ENGAGEMENT for the block's non-line shape-holders (the
@@ -1635,6 +1656,10 @@ export const zoneEngageShade = (
    * (press/cover/shadow) and will NOT take the zone threat — counting
    * him as the taker was silently killing ~half the shades */
   ballPos?: Vec2,
+  /** the FLIGHT-STEP: while the ball flies to this man, his shader's
+   * standoff collapses 1.8 -> 0.5 m and the shade snaps full (the
+   * closer IS the shader — arrive WITH the ball, preregistered) */
+  flightReceiverId?: string,
 ): Vec2 => {
   const sgnD = attackSign(defender.team);
   let threat: BodyState | null = null;
@@ -1658,17 +1683,20 @@ export const zoneEngageShade = (
   // through him — close enough that his reception is PRESSURED
   const og = goalCenter(defender.team);
   const gd = Math.hypot(og.x - threat.pos.x, og.y - threat.pos.y) || 1;
+  const stepping = flightReceiverId !== undefined && threat.id === flightReceiverId;
+  const standoff = stepping ? 0.5 : 1.8;
+  const pull = stepping ? 1.0 : 0.7;
   const gs = {
-    x: threat.pos.x + ((og.x - threat.pos.x) / gd) * 1.8,
-    y: threat.pos.y + ((og.y - threat.pos.y) / gd) * 1.8,
+    x: threat.pos.x + ((og.x - threat.pos.x) / gd) * standoff,
+    y: threat.pos.y + ((og.y - threat.pos.y) / gd) * standoff,
   };
-  return { x: st.x + (gs.x - st.x) * 0.7, y: st.y + (gs.y - st.y) * 0.7 };
+  return { x: st.x + (gs.x - st.x) * pull, y: st.y + (gs.y - st.y) * pull };
 };
 
 /** defensive off-board shape: the block station (formation lines sliding
  * with the ball) — shapeSpot was an L5c small-line tool and read as "no
  * structure" at eleven */
-const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5, carrierId?: string): Vec2 => {
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5, carrierId?: string, flightReceiverId?: string): Vec2 => {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -1741,7 +1769,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       const bh = homes.get(b.id);
       return !!bh && bh.x * sgnD > deepestHome + 6; // line members shade via their own rule
     });
-    const shaded = zoneEngageShade(st, defender, bodies, claimPool, keepers, carrierId, ball.pos);
+    const shaded = zoneEngageShade(st, defender, bodies, claimPool, keepers, carrierId, ball.pos, flightReceiverId);
     st.x = shaded.x; st.y = shaded.y;
   }
   // VACANCY ROTATION (the builder's dragged-CB principle, second half:
