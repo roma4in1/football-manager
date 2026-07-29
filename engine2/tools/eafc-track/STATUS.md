@@ -56,3 +56,36 @@ session's budget per the measure-don't-sink discipline.
   (scratchpad situ-metrics.mjs / box-class.mjs of the diagnostic
   session): attachment share (<=2.5 m), per-class extents/width,
   1s-lag off-ball displacement, transition reorg.
+
+## Session 2 update — manual seeding done, TWO hard verdicts
+
+Corner seeding per layout cluster WORKS (3 clusters seeded by hand,
+expand+refine absorbs drift; 21/114 frames pass strict QC). The
+pipeline's plumbing is now solid end-to-end. But:
+
+**VERDICT 1 — the clock regime: EAFC 2-D action is COMPRESSED, not
+real-time.** Tracked dot speeds in wall time: p50 6.4 m/s, p95 16.9
+m/s (impossible for humans). ALL motion metrics (velocities, 1s-lag
+displacement, transition reorg) are INVALID from this footage class —
+not fixable by better tracking. Only positional/shape claims survive.
+
+**VERDICT 2 — merged-dot bias kills pair metrics.** Validation against
+the hand-measured frames FAILED: tracked attachment 0% vs hand 30-40%,
+extents 62-70 m vs ~25 m. Cause: overlapping dots (phone moire blurs
+the 2-3 px gaps) merge into one blob; k-means splitting assigns both
+halves to ONE team, so cross-team close pairs — the attachment signal
+itself — are erased by construction, while residual junk inflates
+extents. The bias is structural at this footage quality.
+
+## Consequences
+- The four hand-measured frames (read by eye at full res, where pairs
+  ARE separable) remain the best EAFC numbers: all numeric findings
+  stay at n=1-2 provisional.
+- **Native capture footage is now REQUIRED, not preferred** (share/
+  create-button capture or PC recording; contrasting kits; tactical 2-D
+  view steady and full-frame; cover settled midfield circulation +
+  transitions + set pieces, 2-3 min each). At native sharpness the
+  2-3 px inter-dot gaps survive and the merged-pair bias disappears.
+- Even with perfect capture, motion metrics stay dead (VERDICT 1);
+  plan shape-only comparisons, or find a capture mode with real-time
+  action if one exists.
