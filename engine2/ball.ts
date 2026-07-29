@@ -109,6 +109,14 @@ export const BALL = {
    * zero reaction through the 0.9 m claim sweep — 73% of all cut passes
    * died within 4 m of the boot, interceptor p50 0.8 m from the origin.) */
   groundBlockRadiusM: 0.45,
+  /** THE STRETCH BAND (the arrival duel made expressive): beyond the
+   * 0.9 m control radius a body can still REACH a loose ball — a lunging
+   * step + full-stride lean buys ~1.2-1.4 m of toe reach in reality; we
+   * take the conservative edge. Contact out here is DEGRADED (the
+   * toe-poke): the first touch pays a stretch penalty and pops loose
+   * often. Replaces the hard eligibility cliff under which a defender at
+   * 0.95 m with elite anticipation was never CONSULTED. */
+  claimStretchM: 0.35,
   /** L7 KEEPER — the save on the same xyz footing as the block, but with a
    * DIVE'S reach and a CATCH. Reach scales with agility (the dive), handling
    * with firstTouch (a clean catch vs a parry). Attributes are the outfield

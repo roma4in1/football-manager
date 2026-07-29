@@ -2493,7 +2493,7 @@ export class Sim {
       carrierGap = Math.hypot(this.ball.pos.x - carrier.pos.x, this.ball.pos.y - carrier.pos.y);
       if (carrierGap <= BALL.controlRadiusM) return;
     }
-    let best: { body: BodyState; d: number; at: Vec2 } | null = null;
+    let best: { body: BodyState; d: number; at: Vec2; dEff: number } | null = null;
     let blockBest: { body: BodyState; d: number; at: Vec2 } | null = null;
     for (const b of this.bodies) {
       if (b.id === this.ball.carrierId) continue; // the carrier re-couples, he does not "claim"
@@ -2545,7 +2545,13 @@ export class Sim {
       // touches SAFE and inverted the skill split, while never helping close
       // control, whose losses are collisions, not pinches. Measured both ways.)
       const { d, at } = segNearest(b);
-      if (d > BALL.controlRadiusM) continue;
+      // THE ARRIVAL DUEL, made expressive (uncoupled balls only — the
+      // pinch keeps its tuned margins): candidates extend into the
+      // STRETCH band (0.9→1.25 m, degraded contact), and ranking runs on
+      // EFFECTIVE distance — agility (the lunge) and tackling (the read)
+      // buy up to ±0.12 m. Possession selection finally reads the men.
+      const stretchElig = !carrier && this.brains.size >= 12;
+      if (d > (stretchElig ? BALL.controlRadiusM + BALL.claimStretchM : BALL.controlRadiusM)) continue;
       if (carrier && d >= carrierGap - BALL.pinchMarginM) continue; // the carrier wins his own touch
       // the carrier's body shields the touch: no pinch without a clear line
       if (carrier) {
@@ -2558,8 +2564,15 @@ export class Sim {
         const cy = b.pos.y + sy * t;
         if (Math.hypot(carrier.pos.x - cx, carrier.pos.y - cy) < shieldRadiusM(carrier.attributes)) continue;
       }
-      if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) <= 1e-9 && b.id < best.body.id)) {
-        best = { body: b, d, at };
+      const reachSkill = stretchElig
+        ? Math.max(-0.12, Math.min(0.12, ((b.attributes.agility ?? 13) - 13) * 0.02 + ((b.attributes.tackling ?? 13) - 13) * 0.01))
+        : 0;
+      const dEff = d - reachSkill;
+      // near-ties are a genuine 50/50 — a keyed coin, not an id string
+      const tie = best !== null && Math.abs(dEff - best.dEff) < 0.06;
+      const winTie = tie && this.rng.chance(0.5, this.tick, b.id, 'claim-tie');
+      if (!best || (!tie && dEff < best.dEff) || winTie) {
+        best = { body: b, d, at, dEff };
       }
     }
     // the GROUND BLOCK fires if no one claims — or if the blocker stands
@@ -2607,9 +2620,10 @@ export class Sim {
     // spray — he anticipated the AIMED line; anyone else (defender,
     // stray teammate) reads the ball as it actually travels
     const spray = best.body.id === this.intendedReceiverId ? this.ball.sprayM ?? 0 : 0;
+    const stretch = Math.max(0, best.d - BALL.controlRadiusM);
     const touch = resolveFirstTouch(
       this.rng, this.tick, best.body.id, best.body.attributes, arrivalDir, ballSpeed, this.ball.z, pressured,
-      best.body.speed, spray,
+      best.body.speed, spray, stretch,
     );
     this.ball.pos = { x: best.at.x, y: best.at.y };
     this.ball.vz = 0;
