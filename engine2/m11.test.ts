@@ -222,3 +222,48 @@ test('THE DO-NOT-DISTURB PINS (EAFC diagnostic): the danger-driven line reads co
   assert.ok(rl >= 42 && rl <= 60, `buildup rest line holds high (~50 m; got ${rl.toFixed(1)})`);
   assert.ok(bl >= 6 && bl <= 18, `box-entry back line holds deep (~10.6-16 m band; the pre-danger-line regime read ~23; got ${bl.toFixed(1)})`);
 });
+
+test('THE FLIGHT-STEP PIN: a close shader arrives WITH the ball (pin before the effort economy)', () => {
+  // The effort-economy build will make rest the default with a cost to
+  // leave — and the flight-step is exactly the behavior that must keep
+  // paying that cost: a defender 1.8 m off collapsing to 0.5 during a
+  // ~1 s flight. If the economy walks him, the pressure win is spent to
+  // buy the rest metric (builder: pin it BEFORE building). Mechanism
+  // measure: of flights where a defender starts <=4 m from the intended
+  // receiver, the share ending touch-tight (<=2.6 m at the gain).
+  // Calibrated 38% on 142f6a39+; a walking shader collapses to ~10-15.
+  let elig = 0;
+  let tight = 0;
+  for (const seed of ['spc-0', 'spc-1', 'spc-2', 'spc-3', 'spc-4', 'spc-5']) {
+    const sim = new Sim(scenarioByName('m11-match'), seed);
+    const tag = new Set<string>();
+    let prevIntended: string | null = null;
+    let prevCarrier: string | null = null;
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      const rid = sim.intendedReceiverId;
+      if (rid && rid !== prevIntended) {
+        const rv = sim.bodies.find((b) => b.id === rid);
+        if (rv) {
+          const d0 = Math.min(...sim.bodies.filter((o) => o.team !== rv.team && !o.id.includes('gk'))
+            .map((o) => Math.hypot(o.pos.x - rv.pos.x, o.pos.y - rv.pos.y)));
+          if (d0 <= 4) tag.add(rid);
+        }
+      }
+      const c = sim.ball.carrierId;
+      if (c && c !== prevCarrier && tag.has(c) && !c.includes('gk')) {
+        tag.delete(c);
+        const b = sim.bodies.find((x) => x.id === c);
+        if (b) {
+          elig++;
+          const d1 = Math.min(...sim.bodies.filter((o) => o.team !== b.team && !o.id.includes('gk'))
+            .map((o) => Math.hypot(o.pos.x - b.pos.x, o.pos.y - b.pos.y)));
+          if (d1 <= 2.6) tight++;
+        }
+      }
+      prevIntended = rid; prevCarrier = c;
+    }
+  }
+  assert.ok(elig >= 30, `close-start flights exist (${elig})`);
+  assert.ok(tight / elig >= 0.20, `the shader still steps (${(tight / elig * 100).toFixed(0)}% touch-tight; calibrated 38, walking ~10-15)`);
+});
