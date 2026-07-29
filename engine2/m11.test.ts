@@ -180,3 +180,45 @@ test('THE MANAGER PLACEMENT PIN: players follow authored phase positions, not th
     assert.ok(avg(acc.lbHigh) - avg(acc.lbLow) >= 15, `the left back splits high press from low block (Δ=${(avg(acc.lbHigh) - avg(acc.lbLow)).toFixed(1)}m)`);
   }
 });
+
+test('THE DO-NOT-DISTURB PINS (EAFC diagnostic): the danger-driven line reads correct — keep it that way', () => {
+  // The sim-vs-EAFC diagnostic's MATCHES list: buildup rest-line height
+  // (~50 m from own goal, EAFC ~52) and box-entry back-line depth
+  // (~10.6 m, EAFC ~11.7) are the two behaviors most likely to regress
+  // under any compactness/engagement retune — pinned BEFORE the traps
+  // mechanism work per the builder's directive. Bands are generous:
+  // these catch REGIME changes (line camping deep / line abandoning
+  // the box), not calibration drift.
+  const restLine: number[] = [];
+  const boxLine: number[] = [];
+  for (const seed of ['dnd-0', 'dnd-1', 'dnd-2', 'dnd-3', 'dnd-4', 'dnd-5']) {
+    const sim = new Sim(scenarioByName('m11-match'), seed);
+    let flip = -99;
+    let last: string | null = null;
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      if (t % 5 !== 0) continue;
+      const c = sim.ball.carrierId ?? sim.intendedReceiverId;
+      const cb = c ? sim.bodies.find((b) => b.id === c) : undefined;
+      if (!cb || cb.id.includes('gk')) continue;
+      if (cb.team !== last) { if (last !== null) flip = t; last = cb.team; }
+      if ((t - flip) / 10 <= 3) continue; // settled only
+      const poss = cb.team;
+      const def = poss === 'home' ? 'away' : 'home';
+      const prog = poss === 'home' ? sim.ball.pos.x : 105 - sim.ball.pos.x;
+      const ownGoalX = def === 'home' ? 0 : 105;
+      const dG = sim.bodies.filter((b) => b.team === def && !b.id.includes('gk'))
+        .map((b) => Math.abs(b.pos.x - ownGoalX)).sort((a, b) => a - b);
+      const back4 = dG.slice(0, 4).reduce((a, v) => a + v, 0) / 4;
+      if (prog < 35) restLine.push(back4);
+      else if (prog > 88) boxLine.push(back4);
+    }
+  }
+  const p50 = (a: number[]): number => { const x = [...a].sort((m, n) => m - n); return x[Math.floor(x.length / 2)]; };
+  assert.ok(restLine.length >= 40, `buildup samples exist (${restLine.length})`);
+  assert.ok(boxLine.length >= 40, `box-entry samples exist (${boxLine.length})`);
+  const rl = p50(restLine);
+  const bl = p50(boxLine);
+  assert.ok(rl >= 42 && rl <= 60, `buildup rest line holds high (~50 m; got ${rl.toFixed(1)})`);
+  assert.ok(bl >= 6 && bl <= 18, `box-entry back line holds deep (~10.6-16 m band; the pre-danger-line regime read ~23; got ${bl.toFixed(1)})`);
+});
