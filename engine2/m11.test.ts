@@ -252,7 +252,10 @@ test('THE DO-NOT-DISTURB PINS (EAFC diagnostic): the danger-driven line reads co
   const rl = p50(restLine);
   const bl = p50(boxLine);
   assert.ok(rl >= 42 && rl <= 60, `buildup rest line holds high (~50 m; got ${rl.toFixed(1)})`);
-  assert.ok(bl >= 6 && bl <= 18, `box-entry back line holds deep (~10.6-16 m band; the pre-danger-line regime read ~23; got ${bl.toFixed(1)})`);
+  // band top 18 -> 20 (FIFTH trip of this band: build-to-build 16-seed
+  // p50 spans 13.9-18.2 — the top sat inside build variance; the regime
+  // this pin exists to catch reads ~23). Ruler: 16 seeds, Jul 30.
+  assert.ok(bl >= 6 && bl <= 20, `box-entry back line holds deep (band 6-20; the pre-danger-line regime read ~23; got ${bl.toFixed(1)})`);
 });
 
 test('THE FLIGHT-STEP PIN: a close shader arrives WITH the ball (pin before the effort economy)', () => {
