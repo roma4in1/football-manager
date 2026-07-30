@@ -1138,6 +1138,7 @@ export class Sim {
     // Drills (small casts, bounded grids) keep dead-ends-the-drill.
     if (this.ball.phase === 'dead') {
       if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
+      this.enforceRestartLaw();
       const hN = this.teamBrainCount('home');
       const aN = this.teamBrainCount('away');
       const deadWait = this.goals.length > this.lastGoalCount ? 40 : 15; // the GOAL! banner gets its celebration
@@ -1821,6 +1822,18 @@ export class Sim {
             Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < 3.5);
           if (pressed) {
             this.keeperDropPass = null;
+            // the hands are only legal if the ball did NOT arrive as a
+            // deliberate teammate kick (the back-pass law): kickerId is
+            // stable until his own strike, so the same predicate holds
+            const lk = this.ball.kickerId ? this.byId.get(this.ball.kickerId) : undefined;
+            if (lk && lk.id !== id && lk.team === k.team) {
+              const upAng = (sign > 0 ? 0 : Math.PI) +
+                this.rng.gauss(0, 0.3, this.tick, id, 'k-clear');
+              kickBall(this.ball, { x: k.pos.x + Math.cos(upAng) * 30, y: k.pos.y + Math.sin(upAng) * 30 },
+                16, 25, id, this.tick);
+              this.actionLabels.set(id, 'keeper-clear');
+              continue;
+            }
             this.keeperHolding = id; // back into the hands — safety first
             this.keeperHeldSince = this.tick;
           } else if (this.tick >= dp.strikeTick) {
@@ -1847,6 +1860,45 @@ export class Sim {
           } else if (k.command.type !== 'hold') {
             this.assign(k, { type: 'hold' });
           }
+          continue;
+        }
+        // THE BACK-PASS LAW: a ball deliberately KICKED (or thrown in) to
+        // him by his own team may not be picked up — he plays it with his
+        // feet. Detection: the ball's last kicker is a teammate other than
+        // himself (every deliberate strike/throw sets kickerId; deflections
+        // re-attribute to the deflector). Known approximation: a headed
+        // back-pass also sets kickerId and is treated as unhandleable —
+        // over-strict, rare, and the safe direction to err.
+        const lastKicker = this.ball.kickerId ? this.byId.get(this.ball.kickerId) : undefined;
+        if (lastKicker && lastKicker.id !== id && lastKicker.team === k.team) {
+          const pressedBP = this.bodies.some((o) => o.team !== k.team &&
+            Math.hypot(o.pos.x - k.pos.x, o.pos.y - k.pos.y) < 3.5);
+          if (!pressedBP && !this.keeperDropPass) {
+            // compose from the feet: the nearest unmarked mate gets the
+            // ground ball (the keeperDropPass machinery, hands never used)
+            let mate: BodyState | null = null;
+            let bestD = 42;
+            for (const m of this.bodies) {
+              if (m.team !== k.team || m.id === id || this.sentOff.has(m.id)) continue;
+              const dm = Math.hypot(m.pos.x - k.pos.x, m.pos.y - k.pos.y);
+              if (dm >= bestD || dm < 4) continue;
+              const marked = this.bodies.some((o) => o.team !== k.team &&
+                Math.hypot(o.pos.x - m.pos.x, o.pos.y - m.pos.y) < 4);
+              if (!marked) { mate = m; bestD = dm; }
+            }
+            if (mate) {
+              this.keeperDropPass = { keeperId: id, mateId: mate.id, strikeTick: this.tick + 5 };
+              this.actionLabels.set(id, 'keeper-feet');
+              if (k.command.type !== 'hold') this.assign(k, { type: 'hold' });
+              continue;
+            }
+          }
+          // pressed, or nobody open: the first-time clear upfield
+          const upAng = (sign > 0 ? 0 : Math.PI) +
+            this.rng.gauss(0, 0.3, this.tick, id, 'k-clear');
+          kickBall(this.ball, { x: k.pos.x + Math.cos(upAng) * 30, y: k.pos.y + Math.sin(upAng) * 30 },
+            16, 25, id, this.tick);
+          this.actionLabels.set(id, 'keeper-clear');
           continue;
         }
         // INSIDE his box a settled ball at his feet is PICKED UP — held in
@@ -4271,6 +4323,61 @@ export class Sim {
         { x: gX - sgn * 7, y: PITCH.width / 2 + 6 },
       ];
       atk.forEach((b, i) => this.teleport(b, slots[i]));
+    }
+  }
+
+  /** THE RESTART LAWS (until-the-ball-is-in-play enforcement): staging
+   * clears zones ONCE; bodies then walked straight back in and the first
+   * Bar-4 watch saw a goal-kick box full of opponents. This runs EVERY
+   * dead tick while a restart is pending — a violator is projected to
+   * the zone boundary (position only; his command survives, so he simply
+   * stands at the line like a real wall). Laws covered: goal kick
+   * (opponents outside the PA), corner (9.15 m), free kick (9.15 m —
+   * the wall already stood there; now everyone must), throw-in (2 m),
+   * penalty (everyone but taker and keepers out of the PA and the arc). */
+  private enforceRestartLaw(): void {
+    const rt = this.restartType;
+    const award = this.restartLock?.team;
+    if (!rt || rt === 'kickoff' || !award || this.brains.size < 12) return;
+    const spot = this.ball.pos;
+    const radial = (b: BodyState, minD: number): void => {
+      const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
+      if (d >= minD) return;
+      const ux = d > 0.01 ? (b.pos.x - spot.x) / d : 1;
+      const uy = d > 0.01 ? (b.pos.y - spot.y) / d : 0;
+      b.pos = {
+        x: Math.max(1, Math.min(PITCH.length - 1, spot.x + ux * minD)),
+        y: Math.max(1, Math.min(PITCH.width - 1, spot.y + uy * minD)),
+      };
+    };
+    const outOfBox = (b: BodyState, nearHome: boolean): void => {
+      const inBox = (nearHome ? b.pos.x < GOAL.boxDepthM + 0.5 : b.pos.x > PITCH.length - GOAL.boxDepthM - 0.5) &&
+        Math.abs(b.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 0.5;
+      if (!inBox) return;
+      // nearest exit: the box's x-plane or y-plane, whichever is closer
+      const xExit = nearHome ? GOAL.boxDepthM + 0.8 : PITCH.length - GOAL.boxDepthM - 0.8;
+      const yExit = b.pos.y >= PITCH.width / 2
+        ? PITCH.width / 2 + GOAL.boxHalfWidthM + 0.8
+        : PITCH.width / 2 - GOAL.boxHalfWidthM - 0.8;
+      const dx = Math.abs(b.pos.x - xExit);
+      const dy = Math.abs(b.pos.y - yExit);
+      if (dx <= dy) b.pos = { ...b.pos, x: xExit };
+      else b.pos = { ...b.pos, y: Math.max(1, Math.min(PITCH.width - 1, yExit)) };
+    };
+    if (this.restartPenalty) {
+      const nearHome = spot.x < PITCH.length / 2;
+      for (const b of this.bodies) {
+        if (b.id === this.restartTaker || this.keepers.has(b.id) || this.sentOff.has(b.id)) continue;
+        outOfBox(b, nearHome);
+        radial(b, 9.15); // the arc
+      }
+      return;
+    }
+    for (const b of this.bodies) {
+      if (b.team === award || this.sentOff.has(b.id)) continue;
+      if (rt === 'goal-kick') outOfBox(b, spot.x < PITCH.length / 2);
+      else if (rt === 'corner' || rt === 'free-kick') radial(b, 9.15);
+      else if (rt === 'throw-in') radial(b, 2.0);
     }
   }
 
