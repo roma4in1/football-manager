@@ -28,7 +28,7 @@ import {
 import { BALL, kickBall, loftFlightTimeS, predictBall, predictBallState, rollLaunchForArrival, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { currentTarget, KIN, regimeCapMps, stepBody, topSpeedMps } from './kinematics.ts';
 import { noisyKick, resolveFirstTouch, shieldRadiusM, tackleWinProbability, TECH } from './technique.ts';
-import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, pivotShift, posValue, runPlan, supportSpot, type Intent, type PlayInstructions } from './decide.ts';
+import { adhere, aerialCompletion, attackSign, blockStation, decide, DECIDE, decideDefense, DUEL, GOAL, goalCenter, passCompletion, pivotShift, posValue, runPlan, supportSpot, zoneEngageShade, type Intent, type PlayInstructions } from './decide.ts';
 import { KeyedRng } from './keyed-rng.ts';
 
 export class Sim {
@@ -94,6 +94,8 @@ export class Sim {
    * (ST ~540 darts/90 vs real 20-40; the cycle was a bare timer).
    * Scaled by stamina (its second consumer): big engines reload faster. */
   private readonly dartRest = new Map<string, number>();
+  /** traps: shade stickiness (defender -> locked threat) */
+  private readonly shadeLock = new Map<string, string>();
   /** possession team last tick — to detect the FLIP instant and unfreeze
    * actors stuck on a stale positioning moveTo (the generalised freeze:
    * 34% of actors fail every re-eval gate at the flip because a plain
@@ -3465,6 +3467,8 @@ export class Sim {
             this.runningLine.delete(id);
             this.runPhase.delete(id);
             const di = decideDefense({
+              shadeLockGet: (d0: string) => this.shadeLock.get(d0),
+              shadeLockSet: (d0: string, th: string | null) => { if (th === null) this.shadeLock.delete(d0); else this.shadeLock.set(d0, th); },
               defender: body, carrier: carrierBody, bodies: this.activeBodies(), ball: this.ball,
               instructions: this.instructions.get(id) ?? {}, unit,
               pressingIds: this.pressingIds, inCounterpress,
@@ -3626,12 +3630,33 @@ export class Sim {
             const looseTrap = this.bodies.some((b2) => b2.team === body.team &&
               Math.hypot(b2.pos.x - this.ball.pos.x, b2.pos.y - this.ball.pos.y) < 3) ? 1.2 : -0.5;
             const kb0 = this.baseHomes.get(id) ?? home;
-            const st = this.restartType === 'kickoff'
+            const defendingNc = this.lastPossessTeam !== null && this.lastPossessTeam !== body.team;
+            const sgnNc = attackSign(body.team);
+            const gdNc = Math.hypot(this.ball.pos.x - (sgnNc > 0 ? 0 : PITCH.length), this.ball.pos.y - PITCH.width / 2);
+            let st = this.restartType === 'kickoff'
               ? { x: kb0.x, y: kb0.y }
-              : blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, attackSign(body.team),
+              : blockStation(home, this.teamCentroid(body.team), this.ball.pos, false, sgnNc,
                 0.5, this.teamBrainCount(body.team) + 1,
                 this.teamBrainCount(body.team) >= 8 && this.backLineHome(id, body.team) ? this.oppDeepestU(body.team) : undefined,
-                true, 1, false, looseTrap);
+                true, 1, false, looseTrap, 0.5,
+                defendingNc && this.teamBrainCount(body.team) >= 8 && gdNc > 70);
+            // THE TRAPS POSTURE, AT THE STATION MASS (fork (a) — the
+            // overlay, never a rewrite): this branch stations the block
+            // during every transfer, which is where the posture was
+            // structurally absent (the 1-2 body slice finding). Same
+            // bodies, same blockStation, same effort pricing — stationed
+            // attachment-aware. Line members shade Y ONLY (the line keeps
+            // its x by construction — the integrity pins' guarantee).
+            if (defendingNc && this.restartType !== 'kickoff' && this.teamBrainCount(body.team) >= 8 && !this.keepers.has(id)) {
+              const isLine = this.backLineHome(id, body.team);
+              const pool = this.bodies.filter((b2) => b2.team === body.team && b2.id !== id &&
+                !this.keepers.has(b2.id) && this.backLineHome(b2.id, body.team) === isLine && this.brains.has(b2.id));
+              const shaded = zoneEngageShade(st, body, this.bodies, pool, this.keepers,
+                this.ball.carrierId ?? undefined, this.ball.pos, this.intendedReceiverId ?? undefined,
+                (d0) => this.shadeLock.get(d0),
+                (d0, th) => { if (th === null) this.shadeLock.delete(d0); else this.shadeLock.set(d0, th); });
+              if (isLine) st = { x: st.x, y: shaded.y }; else st = shaded;
+            }
             const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
             this.attackIdle.add(id);
             const mvNc = this.stationMove(body, dSt, 0, st);

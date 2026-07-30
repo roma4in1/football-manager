@@ -1124,6 +1124,9 @@ export type DefenseIntent =
   | { kind: 'holdShape'; target: Vec2; urgent?: boolean };
 
 export interface DefenseInput {
+  /** traps attainment: shade stickiness (sim-side memory) */
+  shadeLockGet?: (id: string) => string | undefined;
+  shadeLockSet?: (id: string, t: string | null) => void;
   defender: BodyState;
   carrier: BodyState;
   bodies: readonly BodyState[];
@@ -1190,6 +1193,9 @@ export const blockStation = (
    * station's ball-relative pull — the block squeezes toward the ball
    * line (narrow/short) or spreads (0). Already tactical-adhered. */
   compact = 0.5,
+  /** THE NARROW PRESS (traps): vs a deep build-up the block TUCKS —
+   * concede the touchline, cut the central lanes */
+  pressTuck = false,
 ): Vec2 => {
   // compactness scales the pull toward the ball line: >0.5 tighter
   const compactMul = 1 + (compact - 0.5) * 0.8; // 0.6 .. 1.4
@@ -1208,8 +1214,8 @@ export const blockStation = (
   // ball-side; a far winger tucks toward the box edge rather than
   // holding the touchline) — roughly double the old lateral slide
   const big = teamSize >= 8;
-  const ky = (big ? 0.45 : 0.3) * compactMul;
-  const capY = (big ? 16 : possession ? 10 : 8) / compactMul;
+  const ky = (big ? 0.45 : 0.3) * compactMul * (pressTuck ? 1.5 : 1);
+  const capY = ((big ? 16 : possession ? 10 : 8) / compactMul) * (pressTuck ? 0.62 : 1);
   let x = Math.max(2, Math.min(PITCH.length - 2, home.x + Math.max(-capX, Math.min(capX, (ball.x - centroid.x) * kx))));
   if (sign !== 0) {
     const u = x * sign;
@@ -1409,7 +1415,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
       .sort((a, b) => zoneCost(a, carrier.pos) - zoneCost(b, carrier.pos))
       .slice(0, 3);
     if (!covers.some((b) => b.id === defender.id) && nearest.id !== defender.id) {
-      return holdShapeIntent(defender, unit, homes, ball, bodies, input.keepers, instructions, carrier);
+      return holdShapeIntent(defender, unit, homes, ball, bodies, input.keepers, instructions, carrier, input.shadeLockGet, input.shadeLockSet);
     }
     const og = { x: attackSign(defender.team) > 0 ? 0 : PITCH.length, y: GOAL.centerY };
     const cf = { x: carrier.pos.x + carrier.vel.x * 0.4, y: carrier.pos.y + carrier.vel.y * 0.4 };
@@ -1600,7 +1606,7 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
     const lane = shadowSpot(defender, carrier, bodies);
     if (lane) return { kind: 'interceptLane', target: lane };
   }
-  return holdShapeIntent(defender, unit, homes, ball, bodies, input.keepers, instructions, carrier);
+  return holdShapeIntent(defender, unit, homes, ball, bodies, input.keepers, instructions, carrier, input.shadeLockGet, input.shadeLockSet);
 };
 
 /** the holdShape duty with the FLIGHT-STEP (knob (2), preregistered):
@@ -1613,11 +1619,11 @@ export const decideDefense = (input: DefenseInput): DefenseIntent => {
  * family (attempts two and four) cannot reproduce. Exposure is bounded
  * to the ~1 s flight; the station reverts to the 1.8 m goal-side
  * standoff the moment the ball couples. */
-const holdShapeIntent = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers: ReadonlySet<string> | undefined, instructions: PlayInstructions, carrier: BodyState): { kind: 'holdShape'; target: Vec2; urgent?: boolean } => {
+const holdShapeIntent = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers: ReadonlySet<string> | undefined, instructions: PlayInstructions, carrier: BodyState, lockGet?: (id: string) => string | undefined, lockSet?: (id: string, t: string | null) => void): { kind: 'holdShape'; target: Vec2; urgent?: boolean } => {
   const inFlight = ball.carrierId === null;
   const target = defShapeTarget(defender, unit, homes, ball, bodies, keepers,
     adhere(instructions.compactness ?? 0.5, 0.5, defender.attributes.tactical),
-    ball.carrierId ?? undefined, inFlight ? carrier.id : undefined);
+    ball.carrierId ?? undefined, inFlight ? carrier.id : undefined, lockGet, lockSet);
   const urgent = inFlight &&
     Math.hypot(target.x - carrier.pos.x, target.y - carrier.pos.y) < 3 &&
     Math.hypot(defender.pos.x - carrier.pos.x, defender.pos.y - carrier.pos.y) < 7;
@@ -1660,20 +1666,35 @@ export const zoneEngageShade = (
    * standoff collapses 1.8 -> 0.5 m and the shade snaps full (the
    * closer IS the shader — arrive WITH the ball, preregistered) */
   flightReceiverId?: string,
+  /** TRAPS ATTAINMENT: shade STICKINESS — once shading a man, follow
+   * HIM while he stays in the hysteresis-widened window; a flickering
+   * nearest-occupant is approached forever, a trajectory is ATTAINED */
+  lockGet?: (defId: string) => string | undefined,
+  lockSet?: (defId: string, threatId: string | null) => void,
 ): Vec2 => {
   const sgnD = attackSign(defender.team);
   let threat: BodyState | null = null;
   let tDist = Infinity;
-  for (const o of bodies) {
-    if (o.team === defender.team || keepers?.has(o.id)) continue;
-    if (o.id === carrierId) continue;
-    const du = Math.abs(o.pos.x * sgnD - st.x * sgnD);
-    const dy = Math.abs(o.pos.y - st.y);
-    if (du > 9 || dy > 10) continue;
-    const d = Math.hypot(o.pos.x - st.x, o.pos.y - st.y);
-    if (d < tDist) { threat = o; tDist = d; }
+  const lockedId = lockGet?.(defender.id);
+  if (lockedId) {
+    const lb = bodies.find((b) => b.id === lockedId);
+    if (lb && lb.id !== carrierId && !keepers?.has(lb.id) &&
+      Math.abs(lb.pos.x * sgnD - st.x * sgnD) <= 11 && Math.abs(lb.pos.y - st.y) <= 12) {
+      threat = lb; tDist = Math.hypot(lb.pos.x - st.x, lb.pos.y - st.y);
+    } else lockSet?.(defender.id, null);
   }
-  if (!threat) return st;
+  if (!threat) {
+    for (const o of bodies) {
+      if (o.team === defender.team || keepers?.has(o.id)) continue;
+      if (o.id === carrierId) continue;
+      const du = Math.abs(o.pos.x * sgnD - st.x * sgnD);
+      const dy = Math.abs(o.pos.y - st.y);
+      if (du > 9 || dy > 10) continue;
+      const d = Math.hypot(o.pos.x - st.x, o.pos.y - st.y);
+      if (d < tDist) { threat = o; tDist = d; }
+    }
+  }
+  if (!threat) { lockSet?.(defender.id, null); return st; }
   for (const b of claimPool) {
     if (ballPos && Math.hypot(b.pos.x - ballPos.x, b.pos.y - ballPos.y) < 6) continue;
     if (Math.hypot(b.pos.x - threat.pos.x, b.pos.y - threat.pos.y) <
@@ -1684,19 +1705,23 @@ export const zoneEngageShade = (
   const og = goalCenter(defender.team);
   const gd = Math.hypot(og.x - threat.pos.x, og.y - threat.pos.y) || 1;
   const stepping = flightReceiverId !== undefined && threat.id === flightReceiverId;
-  const standoff = stepping ? 0.5 : 1.8;
-  const pull = stepping ? 1.0 : 0.7;
+  // BROAD CENTRAL ATTACHMENT (traps): central occupants are attached
+  // touch-tight; wide ones keep the loose shade — concede the touchline
+  const central = Math.abs(threat.pos.y - PITCH.width / 2) < 15;
+  const standoff = stepping ? 0.5 : central ? 1.0 : 1.8;
+  const pull = stepping ? 1.0 : central ? 1.0 : 0.7;
   const gs = {
     x: threat.pos.x + ((og.x - threat.pos.x) / gd) * standoff,
     y: threat.pos.y + ((og.y - threat.pos.y) / gd) * standoff,
   };
+  lockSet?.(defender.id, threat.id);
   return { x: st.x + (gs.x - st.x) * pull, y: st.y + (gs.y - st.y) * pull };
 };
 
 /** defensive off-board shape: the block station (formation lines sliding
  * with the ball) — shapeSpot was an L5c small-line tool and read as "no
  * structure" at eleven */
-const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5, carrierId?: string, flightReceiverId?: string): Vec2 => {
+const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: ReadonlyMap<string, Vec2>, ball: BallState, bodies: readonly BodyState[], keepers?: ReadonlySet<string>, compact = 0.5, carrierId?: string, flightReceiverId?: string, lockGet?: (id: string) => string | undefined, lockSet?: (id: string, t: string | null) => void): Vec2 => {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -1736,7 +1761,35 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       Math.hypot(b.pos.x - ball.pos.x, b.pos.y - ball.pos.y) < 3);
     if (pressed) trapUp = 1.2;
   }
-  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep, true, 1, false, trapUp, compact);
+  const dBallOwn = Math.hypot(ball.pos.x - (sgnD > 0 ? 0 : PITCH.length), ball.pos.y - PITCH.width / 2);
+  const pressTuck = unit.length >= 8 && dBallOwn > 70;
+  const st = blockStation(homes.get(defender.id) ?? defender.pos, centroid, ball.pos, false, sgnD, 0.5, unit.length + 1, oppDeep, true, 1, false, trapUp, compact, pressTuck);
+  // THE BACK-PASS CURFEW (traps, third element): first forwards station
+  // on the carrier->deepest-outlet lane at t=0.75 — receiver-end shadows
+  // price hardest AND sit inside the attachment radius (attained at u2)
+  if (unit.length >= 8 && ball.carrierId !== null && myHome !== undefined && !keepers?.has(defender.id)) {
+    let higher = 0;
+    for (const b of unit) {
+      const h = homes.get(b.id);
+      if (b.id !== defender.id && h && !keepers?.has(b.id) && h.x * sgnD > myHome.x * sgnD + 0.5) higher++;
+    }
+    if (higher < 2) {
+      const carrierB = bodies.find((b) => b.id === ball.carrierId);
+      if (carrierB && carrierB.team !== defender.team) {
+        let outlet: BodyState | null = null;
+        for (const o of bodies) {
+          if (o.team !== carrierB.team || keepers?.has(o.id) || o.id === carrierB.id) continue;
+          if ((o.pos.x - carrierB.pos.x) * -sgnD >= -2) continue;
+          if (!outlet || o.pos.x * sgnD > outlet.pos.x * sgnD) outlet = o;
+        }
+        if (outlet) {
+          const tL = 0.75;
+          const lane = { x: carrierB.pos.x + (outlet.pos.x - carrierB.pos.x) * tL, y: carrierB.pos.y + (outlet.pos.y - carrierB.pos.y) * tL };
+          if (Math.hypot(lane.x - st.x, lane.y - st.y) <= 30) { st.x = lane.x; st.y = lane.y; }
+        }
+      }
+    }
+  }
   // ZONAL MARKING ON THE LINE (the tick-178 frame: the striker BETWEEN
   // the centre-backs, unmarked — the duty board's claimant pool is
   // carrier-local and the line often sits outside it): a line defender
@@ -1761,7 +1814,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
         if (!bh || bh.x * sgnD > deepestHome + 6) continue;
         if (Math.abs(b.pos.y - threat.pos.y) < Math.abs(defender.pos.y - threat.pos.y) - 0.5) { mine = false; break; }
       }
-      if (mine) st.y = st.y + (threat.pos.y - st.y) * 0.7;
+      if (mine) st.y = st.y + (threat.pos.y - st.y) * (Math.abs(threat.pos.y - PITCH.width / 2) < 15 ? 1.0 : 0.7); // traps: central threats attached fully; the LINE keeps its x by construction
     }
   } else if (unit.length >= 8) {
     const claimPool = unit.filter((b) => {
@@ -1769,7 +1822,7 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       const bh = homes.get(b.id);
       return !!bh && bh.x * sgnD > deepestHome + 6; // line members shade via their own rule
     });
-    const shaded = zoneEngageShade(st, defender, bodies, claimPool, keepers, carrierId, ball.pos, flightReceiverId);
+    const shaded = zoneEngageShade(st, defender, bodies, claimPool, keepers, carrierId, ball.pos, flightReceiverId, lockGet, lockSet);
     st.x = shaded.x; st.y = shaded.y;
   }
   // VACANCY ROTATION (the builder's dragged-CB principle, second half:
