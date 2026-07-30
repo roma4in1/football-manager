@@ -2330,8 +2330,14 @@ export class Sim {
       // stranded keeper (who should NOT catch a shot past him). At match
       // scale the base is higher; drills keep the 9 m/s floor.
       const catchBase = this.brains.size >= 12 ? 19 : BALL.keeperCatchBase; // match keeper holds firmer shots
+      // THE STRETCH-HOLD GATE (match scale; drills keep raw physics): a
+      // save at the edge of his dive is a PARRY — fingertips don't hold.
+      // Attribute-honest twice over: reach is agility's, and the margin a
+      // hold needs shrinks with handling (firstTouch).
+      const stretchHold = this.brains.size < 12 ||
+        reach - d >= BALL.keeperHoldMarginM * (1.4 - 0.04 * k.attributes.firstTouch);
       const catchable = speed <= catchBase + BALL.keeperCatchTouch * k.attributes.firstTouch &&
-        ball.z <= BALL.keeperCatchMaxZ;
+        ball.z <= BALL.keeperCatchMaxZ && stretchHold;
       ball.pos = { x: at.x, y: at.y };
       ball.vz = 0;
       ball.z = 0;
@@ -2366,7 +2372,12 @@ export class Sim {
         // tipping out), so they keep the old wide-into-play.
         let ang: number;
         let sp: number;
-        if (this.brains.size >= 12) {
+        // only the FULL-STRETCH parry tips behind for the corner; a parry
+        // from a set position (beaten by pace, not reach) is pushed WIDE
+        // INTO PLAY — with every parry tipping out, corners read 17.5 per
+        // team-90 against the ~5 reference on the first measurement
+        const atLimit = reach - d < BALL.keeperHoldMarginM * (1.4 - 0.04 * k.attributes.firstTouch) + 0.15;
+        if (this.brains.size >= 12 && atLimit) {
           const sgnK = attackSign(k.team);
           const bylineX = sgnK > 0 ? -0.5 : PITCH.length + 0.5;
           const postSide = Math.sign(at.y - GOAL.centerY) || side || 1;
@@ -2374,6 +2385,11 @@ export class Sim {
           ang = Math.atan2(target.y - at.y, target.x - at.x) +
             this.rng.gauss(0, 0.25, this.tick, k.id, 'parry');
           sp = Math.max(speed * 0.7, 9); // match parry keeps pace to leave the pitch
+        } else if (this.brains.size >= 12) {
+          // set-position parry: strong wrists push it wide of the box, live
+          ang = Math.atan2(at.y - own.y, at.x - own.x) + side * 0.9 +
+            this.rng.gauss(0, 0.3, this.tick, k.id, 'parry');
+          sp = Math.max(speed * 0.5, 8);
         } else {
           ang = Math.atan2(at.y - own.y, at.x - own.x) + side * 0.7 +
             this.rng.gauss(0, 0.35, this.tick, k.id, 'parry');
@@ -2445,6 +2461,10 @@ export class Sim {
     } else {
       const ownGoal = goalCenter(best.body.team);
       const away = Math.atan2(best.body.pos.y - ownGoal.y, best.body.pos.x - ownGoal.x);
+      // (a 0.9 -> 1.25 match widening was tried for carom-behind corners
+      // and REVERTED same session: it spiked possessions 578 -> 715 — the
+      // wide tail made loose-ball churn, not corners. The parry supplies
+      // the class alone; blocks keep the anti-rebound geometry.)
       ang = away + this.rng.gauss(0, 0.9, this.tick, best.body.id, 'block');
     }
     const sp = speed * keep;
