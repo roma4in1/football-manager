@@ -3176,9 +3176,18 @@ export class Sim {
                 Math.abs(plan.target.y - PITCH.width / 2) < GOAL.boxHalfWidthM;
               const bent = this.brains.size >= 12 && !ballComing && !crossFeed;
               const beyond = ballComing ? 10 : crossFeed ? 6 : 2;
+              // THE THREAT RUN (the second watch: "no line-breaking runs...
+              // as if scared of being offside" — literally true: the bent
+              // dart rode AT the line, never beyond). The dart phase now
+              // BREAKS the line by 3 m — unfed and mostly unfeedable there
+              // (offsideBy prices the flagged ball away) — and the phase
+              // end IS the check-back. The line, which holds level with the
+              // deepest attacker (lineTarget = oppDeepU + trapUp), drops
+              // with him: the space the run buys is between the lines, and
+              // it is bought by the WORLD moving, not by a reweighted board.
               const dartX = !bent
                 ? (sign > 0 ? plan.lineX + beyond : plan.lineX - beyond)
-                : (sign > 0 ? plan.lineX - 0.4 : plan.lineX + 0.4);
+                : (sign > 0 ? plan.lineX + 3 : plan.lineX - 3);
               const atHover = Math.abs(body.pos.x - hoverX) < 1.6;
               let st = this.runPhase.get(id);
               if (!st) {
