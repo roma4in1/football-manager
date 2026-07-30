@@ -2493,7 +2493,7 @@ export class Sim {
    * urgency. stamina's FIRST consumer: willingness to jog voluntarily
    * scales with it (the fatigue model builds on this later — the
    * sequencing the ledger locks). */
-  private stationMove(body: BodyState, d: number, minU: 0 | 1 | 2 = 0, target?: Vec2): { go: boolean; regime: 'walk' | 'jog' | 'run' } {
+  private stationMove(body: BodyState, d: number, minU: 0 | 1 | 2 = 0, target?: Vec2): { go: boolean; regime: 'walk' | 'glide' | 'jog' | 'run' } {
     // MATCH SCALE ONLY (the drill rule): scenarios pin raw semantics —
     // a 4-man line drill or a cross drill wants its original pace
     if (this.brains.size < 12) return { go: d > 1.5, regime: d > 8 ? 'run' : 'jog' };
@@ -2549,9 +2549,9 @@ export class Sim {
     // repositioning). If this cap does not move simultaneity, the
     // high-speed motion lives elsewhere — that is a finding, not a
     // license to tighten a fifth time.
-    if (u === 0) return { go: true, regime: d <= 20 - will ? 'walk' : 'jog' };
-    if (u === 1) return { go: true, regime: d <= 11 - will ? 'walk' : 'jog' };
-    return { go: true, regime: d <= 3.5 ? 'walk' : d <= 12 ? 'jog' : 'run' };
+    if (u === 0) return { go: true, regime: d <= 20 - will ? 'walk' : 'glide' };
+    if (u === 1) return { go: true, regime: d <= 11 - will ? 'walk' : 'glide' };
+    return { go: true, regime: d <= 3.5 ? 'walk' : d <= 12 ? 'glide' : 'run' };
   }
 
   private resolveClaims(from: Vec2): void {

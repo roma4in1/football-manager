@@ -213,6 +213,33 @@ test('THE COMPLETION BAND (re-derived on the honest-aerial world): match complet
     `completion median-of-6 in the real band (${(med * 100).toFixed(1)}% of [${shares.map((v) => (v * 100).toFixed(0)).join(',')}])`);
 });
 
+test('THE DART-VOLUME BAND (re-derived distributionally): the run game lives, and the 3.3s cycle stays dead', () => {
+  // SEVENTH instance of the references-calibrated-before-corrections
+  // class: the 600/90 ceiling sat INSIDE its own ruler noise (per-seed
+  // 320-760, median 580, 12 seeds cb-*). Clause: median-of-6 dart-phase
+  // entries per 90 (both teams) in [250, 800] — the top catches the
+  // free-reload era (1657/90), the floor catches run-game collapse.
+  const per: number[] = [];
+  for (let s = 0; s < 6; s++) {
+    const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
+    const P = sim as any;
+    const inDart = new Set<string>();
+    let n = 0;
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      for (const [id, st] of P.runPhase) {
+        if (st.phase === 'dart' && !inDart.has(id)) { inDart.add(id); n++; }
+        else if (st.phase !== 'dart') inDart.delete(id);
+      }
+      for (const id of [...inDart]) if (!P.runPhase.has(id)) inDart.delete(id);
+    }
+    per.push(n * 20);
+  }
+  const x = [...per].sort((a, b) => a - b);
+  const med = (x[2] + x[3]) / 2;
+  assert.ok(med >= 250 && med <= 800, `dart volume in band (median-of-6 ${med}/90 of [${per.join(',')}])`);
+});
+
 test('THE POSSESSION-LENGTH PIN (churn-honest): tenure does not collapse, whatever supplies events', () => {
   // SIXTH instance of the references-calibrated-before-corrections
   // class: the possessions-per-90 CEILING could not distinguish

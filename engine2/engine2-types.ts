@@ -21,9 +21,9 @@ export const DT = 1 / TICK_HZ; // 100 ms — spec §3, revisit only after profil
 /** Effort regimes — distinct, speed-ordered gaits (spec §5-L1). The full
  * stamina model lands later; the regime STRUCTURE (an explicit effort state
  * every layer above can read) lands now. */
-export type EffortRegime = 'walk' | 'jog' | 'run' | 'sprint';
+export type EffortRegime = 'walk' | 'glide' | 'jog' | 'run' | 'sprint';
 
-export const REGIMES: readonly EffortRegime[] = ['walk', 'jog', 'run', 'sprint'];
+export const REGIMES: readonly EffortRegime[] = ['walk', 'glide', 'jog', 'run', 'sprint'];
 
 /** Movement-relevant attributes, 0–20 (same scale as v1's pipeline pool).
  * `balance` is engine2-native (the v1 pool doesn't derive it yet — the

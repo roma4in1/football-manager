@@ -51,7 +51,14 @@ export const KIN = {
   forceVelocityFloor: 0.06,
   /** regime caps as shares of personal top speed (walk is absolute-capped —
    * walking pace barely varies with sprint pace) */
-  regimeShare: { walk: 0.25, jog: 0.5, run: 0.78, sprint: 1.0 } as Record<EffortRegime, number>,
+  // THE GLIDE (the run-oversupply inversion's terminal finding): at
+  // 0.5*vmax the jog is 4.3-4.9 m/s — a football RUN wearing jog's
+  // label, which held simultaneity at p50 5 through every ladder cap.
+  // The glide (0.38*vmax = 3.3-3.7 m/s) sits under the 4 m/s
+  // legibility line and is emitted ONLY by the match-gated station
+  // ladder: drills keep the raw athletic jog (five drill pins measured
+  // the global change as different football and were right).
+  regimeShare: { walk: 0.25, glide: 0.38, jog: 0.5, run: 0.78, sprint: 1.0 } as Record<EffortRegime, number>,
   walkCapMps: 1.6,
   /** arrival: inside this of the target with speed below settle = arrived */
   arriveTolM: 0.35,
