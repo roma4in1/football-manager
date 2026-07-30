@@ -2539,9 +2539,19 @@ export class Sim {
     // shift, not a uniform damp. Eligibility untouched by construction.
     const dead = u === 2 ? 2.1 : u === 1 ? 3.4 : 4.2;
     if (d <= dead) return { go: false, regime: 'walk' };
+    // THE SCARCITY CAP (the run-oversupply inversion, 4th and FINAL
+    // touch of the runTo flattener): a station correction NEVER RUNS at
+    // u1 — it glides at jog whatever the distance — and u2's jog band
+    // widens 8 -> 12. Above 4 m/s now belongs to the situational
+    // classes (darts, chases, presses, transitions), so a departure is
+    // a DEPARTURE again (simultaneity p50 was 5 vs real 0-2; 5,678
+    // sustained runs per team-90 vs real 400-800, the bulk station
+    // repositioning). If this cap does not move simultaneity, the
+    // high-speed motion lives elsewhere — that is a finding, not a
+    // license to tighten a fifth time.
     if (u === 0) return { go: true, regime: d <= 20 - will ? 'walk' : 'jog' };
-    if (u === 1) return { go: true, regime: d <= 11 - will ? 'walk' : d <= 18 ? 'jog' : 'run' };
-    return { go: true, regime: d <= 3.5 ? 'walk' : d <= 8 ? 'jog' : 'run' };
+    if (u === 1) return { go: true, regime: d <= 11 - will ? 'walk' : 'jog' };
+    return { go: true, regime: d <= 3.5 ? 'walk' : d <= 12 ? 'jog' : 'run' };
   }
 
   private resolveClaims(from: Vec2): void {
