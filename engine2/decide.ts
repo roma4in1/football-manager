@@ -310,6 +310,17 @@ export const DECIDE = {
    * honest floats/switches under the pass floor (the failed pins). */
   loftDrivenDeg: 24,
   loftChipDeg: 42,
+  /** THE TEMPO ECONOMY (the unpriced-default family's third member —
+   * release-on-arrival at tenure p50 0.1 s vs real 2-4 s holds): an
+   * unpressured carrier whose best option is still IMPROVING holds —
+   * holding BUYS the better ball it is literally measuring. Release
+   * requires RIPENESS (the gradient flattens), EXCELLENCE (a ball too
+   * good to wait on), or PRESSURE (urgency the situation supplies).
+   * Not a flat tax: a static world releases immediately. RE-RUN
+   * UNCHANGED after improvement-generation (the market it prices). */
+  tempoExcellentU: 0.13,
+  tempoMaxHolds: 5,
+  tempoRipeEps: 0.008,
   aerialControlBase: 0.86,
   aerialControlTouchGain: 0.01,
   /** the DELIVERY side of the same pricing: the loft/cross/switch lands
