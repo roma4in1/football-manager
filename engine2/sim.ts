@@ -94,6 +94,8 @@ export class Sim {
    * (ST ~540 darts/90 vs real 20-40; the cycle was a bare timer).
    * Scaled by stamina (its second consumer): big engines reload faster. */
   private readonly dartRest = new Map<string, number>();
+  /** tempo economy: the carrier's best-option utility trace (ripeness) */
+  private readonly tempoU = new Map<string, { u: number; n: number; since: number; u0?: number }>();
   /** traps: shade stickiness (defender -> locked threat) */
   private readonly shadeLock = new Map<string, string>();
   /** possession team last tick — to detect the FLIP instant and unfreeze
@@ -2472,6 +2474,40 @@ export class Sim {
     return { go: true, regime: d <= 3.5 ? 'walk' : d <= 8 ? 'jog' : 'run' };
   }
 
+  /** THE TEMPO ECONOMY's release gate (see DECIDE.tempoExcellentU):
+   * HOLD is the resting state; releasing requires ripeness, excellence,
+   * or pressure. The utility trace lives here because decide() is
+   * stateless per tick. Match-gated; keepers and set plays exempt. */
+  private tempoHold(id: string, body: BodyState, intent: { kind: string; utility: number }): boolean {
+    const dbg = ((globalThis as unknown as { __tp?: Record<string, number> }).__tp ??= { calls: 0, hold1: 0, holdImp: 0, pressed: 0, excellent: 0, ripe: 0, maxed: 0 });
+    dbg.calls++;
+    if (this.brains.size < 12 || intent.kind !== 'pass' || this.keepers.has(id)) return false;
+    const pressed = this.bodies.some((o) => o.team !== body.team && !this.keepers.has(o.id) &&
+      Math.hypot(o.pos.x - body.pos.x, o.pos.y - body.pos.y) <= 2.5);
+    if (pressed) { dbg.pressed++; this.tempoU.delete(id); return false; }
+    const instr = this.instructions.get(id) ?? {};
+    const tempoK = adhere(instr.tempo ?? 0.5, 0.5, body.attributes.tactical ?? 11);
+    const excellent = DECIDE.tempoExcellentU * (0.6 + 0.8 * (1 - tempoK));
+    if (intent.utility >= excellent) { dbg.excellent++; this.tempoU.delete(id); return false; }
+    const h = this.tempoU.get(id);
+    const maxN = Math.max(1, Math.round(DECIDE.tempoMaxHolds * (1.5 - tempoK)));
+    if (!h || this.tick - h.since > 15) {
+      this.tempoU.set(id, { u: intent.utility, n: 1, since: this.tick, u0: intent.utility });
+      dbg.hold1++; return true; // the first look: let the world develop one beat
+    }
+    if (h.n >= maxN) { dbg.maxed++; this.tempoU.delete(id); return false; }
+    if (intent.utility > h.u + DECIDE.tempoRipeEps) {
+      this.tempoU.set(id, { u: intent.utility, n: h.n + 1, since: this.tick, u0: h.u0 ?? h.u });
+      dbg.holdImp++; return true; // improving — holding is buying
+    }
+    dbg.ripe++;
+    // measurement only: did the CHAIN improve end-to-end even though
+    // this beat read flat? (the timescale hypothesis)
+    if (h.u0 !== undefined && intent.utility > h.u0 + DECIDE.tempoRipeEps) dbg.chainImp = (dbg.chainImp ?? 0) + 1;
+    this.tempoU.delete(id);
+    return false; // ripe — play it
+  }
+
   private resolveClaims(from: Vec2): void {
     if (this.ball.z > BALL.claimMaxZ || this.ball.phase === 'dead') return;
     if (this.restartLock && this.tick >= this.restartLock.until) this.restartLock = null;
@@ -3914,6 +3950,13 @@ export class Sim {
             this.intents.delete(id);
             this.actionLabels.set(id, 'check');
             if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+          } else if (reach <= TECH.kickReachM && intent.kind === 'pass' && this.tempoHold(id, body, intent)) {
+            // TEMPO: unpressured, unripe, not excellent — hold and survey;
+            // the next reconsider re-prices a world one beat more developed
+            this.intents.delete(id);
+            this.actionLabels.set(id, 'survey');
+            if (body.command.type !== 'hold') this.assign(body, { type: 'hold' });
+            body.command = { type: 'hold', facing: strikeDir };
           } else if (reach <= TECH.kickReachM) {
             // the strike itself is L3's: noisy by the kicker's feet
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
@@ -3939,6 +3982,13 @@ export class Sim {
             // the KNOCK's second half is the GO — sprint after your own push
             // (the kick freed the ball from carry speed; now win the race)
             this.assign(body, intent.kind === 'knock' ? { type: 'chaseBall', regime: 'sprint' } : { type: 'hold' });
+          } else if (intent.kind === 'pass' && this.tempoHold(id, body, intent)) {
+            // TEMPO at the queue path (the one-touch architecture's main
+            // road): an unripe mid-touch pass is not queued — the carrier
+            // CATCHES his touch and surveys; the next reconsider re-prices
+            this.intents.delete(id);
+            this.actionLabels.set(id, 'survey');
+            if (body.command.type !== 'chaseBall') this.assign(body, { type: 'chaseBall', regime: 'run' });
           } else {
             // mid-touch: release ON THE NEXT TOUCH (coupleCarry fires it) —
             // and close the gap meanwhile
