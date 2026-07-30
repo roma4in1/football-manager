@@ -1832,6 +1832,11 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
 };
 
 export interface DecideInput {
+  /** MEASUREMENT ONLY (the board instrument): when present, receives
+   * every pass candidate's (receiverId, utility) as the board is
+   * priced — the engine's OWN utilities, for probes. Never affects
+   * the decision. (Precedent: sprayM bookkeeping.) */
+  board?: (receiverId: string, utility: number) => void;
   carrier: BodyState;
   bodies: readonly BodyState[];
   ball: BallState;
@@ -2336,6 +2341,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const dartRx = runners?.has(mate.id) && mate.speed >= 4 ? 0.5 : 1;
       pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest) * dartRx);
       const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait * offsideTax * passChannelMul(dest);
+      input.board?.(mate.id, u);
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
@@ -2379,6 +2385,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         let pvL = value(landing, mate.id) + freedom(landing);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor, keep ? pvL : lossVal(landing), retainW);
+        input.board?.(mate.id, uL);
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg, pC: pCa };
         }
@@ -2405,6 +2412,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           let pvK = value(landing, mate.id) + freedom(landing);
           pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor, keep ? pvK : lossVal(landing), retainW);
+          input.board?.(mate.id, uK);
           if (!bestPass || uK > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK, pC: pCk };
           }
@@ -2448,6 +2456,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           // when pC pretended the box was safe
           pvC += 1.0 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor, keep ? pvC : lossVal(cross), retainW) * passChannelMul(cross);
+          input.board?.(mate.id, uC);
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
           }
