@@ -3162,9 +3162,22 @@ export class Sim {
               // drill (no law) the through-line dart IS the right run,
               // and bending it broke two drill pins instantly
               const ballComing = this.intendedReceiverId === id;
-              const bent = this.brains.size >= 12 && !ballComing;
+              // THE CROSS-ATTACK DART (the box-occupancy fix, bound to the
+              // wide-ball situation only): an unfed dart's destination was
+              // THE LINE (+2) — only a fed dart went beyond, so the box
+              // stayed empty (91% zero-occupancy at wide-ball ticks) while
+              // the cross needs its target IN the box before it is struck.
+              // With a teammate coupled WIDE-ADVANCED (the cross gates) and
+              // a central lane, the dart attacks the DELIVERY ZONE unfed.
+              const crossFeed = this.brains.size >= 12 && carrierBody && carrierBody.id !== id &&
+                !this.keepers.has(carrierBody.id) &&
+                Math.abs(carrierBody.pos.y - PITCH.width / 2) >= 13 &&
+                (sign > 0 ? PITCH.length - carrierBody.pos.x : carrierBody.pos.x) <= 32 &&
+                Math.abs(plan.target.y - PITCH.width / 2) < GOAL.boxHalfWidthM;
+              const bent = this.brains.size >= 12 && !ballComing && !crossFeed;
+              const beyond = ballComing ? 10 : crossFeed ? 6 : 2;
               const dartX = !bent
-                ? (sign > 0 ? plan.lineX + (ballComing ? 10 : 2) : plan.lineX - (ballComing ? 10 : 2))
+                ? (sign > 0 ? plan.lineX + beyond : plan.lineX - beyond)
                 : (sign > 0 ? plan.lineX - 0.4 : plan.lineX + 0.4);
               const atHover = Math.abs(body.pos.x - hoverX) < 1.6;
               let st = this.runPhase.get(id);

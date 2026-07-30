@@ -213,6 +213,49 @@ test('THE COMPLETION BAND (re-derived on the honest-aerial world): match complet
     `completion median-of-6 in the real band (${(med * 100).toFixed(1)}% of [${shares.map((v) => (v * 100).toFixed(0)).join(',')}])`);
 });
 
+test('THE POSSESSION-LENGTH PIN (churn-honest): tenure does not collapse, whatever supplies events', () => {
+  // SIXTH instance of the references-calibrated-before-corrections
+  // class: the possessions-per-90 CEILING could not distinguish
+  // SUPPLIED EVENTS from CHURN — the corner build added ~+44
+  // definitional possessions (each parry ends one, each corner starts
+  // one) and read 622-vs-620 as a breach. Possession COUNT is hereby a
+  // descriptor, not a gate; LENGTH is the gate — a supplied restart
+  // does not shorten the median tenure, churn does. RULER: 12 seeds
+  // cb-*, tenure = coupled team-run between team changes; per-seed p50
+  // 3.0-8.3s (median-of-12 = 5.7), <5s share 32-64% (median 50.6).
+  // Clause: median-of-6 p50 >= 3.5s AND <5s share <= 68% (collapse
+  // regime reads ~<3s / ~>70%).
+  const p50s: number[] = [];
+  const sub5: number[] = [];
+  for (let s = 0; s < 6; s++) {
+    const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
+    const lens: number[] = [];
+    let team: string | null = null;
+    let since = 0;
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      const c = sim.ball.carrierId;
+      const cb = c ? sim.bodies.find((b) => b.id === c) : null;
+      if (cb) {
+        if (team !== cb.team) {
+          if (team !== null) lens.push((t - since) / 10);
+          team = cb.team;
+          since = t;
+        }
+      }
+    }
+    const x = [...lens].sort((a, b) => a - b);
+    p50s.push(x[Math.floor(x.length / 2)] ?? 0);
+    sub5.push(lens.filter((v) => v < 5).length / Math.max(1, lens.length));
+  }
+  const sp = [...p50s].sort((a, b) => a - b);
+  const ss = [...sub5].sort((a, b) => a - b);
+  const medP = (sp[2] + sp[3]) / 2;
+  const medS = (ss[2] + ss[3]) / 2;
+  assert.ok(medP >= 3.5, `tenure p50 holds (median-of-6 ${medP.toFixed(1)}s of [${p50s.map((v) => v.toFixed(1)).join(',')}])`);
+  assert.ok(medS <= 0.68, `sub-5s share bounded (${(medS * 100).toFixed(0)}% of [${sub5.map((v) => (v * 100).toFixed(0)).join(',')}])`);
+});
+
 test('THE MANAGER PLACEMENT PIN: players follow authored phase positions, not the formation', () => {
   // the 4-2-3-1x authors a false nine (build: drop to x=40; final: surge
   // to x=88) and a phase-split left back (high: x=60; low: x=12). The
