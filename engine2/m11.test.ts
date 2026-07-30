@@ -157,7 +157,13 @@ test('THE EQUILIBRIUM PIN (the convergence loop\'s legacy): a full slice passes 
     if (e.outcome === 'complete' || e.outcome === 'teammate') kept++;
   };
   for (let t = 0; t < 3000; t++) sim.step();
-  assert.ok(events >= 45, `the slice circulates (${events} pass events)`);
+  // FLOOR RE-DERIVED (3rd instance of the floors-calibrated-on-inflated-
+  // metrics class, after wb-0 and box-entry): 45 was set in the 122-pass
+  // era; the arc's INTENDED churn reduction walked the operating point
+  // onto it (8-seed distribution now 43-64, wb-0 itself read 45 and 40
+  // across builds). 30 keeps 13+ margin below the observed minimum and
+  // still catches dribble-ball collapse (~<25). Ruler: 8 seeds, Jul 30.
+  assert.ok(events >= 30, `the slice circulates (${events} pass events; collapse regime <25)`);
   // floor 0.45 -> 0.40: this pin catches DRIBBLE-BALL COLLAPSE (retention
   // cratering while passes crater), not an exact point. The off-ball
   // defending screen legitimately trims attacking completion (better box
@@ -290,6 +296,10 @@ test('THE FLIGHT-STEP PIN: a close shader arrives WITH the ball (pin before the 
       prevIntended = rid; prevCarrier = c;
     }
   }
-  assert.ok(elig >= 30, `close-start flights exist (${elig})`);
+  // FLOOR RE-DERIVED (same class): 30 sat exactly at the 6-seed observed
+  // total (3-9/seed) after the intended pass-volume decline. 15 keeps the
+  // %-claim statistically meaningful while not tripping on the operating
+  // point. Ruler: 6 seeds, Jul 30.
+  assert.ok(elig >= 15, `close-start flights exist (${elig})`);
   assert.ok(tight / elig >= 0.20, `the shader still steps (${(tight / elig * 100).toFixed(0)}% touch-tight; calibrated 38, walking ~10-15)`);
 });

@@ -3547,7 +3547,15 @@ export class Sim {
             if (this.shapeHolding.delete(id)) this.attackIdle.add(id);
             this.pressingIds.delete(id);
           }
-          if (carrierBody && carrierBody.team !== body.team) this.attackIdle.delete(id);
+          // LIFECYCLE REPAIR (the loop's cut, one line): the bare delete
+          // ejected defenders from eligibility at every opponent-coupling
+          // and stranded them on stale transit moveTo for p50 3.4s / p95
+          // 20s episodes (25-34% of defending time dark). MIGRATE instead
+          // — the mirror of the shapeHolding->attackIdle line above; the
+          // body stays re-decidable through the transition.
+          if (carrierBody && carrierBody.team !== body.team) {
+            if (this.attackIdle.delete(id) && this.brains.size >= 12) this.shapeHolding.add(id);
+          }
           // THE STEP-IN (the debt round): an opponent pass IN FLIGHT was
           // uncontestable — intendedReceiverId excludes it from every loose-
           // ball race, so the receive reflex ran unopposed while the goal-
