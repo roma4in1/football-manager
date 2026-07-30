@@ -214,6 +214,19 @@ export const m11Match = matchSituation({
   awayPressing: 0.6,
 });
 
+/** THE BAR-4 WATCH (spec §9): a continuous 15-minute stretch of match
+ * clock for judging at normal speed, overlays off, as a fan would see
+ * it. Instrument-only — identical world to m11-match, just long enough
+ * that a five-minute watch is a WINDOW, not the whole reel. */
+export const m11MatchFull = matchSituation({
+  name: 'm11-match-full',
+  description: 'The Bar-4 watch: 15 continuous minutes of 11v11 from a neutral centre ball. Judge at 1x with overlays off first; slow-mo and overlays are the second pass.',
+  durationTicks: 9000,
+  ball: { pos: { x: 52.5, y: 34 } },
+  homePressing: 0.6,
+  awayPressing: 0.6,
+});
+
 /** the FORMATION DUEL (builder request): a 4-3-3 against a 5-2-3 — the
  * fluid front three vs the back five, wingbacks against high wingers,
  * a double pivot against a midfield triangle. Same neutral centre ball
@@ -263,4 +276,4 @@ export const m11Showcase = matchSituation({
   awayTactical: 8,
 });
 
-export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11Formations, m11Placement, m11Showcase, m11Screen];
+export const match11Scenarios: ScenarioDef[] = [m11WingDuel, m11CentralDrive, m11SecondBall, m11Match, m11MatchFull, m11Formations, m11Placement, m11Showcase, m11Screen];
