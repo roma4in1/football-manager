@@ -2438,7 +2438,7 @@ export class Sim {
       // retreats. Others: never calm-class (the rest-line pin), urgent
       // only at the box.
       const line = this.backLineHome(body.id, team);
-      const tu = gd < 32 ? 2 : line && gd < 60 ? 2 : 1;
+      const tu = gd < 32 ? 2 : line && gd < 48 ? 2 : 1; // 60->48: the frozen-era line needed early starts; a live line (post-repair) can start later and still arrive
       if (tu > u) u = tu as 0 | 1 | 2;
     }
     else {
@@ -2457,11 +2457,17 @@ export class Sim {
     }
     // stamina: high engines volunteer the jog sooner (no-op at 13)
     const will = ((body.attributes.stamina ?? 13) - 13) * 0.4;
-    const dead = u === 2 ? 1.6 : u === 1 ? 2.6 : 3.5;
+    // RETUNED against the REPAIRED population (the original bands were
+    // calibrated when 25-34% of defenders were dark — some "rest" was
+    // stranded bodies wearing the costume of restraint). Deadbands up:
+    // the cost-to-leave binds hardest where stations are stable (CB/FB),
+    // which is exactly where the spread compressed — a distribution
+    // shift, not a uniform damp. Eligibility untouched by construction.
+    const dead = u === 2 ? 2.1 : u === 1 ? 3.4 : 4.2;
     if (d <= dead) return { go: false, regime: 'walk' };
     if (u === 0) return { go: true, regime: d <= 20 - will ? 'walk' : 'jog' };
-    if (u === 1) return { go: true, regime: d <= 9 - will ? 'walk' : d <= 18 ? 'jog' : 'run' };
-    return { go: true, regime: d <= 2.5 ? 'walk' : d <= 8 ? 'jog' : 'run' };
+    if (u === 1) return { go: true, regime: d <= 11 - will ? 'walk' : d <= 18 ? 'jog' : 'run' };
+    return { go: true, regime: d <= 3.5 ? 'walk' : d <= 8 ? 'jog' : 'run' };
   }
 
   private resolveClaims(from: Vec2): void {
