@@ -17,7 +17,7 @@
 import { DT, PITCH, type BodyState, type Vec2 } from './engine2-types.ts';
 import { loftApex, loftFlightTimeS, rollLaunchForArrival, rollSpeedAfter, rollTimeToDistance, solveCurl, solveLoftSpeed, stepBall, type BallState } from './ball.ts';
 import { KIN, regimeCapMps } from './kinematics.ts';
-import { calibratePass, carryRetention } from './pass-calibration.ts';
+import { AERIAL_EXEC_FLOOR, calibratePass, carryRetention } from './pass-calibration.ts';
 
 /** goal mouths: home attacks +x (goal at x=105), away attacks −x (x=0) */
 /** L5E — the duel state machine's numbers (design: L5E-DESIGN.md). The
@@ -1886,10 +1886,13 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
 
 export interface DecideInput {
   /** MEASUREMENT ONLY (the board instrument): when present, receives
-   * every pass candidate's (receiverId, utility) as the board is
-   * priced — the engine's OWN utilities, for probes. Never affects
-   * the decision. (Precedent: sprayM bookkeeping.) */
-  board?: (receiverId: string, utility: number) => void;
+   * every pass candidate's (receiverId, utility, pC, kind) as the board
+   * is priced — the engine's OWN utilities and completion prices, for
+   * probes. Never affects the decision. (Precedent: sprayM bookkeeping.
+   * pC/kind added by the fork-(c) probe session: recomputing pC outside
+   * diverged — the loft/curl families price covered lanes the ground
+   * recomputation called dead.) */
+  board?: (receiverId: string, utility: number, pC?: number, kind?: string) => void;
   carrier: BodyState;
   bodies: readonly BodyState[];
   ball: BallState;
@@ -2222,6 +2225,9 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   }
 
   // PASS — each teammate, at a lead point if he is moving
+  // the aerial execution floor rides only at match scale (drills keep
+  // the open-cast identity the density blend was built to protect)
+  const aerialFloor = bodies.length >= 18 ? AERIAL_EXEC_FLOOR : 0;
   for (const mate of mates) {
     const offBy = offsideBy(mate);
     if (offBy > 1.5) continue; // clearly flagged — not a target
@@ -2394,7 +2400,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       const dartRx = runners?.has(mate.id) && mate.speed >= 4 ? 0.5 : 1;
       pC = calibratePass(0, 0, Math.hypot(dest.x - here.x, dest.y - here.y), pC, destDensity(dest) * dartRx);
       const u = passUtility(pC, pvThere, pvHere, risk, turnoverW, passFloor, keep ? pvThere : lossVal(dest), retainW) * ridingWait * offsideTax * passChannelMul(dest);
-      input.board?.(mate.id, u);
+      input.board?.(mate.id, u, pC, 'ground');
       if (!bestPass || u > bestPass.utility) {
         bestPass = { kind: 'pass', receiverId: mate.id, dest, speedMps: speed, utility: u, pC };
       }
@@ -2434,11 +2440,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const ctrl = (DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch) *
           (DECIDE.loftDeliveryBase + DECIDE.loftDeliveryPassGain * carrier.attributes.passing);
         const pCa = calibratePass(loftDeg, 0, dLoft,
-          aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl, destDensity(landing));
+          aerialCompletion(landing, mate, opponents, here, loftFlightTimeS(speedL, loftDeg), loftApex(dLoft, loftDeg), keepers) * ctrl, destDensity(landing), aerialFloor);
         let pvL = value(landing, mate.id) + freedom(landing);
         if (!keep) pvL += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uL = passUtility(pCa, pvL, pvHere, risk, turnoverW, passFloor, keep ? pvL : lossVal(landing), retainW);
-        input.board?.(mate.id, uL);
+        input.board?.(mate.id, uL, pCa, 'loft');
         if (!bestPass || uL > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: landing, speedMps: speedL, utility: uL, loftDeg, pC: pCa };
         }
@@ -2461,11 +2467,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
             rollLaunchForArrival(Math.min(softArrive + 1, riderBehind ? riderArriveCap : Infinity), dLoft)));
           const aimK = solveCurl(here, landing, spinK, speedK);
           const pCk = calibratePass(0, spinK, dLoft,
-            curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing), destDensity(landing));
+            curlCompletion(here, aimK, spinK, speedK, landing, opponents, mate, carrier.attributes.passing), destDensity(landing), aerialFloor);
           let pvK = value(landing, mate.id) + freedom(landing);
           pvK += 0.6 * xG(landing, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uK = passUtility(pCk, pvK, pvHere, risk, turnoverW, passFloor, keep ? pvK : lossVal(landing), retainW);
-          input.board?.(mate.id, uK);
+          input.board?.(mate.id, uK, pCk, 'curl');
           if (!bestPass || uK > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: aimK, speedMps: speedK, utility: uK, spin: spinK, pC: pCk };
           }
@@ -2502,14 +2508,14 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
           const ctrl = (DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch) *
           (DECIDE.loftDeliveryBase + DECIDE.loftDeliveryPassGain * carrier.attributes.passing);
           const pCc = calibratePass(loftDeg, 0, dCross,
-            aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl, destDensity(cross));
+            aerialCompletion(cross, mate, opponents, here, loftFlightTimeS(speedC, loftDeg), loftApex(dCross, loftDeg), keepers) * ctrl, destDensity(cross), aerialFloor);
           let pvC = value(cross, mate.id) + freedom(cross);
           // 0.6 -> 1.0 under the calibrated regime: crosses are LOW-
           // COMPLETION HIGH-VALUE by nature — the old weight was fitted
           // when pC pretended the box was safe
           pvC += 1.0 * xG(cross, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
           const uC = passUtility(pCc, pvC, pvHere, risk, turnoverW, passFloor, keep ? pvC : lossVal(cross), retainW) * passChannelMul(cross);
-          input.board?.(mate.id, uC);
+          input.board?.(mate.id, uC, pCc, 'cross');
           if (!bestPass || uC > bestPass.utility) {
             bestPass = { kind: 'pass', receiverId: mate.id, dest: cross, speedMps: speedC, utility: uC, loftDeg, pC: pCc };
           }
@@ -2533,10 +2539,11 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         const ctrl = (DECIDE.aerialControlBase + DECIDE.aerialControlTouchGain * mate.attributes.firstTouch) *
           (DECIDE.loftDeliveryBase + DECIDE.loftDeliveryPassGain * carrier.attributes.passing);
         const pCs = calibratePass(loftDeg, 0, dSwitch,
-          aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land));
+          aerialCompletion(land, mate, opponents, here, loftFlightTimeS(speedS, loftDeg), loftApex(dSwitch, loftDeg), keepers) * ctrl, destDensity(land), aerialFloor);
         let pvS = value(land, mate.id) + freedom(land);
         pvS += 0.6 * xG(land, mate.team, bodies.filter((b) => b.id !== mate.id && b.id !== carrier.id));
         const uS = passUtility(pCs, pvS, pvHere, risk, turnoverW, passFloor, keep ? pvS : lossVal(land), retainW) * passChannelMul(land);
+        input.board?.(mate.id, uS, pCs, 'switch'); // was the one family the board never saw
         if (!bestPass || uS > bestPass.utility) {
           bestPass = { kind: 'pass', receiverId: mate.id, dest: land, speedMps: speedS, utility: uS, loftDeg, pC: pCs };
         }

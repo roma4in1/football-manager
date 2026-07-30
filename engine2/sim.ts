@@ -200,7 +200,7 @@ export class Sim {
   private readonly lostPossessionAt = new Map<'home' | 'away', number>();
   private carrierSince = -1;
   /** measurement only: probes tap the carrier's live pass board */
-  boardTap: ((carrierId: string, tick: number, receiverId: string, utility: number) => void) | null = null;
+  boardTap: ((carrierId: string, tick: number, receiverId: string, utility: number, pC?: number, kind?: string) => void) | null = null;
   /** SELF-PLAY TELEMETRY (the memory space): an optional hook the match
    * harness sets — the sim emits decision→outcome pairs (priced pass
    * completion vs what actually happened) for the calibration ledger.
@@ -3732,7 +3732,7 @@ export class Sim {
       const beatCommitted = this.beatExec?.carrierId === id && this.beatExec.phase !== 'approach';
       if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
-          ...(this.boardTap ? { board: (rid: string, u: number) => this.boardTap!(id, this.tick, rid, u) } : {}),
+          ...(this.boardTap ? { board: (rid: string, u: number, pC?: number, kind?: string) => this.boardTap!(id, this.tick, rid, u, pC, kind) } : {}),
           carrier: body,
           heldTicks: this.tick - this.carrierSince,
           // the world AS HE LAST SAW IT — an unseen opponent can cut the

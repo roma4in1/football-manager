@@ -44,13 +44,28 @@ export const calibratePass = (
    * traffic, identity in open space (the raw table taxed open-cast
    * drills where the lanes genuinely complete — six pins measured it) */
   density = 1,
+  /** density-INDEPENDENT floor on the correction blend, non-ground
+   * families only: an open 30-40m float is hard to execute and control
+   * regardless of opponents. Measured (fc-honesty, 12 seeds, n=62/23
+   * per cell): open-space back/sq aerials priced 0.92/0.86, realized
+   * 63/57% — a 29-30pp optimism the identity-at-density-0 blend
+   * created, while ground families were honest everywhere (±8pp).
+   * That optimism was the safe option's ESCAPE HATCH: 58% of the
+   * board's backward maxes were aerial/bent balls over covered ground
+   * lanes. Callers pass the floor at match scale only — the identity
+   * protects open-cast DRILLS, whose ground lanes genuinely complete. */
+  execFloor = 0,
 ): number => {
   const type = spin ? 'curl' : loftDeg >= 30 ? 'float' : loftDeg > 0 ? 'driven-loft' : 'ground';
   const d = distM < 12 ? 'short' : distM < 24 ? 'mid' : 'long';
   const k = PASS_CALIBRATION[`${type}/${d}`] ?? 1;
-  const kEff = 1 - (1 - k) * Math.max(0, Math.min(1, density));
+  const blend = Math.max(type === 'ground' ? 0 : execFloor, Math.max(0, Math.min(1, density)));
+  const kEff = 1 - (1 - k) * blend;
   return Math.max(0.02, Math.min(0.98, pC * kEff));
 };
+
+/** the fitted execution floor (see execFloor above) */
+export const AERIAL_EXEC_FLOOR = 0.75;
 
 /** carry RETENTION by local pressure (density 0..1 → bucket 0..3),
  * fitted from the same ledger as the pass table — the BOTH-SIDED rule:
