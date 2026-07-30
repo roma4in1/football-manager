@@ -306,3 +306,50 @@ test('THE FLIGHT-STEP PIN: a close shader arrives WITH the ball (pin before the 
   assert.ok(elig >= 15, `close-start flights exist (${elig})`);
   assert.ok(tight / elig >= 0.20, `the shader still steps (${(tight / elig * 100).toFixed(0)}% touch-tight; calibrated 38, walking ~10-15)`);
 });
+
+test('THE REST PIN (re-derived on the repaired population): honest rest, positional spread, no flattening', () => {
+  // FOURTH instance of references-calibrated-before-corrections (volume
+  // floors, wb-0, box-entry, now this): the ~23pp spread reference was
+  // measured when 25-34% of defending ticks were DARK, and stranded
+  // bodies concentrate in stable-station roles — the old reference
+  // inherited the defect the eligibility repair removed. Real football
+  // positional spread is ~15pp; the repaired+retuned baseline reads
+  // 17pp with every position RISEN and ordering intact (CB 57 / FB 50 /
+  // CM 41 / WIDE 40 / ST 41). This pin catches FLATTENING (uniform
+  // damping) and rest collapse, not calibration drift. Ruler: windowed
+  // 1s displacement, live-filtered (bug #7), 3 seeds, Jul 30.
+  const rest: Record<string, { slow: number; n: number }> = {};
+  const grp = (id: string): string => id.includes('cb') ? 'CB' : /(lb|rb|wb)/.test(id) ? 'FB'
+    : /(cm|dm|am)/.test(id) ? 'CM' : /(lm|rm|lw|rw)/.test(id) ? 'WIDE' : 'ST';
+  for (const seed of ['rp-0', 'rp-1', 'rp-2']) {
+    const sim = new Sim(scenarioByName('m11-match'), seed);
+    const hist = new Map<string, { x: number; y: number; dead: boolean }[]>();
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      const dead = sim.ball.phase === 'dead';
+      for (const b of sim.bodies) {
+        if (b.id.includes('gk')) continue;
+        const h = hist.get(b.id) ?? [];
+        h.push({ x: b.pos.x, y: b.pos.y, dead });
+        while (h.length > 11) h.shift();
+        if (h.length === 11 && h.every((p) => !p.dead)) {
+          const d = Math.hypot(b.pos.x - h[0].x, b.pos.y - h[0].y);
+          if (d <= 11) {
+            const g = grp(b.id);
+            const r = rest[g] ?? (rest[g] = { slow: 0, n: 0 });
+            r.n++; if (d < 2) r.slow++;
+          }
+        }
+        hist.set(b.id, h);
+      }
+    }
+  }
+  const share = (g: string): number => rest[g].slow / rest[g].n * 100;
+  const all = Object.values(rest).reduce((a, r) => ({ slow: a.slow + r.slow, n: a.n + r.n }), { slow: 0, n: 0 });
+  const overall = all.slow / all.n * 100;
+  const cb = share('CB');
+  const lowest = Math.min(share('CM'), share('WIDE'), share('ST'));
+  assert.ok(overall >= 35 && overall <= 55, `overall rest is honest football (${overall.toFixed(0)}%; band 35-55)`);
+  assert.ok(cb - lowest >= 8, `positional spread survives — no flattening (CB ${cb.toFixed(0)} vs lowest ${lowest.toFixed(0)}, spread ${(cb - lowest).toFixed(0)}pp >= 8)`);
+  assert.ok(cb >= share('ST') - 2, `ordering holds: the back line rests most (CB ${cb.toFixed(0)} vs ST ${share('ST').toFixed(0)})`);
+});
