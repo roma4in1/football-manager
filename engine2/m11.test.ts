@@ -177,6 +177,37 @@ test('THE EQUILIBRIUM PIN (the convergence loop\'s legacy): a full slice passes 
   assert.ok(kept / Math.max(1, events) >= 0.40, `passing retains (${(kept / Math.max(1, events) * 100).toFixed(0)}%)`);
 });
 
+test('THE COMPLETION BAND (re-derived on the honest-aerial world): match completion sits in a real band, two-sided', () => {
+  // HISTORY (the references-calibrated-before-corrections class, FIFTH
+  // instance per the builder's count): 44-58% pre-ground-block; 73-76
+  // spray-tax era; "79 +/- 2 declared floor" retune era; the old 77-81
+  // sanity band was calibrated while back/sq AERIALS were priced
+  // 0.86-0.92 and realizing 57-63 — the aerial execution floor closed
+  // that gap and completion moved to its honest level. RULER: 12 seeds
+  // (cb-*), 2700-tick slices, kept = complete+teammate share of
+  // resolved telemetry passes; per-seed 70.8-87.8 (n~40-60 each,
+  // +/-6pp binomial), median-of-12 = 77.8. The clause asserts the
+  // MEDIAN of 6 seeds in [72, 86]: below 72 = retention regression
+  // (the dishonest-aerial signature); above 86 = the world has gone
+  // too safe (a completion% that real football does not hold).
+  const shares: number[] = [];
+  for (let s = 0; s < 6; s++) {
+    const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
+    let events = 0, kept = 0;
+    sim.telemetry = (e: any) => {
+      if (e.t !== 'pass') return;
+      events++;
+      if (e.outcome === 'complete' || e.outcome === 'teammate') kept++;
+    };
+    for (let t = 0; t < 2700; t++) sim.step();
+    shares.push(kept / Math.max(1, events));
+  }
+  const sorted = [...shares].sort((a, b) => a - b);
+  const med = (sorted[2] + sorted[3]) / 2;
+  assert.ok(med >= 0.72 && med <= 0.86,
+    `completion median-of-6 in the real band (${(med * 100).toFixed(1)}% of [${shares.map((v) => (v * 100).toFixed(0)).join(',')}])`);
+});
+
 test('THE MANAGER PLACEMENT PIN: players follow authored phase positions, not the formation', () => {
   // the 4-2-3-1x authors a false nine (build: drop to x=40; final: surge
   // to x=88) and a phase-split left back (high: x=60; low: x=12). The
