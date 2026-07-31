@@ -2519,6 +2519,23 @@ export class Sim {
    * urgency. stamina's FIRST consumer: willingness to jog voluntarily
    * scales with it (the fatigue model builds on this later — the
    * sequencing the ledger locks). */
+  /** THE COOLDOWN LEAK (the arithmetic thread: same-player dart gaps
+   * of 6s against an 11s unfed cooldown): eight paths end a dart;
+   * only the dart->ride transition paid the cooldown. The three
+   * ELECTION deletions (atStation demotion, boxOccupy reroute,
+   * plan-null flip) discarded the run mid-dart with no debt — so any
+   * motion that churns ranks (every support trigger) minted free
+   * reloads. An unfed dart pays its cooldown HOWEVER it ends. */
+  private endDartCooldown(id: string): void {
+    const st = this.runPhase.get(id);
+    if (!st || st.phase !== 'dart') return;
+    if (this.brains.size < 12 || this.intendedReceiverId === id || this.ball.carrierId === id) return;
+    const b = this.byId.get(id);
+    if (!b) return;
+    const cd = 110 - ((b.attributes.stamina ?? 13) - 13) * 6;
+    this.dartRest.set(id, this.tick + Math.max(50, cd));
+  }
+
   private stationMove(body: BodyState, d: number, minU: 0 | 1 | 2 = 0, target?: Vec2): { go: boolean; regime: 'walk' | 'glide' | 'jog' | 'run' } {
     // MATCH SCALE ONLY (the drill rule): scenarios pin raw semantics —
     // a 4-man line drill or a cross drill wants its original pace
@@ -3059,6 +3076,7 @@ export class Sim {
             const gaveT = this.lastGiveTick.get(id);
             const plan = !boxOccupy && !atStation && objective === 'score' ? runPlan(body, carrierBody, this.perceivedBodies(id), this.keepers, claimedYs) : null;
             if (atStation) {
+              this.endDartCooldown(id);
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               const home = this.homes.get(id) ?? body.pos;
@@ -3125,6 +3143,7 @@ export class Sim {
                 this.assign(body, { type: 'hold' });
               }
             } else if (boxOccupy) {
+              this.endDartCooldown(id);
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               // MULTI-MAN box occupation (the EAFC 71:10 frame: a box
@@ -3313,6 +3332,7 @@ export class Sim {
               }
               this.runningLine.add(id);
             } else {
+              this.endDartCooldown(id);
               this.runPhase.delete(id);
               this.runningLine.delete(id);
               // support RE-EVALUATES like a station does (the hold gate
