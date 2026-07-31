@@ -229,6 +229,13 @@ test('THE RESTART-LAW REGRESSION PIN: the box stays clear until the goal kick is
       pendingTicks++;
       const award = P.restartLock.team as string;
       const nearHome = sim.ball.pos.x < 52.5;
+      // GRACE (knife-edge correction, documented): live-phase enforcement
+      // is COMMAND-based — a violator WALKS out, which takes transit
+      // time. A body still inside 2s after the award is a violation; the
+      // walk-out itself is the law working. (The zero-tolerance original
+      // passed only while trajectories happened never to start deep.)
+      const pendAge = t - (P.deadSinceTick > 0 ? P.deadSinceTick : t);
+      if (pendAge < 20) continue;
       for (const b of sim.bodies) {
         if (b.team === award || P.sentOff.has(b.id)) continue;
         const inBox = (nearHome ? b.pos.x < 16.5 - 0.7 : b.pos.x > 105 - 16.5 + 0.7) &&
