@@ -146,7 +146,19 @@ export function App() {
         <label className="wb-label">Seed — stochastic drills differ per roll</label>
         <div className="wb-row">
           <button onClick={() => reroll(-1)}>−</button>
-          <span className="wb-seed">#{seed}</span>
+          <input
+            className="wb-seed"
+            type="number"
+            min={0}
+            value={seed}
+            style={{ width: '5em' }}
+            onChange={(e) => {
+              const s = Math.max(0, Math.floor(Number(e.target.value) || 0));
+              setSeed(s);
+            }}
+            onBlur={() => reload(loaded.def, seed)}
+            onKeyDown={(e) => { if (e.key === 'Enter') reload(loaded.def, seed); }}
+          />
           <button onClick={() => reroll(1)}>+</button>
         </div>
 
