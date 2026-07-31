@@ -248,24 +248,41 @@ test('THE DART-VOLUME BAND (re-derived distributionally): the run game lives, an
   // entries per 90 (both teams) in [250, 800] — the top catches the
   // free-reload era (1657/90), the floor catches run-game collapse.
   const per: number[] = [];
+  const periods: number[] = [];
   for (let s = 0; s < 6; s++) {
     const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
     const P = sim as any;
     const inDart = new Set<string>();
+    const lastD = new Map<string, number>();
+    const gaps: number[] = [];
     let n = 0;
     for (let t = 0; t < 2700; t++) {
       sim.step();
       for (const [id, st] of P.runPhase) {
-        if (st.phase === 'dart' && !inDart.has(id)) { inDart.add(id); n++; }
-        else if (st.phase !== 'dart') inDart.delete(id);
+        if (st.phase === 'dart' && !inDart.has(id)) {
+          inDart.add(id);
+          n++;
+          const l = lastD.get(id);
+          if (l !== undefined && (t - l) / 10 < 20) gaps.push((t - l) / 10);
+          lastD.set(id, t);
+        } else if (st.phase !== 'dart') inDart.delete(id);
       }
       for (const id of [...inDart]) if (!P.runPhase.has(id)) inDart.delete(id);
     }
     per.push(n * 20);
+    const gx = [...gaps].sort((a, b) => a - b);
+    periods.push(gx[Math.floor(gx.length / 2)] ?? 99);
   }
   const x = [...per].sort((a, b) => a - b);
   const med = (x[2] + x[3]) / 2;
   assert.ok(med >= 250 && med <= 800, `dart volume in band (median-of-6 ${med}/90 of [${per.join(',')}])`);
+  // THE PERIOD FLOOR (re-derived, TENTH instance of the class): the old
+  // >=13s pin sat ON the 12-seed median (per-seed p50s 11.7-15.3,
+  // median-of-12 = 13.1) — gating inside its own noise. The floor's job
+  // is the free-reload collapse regime (5.4-9.0s). Median-of-6 >= 11s.
+  const px = [...periods].sort((a, b) => a - b);
+  const pmed = (px[2] + px[3]) / 2;
+  assert.ok(pmed >= 11, `dart period holds (median-of-6 ${pmed.toFixed(1)}s of [${periods.map((v) => v.toFixed(1)).join(',')}])`);
 });
 
 test('THE POSSESSION-LENGTH PIN (churn-honest): tenure does not collapse, whatever supplies events', () => {
