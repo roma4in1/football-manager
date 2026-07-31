@@ -94,6 +94,12 @@ export class Sim {
    * (ST ~540 darts/90 vs real 20-40; the cycle was a bare timer).
    * Scaled by stamina (its second consumer): big engines reload faster. */
   private readonly dartRest = new Map<string, number>();
+  /** MESH-SUPPORT DUTY (the arbitration): ring-filling is a NAMED
+   * exemption from the station deadband — flight-step's pattern, third
+   * of its kind. Bounded: dCar 16-21 trigger, ~4-9m glide, <=2.5s,
+   * cooldown, <=2 concurrent per team. */
+  private readonly meshDuty = new Map<string, number>();
+  private readonly meshRest = new Map<string, number>();
   /** traps: shade stickiness (defender -> locked threat) */
   private readonly shadeLock = new Map<string, string>();
   /** possession team last tick — to detect the FLIP instant and unfreeze
@@ -3135,6 +3141,45 @@ export class Sim {
               }
               const dSt = Math.hypot(st.x - body.pos.x, st.y - body.pos.y);
               this.attackIdle.add(id);
+              // THE MESH-SUPPORT DUTY: a candidate to occupy the 6-16m ring
+              // glides IN (never through the deadband machinery — that is
+              // the exemption), briefly, then returns to station discipline.
+              let meshT: Vec2 | null = null;
+              if (this.brains.size >= 12 && this.ball.carrierId && carrierBody &&
+                carrierBody.team === body.team && !this.keepers.has(id) &&
+                this.instructions.get(id)?.holdWidth !== true) {
+                const active = this.meshDuty.get(id);
+                const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
+                if (active !== undefined && this.tick < active && dCar > 9) {
+                  const ux = (body.pos.x - carrierBody.pos.x) / Math.max(0.1, dCar);
+                  const uy = (body.pos.y - carrierBody.pos.y) / Math.max(0.1, dCar);
+                  meshT = { x: carrierBody.pos.x + ux * 11, y: carrierBody.pos.y + uy * 11 };
+                } else if (active === undefined && dCar > 16 && dCar <= 21 &&
+                  this.tick >= (this.meshRest.get(id) ?? 0)) { // iter 2 (band 23/cooldown 60) went BACKWARD — movers expired mid-journey; iter-1 bound restored
+                  let concurrent = 0;
+                  for (const [mid, mu] of this.meshDuty) {
+                    const mb = this.byId.get(mid);
+                    if (mb && mb.team === body.team && this.tick < mu) concurrent++;
+                  }
+                  if (concurrent < 2) {
+                    this.meshDuty.set(id, this.tick + 25);
+                    this.meshRest.set(id, this.tick + 85);
+                    const ux = (body.pos.x - carrierBody.pos.x) / dCar;
+                    const uy = (body.pos.y - carrierBody.pos.y) / dCar;
+                    meshT = { x: carrierBody.pos.x + ux * 11, y: carrierBody.pos.y + uy * 11 };
+                  }
+                }
+                if (active !== undefined && this.tick >= active) this.meshDuty.delete(id);
+              }
+              if (meshT) {
+                this.assign(body, {
+                  type: 'moveTo',
+                  target: { x: Math.max(2, Math.min(PITCH.length - 2, meshT.x)), y: Math.max(2, Math.min(PITCH.width - 2, meshT.y)) },
+                  regime: 'glide',
+                });
+                this.actionLabels.set(id, 'mesh');
+                continue;
+              }
               const mvSt = this.stationMove(body, dSt);
               if (mvSt.go) {
                 this.assign(body, { type: 'moveTo', target: st, regime: mvSt.regime });
