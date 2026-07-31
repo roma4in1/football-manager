@@ -213,6 +213,34 @@ test('THE COMPLETION BAND (re-derived on the honest-aerial world): match complet
     `completion median-of-6 in the real band (${(med * 100).toFixed(1)}% of [${shares.map((v) => (v * 100).toFixed(0)).join(',')}])`);
 });
 
+test('THE RESTART-LAW REGRESSION PIN: the box stays clear until the goal kick is IN PLAY', () => {
+  // Watch-5 regression: enforcement was gated on phase==="dead" while
+  // the goal-kick keeper PICKS UP the ball (phase "carried") before
+  // striking — the box refilled the moment he touched it. The pin
+  // asserts the law across the WHOLE pending window, any ball phase.
+  let violations = 0;
+  let pendingTicks = 0;
+  for (const seed of ['cb-0', 'cb-1', 'cb-2']) {
+    const sim = new Sim(scenarioByName('m11-match'), seed);
+    const P = sim as any;
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      if (P.restartType !== 'goal-kick' || !P.restartLock) continue;
+      pendingTicks++;
+      const award = P.restartLock.team as string;
+      const nearHome = sim.ball.pos.x < 52.5;
+      for (const b of sim.bodies) {
+        if (b.team === award || P.sentOff.has(b.id)) continue;
+        const inBox = (nearHome ? b.pos.x < 16.5 - 0.7 : b.pos.x > 105 - 16.5 + 0.7) &&
+          Math.abs(b.pos.y - 34) < 20.16 - 0.7;
+        if (inBox) violations++;
+      }
+    }
+  }
+  assert.ok(pendingTicks > 0, `goal kicks occurred (${pendingTicks} pending ticks)`);
+  assert.ok(violations === 0, `no opponent inside the box while a goal kick is pending (${violations} violation-ticks)`);
+});
+
 test('THE DART-VOLUME BAND (re-derived distributionally): the run game lives, and the 3.3s cycle stays dead', () => {
   // SEVENTH instance of the references-calibrated-before-corrections
   // class: the 600/90 ceiling sat INSIDE its own ruler noise (per-seed

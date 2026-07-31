@@ -1136,9 +1136,15 @@ export class Sim {
     // spot, corner or goal-kick on the goal lines, kickoff after a goal
     // — awarded AGAINST the last kicker, with a 2 s team claim lock.
     // Drills (small casts, bounded grids) keep dead-ends-the-drill.
+    // THE RESTART LAW HOLDS UNTIL THE BALL IS IN PLAY — not until the
+    // ball is merely un-dead: the goal-kick keeper PICKS UP the dead
+    // ball (phase 'carried') before striking it, and gating on 'dead'
+    // released the box the moment he touched it (the watch-5 regression;
+    // the fourth instrument rule's code-side twin — the restriction
+    // measured a STATE while the violation happened on the way in).
+    if (this.restartType) this.enforceRestartLaw();
     if (this.ball.phase === 'dead') {
       if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
-      this.enforceRestartLaw();
       const hN = this.teamBrainCount('home');
       const aN = this.teamBrainCount('away');
       const deadWait = this.goals.length > this.lastGoalCount ? 40 : 15; // the GOAL! banner gets its celebration
@@ -2123,7 +2129,27 @@ export class Sim {
           // an airborne ball dropping INSIDE HIS BOX is HIS — "keeper's!":
           // he attacks a cross through his own defenders; deference to a
           // nearer mate applies only to ground balls outside his command
-          const hisBall = this.ball.phase === 'airborne' &&
+          // ...but only a REACHABLE drop is his (the born-attainable
+          // lesson, now for the keeper): committing to a near-post corner
+          // he cannot beat vacated the goal and fed the header EVERY time
+          // (watch 5 — deterministic, the bug shape). Find the drop's
+          // arrival, compare his sprint time; unreachable -> stay and set.
+          let reachDrop = true;
+          if (this.ball.phase === 'airborne') {
+            let tArr = -1;
+            let dropP: Vec2 | null = null;
+            let prevZ2 = this.ball.z;
+            for (let ts = 0.2; ts <= 2.6; ts += 0.2) {
+              const bp = predictBallState(this.ball, ts);
+              if (bp.z <= BALL.keeperCatchMaxZ && (bp.vz <= 0.2 || prevZ2 > BALL.keeperCatchMaxZ)) { tArr = ts; dropP = bp.pos; break; }
+              prevZ2 = bp.z;
+            }
+            if (tArr > 0 && dropP) {
+              const dDrop = Math.hypot(dropP.x - k.pos.x, dropP.y - k.pos.y);
+              reachDrop = 0.35 + dDrop / Math.max(1, regimeCapMps(k.attributes.pace, 'sprint')) <= tArr + 0.25;
+            }
+          }
+          const hisBall = this.ball.phase === 'airborne' && reachDrop &&
             Math.abs(pred.x - own.x) <= GOAL.boxDepthM &&
             Math.abs(pred.y - GOAL.centerY) <= GOAL.boxHalfWidthM;
           const mateNearer = !hisBall && this.restartTaker !== id &&
@@ -4406,15 +4432,34 @@ export class Sim {
     const award = this.restartLock?.team;
     if (!rt || rt === 'kickoff' || !award || this.brains.size < 12) return;
     const spot = this.ball.pos;
+    // BOUNDED nudge, never a snap: the law now enforces through live
+    // phases (the carried goal-kick ball) and a position jump violates
+    // the continuity/interpenetration invariants — a violator WALKS out
+    // at a legal per-tick step and the separation pass keeps him clean.
+    const step = 0.85;
+    const nudge = (b: BodyState, tx: number, ty: number): void => {
+      const cx = Math.max(1, Math.min(PITCH.length - 1, tx));
+      const cy = Math.max(1, Math.min(PITCH.width - 1, ty));
+      if (this.ball.phase === 'dead') {
+        // dead ball: bounded position step (the staging convention)
+        const dx = cx - b.pos.x;
+        const dy = cy - b.pos.y;
+        const d = Math.hypot(dx, dy);
+        const k2 = d > step ? step / d : 1;
+        b.pos = { x: b.pos.x + dx * k2, y: b.pos.y + dy * k2 };
+      } else {
+        // live phases (the carried goal-kick ball): the law speaks
+        // through the COMMAND — the violator walks out on his own
+        // physics; no position writes, no continuity debt
+        this.assign(b, { type: 'moveTo', target: { x: cx, y: cy }, regime: 'jog' });
+      }
+    };
     const radial = (b: BodyState, minD: number): void => {
       const d = Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y);
       if (d >= minD) return;
       const ux = d > 0.01 ? (b.pos.x - spot.x) / d : 1;
       const uy = d > 0.01 ? (b.pos.y - spot.y) / d : 0;
-      b.pos = {
-        x: Math.max(1, Math.min(PITCH.length - 1, spot.x + ux * minD)),
-        y: Math.max(1, Math.min(PITCH.width - 1, spot.y + uy * minD)),
-      };
+      nudge(b, spot.x + ux * minD, spot.y + uy * minD);
     };
     const outOfBox = (b: BodyState, nearHome: boolean): void => {
       const inBox = (nearHome ? b.pos.x < GOAL.boxDepthM + 0.5 : b.pos.x > PITCH.length - GOAL.boxDepthM - 0.5) &&
@@ -4427,8 +4472,8 @@ export class Sim {
         : PITCH.width / 2 - GOAL.boxHalfWidthM - 0.8;
       const dx = Math.abs(b.pos.x - xExit);
       const dy = Math.abs(b.pos.y - yExit);
-      if (dx <= dy) b.pos = { ...b.pos, x: xExit };
-      else b.pos = { ...b.pos, y: Math.max(1, Math.min(PITCH.width - 1, yExit)) };
+      if (dx <= dy) nudge(b, xExit, b.pos.y);
+      else nudge(b, b.pos.x, Math.max(1, Math.min(PITCH.width - 1, yExit)));
     };
     if (this.restartPenalty) {
       const nearHome = spot.x < PITCH.length / 2;
