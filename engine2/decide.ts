@@ -1925,6 +1925,10 @@ export interface DecideInput {
   /** runners NOT yet darting (approaching or reloading at the line) — the
    * ball to them WAITS for the movement */
   waitingRunners?: ReadonlySet<string>;
+  /** runners in the DART phase — the commitment signal (half 2 of the
+   * deadlock's cut): the up-to-speed test was a PROXY for commitment;
+   * a committed runner is threadable while his run is live. */
+  committedRunners?: ReadonlySet<string>;
 }
 
 /** the full scored option table — exported for tests and probes (decide()
@@ -1956,7 +1960,7 @@ const passUtility = (pC: number, pv: number, pvHere: number, risk: number, turno
 };
 
 export const evaluateOptions = (input: DecideInput): Intent[] => {
-  const { carrier, bodies, instructions, homes, runners, waitingRunners, bounds, keepers } = input;
+  const { carrier, bodies, instructions, homes, runners, waitingRunners, committedRunners, bounds, keepers } = input;
   // KEEPER SET-NESS (the tick-128 fix): near goal, driving PAST a
   // shootable chance is greed when the keeper is home on his line — the
   // shot is on, take it. When the keeper is beaten or off his line the
@@ -2390,7 +2394,7 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // rates. The original measurement stands.)
       // the thread releases a hair earlier (builder: more through balls)
       // — a runner at 3.4 m/s is committed enough to run onto it
-      const notUpToSpeed = runners?.has(mate.id) === true && mate.speed < (4.4 - tempoEff * 2); // 4.4 patient .. 2.4 vertical
+      const notUpToSpeed = runners?.has(mate.id) === true && !committedRunners?.has(mate.id) && mate.speed < (4.4 - tempoEff * 2); // committed runs ARE the signal; speed was its proxy
 
       const ridingWait = waitingRunners?.has(mate.id) || notUpToSpeed ? 0.25 : 1;
       // a DARTING runner receives in stride — he has already beaten the

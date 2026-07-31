@@ -3195,9 +3195,19 @@ export class Sim {
               // deepest attacker (lineTarget = oppDeepU + trapUp), drops
               // with him: the space the run buys is between the lines, and
               // it is bought by the WORLD moving, not by a reweighted board.
-              const dartX = !bent
-                ? (sign > 0 ? plan.lineX + beyond : plan.lineX - beyond)
-                : (sign > 0 ? plan.lineX + 3 : plan.lineX - 3);
+              // THE COMMITTED DART (the deadlock's cut, half 1): with a
+              // coupled carrier the dart targets REAL depth — runPlan's
+              // own goalline-8 point, overshot by 6 so it never
+              // arrive-brakes (the knock-past lesson). It no longer ends
+              // on line-approach: it ends on BALL-ARRIVAL or BALL-DEAD.
+              // Offside-at-death is the dummy run, a positive.
+              const committed = this.brains.size >= 12 && this.ball.carrierId !== null &&
+                carrierBody && carrierBody.id !== id;
+              const dartX = committed && !ballComing
+                ? plan.target.x + sign * 6
+                : !bent
+                  ? (sign > 0 ? plan.lineX + beyond : plan.lineX - beyond)
+                  : (sign > 0 ? plan.lineX + 3 : plan.lineX - 3);
               const atHover = Math.abs(body.pos.x - hoverX) < 1.6;
               let st = this.runPhase.get(id);
               if (!st) {
@@ -3227,7 +3237,10 @@ export class Sim {
                 st.since = this.tick;
                 st.dartY = plan.dartY;
               } else if (st.phase === 'dart' &&
-                (this.tick - st.since >= 26 || atDartEnd)) {
+                (committed
+                  ? (this.tick - st.since >= 40 || this.ball.carrierId === id ||
+                     this.ball.phase === 'dead' || ballComing === false && this.intendedReceiverId !== null && this.intendedReceiverId !== id)
+                  : (this.tick - st.since >= 26 || atDartEnd))) {
                 st.phase = 'ride';
                 st.since = this.tick;
                 // UNFED = the commitment cost falls due: cooldown before the
@@ -3848,6 +3861,7 @@ export class Sim {
           homes: this.homes,
           bounds: this.bounds,
           runners: this.runningLine,
+          committedRunners: this.brains.size >= 12 ? new Set([...this.runPhase].filter(([, s2]) => s2.phase === 'dart').map(([id2]) => id2)) : undefined,
           runTargets: this.runTargetsFor(body.team),
           keepers: this.keepers,
           staggered: this.staggeredSet(),
