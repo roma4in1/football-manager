@@ -492,6 +492,48 @@ export class Sim {
       }
       // KICKOFF RULE (builder): the taker must PASS — the classic tap
       // back to a teammate, never a solo carry off the spot
+      if (this.ball.carrierId === this.restartTaker && this.restartType === 'goal-kick') {
+        // THE GOAL KICK IS KICKED (watch-6, ticks 815+): the ceremony
+        // had branches for corner/free-kick/kickoff/throw-in and NONE
+        // for the goal kick — the keeper coupled the dead ball, fell
+        // through to open play, and picked it up into his hands
+        // (procedurally illegal at a kicked restart; retention itself
+        // was fine at 81%). The strike reuses his ground menu: short
+        // to an unmarked mate when one exists, else the driven ping
+        // upfield.
+        const tk = this.byId.get(this.restartTaker)!;
+        let mate: BodyState | null = null;
+        let bd2 = 0;
+        let bestScore2 = 0.12;
+        const opps3 = this.bodies.filter((o) => o.team !== tk.team);
+        for (const m of this.bodies) {
+          if (m.team !== tk.team || m.id === tk.id || this.keepers.has(m.id) || this.sentOff.has(m.id)) continue;
+          const dm = Math.hypot(m.pos.x - tk.pos.x, m.pos.y - tk.pos.y);
+          if (dm > 45 || dm < 8) continue;
+          // the distribution menu's own currency: completion x worth
+          // (iteration 1 chose nearest-unmarked with no lane pricing and
+          // retention collapsed 81 -> 42)
+          const spd2 = Math.max(8, Math.min(19, rollLaunchForArrival(5, dm)));
+          const pC2 = passCompletion(tk.pos, m.pos, spd2, opps3, dm, m, 13);
+          if (pC2 < 0.55) continue;
+          const score2 = pC2 * (0.12 + posValue(m.pos, tk.team));
+          if (score2 > bestScore2) { bestScore2 = score2; mate = m; bd2 = dm; }
+        }
+        if (mate) {
+          const lead = { x: mate.pos.x + mate.vel.x * 0.4, y: mate.pos.y + mate.vel.y * 0.4 };
+          const dm = bd2;
+          if (dm > 30) kickBall(this.ball, lead, solveLoftSpeed(Math.max(6, dm - 5), 16), 16, tk.id, this.tick);
+          else if (dm > 20) kickBall(this.ball, lead, 26, 5, tk.id, this.tick);
+          else kickBall(this.ball, lead, Math.max(8, Math.min(19, rollLaunchForArrival(5, dm))), 0, tk.id, this.tick);
+          this.intendedReceiverId = mate.id;
+        } else {
+          const sgnT = attackSign(tk.team);
+          const upAng = (sgnT > 0 ? 0 : Math.PI) + this.rng.gauss(0, 0.25, this.tick, tk.id, 'gk-long');
+          kickBall(this.ball, { x: tk.pos.x + Math.cos(upAng) * 45, y: tk.pos.y + Math.sin(upAng) * 45 },
+            solveLoftSpeed(45, 16), 16, tk.id, this.tick);
+        }
+        this.actionLabels.set(tk.id, 'goal-kick');
+      }
       if (this.ball.carrierId === this.restartTaker && this.restartType === 'kickoff') {
         const tk0 = this.byId.get(this.restartTaker)!;
         let near: { m: BodyState; d: number } | null = null;
