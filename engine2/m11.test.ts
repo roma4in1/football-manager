@@ -285,6 +285,55 @@ test('THE RESTART-LAW REGRESSION PIN: legality is REACHED at the goal kick, and 
   assert.ok(openWithOccupants > 0, `anti-vacuity: the violation class is populated during windows (${openWithOccupants}/${kicks})`);
 });
 
+test('THE FREE-KICK/PENALTY RETREAT PIN: ceremonied kicks are legal, and the wait exists', () => {
+  // The goal-kick pin's SIBLING (watch-8 audit): free kicks were taken
+  // with an opponent inside 9.15m in 3/8 windows and penalties with
+  // encroachment — NO PIN EXISTED for these classes at all. Clauses:
+  // (1) legality at the close of every CEREMONIED window (fk-shot /
+  // fk-cross / penalty — QUICK kicks are exempt BY LAW: a taker may
+  // legally play before the wall sets); (2) the wait exists (ceremonied
+  // windows >= 55 ticks); (3) anti-vacuity per class (both classes
+  // observed in the pool — cb-0..5 carries 2 ceremonied FKs and 3
+  // penalties at authoring). Falsifiability demonstrated: with the
+  // wait disabled this pin fails (see ledger). Ruler: 6 seeds cb-0..5.
+  let cerFk = 0, pens = 0, illegal = 0, shortCeremonies = 0;
+  for (let s = 0; s < 6; s++) {
+    const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
+    const P = sim as any;
+    let pendStart = -1, pen = false, spot: { x: number; y: number } | null = null;
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      if (P.restartType === 'free-kick') {
+        if (pendStart < 0) { pendStart = t; pen = P.restartPenalty; }
+        if (P.restartPenalty) pen = true;
+        spot = { x: sim.ball.pos.x, y: sim.ball.pos.y };
+      } else if (pendStart >= 0) {
+        const kb = sim.ball.kickerId ? (sim as any).byId.get(sim.ball.kickerId) : null;
+        const label = kb ? sim.actionLabels.get(kb.id) ?? '' : '';
+        const ceremonied = pen || label === 'fk-shot' || label === 'fk-cross';
+        if (ceremonied && kb && spot) {
+          if (pen) pens++; else cerFk++;
+          if (t - pendStart < 55) shortCeremonies++;
+          for (const b of sim.bodies) {
+            if (b.id === kb.id || P.sentOff.has(b.id)) continue;
+            if (pen) {
+              if (P.keepers.has(b.id)) continue;
+              const nearHome = spot.x < 52.5;
+              const inBoxP = (nearHome ? b.pos.x < 16.5 - 0.4 : b.pos.x > 105 - 16.5 + 0.4) &&
+                Math.abs(b.pos.y - 34) < 20.16 - 0.4;
+              if (inBoxP || Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y) < 9.15 - 0.9) { illegal++; break; }
+            } else if (b.team !== kb.team && Math.hypot(b.pos.x - spot.x, b.pos.y - spot.y) < 9.15 - 0.9) { illegal++; break; }
+          }
+        }
+        pendStart = -1; pen = false; spot = null;
+      }
+    }
+  }
+  assert.ok(cerFk > 0 && pens > 0, `anti-vacuity: both classes observed (ceremonied FK ${cerFk}, penalties ${pens})`);
+  assert.ok(illegal === 0, `every ceremonied kick legal at the kick (${illegal} illegal)`);
+  assert.ok(shortCeremonies === 0, `the wait exists for every ceremonied window (${shortCeremonies} shorter than 55 ticks)`);
+});
+
 test('THE DART-VOLUME BAND (re-derived distributionally): the run game lives, and the 3.3s cycle stays dead', () => {
   // SEVENTH instance of the references-calibrated-before-corrections
   // class: the 600/90 ceiling sat INSIDE its own ruler noise (per-seed

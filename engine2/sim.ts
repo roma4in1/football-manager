@@ -104,6 +104,7 @@ export class Sim {
    * against deadlock. Full-realism dwell is deferred to full-match
    * pacing, stated openly in the ledger. */
   private restartPendSince: number | null = null;
+  private restartPendType: string | null = null;
   /** MESH-SUPPORT DUTY (the arbitration): ring-filling is a NAMED
    * exemption from the station deadband — flight-step's pattern, third
    * of its kind. Bounded: dCar 16-21 trigger, ~4-9m glide, <=2.5s,
@@ -441,6 +442,8 @@ export class Sim {
       // setPieceTaker): penalties strike, close central free kicks shoot
       // over the retreated nine meters, wide advanced ones cross into
       // the assembled box, deep ones go long or play short to the brain
+      let gkWaits = false;
+      let fkWaits = false;
       if (this.ball.carrierId === this.restartTaker &&
         (this.restartType === 'corner' || this.restartType === 'free-kick')) {
         const tk = this.byId.get(this.restartTaker)!;
@@ -466,20 +469,48 @@ export class Sim {
         else if (style === 'shoot' || (style === 'auto' && dGoal <= 26 && central)) act = 'shot';
         else if ((style === 'cross' || (style === 'auto' && dGoal <= 45)) && boxMate) act = 'cross';
         else if (style === 'long') act = 'long';
-        if (act === 'shot') {
+        // THE CEREMONIED KICK WAITS (the goal kick's sibling): a shot-
+        // or cross-class free kick and every penalty defer until the
+        // retreat is SATISFIED (9.15 m; the area+arc for penalties)
+        // plus the same scaled dwell floor (6 s / cap 14 s). QUICK
+        // classes (short, deep long) stay exempt BY LAW — a taker may
+        // legally play before the wall sets; that class already lives
+        // in this engine and is not sacrificed to fix the ceremony.
+        if (this.restartType === 'free-kick' && (act === 'shot' || act === 'cross' || this.restartPenalty)) {
+          let violator = false;
+          const nearHomeP = tk.pos.x < PITCH.length / 2;
+          for (const b of this.bodies) {
+            if (b.id === tk.id || this.sentOff.has(b.id)) continue;
+            if (this.restartPenalty) {
+              if (this.keepers.has(b.id)) continue;
+              const inBoxP = (nearHomeP ? b.pos.x < GOAL.boxDepthM + 0.3 : b.pos.x > PITCH.length - GOAL.boxDepthM - 0.3) &&
+                Math.abs(b.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 0.3;
+              if (inBoxP || Math.hypot(b.pos.x - this.ball.pos.x, b.pos.y - this.ball.pos.y) < 9.15 - 0.5) { violator = true; break; }
+            } else if (b.team !== tk.team &&
+              Math.hypot(b.pos.x - this.ball.pos.x, b.pos.y - this.ball.pos.y) < 9.15 - 0.5) { violator = true; break; }
+          }
+          const pendAgeF = this.tick - (this.restartPendSince ?? this.tick);
+          if (pendAgeF < 140 && (violator || pendAgeF < 60)) {
+            fkWaits = true;
+            this.intents.delete(tk.id);
+            this.pendingKicks.delete(tk.id);
+            if (tk.command.type !== 'hold') this.assign(tk, { type: 'hold' });
+          }
+        }
+        if (!fkWaits && act === 'shot') {
           const yOff = (this.rng.chance(0.5, this.tick, tk.id, 'sp-side') ? 1 : -1) *
             (GOAL.mouthHalfWidthM - 0.6);
           kickBall(this.ball, { x: g.x, y: g.y + yOff },
             this.restartPenalty ? 22 : 23, this.restartPenalty ? 6 : 12, tk.id, this.tick);
           this.actionLabels.set(tk.id, this.restartPenalty ? 'penalty' : 'fk-shot');
-        } else if (act === 'cross' && boxMate) {
+        } else if (!fkWaits && act === 'cross' && boxMate) {
           const lead = { x: boxMate.m.pos.x + boxMate.m.vel.x * 0.5, y: boxMate.m.pos.y + boxMate.m.vel.y * 0.5 };
           const dC = Math.hypot(lead.x - tk.pos.x, lead.y - tk.pos.y);
           kickBall(this.ball, lead, Math.min(26, solveLoftSpeed(dC, 23)), 23, tk.id, this.tick);
           this.intendedReceiverId = boxMate.m.id;
           if (this.restartType === 'corner') this.offsideExemptTick = this.tick; // the law's own rule
           this.actionLabels.set(tk.id, this.restartType === 'corner' ? 'corner-cross' : 'fk-cross');
-        } else if (act === 'long') {
+        } else if (!fkWaits && act === 'long') {
           let far: { m: BodyState; score: number } | null = null;
           const sgnT = attackSign(tk.team);
           for (const m of this.bodies) {
@@ -502,7 +533,6 @@ export class Sim {
       }
       // KICKOFF RULE (builder): the taker must PASS — the classic tap
       // back to a teammate, never a solo carry off the spot
-      let gkWaits = false;
       if (this.ball.carrierId === this.restartTaker && this.restartType === 'goal-kick') {
         // THE RESTART WAITS (findings A+B): legality is REACHED, not
         // raced — the kick is deferred until no opponent stands in
@@ -609,7 +639,7 @@ export class Sim {
           this.actionLabels.set(tk.id, 'throw-in');
         }
       }
-      if (!gkWaits) {
+      if (!gkWaits && !fkWaits) {
         this.restartTaker = null;
         this.restartType = null;
         this.restartPenalty = false;
@@ -1223,9 +1253,16 @@ export class Sim {
     // the fourth instrument rule's code-side twin — the restriction
     // measured a STATE while the violation happened on the way in).
     if (this.restartType) {
-      if (this.restartPendSince === null) this.restartPendSince = this.tick;
+      // the dwell clock is PER WINDOW: a restart chained directly from
+      // another (foul during a pending window — no null gap) must not
+      // inherit the old clock (witnessed: a penalty with pendAge ~12
+      // read >=60 through a stale clock and kicked in 13 ticks)
+      if (this.restartPendSince === null || this.restartType !== this.restartPendType) {
+        this.restartPendSince = this.tick;
+        this.restartPendType = this.restartType;
+      }
       this.enforceRestartLaw();
-    } else this.restartPendSince = null;
+    } else { this.restartPendSince = null; this.restartPendType = null; }
     if (this.ball.phase === 'dead') {
       if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
       const hN = this.teamBrainCount('home');
@@ -1350,6 +1387,12 @@ export class Sim {
         // opponent camped the spot (the census: an away striker taking
         // home's free kick at their own box)
         this.restartLock = { team: award, until: this.tick + (this.restartTaker ? 200 : 20) };
+        // the dwell clock opens AT THE AWARD (same-type chains — a
+        // penalty during a pending free kick — kept the stale clock
+        // even after the type-keyed reset; the award is the one true
+        // window-open event and this is its only site)
+        this.restartPendSince = this.tick;
+        this.restartPendType = this.restartType;
         // a goal kick keeps opponents OUT OF THE BOX until it is struck
         if (this.restartType === 'goal-kick') this.goalKickPending = award;
         this.stageRestart(award, spot);
@@ -3011,6 +3054,14 @@ export class Sim {
     if (this.intendedReceiverId && this.ball.carrierId !== null) this.intendedReceiverId = null;
     for (const id of this.brains) {
       const body = this.byId.get(id)!;
+      // a PENDING free kick (incl. penalty) belongs to the CEREMONY: the
+      // taker's own L4 brain was shooting penalties inside decidePhase
+      // before the menu ever saw him as carrier (witnessed: menu never
+      // ran in the window; kicker=taker, label empty). Quick kicks are
+      // NOT this path — they happen after the menu resolves act='short'
+      // and clears the restart; a kick WHILE PENDING is always the
+      // defect. The menu owns every pending free-kick ball.
+      if (this.restartTaker === id && this.restartType === 'free-kick' && this.ball.carrierId === id) continue;
       if (this.ball.carrierId !== id) {
         this.intents.delete(id);
         if (this.intendedReceiverId === id) {
@@ -4833,8 +4884,14 @@ export class Sim {
     // the box cleared by drift, legality reached only in flickers).
     // Same lesson as the compactness law: bind the chain where every
     // command flows, not one stage of it.
-    if (this.restartType === 'goal-kick' && this.restartLock &&
-      body.team !== this.restartLock.team && command.type === 'moveTo') {
+    if (this.restartLock && command.type === 'moveTo' &&
+      (this.restartType === 'goal-kick'
+        ? body.team !== this.restartLock.team
+        : this.restartType === 'free-kick' && this.restartPenalty &&
+          body.id !== this.restartTaker && !this.keepers.has(body.id))) {
+      // goal kick: opponents out of the box; penalty: EVERYONE except
+      // the taker and the keepers (the same command war, second class —
+      // the cap expired at 14s because brains re-targeted the box)
       const nearHome = this.ball.pos.x < PITCH.length / 2;
       const t2 = command.target;
       const inBox = (nearHome ? t2.x < GOAL.boxDepthM + 1.5 : t2.x > PITCH.length - GOAL.boxDepthM - 1.5) &&
