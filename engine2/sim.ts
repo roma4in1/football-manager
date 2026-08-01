@@ -94,6 +94,16 @@ export class Sim {
    * (ST ~540 darts/90 vs real 20-40; the cycle was a bare timer).
    * Scaled by stamina (its second consumer): big engines reload faster. */
   private readonly dartRest = new Map<string, number>();
+  /** THE WAITING RESTART (watch-8 findings A+B): tick the pending
+   * window opened — the goal-kick ceremony waits for LEGALITY (box
+   * clear) and a DWELL floor before it may kick. Dwell is SCALED:
+   * real goal-kick dead time is ~15-30s (ball-in-play literature,
+   * order-of-magnitude provenance); a realistic dwell would consume
+   * 10-19% of every pinned 270s slice, so the floor is 6s (enough
+   * for the law's own march-out: 16.5m at jog ~4.1s) with a 14s cap
+   * against deadlock. Full-realism dwell is deferred to full-match
+   * pacing, stated openly in the ledger. */
+  private restartPendSince: number | null = null;
   /** MESH-SUPPORT DUTY (the arbitration): ring-filling is a NAMED
    * exemption from the station deadband — flight-step's pattern, third
    * of its kind. Bounded: dCar 16-21 trigger, ~4-9m glide, <=2.5s,
@@ -492,7 +502,27 @@ export class Sim {
       }
       // KICKOFF RULE (builder): the taker must PASS — the classic tap
       // back to a teammate, never a solo carry off the spot
+      let gkWaits = false;
       if (this.ball.carrierId === this.restartTaker && this.restartType === 'goal-kick') {
+        // THE RESTART WAITS (findings A+B): legality is REACHED, not
+        // raced — the kick is deferred until no opponent stands in
+        // the box AND the dwell floor has passed. The pin can now
+        // assert legality AT THE KICK instead of vacuous grace.
+        const tkW = this.byId.get(this.restartTaker)!;
+        const nearHomeW = tkW.pos.x < PITCH.length / 2;
+        let boxOccupied = false;
+        for (const b of this.bodies) {
+          if (b.team === tkW.team || this.sentOff.has(b.id)) continue;
+          if ((nearHomeW ? b.pos.x < GOAL.boxDepthM + 0.5 : b.pos.x > PITCH.length - GOAL.boxDepthM - 0.5) &&
+            Math.abs(b.pos.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 0.5) { boxOccupied = true; break; }
+        }
+        const pendAge = this.tick - (this.restartPendSince ?? this.tick);
+        if (pendAge < 140 && (boxOccupied || pendAge < 60)) {
+          gkWaits = true;
+          if (tkW.command.type !== 'hold') this.assign(tkW, { type: 'hold' });
+        }
+      }
+      if (!gkWaits && this.ball.carrierId === this.restartTaker && this.restartType === 'goal-kick') {
         // THE GOAL KICK IS KICKED (watch-6, ticks 815+): the ceremony
         // had branches for corner/free-kick/kickoff/throw-in and NONE
         // for the goal kick — the keeper coupled the dead ball, fell
@@ -579,13 +609,15 @@ export class Sim {
           this.actionLabels.set(tk.id, 'throw-in');
         }
       }
-      this.restartTaker = null;
-      this.restartType = null;
-      this.restartPenalty = false;
-      this.restartLock = null;
-      this.goalKickPending = null;
-      this.wallSpots.clear();
-      this.bannerText = null;
+      if (!gkWaits) {
+        this.restartTaker = null;
+        this.restartType = null;
+        this.restartPenalty = false;
+        this.restartLock = null;
+        this.goalKickPending = null;
+        this.wallSpots.clear();
+        this.bannerText = null;
+      }
     }
     if (this.keeperDropPass && this.ball.carrierId !== this.keeperDropPass.keeperId) this.keeperDropPass = null;
     if (this.beatExec && this.ball.carrierId !== this.beatExec.carrierId) this.beatExec = null;
@@ -1190,7 +1222,10 @@ export class Sim {
     // released the box the moment he touched it (the watch-5 regression;
     // the fourth instrument rule's code-side twin — the restriction
     // measured a STATE while the violation happened on the way in).
-    if (this.restartType) this.enforceRestartLaw();
+    if (this.restartType) {
+      if (this.restartPendSince === null) this.restartPendSince = this.tick;
+      this.enforceRestartLaw();
+    } else this.restartPendSince = null;
     if (this.ball.phase === 'dead') {
       if (this.deadSinceTick < 0) this.deadSinceTick = this.tick;
       const hN = this.teamBrainCount('home');
@@ -1855,6 +1890,10 @@ export class Sim {
       const sign = attackSign(k.team);
       const own = { x: sign > 0 ? 0 : PITCH.length, y: GOAL.centerY };
       if (this.ball.carrierId === id) {
+        // THE WAITING RESTART: a taker deferring his goal kick STANDS
+        // with the ball — no pickup, no drop-pass, no clear (the first
+        // goal-kick regression was exactly this fall-through)
+        if (this.restartTaker === id && this.restartType === 'goal-kick') continue;
         // OUTSIDE his box he is a defender under pressure — the sweep's
         // ending is a FIRST-TIME clear upfield, not a gather-and-carry
         const outsideBox = Math.abs(this.ball.pos.x - own.x) > GOAL.boxDepthM ||
@@ -4787,6 +4826,24 @@ export class Sim {
   }
 
   private assign(body: BodyState, command: MovementCommand): void {
+    // THE RESTART LAW AT THE COMMAND CHOKEPOINT (watch-8 finding B,
+    // iteration 2): while a goal kick pends, an opponent's moveTo may
+    // not TARGET the box — the law's jog-out and the brains' station
+    // commands were alternating (1,302 re-entries across 42 windows;
+    // the box cleared by drift, legality reached only in flickers).
+    // Same lesson as the compactness law: bind the chain where every
+    // command flows, not one stage of it.
+    if (this.restartType === 'goal-kick' && this.restartLock &&
+      body.team !== this.restartLock.team && command.type === 'moveTo') {
+      const nearHome = this.ball.pos.x < PITCH.length / 2;
+      const t2 = command.target;
+      const inBox = (nearHome ? t2.x < GOAL.boxDepthM + 1.5 : t2.x > PITCH.length - GOAL.boxDepthM - 1.5) &&
+        Math.abs(t2.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 1.5;
+      if (inBox) {
+        const xOut = nearHome ? GOAL.boxDepthM + 2 : PITCH.length - GOAL.boxDepthM - 2;
+        command = { ...command, target: { x: xOut, y: t2.y } };
+      }
+    }
     this.receiveOnLine.delete(body.id);
     body.command = command;
     body.pathIndex = 0;

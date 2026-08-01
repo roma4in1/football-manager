@@ -213,39 +213,76 @@ test('THE COMPLETION BAND (re-derived on the honest-aerial world): match complet
     `completion median-of-6 in the real band (${(med * 100).toFixed(1)}% of [${shares.map((v) => (v * 100).toFixed(0)).join(',')}])`);
 });
 
-test('THE RESTART-LAW REGRESSION PIN: the box stays clear until the goal kick is IN PLAY', () => {
-  // Watch-5 regression: enforcement was gated on phase==="dead" while
-  // the goal-kick keeper PICKS UP the ball (phase "carried") before
-  // striking — the box refilled the moment he touched it. The pin
-  // asserts the law across the WHOLE pending window, any ball phase.
-  let violations = 0;
-  let pendingTicks = 0;
+test('THE RESTART-LAW REGRESSION PIN: legality is REACHED at the goal kick, and the restart WAITS', () => {
+  // ELEVENTH instance of the references-calibrated-before-corrections
+  // class, and the FIRST where the reference was EMPTY rather than
+  // stale: the old pin's 2s transit grace exceeded every observed
+  // pending window (max 1.8s) — the violation class was empty by
+  // construction and the pin reported success for its entire
+  // existence while p50 1 opponent stood in the box at the kick.
+  // HISTORY: zero-tolerance original (knife-edged) -> 2s grace
+  // (vacuous) -> THIS: the enforceable law is LEGALITY AT THE KICK
+  // (the waiting-restart build defers the kick until the box is
+  // clear), plus the WAIT'S EXISTENCE (window >= the 6s dwell floor),
+  // plus ANTI-VACUITY (the class the law acts on must be observed
+  // populated at some tick of the window — a pin whose subject cannot occur is
+  // no pin; per-tick grace clauses are retired because clear-time
+  // p95 (~7s) sits within a tick-budget of window length, so any
+  // grace either fires on the law working or can never fire).
+  // Ruler: 3 seeds cb-0..2, m11-match halves; falsifiability
+  // DEMONSTRATED before acceptance: with the wait disabled this pin
+  // fails on illegal kicks (see session ledger).
+  let kicks = 0;
+  let illegalKicks = 0;
+  let openWithOccupants = 0;
+  const windows: number[] = [];
   for (const seed of ['cb-0', 'cb-1', 'cb-2']) {
     const sim = new Sim(scenarioByName('m11-match'), seed);
     const P = sim as any;
-    for (let t = 0; t < 2700; t++) {
-      sim.step();
-      if (P.restartType !== 'goal-kick' || !P.restartLock) continue;
-      pendingTicks++;
-      const award = P.restartLock.team as string;
-      const nearHome = sim.ball.pos.x < 52.5;
-      // GRACE (knife-edge correction, documented): live-phase enforcement
-      // is COMMAND-based — a violator WALKS out, which takes transit
-      // time. A body still inside 2s after the award is a violation; the
-      // walk-out itself is the law working. (The zero-tolerance original
-      // passed only while trajectories happened never to start deep.)
-      const pendAge = t - (P.deadSinceTick > 0 ? P.deadSinceTick : t);
-      if (pendAge < 20) continue;
+    let pendStart = -1;
+    let wasGoalKick = false;
+    let sawOccupant = false;
+    let award: string | null = null;
+    let nearHome = false;
+    const countBox = (): number => {
+      let n = 0;
       for (const b of sim.bodies) {
         if (b.team === award || P.sentOff.has(b.id)) continue;
         const inBox = (nearHome ? b.pos.x < 16.5 - 0.7 : b.pos.x > 105 - 16.5 + 0.7) &&
           Math.abs(b.pos.y - 34) < 20.16 - 0.7;
-        if (inBox) violations++;
+        if (inBox) n++;
+      }
+      return n;
+    };
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      if (P.restartType === 'goal-kick' && P.restartLock) {
+        if (pendStart < 0) {
+          pendStart = t;
+          wasGoalKick = true;
+          award = P.restartLock.team as string;
+          nearHome = sim.ball.pos.x < 52.5;
+          sawOccupant = false;
+        }
+        if (!sawOccupant && countBox() > 0) sawOccupant = true;
+      } else if (wasGoalKick && pendStart >= 0) {
+        kicks++;
+        windows.push(t - pendStart);
+        if (countBox() > 0) illegalKicks++;
+        if (sawOccupant) openWithOccupants++;
+        pendStart = -1;
+        wasGoalKick = false;
+      } else {
+        pendStart = -1;
+        wasGoalKick = false;
       }
     }
   }
-  assert.ok(pendingTicks > 0, `goal kicks occurred (${pendingTicks} pending ticks)`);
-  assert.ok(violations === 0, `no opponent inside the box while a goal kick is pending (${violations} violation-ticks)`);
+  assert.ok(kicks > 0, `goal kicks occurred (${kicks})`);
+  assert.ok(illegalKicks === 0, `every goal kick released with the box CLEAR (${illegalKicks}/${kicks} illegal)`);
+  const w = [...windows].sort((a, b) => a - b);
+  assert.ok(w[Math.floor(w.length / 2)] >= 55, `the restart WAITS (median window ${w[Math.floor(w.length / 2)]} ticks >= 55)`);
+  assert.ok(openWithOccupants > 0, `anti-vacuity: the violation class is populated during windows (${openWithOccupants}/${kicks})`);
 });
 
 test('THE DART-VOLUME BAND (re-derived distributionally): the run game lives, and the 3.3s cycle stays dead', () => {
