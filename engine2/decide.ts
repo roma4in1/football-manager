@@ -2817,9 +2817,21 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   // OUT (over the touchline for a throw, upfield, behind for a corner
   // conceded) instead of dwelling and feeding the rebound. Match-gated:
   // the 1v1 keeper drills pin the raw striker/keeper physics.
-  const gOwn = goalCenter(team);
-  const boxPressed = bodies.length >= 18 && Math.hypot(gOwn.x - here.x, gOwn.y - here.y) < 20 &&
-    opponents.some((o) => Math.hypot(o.pos.x - here.x, o.pos.y - here.y) < 8);
+  // THE OWN-BOX EMPHATIC CLEARANCE IS RETIRED, NOT REPAIRED (watch-10,
+  // the eye's third report on this item, and it was RIGHT all three
+  // times): the clause read `goalCenter(team)` — which returns the goal
+  // a team ATTACKS — into a variable named gOwn, so it fired "within
+  // 20 m of the OPPONENT'S goal with a defender inside 8 m", at
+  // QUADRUPLE utility: the striker in the box, hammering the ball out
+  // behind the goal he attacks (a-st2, wb-911 t=523, dest (-11.3,-4.0)).
+  // It never once fired for the defenders it was written for.
+  // Correcting the SIGN would both remove the defect AND activate a
+  // mechanism that has never been live — measured cost: possession
+  // length 3.3s vs the pin's 3.5 floor (own-box clearances end
+  // possessions). That is a separate build with its own preregistration.
+  // Removing the clause removes EXACTLY the live defect and nothing
+  // else; the own-third gate below is untouched and still clears.
+  const boxPressed = false;
   if (!keep && ((ownProgress < DECIDE.clearMaxX && pressed) || boxPressed)) {
     const sgn = attackSign(team);
     const dest = boxPressed

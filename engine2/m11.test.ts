@@ -236,6 +236,10 @@ test('THE RESTART-LAW REGRESSION PIN: legality is REACHED at the goal kick, and 
   let illegalKicks = 0;
   let openWithOccupants = 0;
   const windows: number[] = [];
+  // (Pool stays 3: the 0/N read was the RULER, not the pool — widening
+  // it was a misdiagnosis, recorded. With the true-box ruler the class
+  // is populated in every window; more seeds would buy legality power,
+  // not anti-vacuity, and cost ~17 s per run.)
   for (const seed of ['cb-0', 'cb-1', 'cb-2']) {
     const sim = new Sim(scenarioByName('m11-match'), seed);
     const P = sim as any;
@@ -244,12 +248,21 @@ test('THE RESTART-LAW REGRESSION PIN: legality is REACHED at the goal kick, and 
     let sawOccupant = false;
     let award: string | null = null;
     let nearHome = false;
-    const countBox = (): number => {
+    // TWO RULERS, TWO QUESTIONS (the anti-vacuity leg was borrowing the
+    // legality leg's tolerance and reading its own class empty):
+    // LEGALITY keeps the 0.7 m inset — a body grazing the line must not
+    // fail the pin. ANTI-VACUITY must use the TRUE box: it asks "did the
+    // law have work to do", and the law parks walked-out bodies in
+    // exactly the outer 0.7 m shell (witnessed: a-cm1 at x=16.38, inside
+    // the box, invisible to the inset ruler). Same family as the fifth
+    // instrument rule: a tolerance imported from a different question
+    // silently empties the class it is applied to.
+    const countBox = (inset: number): number => {
       let n = 0;
       for (const b of sim.bodies) {
         if (b.team === award || P.sentOff.has(b.id)) continue;
-        const inBox = (nearHome ? b.pos.x < 16.5 - 0.7 : b.pos.x > 105 - 16.5 + 0.7) &&
-          Math.abs(b.pos.y - 34) < 20.16 - 0.7;
+        const inBox = (nearHome ? b.pos.x < 16.5 - inset : b.pos.x > 105 - 16.5 + inset) &&
+          Math.abs(b.pos.y - 34) < 20.16 - inset;
         if (inBox) n++;
       }
       return n;
@@ -264,11 +277,11 @@ test('THE RESTART-LAW REGRESSION PIN: legality is REACHED at the goal kick, and 
           nearHome = sim.ball.pos.x < 52.5;
           sawOccupant = false;
         }
-        if (!sawOccupant && countBox() > 0) sawOccupant = true;
+        if (!sawOccupant && countBox(0) > 0) sawOccupant = true; // TRUE box
       } else if (wasGoalKick && pendStart >= 0) {
         kicks++;
         windows.push(t - pendStart);
-        if (countBox() > 0) illegalKicks++;
+        if (countBox(0.7) > 0) illegalKicks++; // legality tolerance
         if (sawOccupant) openWithOccupants++;
         pendStart = -1;
         wasGoalKick = false;
@@ -299,8 +312,12 @@ test('THE FREE-KICK/PENALTY RETREAT PIN: ceremonied kicks are legal, and the wai
   // class rarity — the fix is pool width, never clause softening).
   // Falsifiability demonstrated: with the wait disabled this pin
   // fails (see ledger). Ruler: 12 seeds cb-0..11.
+  // CLASS-RATE-SIZED POOLS (ruled): the ceremonied-FK leg reads the
+  // first 12 seeds (~1/half event); the PENALTY leg reads all 24
+  // (~0.5/half; expected ~6, P(zero) negligible) — the rare-event
+  // anti-vacuity knife-edged twice at pool 12.
   let cerFk = 0, pens = 0, illegal = 0, shortCeremonies = 0;
-  for (let s = 0; s < 12; s++) {
+  for (let s = 0; s < 24; s++) {
     const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
     const P = sim as any;
     let pendStart = -1, pen = false, spot: { x: number; y: number } | null = null;
@@ -315,7 +332,9 @@ test('THE FREE-KICK/PENALTY RETREAT PIN: ceremonied kicks are legal, and the wai
         const label = kb ? sim.actionLabels.get(kb.id) ?? '' : '';
         const ceremonied = pen || label === 'fk-shot' || label === 'fk-cross';
         if (ceremonied && kb && spot) {
-          if (pen) pens++; else cerFk++;
+          if (pen) pens++;
+          else if (s < 12) cerFk++;
+          else { pendStart = -1; pen = false; spot = null; continue; }
           if (t - pendStart < 55) shortCeremonies++;
           for (const b of sim.bodies) {
             if (b.id === kb.id || P.sentOff.has(b.id)) continue;
