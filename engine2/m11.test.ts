@@ -293,11 +293,14 @@ test('THE FREE-KICK/PENALTY RETREAT PIN: ceremonied kicks are legal, and the wai
   // fk-cross / penalty — QUICK kicks are exempt BY LAW: a taker may
   // legally play before the wall sets); (2) the wait exists (ceremonied
   // windows >= 55 ticks); (3) anti-vacuity per class (both classes
-  // observed in the pool — cb-0..5 carries 2 ceremonied FKs and 3
-  // penalties at authoring). Falsifiability demonstrated: with the
-  // wait disabled this pin fails (see ledger). Ruler: 6 seeds cb-0..5.
+  // observed in the pool). POOL WIDENED 6 -> 12 seeds when world
+  // divergence emptied the penalty class from cb-0..5 (penalties are
+  // ~1/match rare events; the anti-vacuity clause knife-edged on
+  // class rarity — the fix is pool width, never clause softening).
+  // Falsifiability demonstrated: with the wait disabled this pin
+  // fails (see ledger). Ruler: 12 seeds cb-0..11.
   let cerFk = 0, pens = 0, illegal = 0, shortCeremonies = 0;
-  for (let s = 0; s < 6; s++) {
+  for (let s = 0; s < 12; s++) {
     const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
     const P = sim as any;
     let pendStart = -1, pen = false, spot: { x: number; y: number } | null = null;
