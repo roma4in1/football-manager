@@ -3282,10 +3282,24 @@ export class Sim {
                 this.instructions.get(id)?.holdWidth !== true) {
                 const active = this.meshDuty.get(id);
                 const dCar = Math.hypot(carrierBody.pos.x - body.pos.x, carrierBody.pos.y - body.pos.y);
+                // INTERCEPT, NOT TAIL (the attribution probe's half-(b):
+                // mesh 1-2 at carry start decays to 0 by +40 while the
+                // carrier advances 13-30m — a glide filler chasing the
+                // carrier's CURRENT position loses the arrival race by
+                // construction). The ring anchors to the carrier's
+                // PROJECTED position (1.5s lead, bounded 10m) — the same
+                // principle as chaseBall's intercept point. Regime,
+                // duration, cooldown, concurrency all unchanged.
+                const meshRing = (): Vec2 => {
+                  const px = carrierBody.pos.x + Math.max(-10, Math.min(10, carrierBody.vel.x * 1.5));
+                  const py = carrierBody.pos.y + Math.max(-10, Math.min(10, carrierBody.vel.y * 1.5));
+                  const dx = body.pos.x - px;
+                  const dy = body.pos.y - py;
+                  const dP = Math.max(0.1, Math.hypot(dx, dy));
+                  return { x: px + (dx / dP) * 11, y: py + (dy / dP) * 11 };
+                };
                 if (active !== undefined && this.tick < active && dCar > 9) {
-                  const ux = (body.pos.x - carrierBody.pos.x) / Math.max(0.1, dCar);
-                  const uy = (body.pos.y - carrierBody.pos.y) / Math.max(0.1, dCar);
-                  meshT = { x: carrierBody.pos.x + ux * 11, y: carrierBody.pos.y + uy * 11 };
+                  meshT = meshRing();
                 } else if (active === undefined && dCar > 16 && dCar <= 21 &&
                   this.tick >= (this.meshRest.get(id) ?? 0)) { // iter 2 (band 23/cooldown 60) went BACKWARD — movers expired mid-journey; iter-1 bound restored
                   let concurrent = 0;
@@ -3296,9 +3310,7 @@ export class Sim {
                   if (concurrent < 2) {
                     this.meshDuty.set(id, this.tick + 25);
                     this.meshRest.set(id, this.tick + 85);
-                    const ux = (body.pos.x - carrierBody.pos.x) / dCar;
-                    const uy = (body.pos.y - carrierBody.pos.y) / dCar;
-                    meshT = { x: carrierBody.pos.x + ux * 11, y: carrierBody.pos.y + uy * 11 };
+                    meshT = meshRing();
                   }
                 }
                 if (active !== undefined && this.tick >= active) this.meshDuty.delete(id);
