@@ -3358,12 +3358,26 @@ export class Sim {
               // second-last defender parks its man permanently flagged —
               // unpassable, and a whistle the moment the cross comes. He
               // holds the line's shoulder and attacks the slot late.
+              // ...AND THE BALL CLAUSE (the wing-phase deadlock's cut):
+              // offside requires being beyond the second-last defender
+              // AND the ball — the adjudication (updateOffside) and the
+              // pricing (offsideBy) both carry the clause; this clamp
+              // alone omitted it, so with a teammate coupled DEEP AND
+              // WIDE (the crossFeed situation) the box stayed legally
+              // occupiable yet unoccupied (WAC box p50 0, crosses from
+              // 39 WAC episodes: 0). A runner behind the BALL is onside
+              // anywhere: the shoulder-hold survives for early balls
+              // (ball behind the line leaves the clamp unchanged); the
+              // deep wide carry RELEASES the box, committed on the
+              // situation, not the delivery.
               if (this.brains.size >= 12) {
                 const oppUs2 = this.bodies.filter((b) => b.team !== body.team)
                   .map((b) => b.pos.x * boxSign).sort((a, b) => b - a);
                 const lineU2 = oppUs2[1];
-                if (lineU2 !== undefined && station.x * boxSign > lineU2 - 1) {
-                  station.x = (lineU2 - 1) * boxSign;
+                const ballU2 = this.ball.pos.x * boxSign;
+                const onsideU = Math.max(lineU2 ?? -Infinity, ballU2) - 1;
+                if (Number.isFinite(onsideU) && station.x * boxSign > onsideU) {
+                  station.x = onsideU * boxSign;
                 }
               }
               const dSt = Math.hypot(station.x - body.pos.x, station.y - body.pos.y);
