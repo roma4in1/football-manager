@@ -1055,7 +1055,24 @@ export class Sim {
         face,
         external: body.command.type === 'chaseBall' || duelRide ? live : undefined,
         steer: fetching ? live : undefined,
-        carrying: isCarrier,
+        // CARRYING MEANS THE BALL IS AT HIS FEET (the third
+        // isCarrier-means-ownership correction this session): the
+        // kinematics-side dribble tax (cap *= 0.84 + 0.04*dribbling/20)
+        // was binding 64% of FETCH ticks — a man 2.5 m+ from a ball
+        // rolling free, paying a dribbling cost for a ball he is not
+        // dribbling. He is chasing; he runs free. THE BOUNDARY IS NOT
+        // controlRadiusM: measured, normal dribbling sits at gap p50
+        // 1.13 / p90 1.87 m — ABOVE the 0.9 claim radius — so gating
+        // there would strip the tax from ordinary carrying, which three
+        // drills caught immediately (carry-is-slower, dribble-weave,
+        // covered-duel: they were right and the first predicate was
+        // wrong). 2.5 m is the engine's own ball-is-right-there
+        // threshold in the chase machine and the FAR class this whole
+        // investigation measured. EXPECTED EFFECT IS
+        // SMALL AND STATED IN ADVANCE (he averages 4.8 m/s against that
+        // 5.63 ceiling, so a null is not a failure) — this is a
+        // correctness fix, not a performance one.
+        carrying: isCarrier && gap <= 2.5,
         // the DRIBBLE SPEED COST (the convergence loop's physics find:
         // carriers ran at FULL sprint with the ball glued, so equal-pace
         // riders could never close and every carry survived by

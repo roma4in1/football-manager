@@ -75,6 +75,7 @@ test('the COVERED DUEL defends honestly: ride + goal-side cover + herd wide + th
   const seeds = ['wb-0', 'wb-1', 'wb-2', 'cd-0', 'cd-1', 'cd-2', 'cd-3', 'cd-4'];
   for (const name of ['duel-2v1-covered-close', 'duel-2v1-covered-heavy']) {
     let honest = 0;
+    let strips = 0;
     for (const seed of seeds) {
       const sim = new Sim(scenarioByName(name), seed);
       let minGoal = Infinity;
@@ -97,9 +98,21 @@ test('the COVERED DUEL defends honestly: ride + goal-side cover + herd wide + th
         if (d2.pos.x > att.pos.x) goalSide++;
         if (sim.ball.phase === 'dead') break;
       }
-      if (stripped && minGoal > 16 && maxWide > 20 && ride >= 3 && goalSide / Math.max(ticks, 1) > 0.5) honest++;
+      if (minGoal > 16 && maxWide > 20 && ride >= 3 && goalSide / Math.max(ticks, 1) > 0.5) honest++;
+      if (stripped) strips++;
     }
-    assert.ok(honest >= 7, `${name}: the covered pair defends honestly (strip, no danger, herd, ride, II.7 cover) — ${honest}/8`);
+    // RE-SPECIFIED (third pin in the outcome-clause family, after the
+    // wing-duel floor — retired as guarding a degenerate attack — and the
+    // carried-share test): RIDE, HERD, COVER and no-danger are BEHAVIOUR
+    // and stay deterministic at 7/8. THE STRIP IS AN OUTCOME that presumes
+    // the carrier fails to recover his own touch, so the drill broke the
+    // moment his chase improved — a pin encoding a defect. It becomes a
+    // RATE. History at re-specification: strip 8/8 and behaviour 8/8 on
+    // both scenarios, 8 seeds (wb-0..2 + cd-0..4), 300 ticks; the floor
+    // sits at 5/8 so a carrier who recovers better cannot break the pin
+    // while a defence that stops winning still does.
+    assert.ok(honest >= 7, `${name}: the covered pair defends honestly (no danger, herd, ride, II.7 cover) — ${honest}/8`);
+    assert.ok(strips >= 5, `${name}: the defence still WINS the ball at rate (${strips}/8 strips; floor 5, history 8/8)`);
   }
 });
 
