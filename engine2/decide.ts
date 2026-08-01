@@ -1881,6 +1881,21 @@ const defShapeTarget = (defender: BodyState, unit: readonly BodyState[], homes: 
       st.x = Math.max(2, Math.min(PITCH.length - 2, st.x));
     }
   }
+  // THE COMPACTNESS LAW BINDS THE CHAIN, NOT ONE STAGE (principles
+  // II.1: out of possession no station sits more than 28 m ahead of
+  // the ball). blockStation clamps its own output, but the override
+  // chain — curfew lane, zonal shade, vacancy rotation — runs
+  // DOWNSTREAM and re-opened the front: the curfew lifted the
+  // strikers' emissions +12 m median on 76% of settled-DEF ticks
+  // (raw p50 25 -> final 33, p75 44), single-handedly setting block
+  // length ~45 vs the 36-40 target. The front-cap sessions' edits
+  // never fired because they capped the stage, not the chain.
+  {
+    const uF = st.x * sgnD;
+    const bU = ball.pos.x * sgnD;
+    if (uF > bU + 28) st.x = (bU + 28) * sgnD;
+    st.x = Math.max(2, Math.min(PITCH.length - 2, st.x));
+  }
   return st;
 };
 
