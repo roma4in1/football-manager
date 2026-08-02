@@ -243,6 +243,17 @@ export class Sim {
    * a right-back win the race to his own goal kick and roll it straight
    * to the pressing striker */
   private restartTaker: string | null = null;
+  /** GOAL-KICK POSTURE (watch 12 + 13). The staging loop only ever moved
+   * OPPONENTS — the kicking team was never placed, which is why the box
+   * filled (5.93 own outfielders at the kick). NO TELEPORT: a half-pitch
+   * relocation broke Bar 1 ('no teleports'), and the measurement showed 60
+   * ticks between the award and the kick — ample to WALK. So the posture is
+   * HELD at the command chokepoint instead, the same mechanism that already
+   * holds opponents out. gkStay = the two receiving centre-backs (the two
+   * deepest own outfielders, role-free); gkFloorX = how far up the rest are
+   * held — a HIGH PRESS is played OVER, a DEEP BLOCK played THROUGH. */
+  private gkStay = new Set<string>();
+  private gkFloorX: number | null = null;
   private lastGoalCount = 0;
   private prevCarrierTeam: 'home' | 'away' | null = null;
   /** off-ball ATTACK brains owned by the idle branch (station/support) —
@@ -4747,6 +4758,17 @@ export class Sim {
       }
       return;
     }
+    if (rt === 'goal-kick') {
+      const gx = spot.x < PITCH.length / 2 ? 0 : PITCH.length;
+      const own = this.bodies.filter((b) => b.team === award &&
+        !this.keepers.has(b.id) && !this.sentOff.has(b.id));
+      const opps = this.bodies.filter((b) => b.team !== award && !this.sentOff.has(b.id));
+      const oppMean = opps.length
+        ? opps.reduce((a, o) => a + Math.abs(o.pos.x - gx), 0) / opps.length : 99;
+      this.gkFloorX = oppMean < BALL.gkPressHeightM ? BALL.gkLongFloorM : BALL.gkShortFloorM;
+      this.gkStay = new Set(own.slice().sort((a, b) =>
+        Math.abs(a.pos.x - gx) - Math.abs(b.pos.x - gx)).slice(0, 2).map((b) => b.id));
+    }
     for (const b of this.bodies) {
       if (b.team === award || this.sentOff.has(b.id)) continue;
       if (rt === 'goal-kick') outOfBox(b, spot.x < PITCH.length / 2);
@@ -4952,7 +4974,9 @@ export class Sim {
     // command flows, not one stage of it.
     if (this.restartLock && command.type === 'moveTo' &&
       (this.restartType === 'goal-kick'
-        ? body.team !== this.restartLock.team
+        ? (body.team !== this.restartLock.team ||
+          (!this.gkStay.has(body.id) && !this.keepers.has(body.id) &&
+            body.id !== this.restartTaker))
         : this.restartType === 'free-kick' && this.restartPenalty &&
           body.id !== this.restartTaker && !this.keepers.has(body.id))) {
       // goal kick: opponents out of the box; penalty: EVERYONE except
@@ -4962,7 +4986,12 @@ export class Sim {
       const t2 = command.target;
       const inBox = (nearHome ? t2.x < GOAL.boxDepthM + 1.5 : t2.x > PITCH.length - GOAL.boxDepthM - 1.5) &&
         Math.abs(t2.y - PITCH.width / 2) < GOAL.boxHalfWidthM + 1.5;
-      if (inBox) {
+      const ownHeld = this.restartType === 'goal-kick' && this.restartLock !== null &&
+        body.team === this.restartLock.team && this.gkFloorX !== null;
+      if (ownHeld) {
+        const fx = nearHome ? this.gkFloorX! : PITCH.length - this.gkFloorX!;
+        if (nearHome ? t2.x < fx : t2.x > fx) command = { ...command, target: { x: fx, y: t2.y } };
+      } else if (inBox) {
         const xOut = nearHome ? GOAL.boxDepthM + 2 : PITCH.length - GOAL.boxDepthM - 2;
         command = { ...command, target: { x: xOut, y: t2.y } };
       }

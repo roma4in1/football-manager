@@ -153,6 +153,9 @@ export const BALL = {
   /** a loose ball dying in his defensive zone with no mate nearer — he leaves
    * his line and CLAIMS it (the sweep itself) */
   keeperSweepChaseM: 26,
+  gkPressHeightM: 45,
+  gkShortFloorM: 34,
+  gkLongFloorM: 52,
   /** NEAR-POST cover: he shades his spot toward the post on the ball's side —
    * you do not get beaten at your near post; the across-goal shot (far post,
    * the longer dive) is the one that beats him. Shade scales with the ball's
