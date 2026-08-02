@@ -101,6 +101,13 @@ export interface KickEvent {
 export interface BodyState {
   readonly id: string;
   readonly team: 'home' | 'away';
+  /** L7: this body is a GOALKEEPER. Carried on the body because the
+   * PRICING path needs it and has no other route to it — an open net
+   * behind an advanced keeper is not the same object as a defender's
+   * body in the lane, and pricing them alike is what collapsed the
+   * range-strike class. sim already knows this at construction (the
+   * scenario spec's `keeper` flag); this only carries it forward. */
+  readonly keeper?: boolean;
   readonly attributes: BodyAttributes;
   pos: Vec2;
   vel: Vec2;

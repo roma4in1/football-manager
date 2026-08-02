@@ -298,6 +298,7 @@ export class Sim {
       pos: { ...b.pos },
       vel: { x: 0, y: 0 },
       speed: 0,
+      keeper: b.keeper === true,
       facing: b.facing ?? (b.pos.x <= 52.5 ? 0 : Math.PI),
       regime: 'walk',
       stance: 'settled',
