@@ -280,7 +280,7 @@ export class Sim {
   /** a decided kick waiting for the ball to come back into touch reach —
    * released ON THE NEXT TOUCH, not after a dead trap (the 1.1s gather
    * latency closed every lane the decision had correctly picked) */
-  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number; spin?: number; knock?: boolean }>();
+  private readonly pendingKicks = new Map<string, { dest: Vec2; speedMps: number; receiverId?: string; loftDeg?: number; spin?: number; knock?: boolean; kind?: string }>();
 
   constructor(def: ScenarioDef, seed: string) {
     if (def.version !== 1) {
@@ -1665,6 +1665,8 @@ export class Sim {
     if (pending && pendingAligned) {
       const noisy = noisyKick(this.rng, this.tick, carrier.id, carrier.attributes, pending.dest, this.ball.pos, pending.speedMps, carrier.facing);
       kickBall(this.ball, noisy.target, noisy.speedMps, pending.loftDeg ?? 0, carrier.id, this.tick, pending.spin ?? 0);
+      // THE LABEL MARKS THE ACT (second strike site). Reporting only.
+      if (pending.kind) this.actionLabels.set(carrier.id, pending.kind === 'pass' ? `pass→${pending.receiverId}` : pending.kind);
       this.ball.sprayM = Math.hypot(noisy.target.x - pending.dest.x, noisy.target.y - pending.dest.y);
       if (pending.receiverId) {
         this.intendedReceiverId = pending.receiverId;
@@ -4263,7 +4265,10 @@ export class Sim {
         case 'shoot':
         case 'knock':
         case 'clear': {
-          this.actionLabels.set(id, intent.kind === 'pass' ? `pass→${intent.receiverId}` : intent.kind);
+          // THE LABEL MARKS THE ACT, NOT THE INTENT: emitted here it
+          // survived the reach/alignment check, so a body who intended to
+          // shoot but was out of reach kept a `shoot` label while the CARRY
+          // TOUCH did the kicking (19% of 'shots' were dribble touches).
           const reach = Math.hypot(this.ball.pos.x - body.pos.x, this.ball.pos.y - body.pos.y);
           const strikeDir = Math.atan2(intent.dest.y - body.pos.y, intent.dest.x - body.pos.x);
           const strikeMis = Math.abs(((strikeDir - body.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
@@ -4303,6 +4308,7 @@ export class Sim {
             const noisy = noisyKick(this.rng, this.tick, id, body.attributes, intent.dest, this.ball.pos, intent.speedMps, body.facing);
             kickBall(this.ball, noisy.target, noisy.speedMps, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.loftDeg ?? 0) : 0, id, this.tick, intent.kind === 'pass' || intent.kind === 'shoot' ? (intent.spin ?? 0) : 0);
             this.ball.sprayM = Math.hypot(noisy.target.x - intent.dest.x, noisy.target.y - intent.dest.y);
+            this.actionLabels.set(id, intent.kind === 'pass' ? `pass→${intent.receiverId}` : intent.kind);
             if (intent.kind === 'pass') {
               this.intendedReceiverId = intent.receiverId;
               this.lastGiveTick.set(id, this.tick);
@@ -4333,6 +4339,11 @@ export class Sim {
               ...(intent.kind === 'pass' && intent.spin ? { spin: intent.spin } : {}),
               ...(intent.kind === 'pass' ? { receiverId: intent.receiverId } : {}),
               ...(intent.kind === 'knock' ? { knock: true } : {}),
+              // the ACT's identity, carried so the queue release can REPORT
+              // what it was: that path emitted no label at all, so whole
+              // drills of genuine strikes went uncounted while
+              // intent-labelled dribble touches were counted as shots
+              kind: intent.kind,
             });
             if (body.command.type !== 'chaseBall') {
               this.assign(body, { type: 'chaseBall', regime: 'run' });
