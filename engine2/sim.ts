@@ -217,6 +217,9 @@ export class Sim {
   private readonly lostPossessionAt = new Map<'home' | 'away', number>();
   private carrierSince = -1;
   /** measurement only: probes tap the carrier's live pass board */
+  /** COUNTERFACTUAL FORK: return an option RANK to force for this carrier
+   * at this tick, or null to leave the decision alone. */
+  forcePick: ((carrierId: string, tick: number) => number | null) | null = null;
   boardTap: ((carrierId: string, tick: number, receiverId: string, utility: number, pC?: number, kind?: string) => void) | null = null;
   /** measurement only: probes tap the carrier's FULL ranked board — every
    * option's (kind, utility) plus the shot's priced xG. Fires once per
@@ -4124,6 +4127,7 @@ export class Sim {
       const beatCommitted = this.beatExec?.carrierId === id && this.beatExec.phase !== 'approach';
       if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
+          ...(this.forcePick ? (() => { const pi = this.forcePick!(id, this.tick); return pi === null ? {} : { pickIndex: pi }; })() : {}),
           ...(this.boardTap ? { board: (rid: string, u: number, pC?: number, kind?: string) => this.boardTap!(id, this.tick, rid, u, pC, kind) } : {}),
           ...(this.fullBoardTap ? { fullBoard: (ranked: ReadonlyArray<{ kind: string; utility: number }>, xg: number) => this.fullBoardTap!(id, this.tick, ranked, xg) } : {}),
           carrier: body,

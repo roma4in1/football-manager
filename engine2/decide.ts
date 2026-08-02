@@ -1908,6 +1908,13 @@ export interface DecideInput {
    * diverged — the loft/curl families price covered lanes the ground
    * recomputation called dead.) */
   board?: (receiverId: string, utility: number, pC?: number, kind?: string) => void;
+  /** COUNTERFACTUAL FORK (measurement only): force the decision to the
+   * option at this RANK instead of the winner. Every "was the choice right"
+   * question in this ledger has been unanswerable because the board says what
+   * was picked and the outcome says what followed — nothing supplied what
+   * WOULD have followed. Keyed RNG makes the fork EXACT, not statistical.
+   * Undefined = untouched; the unforked path must stay byte-identical. */
+  pickIndex?: number;
   /** MEASUREMENT ONLY (the FULL board instrument): receives EVERY option's
    * (kind, utility) once the board is assembled and ranked, plus the
    * shot's own priced xG so a probe need not re-derive it. The older
@@ -2913,5 +2920,7 @@ export const decide = (input: DecideInput): Intent => {
     if (same && best.utility - same.utility <
       Math.max(DECIDE.switchCostAbsFloor, DECIDE.switchCostRel * same.utility)) best = same;
   }
+  // the fork, last of all so it overrides hysteresis too
+  if (input.pickIndex !== undefined && options[input.pickIndex]) return options[input.pickIndex];
   return best;
 };
