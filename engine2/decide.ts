@@ -1908,6 +1908,16 @@ export interface DecideInput {
    * diverged — the loft/curl families price covered lanes the ground
    * recomputation called dead.) */
   board?: (receiverId: string, utility: number, pC?: number, kind?: string) => void;
+  /** MEASUREMENT ONLY (the FULL board instrument): receives EVERY option's
+   * (kind, utility) once the board is assembled and ranked, plus the
+   * shot's own priced xG so a probe need not re-derive it. The older
+   * `board` tap above is PASS-ONLY by construction — every one of its
+   * call sites emits a pass candidate — so it could not answer a
+   * shot-vs-winner margin question, and inferring the margin from action
+   * labels instead is what voided two probes. Fires once per decide()
+   * call, i.e. on RECONSIDER ticks only, which is also the correct
+   * denominator: carrier-TICKS are duration, not choice. */
+  fullBoard?: (ranked: ReadonlyArray<{ kind: string; utility: number }>, xgHere: number) => void;
   carrier: BodyState;
   bodies: readonly BodyState[];
   ball: BallState;
@@ -2842,6 +2852,8 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
   }
 
   options.sort((a, b) => b.utility - a.utility);
+  // the FULL board, ranked — measurement only, no behaviour reads this
+  input.fullBoard?.(options.map((o) => ({ kind: o.kind, utility: o.utility })), xGHere);
   // L5b — the DELAYED RELEASE (the forward note, now earnable): if the best
   // option is a pass to a RUNNER whose value is still RISING (project him
   // half a second on), hold the ball a beat — the run makes the pass better.

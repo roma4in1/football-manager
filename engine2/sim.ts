@@ -218,6 +218,12 @@ export class Sim {
   private carrierSince = -1;
   /** measurement only: probes tap the carrier's live pass board */
   boardTap: ((carrierId: string, tick: number, receiverId: string, utility: number, pC?: number, kind?: string) => void) | null = null;
+  /** measurement only: probes tap the carrier's FULL ranked board — every
+   * option's (kind, utility) plus the shot's priced xG. Fires once per
+   * decide() call, i.e. on RECONSIDER ticks, which is the correct
+   * denominator for choice (carrier-ticks measure duration). The pass-only
+   * boardTap above cannot answer a shot-vs-winner margin. */
+  fullBoardTap: ((carrierId: string, tick: number, ranked: ReadonlyArray<{ kind: string; utility: number }>, xgHere: number) => void) | null = null;
   /** SELF-PLAY TELEMETRY (the memory space): an optional hook the match
    * harness sets — the sim emits decision→outcome pairs (priced pass
    * completion vs what actually happened) for the calibration ledger.
@@ -4119,6 +4125,7 @@ export class Sim {
       if (!intent || (this.tick % DECIDE.reconsiderTicks === 0 && !beatCommitted)) {
         intent = decide({
           ...(this.boardTap ? { board: (rid: string, u: number, pC?: number, kind?: string) => this.boardTap!(id, this.tick, rid, u, pC, kind) } : {}),
+          ...(this.fullBoardTap ? { fullBoard: (ranked: ReadonlyArray<{ kind: string; utility: number }>, xg: number) => this.fullBoardTap!(id, this.tick, ranked, xg) } : {}),
           carrier: body,
           heldTicks: this.tick - this.carrierSince,
           // the world AS HE LAST SAW IT — an unseen opponent can cut the
