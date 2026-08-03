@@ -1,0 +1,29 @@
+-- 0004_session-selected-league.sql — accounts arc phase 3, STEP 2: where the
+-- selected league lives.
+--
+-- THE CHOICE, and why. An account can hold entries in several leagues, so every
+-- game screen needs to know WHICH one it is looking at. Three places that could
+-- live:
+--   • a SESSION COLUMN (this)  — one server-side source of truth, survives a
+--     reload and a new tab exactly as being logged in does, and the session is
+--     already the thing every authenticated request resolves. Switching leagues
+--     is one UPDATE, and no route has to carry the id.
+--   • a cookie                 — duplicates session state on the client, and the
+--     service-worker/cookie path is already delicate (the /api denylist).
+--   • a per-request parameter  — stateless, but pushes the choice into all 36
+--     routes and their callers, which is the route work this phase defers to
+--     step 3.
+--
+-- NULL means "not chosen yet": the context layer then selects the account's
+-- only membership, or none if it has none. That keeps a single-league session
+-- behaving exactly as it does today without anyone ever setting the column.
+--
+-- ON DELETE SET NULL rather than RESTRICT: a league going away must not wedge
+-- every session that happened to be looking at it.
+--
+-- Mirrored in schema.sql in the same change. As with 0003: the column is
+-- declared LAST there so its ordinal position matches this ADD COLUMN, and the
+-- constraint name is the one Postgres auto-generates — the schema-parity check
+-- diffs pg_dump and would otherwise go red in a way that looks like drift.
+
+ALTER TABLE sessions ADD COLUMN selected_league_id UUID REFERENCES leagues(id) ON DELETE SET NULL;

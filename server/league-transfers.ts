@@ -106,8 +106,11 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
   }
 
   /** Transfers only exist in this phase — everywhere else the market is frozen. */
-  async function windowSeason(c: store.Queryable): Promise<store.SeasonRow> {
-    const season = await store.currentSeason(c);
+  /** the window season OF THE CLUB'S LEAGUE (phase 3: seasons are league-scoped) */
+  async function windowSeason(c: store.Queryable, clubId: string): Promise<store.SeasonRow> {
+    const leagueId = await store.leagueOfClub(c, clubId);
+    if (!leagueId) throw new TransferError(404, { error: 'not_found' });
+    const season = await store.currentSeason(c, leagueId);
     if (!season) throw new TransferError(409, { error: 'no_season' });
     if (season.phase !== 'transfer_window') {
       throw new TransferError(409, { error: 'window_closed', phase: season.phase });
@@ -146,7 +149,7 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
   async function makeOffer(buyerClubId: string, playerId: string, fee: number): Promise<{ offerId: string }> {
     if (!Number.isInteger(fee) || fee <= 0) throw new TransferError(422, { error: 'bad_fee' });
     return withTxn(async (c) => {
-      const season = await windowSeason(c);
+      const season = await windowSeason(c, buyerClubId);
       const contract = await store.activeContract(c, playerId);
       if (!contract) throw new TransferError(404, { error: 'not_contracted' });
       if (contract.clubId === buyerClubId) throw new TransferError(409, { error: 'own_player' });
@@ -165,7 +168,7 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
     // a stale offer is EXPIRED and the caller told — the expiry must commit,
     // so it is an outcome of the transaction, not an exception inside it
     const outcome = await withTxn(async (c) => {
-      const season = await windowSeason(c);
+      const season = await windowSeason(c, sellerClubId);
       const offer = await store.getOffer(c, offerId, true); // offer row lock: one resolution
       if (!offer || offer.sellerClubId !== sellerClubId || offer.seasonId !== season.id) {
         throw new TransferError(404, { error: 'not_found' });
@@ -204,7 +207,7 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
 
   async function signPoolPlayer(clubId: string, playerId: string): Promise<void> {
     await withTxn(async (c) => {
-      const season = await windowSeason(c);
+      const season = await windowSeason(c, clubId);
       const player = await store.lockPlayer(c, playerId); // first-come serializes here
       if (!player) throw new TransferError(404, { error: 'not_found' });
       if (await store.activeContract(c, playerId)) throw new TransferError(409, { error: 'not_free' });
@@ -219,7 +222,9 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
   }
 
   async function state(viewerClubId: string): Promise<TransferStateView> {
-    const season = await store.currentSeason(pool);
+    const leagueId = await store.leagueOfClub(pool, viewerClubId);
+    if (!leagueId) throw new TransferError(404, { error: 'not_found' });
+    const season = await store.currentSeason(pool, leagueId);
     if (!season) throw new TransferError(409, { error: 'no_season' });
     const windowOpen = season.phase === 'transfer_window';
 
@@ -245,7 +250,9 @@ export function createTransferCore(opts: TransferCoreOptions): TransferCore {
   }
 
   async function market(viewerClubId: string): Promise<MarketView> {
-    const season = await store.currentSeason(pool);
+    const leagueId = await store.leagueOfClub(pool, viewerClubId);
+    if (!leagueId) throw new TransferError(404, { error: 'not_found' });
+    const season = await store.currentSeason(pool, leagueId);
     if (!season) throw new TransferError(409, { error: 'no_season' });
     const pool_ = await store.poolPlayers(pool, season.id);
     const clubs = await store.contractedSquads(pool, season.id);

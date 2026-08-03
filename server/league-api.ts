@@ -246,8 +246,8 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     // seeded/claimed accounts get their club + current season. (Phase 3 turns
     // club/season into the selected-league entry.)
     sessioned.get('/me', async (req) => {
-      const s = await store.currentSeason(pool);
       const a = req.account;
+      const s = a.leagueId ? await store.currentSeason(pool, a.leagueId) : null;
       // the ACCOUNT's club identity — not the league's club. Null until the
       // account creates one, which is what the create-club screen keys off.
       const identity = a.accountId ? await store.getClubIdentity(pool, a.accountId) : null;
@@ -284,8 +284,11 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       req.ctx = ctx as SessionCtx;
     });
 
-    const season = async (): Promise<store.SeasonRow> => {
-      const s = await store.currentSeason(pool);
+    // the SELECTED league's season (phase 3). Every club-scoped route already
+    // resolved a club through the session, and that club is now league-scoped,
+    // so this reads the same rows it always did for a single-league account.
+    const season = async (req: FastifyRequest): Promise<store.SeasonRow> => {
+      const s = await store.currentSeason(pool, (req.ctx as SessionCtx).leagueId!);
       if (!s) throw new Error('no season configured');
       return s;
     };
@@ -300,7 +303,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
         if (confirm !== 'SIM NOW') {
           return reply.code(400).send({ error: 'confirm_required', hint: 'POST { "confirm": "SIM NOW" }' });
         }
-        const s = await season();
+        const s = await season(req);
         const mw = await store.currentMatchweek(pool, s.id);
         if (!mw || mw.revealedAt) return reply.code(409).send({ error: 'no_open_matchweek' });
         const forced = await store.forceMatchweekDeadline(pool, mw.id);
@@ -311,14 +314,14 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     }
 
     authed.get('/squad', async (req) => {
-      const s = await season();
+      const s = await season(req);
       return { players: await store.loadSquadView(pool, req.ctx.clubId, s.id) };
     });
 
     /** Player-hub detail: contract, own-season stats, growth trajectory. */
     authed.get('/squad/player/:id', async (req, reply) => {
       const { id } = req.params as { id: string };
-      const s = await season();
+      const s = await season(req);
       const squad = await store.loadSquadView(pool, req.ctx.clubId, s.id);
       if (!squad.some((p) => p.playerId === id)) return reply.code(404).send({ error: 'not_found' });
       return {
@@ -336,7 +339,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     });
 
     authed.get('/matchweek/current', async (req, reply) => {
-      const s = await season();
+      const s = await season(req);
       const mw = await store.currentMatchweek(pool, s.id);
       if (!mw) return reply.code(404).send({ error: 'no_matchweek' });
 
@@ -499,7 +502,10 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
 
     // ── facilities (training + medical; youth deferred) ───────────────────
     const facilitiesView = async (clubId: string) => {
-      const s = await season();
+      const leagueId = await store.leagueOfClub(pool, clubId);
+      if (!leagueId) throw new Error('club has no league');
+      const s = await store.currentSeason(pool, leagueId);
+      if (!s) throw new Error('no season configured');
       const row = await store.getFacilities(pool, s.id, clubId);
       if (!row) return null;
       return {
@@ -532,7 +538,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       if (facility !== 'training' && facility !== 'medical') {
         return reply.code(400).send({ error: 'bad_facility' });
       }
-      const s = await season();
+      const s = await season(req);
       if (s.phase !== 'regular' && s.phase !== 'transfer_window') {
         return reply.code(409).send({ error: 'investment_closed', phase: s.phase });
       }
@@ -569,7 +575,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
 
     // ── weekly training dial (league-growth.ts does the math) ──────────────
     authed.get('/training', async (req, reply) => {
-      const s = await season();
+      const s = await season(req);
       const row = await store.getTraining(pool, s.id, req.ctx.clubId);
       if (!row) return reply.code(404).send({ error: 'not_found' });
       return { ...row, focuses: TRAINING_FOCUSES };
@@ -588,7 +594,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       if (typeof intensity !== 'number' || !Number.isFinite(intensity) || intensity < 0 || intensity > 1) {
         return reply.code(400).send({ error: 'bad_intensity' });
       }
-      const s = await season();
+      const s = await season(req);
       if (s.phase !== 'regular' && s.phase !== 'transfer_window') {
         return reply.code(409).send({ error: 'training_closed', phase: s.phase });
       }
@@ -662,14 +668,14 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       }
     });
 
-    authed.get('/standings', async () => {
-      const s = await season();
+    authed.get('/standings', async (req) => {
+      const s = await season(req);
       return { season: { id: s.id, number: s.number }, table: await store.standings(pool, s.id) };
     });
 
     /** The season's results list — revealed matchweeks only (SQL embargo). */
-    authed.get('/results', async () => {
-      const s = await season();
+    authed.get('/results', async (req) => {
+      const s = await season(req);
       const weeks = await store.revealedResults(pool, s.id);
       const clubIds = [...new Set(weeks.flatMap((w) => w.fixtures.flatMap((f) => [f.home, f.away])))];
       const names = await store.clubNames(pool, clubIds);
@@ -677,8 +683,8 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     });
 
     /** The playoff bracket: seeds, legs (revealed scores only), shootouts, champion. */
-    authed.get('/playoffs', async (_req, reply) => {
-      const s = await season();
+    authed.get('/playoffs', async (req, reply) => {
+      const s = await season(req);
       const ties = await store.listPlayoffTies(pool, s.id);
       if (ties.length === 0) return reply.code(404).send({ error: 'no_playoffs' });
       const clubIds = [...new Set(ties.flatMap((t) => [t.highSeedClubId, t.lowSeedClubId]))];
@@ -721,9 +727,9 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       }
     });
 
-    authed.get('/auction/pool', async (_req, reply) => {
+    authed.get('/auction/pool', async (req, reply) => {
       try {
-        return { players: await auction.poolPlayers() };
+        return { players: await auction.poolPlayers(req.ctx.clubId) };
       } catch (err) {
         return auctionReply(reply, err);
       }
@@ -782,7 +788,7 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       if (!body || !Array.isArray(body.players) || !Array.isArray(body.bench) || !body.setPieceTakers) {
         return reply.code(400).send({ error: 'malformed_tactics' });
       }
-      const s = await season();
+      const s = await season(req);
       const elig = await store.loadEligibilitySquad(pool, req.ctx.clubId, s.id);
       const issues = validateTactics(body, elig);
       if (issues.length > 0) return reply.code(422).send({ error: 'tactics_rejected', issues });

@@ -54,7 +54,16 @@ CREATE TABLE sessions (
   id          UUID PRIMARY KEY,
   manager_id  UUID NOT NULL REFERENCES managers(id),
   expires_at  TIMESTAMPTZ NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- WHICH LEAGUE THIS SESSION IS LOOKING AT (0004). An account can hold entries
+  -- in several leagues; this is the server-side selection, so it survives a
+  -- reload exactly as being logged in does and no route has to carry the id.
+  -- NULL = not chosen yet, and the context layer falls back to the account's
+  -- only membership — which is why a single-league session never sets it.
+  -- Declared last: see the ordinal-order note on seasons. The FK is added after
+  -- `leagues` exists (the seasons_champion_fk pattern), named to match the one
+  -- 0004's ADD COLUMN auto-generates.
+  selected_league_id UUID
 );
 
 -- Account = login identity (email + password). Phase 1 of the accounts arc
@@ -129,6 +138,9 @@ CREATE TABLE leagues (
   club_capacity    INT NOT NULL DEFAULT 8 CHECK (club_capacity BETWEEN 2 AND 10),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE sessions ADD CONSTRAINT sessions_selected_league_id_fkey
+  FOREIGN KEY (selected_league_id) REFERENCES leagues(id) ON DELETE SET NULL;
 
 CREATE TABLE seasons (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

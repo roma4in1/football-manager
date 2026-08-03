@@ -127,7 +127,7 @@ export interface AuctionStateView {
 
 export interface AuctionCore {
   state(viewerClubId: string): Promise<AuctionStateView>;
-  poolPlayers(): Promise<store.PoolPlayer[]>;
+  poolPlayers(viewerClubId: string): Promise<store.PoolPlayer[]>;
   nominate(clubId: string, playerId: string): Promise<{ lotId: string; closesAt: Date }>;
   bid(clubId: string, lotId: string, amount: number): Promise<{ closesAt: Date }>;
   closeLot(lotId: string): Promise<'won' | 'forfeited' | 'unsold' | 'skipped' | 'completed'>;
@@ -159,8 +159,11 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
     }
   }
 
-  async function auctionSeason(c: store.Queryable): Promise<store.SeasonRow> {
-    const season = await store.currentSeason(c);
+  /** the auction season OF THE CLUB'S LEAGUE (phase 3: seasons are league-scoped) */
+  async function auctionSeason(c: store.Queryable, clubId: string): Promise<store.SeasonRow> {
+    const leagueId = await store.leagueOfClub(c, clubId);
+    if (!leagueId) throw new AuctionError(404, { error: 'not_found' });
+    const season = await store.currentSeason(c, leagueId);
     if (!season) throw new AuctionError(409, { error: 'no_season' });
     if (season.phase !== 'auction') throw new AuctionError(409, { error: 'wrong_phase', phase: season.phase });
     return season;
@@ -180,7 +183,7 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
    */
   async function setSplit(clubId: string, reserve: number): Promise<void> {
     await withTxn(async (c) => {
-      const season = await auctionSeason(c);
+      const season = await auctionSeason(c, clubId);
       const row = await store.getFacilities(c, season.id, clubId, true); // money lock
       if (!row) throw new AuctionError(404, { error: 'not_found' });
       if (!Number.isInteger(reserve) || reserve < 0 || reserve > row.transferBudget) {
@@ -196,7 +199,7 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
 
   async function nominate(clubId: string, playerId: string): Promise<{ lotId: string; closesAt: Date }> {
     const armed = await withTxn(async (c) => {
-      const season = await auctionSeason(c);
+      const season = await auctionSeason(c, clubId);
       // seasons row lock serializes nominations league-wide
       await store.getSeasonRow(c, season.id, true);
       if (await store.liveLot(c, season.id)) throw new AuctionError(409, { error: 'lot_live' });
@@ -270,14 +273,16 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
   }
 
   async function closeLot(lotId: string): Promise<'won' | 'forfeited' | 'unsold' | 'skipped' | 'completed'> {
+    let lotSeasonId = '';
     const result = await withTxn(async (c) => {
       const lot = await store.getLot(c, lotId, true);
       if (!lot || lot.wonBy) return 'skipped' as const;
+      lotSeasonId = lot.seasonId;
       // a close job that fires after the auction ended (queue lag) must not
       // sign anyone — post-completion signings would mutate squads outside
       // the completion floor's watch. The player simply stays in the pool.
-      const season = await store.currentSeason(c);
-      if (!season || season.phase !== 'auction' || season.id !== lot.seasonId) return 'skipped' as const;
+      const season = await store.getSeasonRow(c, lot.seasonId);
+      if (!season || season.phase !== 'auction') return 'skipped' as const;
       const now = await store.dbNow(c);
       if (lot.closesAt > now) return 'skipped' as const; // extended — a later timer owns it
 
@@ -301,14 +306,14 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       return 'won' as const;
     });
     if (result === 'skipped') return result;
-    const completed = await maybeComplete();
+    const completed = await maybeComplete(lotSeasonId);
     return completed ? 'completed' : result;
   }
 
   /** Auction ends when no lot is live and every club has reached squadMin. */
-  async function maybeComplete(): Promise<boolean> {
+  async function maybeComplete(seasonId: string): Promise<boolean> {
     const generated = await withTxn(async (c) => {
-      const season = await store.currentSeason(c);
+      const season = await store.getSeasonRow(c, seasonId);
       if (!season || season.phase !== 'auction') return null;
       const row = await store.getSeasonRow(c, season.id, true);
       if (!row || row.phase !== 'auction') return null;
@@ -389,7 +394,9 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
   }
 
   async function state(viewerClubId: string): Promise<AuctionStateView> {
-    const season = await store.currentSeason(pool);
+    const leagueId = await store.leagueOfClub(pool, viewerClubId);
+    if (!leagueId) throw new AuctionError(404, { error: 'not_found' });
+    const season = await store.currentSeason(pool, leagueId);
     if (!season) throw new AuctionError(409, { error: 'no_season' });
     const clubs = await store.clubsBySeed(pool, season.id);
     const counts = await store.squadCounts(pool, season.id);
@@ -473,7 +480,9 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
     if (!Number.isInteger(duration) || duration < 1 || duration > 4) {
       throw new AuctionError(422, { error: 'invalid_duration' });
     }
-    const season = await store.currentSeason(pool);
+    const leagueId = await store.leagueOfClub(pool, clubId);
+    if (!leagueId) throw new AuctionError(404, { error: 'not_found' });
+    const season = await store.currentSeason(pool, leagueId);
     if (!season) throw new AuctionError(409, { error: 'no_season' });
     const ok = await store.setContractDuration(pool, season.id, clubId, playerId, duration);
     if (!ok) throw new AuctionError(409, { error: 'not_adjustable' }); // not yours, or phase moved on
@@ -481,8 +490,10 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
 
   return {
     state,
-    poolPlayers: async () => {
-      const season = await store.currentSeason(pool);
+    poolPlayers: async (viewerClubId: string) => {
+      const leagueId = await store.leagueOfClub(pool, viewerClubId);
+      if (!leagueId) throw new AuctionError(404, { error: 'not_found' });
+      const season = await store.currentSeason(pool, leagueId);
       if (!season) throw new AuctionError(409, { error: 'no_season' });
       return store.poolPlayers(pool, season.id);
     },

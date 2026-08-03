@@ -3,6 +3,90 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-03 — leagues (0003) + the league context layer (0004), phase 3 steps 1–2
+
+The refactor that lets one account hold several leagues at once. Split across
+two mandates and landed as two migrations; the routes and the web app are
+steps 3–4 and are deliberately untouched.
+
+**THE POOL IS COPIED PER LEAGUE, NOT SHARED — and that decision is what kept
+this phase small.** Two things broke on a shared 2,128-row pool:
+`contracts_one_active` is `UNIQUE(player_id) WHERE released_at IS NULL`
+*globally*, so two leagues could never both sign a player; and season-end growth
+does `UPDATE players SET attributes` (league-store.ts), so league A's rollover
+would silently rewrite the attributes league B was mid-season with. **Item two
+decided it**: a unique constraint fails loudly on an insert, a rollover corrupts
+quietly and nothing reports it. A shared pool would have needed per-entry
+attribute state, dragging growth, rollover, `attribute_audit` and the
+growth/realism harnesses into the largest phase on the board. Copying needs
+**none** of them: a league's player rows are its own, so both mechanisms were
+already correct per row. Demonstrated, not predicted — neither was edited.
+Cost, accepted: a footballer in two leagues is two rows developing separately,
+which for a private game between friends is right.
+
+**0003** — `leagues` + `league_status`; `league_id` NOT NULL on seasons and
+clubs, NULLABLE on players (NULL = an unclaimed pipeline template); global
+uniqueness on season number, club name and player identity becomes per-league.
+
+- **NULLs are DISTINCT in a unique index**, so `UNIQUE (league_id, full_name,
+  birth_date)` would have admitted two identical unclaimed templates. Templates
+  get their own partial unique index, with a test that inserts the duplicate.
+- **The backfill is the risky part** and has its own tests over three states:
+  production (baseline + live data → one league, every season/club/player
+  attached, contracts still resolve, capacity from the real club count); fresh
+  (**no** league — leagues are created by phase 4, not migrated into); and the
+  virgin-league state `setup-production` expects (players stay templates — the
+  reason `players.league_id` is nullable).
+
+**THE PARITY RULE, for 0004 onward.** `check-schema-parity.ts` diffs `pg_dump`,
+which emits columns in **ordinal order** and constraints **by name**. So a new
+column is declared LAST in schema.sql (matching `ADD COLUMN`, which appends) and
+the migration uses the name Postgres auto-generates from schema.sql's inline
+declaration. Get either wrong and the dual-write contract goes red in a way that
+looks exactly like drift and is not. Corollary hit at 0004: `sessions` is
+declared before `leagues`, so its FK is added by a named `ALTER` after `leagues`
+exists — the `seasons_champion_fk` pattern — with the name matching the one
+`ADD COLUMN ... REFERENCES` generates.
+
+**0004 + the context layer** — where the selected league lives was the open
+design choice; it is a **session column** (`sessions.selected_league_id`).
+A session column is one server-side source of truth, survives a reload exactly
+as being logged in does, and switching is one UPDATE; a cookie duplicates
+session state on a client whose SW/cookie path is already delicate; a
+per-request parameter is stateless but pushes the choice into all 36 routes,
+which is precisely the step-3 work this phase defers.
+
+- `getSessionContext` was `LEFT JOIN clubs ON manager_id` — one club, no
+  selection. Now: the full membership list plus a selected league, resolved as
+  the stored selection *if the manager is still in it*, else the first
+  membership, else none. **NULL selection falling back to the only membership is
+  why every single-league session behaves exactly as before without anyone ever
+  setting the column.** The stale-selection fallback matters on its own: a
+  league since left would otherwise pin the session to a club it no longer owns.
+- `currentSeason(c, leagueId)` — the leagueId is **required, not optional**. An
+  optional one would have made the single-league path silently right and the
+  two-league path silently wrong, which is the exact failure mode the
+  enumeration warned about.
+- Added `listMemberships`, `getMyEntry(managerId, leagueId)` (null when not in
+  that league — the check that stops one session reading another's club),
+  `setSelectedLeague` (refuses a league the manager is not in), `leagueOfClub`.
+- **Callers updated mechanically, no behaviour change**: auction and transfers
+  derive the league from the club already in hand. `closeLot` stopped calling
+  `currentSeason` altogether — it holds `lot.seasonId`, and a rolled-over season
+  is no longer in `auction`, so reading the season by id is both simpler and
+  league-correct.
+- **The two-league test** (`league-context.test.ts`, 7 cases) is the point of
+  the phase and was impossible before 0003: one manager, two leagues, per-league
+  seasons (league B on season 7 does not leak into league A), separate clubs
+  sharing a name, switching, refusal, stale fallback, and the same footballer as
+  two rows where league A's growth leaves league B's untouched.
+
+**PHASE 4 DEPENDENCY, surfaced by 0003.** The backfill claims every existing
+player for the live league, so **production now has zero templates**, and
+`setupSeason` *claims* templates rather than *copying* them — equivalent with
+one league, starves the second. Phase 4's create-league needs a pool source:
+re-import the pipeline seed, or copy from an existing league.
+
 ## 2026-08-03 — TWO TRACKS, TWO WORKTREES: the engine and the product separate
 
 Two sessions had been committing to the same local `main` at the same time. The

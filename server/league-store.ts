@@ -1357,35 +1357,134 @@ export async function deleteSession(c: Queryable, sessionId: string): Promise<vo
   await c.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
 }
 
+/** One league this manager has an entry in — the spec's `league_entry` (§2). */
+export interface LeagueMembership {
+  leagueId: string;
+  leagueName: string;
+  leagueStatus: string;
+  clubId: string;
+  clubName: string;
+}
+
 export interface SessionContext {
   managerId: string;
   email: string;
   displayName: string;
+  /** the SELECTED league's club. Null when the account has no entry anywhere.
+   *  Kept at the top level so every existing club-scoped caller reads exactly
+   *  as it did — it is simply league-scoped now. */
   clubId: string | null;
   clubName: string | null;
+  /** the selected league itself; null exactly when clubId is */
+  leagueId: string | null;
+  /** every league this manager is in, oldest first */
+  memberships: LeagueMembership[];
   /** the ACCOUNT behind the session — club identity is account-scoped, not
    *  league-scoped, so it is keyed on this and never on clubId. Null only for a
    *  seeded manager whose session predates having an account. */
   accountId: string | null;
 }
 
+/**
+ * The session's context, now league-aware (accounts arc phase 3).
+ *
+ * Was a LEFT JOIN clubs ON manager_id — one club per manager, no selection.
+ * Now: the full membership list plus a SELECTED league, resolved as
+ *   sessions.selected_league_id, if it is still a league this manager is in
+ *   → else the first membership (which is every single-league session, so
+ *     nothing has to set the column for today's behaviour to hold)
+ *   → else none.
+ *
+ * The stale-selection fallback matters: a selected league the manager has since
+ * left would otherwise pin the session to a club it no longer owns, which is
+ * the silent second-league failure this phase exists to avoid.
+ */
 export async function getSessionContext(c: Queryable, sessionId: string): Promise<SessionContext | null> {
   const { rows } = await c.query(
-    `SELECT m.id AS manager_id, m.email, m.display_name, cl.id AS club_id, cl.name AS club_name,
-            a.id AS account_id
+    `SELECT m.id AS manager_id, m.email, m.display_name, a.id AS account_id,
+            s.selected_league_id
      FROM sessions s
      JOIN managers m ON m.id = s.manager_id
-     LEFT JOIN clubs cl ON cl.manager_id = m.id
      LEFT JOIN accounts a ON a.manager_id = m.id
      WHERE s.id = $1 AND s.expires_at > now()`,
     [sessionId],
   );
   const r = rows[0];
   if (!r) return null;
+
+  const memberships = await listMemberships(c, r.manager_id);
+  const selected = memberships.find((m) => m.leagueId === r.selected_league_id) ?? memberships[0] ?? null;
+
   return {
     managerId: r.manager_id, email: r.email, displayName: r.display_name,
-    clubId: r.club_id, clubName: r.club_name, accountId: r.account_id,
+    accountId: r.account_id,
+    memberships,
+    leagueId: selected?.leagueId ?? null,
+    clubId: selected?.clubId ?? null,
+    clubName: selected?.clubName ?? null,
   };
+}
+
+/** Every league entry this manager holds. One row per league since 0003. */
+export async function listMemberships(c: Queryable, managerId: string): Promise<LeagueMembership[]> {
+  const { rows } = await c.query(
+    `SELECT l.id AS league_id, l.name AS league_name, l.status::text AS league_status,
+            cl.id AS club_id, cl.name AS club_name
+     FROM clubs cl
+     JOIN leagues l ON l.id = cl.league_id
+     WHERE cl.manager_id = $1
+     ORDER BY l.created_at, l.id`,
+    [managerId],
+  );
+  return rows.map((r) => ({
+    leagueId: r.league_id, leagueName: r.league_name, leagueStatus: r.league_status,
+    clubId: r.club_id, clubName: r.club_name,
+  }));
+}
+
+/**
+ * This manager's entry IN ONE LEAGUE — the replacement for the manager→club
+ * join. Returns null when the manager is not in that league, which is the
+ * check that stops one league's session reading another league's club.
+ */
+export async function getMyEntry(
+  c: Queryable, managerId: string, leagueId: string,
+): Promise<LeagueMembership | null> {
+  const { rows } = await c.query(
+    `SELECT l.id AS league_id, l.name AS league_name, l.status::text AS league_status,
+            cl.id AS club_id, cl.name AS club_name
+     FROM clubs cl
+     JOIN leagues l ON l.id = cl.league_id
+     WHERE cl.manager_id = $1 AND cl.league_id = $2`,
+    [managerId, leagueId],
+  );
+  const r = rows[0];
+  return r ? {
+    leagueId: r.league_id, leagueName: r.league_name, leagueStatus: r.league_status,
+    clubId: r.club_id, clubName: r.club_name,
+  } : null;
+}
+
+/**
+ * Point a session at a league. Refuses a league the manager is not in — the
+ * league switcher (step 4) must not be able to select someone else's league.
+ * Returns false when it refused.
+ */
+export async function setSelectedLeague(
+  c: Queryable, sessionId: string, managerId: string, leagueId: string,
+): Promise<boolean> {
+  const { rowCount } = await c.query(
+    `UPDATE sessions SET selected_league_id = $3
+      WHERE id = $1 AND EXISTS (SELECT 1 FROM clubs WHERE manager_id = $2 AND league_id = $3)`,
+    [sessionId, managerId, leagueId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** The league a club plays in — for callers that hold a club and need its league. */
+export async function leagueOfClub(c: Queryable, clubId: string): Promise<string | null> {
+  const { rows } = await c.query(`SELECT league_id FROM clubs WHERE id = $1`, [clubId]);
+  return rows[0]?.league_id ?? null;
 }
 
 export async function managerIdByEmail(c: Queryable, email: string): Promise<string | null> {
@@ -1508,8 +1607,20 @@ export async function setPassword(c: Queryable, accountId: string, passwordHash:
 
 export interface SeasonRow { id: string; number: number; phase: string }
 
-export async function currentSeason(c: Queryable): Promise<SeasonRow | null> {
-  const { rows } = await c.query(`SELECT id, number, phase FROM seasons ORDER BY number DESC LIMIT 1`);
+/**
+ * The newest season OF ONE LEAGUE (accounts arc phase 3).
+ *
+ * Was "the newest season row", full stop — which with two leagues would have
+ * returned whichever league happened to have the higher season number, for
+ * everybody. The leagueId is required precisely so that cannot be forgotten:
+ * an optional parameter would have made the single-league path silently right
+ * and the two-league path silently wrong.
+ */
+export async function currentSeason(c: Queryable, leagueId: string): Promise<SeasonRow | null> {
+  const { rows } = await c.query(
+    `SELECT id, number, phase FROM seasons WHERE league_id = $1 ORDER BY number DESC LIMIT 1`,
+    [leagueId],
+  );
   return rows[0] ?? null;
 }
 
