@@ -619,3 +619,73 @@ test('THE REST PIN (re-derived on the repaired population): honest rest, positio
   assert.ok(cb - lowest >= 8, `positional spread survives — no flattening (CB ${cb.toFixed(0)} vs lowest ${lowest.toFixed(0)}, spread ${(cb - lowest).toFixed(0)}pp >= 8)`);
   assert.ok(cb >= share('ST') - 2, `ordering holds: the back line rests most (CB ${cb.toFixed(0)} vs ST ${share('ST').toFixed(0)})`);
 });
+
+test('THE BOUNDED SEAM KEEPS THE THROUGH BALL: reachable destinations only, and the dart still gets fed (12 seeds)', () => {
+  // THE CONTRAST PIN for the seam/lead bounds. The seam behind the line was
+  // chosen from the DEFENDERS' geometry alone — riderArriveCap bounded the
+  // ball, nothing bounded the RUNNER — so 91% of every ground pass aimed 45m+
+  // was a thread to a point ~58m beyond a man moving at 2.1 m/s, struck at a
+  // speed solved for the 15m he actually stood away. Bounding it must not kill
+  // the real through ball, so this pin guards the legitimate case from BOTH
+  // sides: the option must still be CHOSEN (clause two) and it must still WORK
+  // for the man it is aimed at (clause one).
+  //
+  // CLAUSE TWO'S RULER IS THE RE-SPECIFIED ONE. Counting "completed behind-the-
+  // line passes" credited the defect: 14 of the unbounded world's 25 so-called
+  // completions were balls aimed ~65m at a man ~15m away that DIED SHORT and
+  // were collected by the man they were aimed past. Only passes whose ball
+  // actually REACHED ITS AIM POINT (within 2m) count. On that ruler: unbounded
+  // 7, bounded 11 — the bound RAISES it. Floor 5, below the unbounded baseline
+  // with margin, so the clause fails if the thread dies rather than merely
+  // moving. Measured distribution: the 20-30m band 6→11 at 91% completion,
+  // 45m+ 43→0, behind-the-line completion overall 41%→76%.
+  let btl = 0, reached = 0, fastN = 0, fastDone = 0;
+  for (let s = 0; s < 12; s++) {
+    const sim = new Sim(scenarioByName('m11-match'), `cb-${s}`);
+    const P = sim as any;
+    const live = new Map<number, { aim: { x: number; y: number }; near: number; fast: boolean }>();
+    const oc = new Map<number, string>();
+    sim.telemetry = (e: any) => { if (e.t === 'pass') oc.set(e.tick, e.outcome); };
+    for (let t = 0; t < 2700; t++) {
+      sim.step();
+      const op = P.openPass;
+      if (!op || !op.receiver || op.loft || op.spin) continue;
+      let L = live.get(op.tick);
+      if (!L) {
+        const kb = P.byId.get(op.kicker);
+        const mb = P.byId.get(op.receiver);
+        const v = sim.ball.vel;
+        const sp = Math.hypot(v.x, v.y);
+        if (!kb || !mb || sp < 0.1) continue;
+        const sign = kb.team === 'home' ? 1 : -1;
+        // the OFFSIDE line is the SECOND-deepest opponent, not the keeper
+        const ox = sim.bodies.filter((b) => b.team !== kb.team).map((b) => b.pos.x)
+          .sort((a, b) => (sign > 0 ? b - a : a - b));
+        const lineX = ox[1] ?? ox[0];
+        const aim = { x: kb.pos.x + (v.x / sp) * op.dist, y: kb.pos.y + (v.y / sp) * op.dist };
+        if (!(sign > 0 ? aim.x > lineX : aim.x < lineX)) continue;
+        L = { aim, near: Infinity, fast: Math.hypot(mb.vel.x, mb.vel.y) >= 4 };
+        live.set(op.tick, L);
+      }
+      L.near = Math.min(L.near, Math.hypot(sim.ball.pos.x - L.aim.x, sim.ball.pos.y - L.aim.y));
+    }
+    for (const [tk, L] of live) {
+      const o = oc.get(tk);
+      if (!o) continue;
+      btl++;
+      const good = o === 'complete' && L.near <= 2.0;
+      if (good) reached++;
+      if (L.fast) { fastN++; if (good) fastDone++; }
+    }
+  }
+  assert.ok(btl > 0 && fastN > 0, `both classes populated (behind-line ${btl}, to a dart ${fastN})`);
+  // CLAUSE ONE — the dart still gets fed and still receives. Measured 7 of 15
+  // in BOTH worlds: bounding the seam left the fast-runner thread untouched.
+  // Floor 3, below that with margin; it goes to zero if the bound swallows the
+  // legitimate dart, which is the failure this pin exists to catch.
+  assert.ok(fastDone >= 3,
+    `the dart into space still gets fed and reaches it (${fastDone}/${fastN})`);
+  // CLAUSE TWO — the option is still CHOSEN, on the reached-aim ruler
+  assert.ok(reached >= 5,
+    `completed behind-the-line passes that reached their aim (${reached} of ${btl})`);
+});

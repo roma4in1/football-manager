@@ -229,8 +229,21 @@ test('back-line-shift (L5c): the line is a UNIT — level, sliding, spaced (4 se
   }
 });
 
-test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (4 seeds)', () => {
-  for (let s = 0; s < 4; s++) {
+test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (median of 12)', () => {
+  // RE-SPECIFIED (4 per-seed clauses at >0.58 → one median-of-12 at >0.70).
+  // The old form asserted the rate SEED BY SEED against a floor its own
+  // distribution does not support: measured at n=20, both this world and the
+  // one before it span 54–100%, and BASELINE ITSELF PRODUCES A 54% SEED — the
+  // 4-seed pool simply never sampled it. A floor of 0.58 sitting just above
+  // the bottom of a 46-point spread cannot distinguish a defect from a draw.
+  // Same correction as the first-touch pin (0.29 at n=24, 0.362 at n=240).
+  // The MEDIAN is the stable statistic here: 83–84% across 12 seeds on both
+  // worlds. Floor 0.70 sits ~13 points below it and still fails loudly if the
+  // line stops recovering — a line that never gets goal-side reads near zero,
+  // and the per-seed minimum being 54% is exactly why the median, not the
+  // minimum, is what gets pinned.
+  const rates: number[] = [];
+  for (let s = 0; s < 12; s++) {
     const def = scenarioByName('line-vs-runs');
     const sim = new Sim(def, seedFor('l5c', s));
     let goalSide = 0;
@@ -249,13 +262,13 @@ test('line-vs-runs (L5c×L5b): the living line stays goal-side of the striker (4
     }
     // breaches ARE the attack succeeding — the line-integrity bar is that
     // it recovers goal-side for the great majority of the drill
-    // 0.75 -> 0.58 (the awareness round, measured 63-72% across seeds):
-    // threads now aim at the run's
-    // PLANNED breach lane (builder directive — the choreographed thread)
-    // and the attack genuinely breaches more; the line still recovers
-    // for the strong majority and the defense machinery is unchanged
-    assert.ok(goalSide / total > 0.58, `l5c-${s}: the line holds goal-side (${(goalSide / total * 100).toFixed(0)}%)`);
+    rates.push(total ? goalSide / total : NaN);
   }
+  const ok = rates.filter((r) => Number.isFinite(r)).sort((a, b) => a - b);
+  assert.ok(ok.length >= 10, `the drill produced rates (${ok.length}/12 non-empty)`);
+  const med = (ok[5] + ok[6]) / 2;
+  assert.ok(med > 0.70,
+    `the line holds goal-side at the median (${(med * 100).toFixed(0)}% of [${ok.map((r) => (r * 100).toFixed(0)).join(',')}])`);
 });
 
 test('rondo-4v2: the ball CIRCULATES under the keep objective (4 seeds)', () => {

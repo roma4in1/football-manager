@@ -234,6 +234,22 @@ export const DECIDE = {
    * the carry stayed attractive until the lane and the release were dead) */
   carryPressureRangeM: 7.0,
   /** pass speeds clamp (firm floor — lofted/driven variety is later) */
+  /** THE DESTINATION MUST BE REACHABLE BY THE MAN IT IS FOR. The seam behind
+   * the line is chosen from the DEFENDERS' geometry — riderArriveCap bounds
+   * the BALL so it dies in the space, but nothing ever bounded the RUNNER.
+   * Measured: seams landing 58.2 m beyond a receiver moving at 2.1 m/s, struck
+   * at a speed solved for the 15 m he actually stood away, dying in midfield
+   * (91% of every ground pass aimed 45 m+, n=65). A runner covers what his
+   * pace buys him over the ball's flight and a stretch at the end — not fifty
+   * metres. The seam CONCEPT is untouched; only destinations no footballer
+   * could arrive at are dropped. */
+  seamReachMarginM: 2,
+  /** a lead is A RUN ONTO THE BALL, and a footballer runs onto a pass over one
+   * to two seconds. The old ceiling (0.7 s) was switched OFF for exactly the
+   * cases that needed it — any mate above 3.5 m/s, or any candidate carrying
+   * leadExtraS — so the ball was bounded when aimed at a walker and unbounded
+   * when aimed at a sprinter (measured leadT p50 21.4 s). */
+  leadMaxS: 2.0,
   passSpeedMin: 8,
   // realistic drag eats pace off a long ball fast, so the ceiling rises: a
   // 40 m pass to arrive collectable now needs ~22 m/s at the boot (was ~13
@@ -2324,8 +2340,15 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
         // both weights die IN the space (riderArriveCap): an overhit
         // thread is a dead ball, not a pass; the DRIVEN variant
         // (passing.md #9/#13) trades a hot arrival for less flight time
-        allCandidates.push({ arrive: Math.min(softArrive + 1, riderArriveCap), leadExtraS: 0, destOverride: rd });
-        allCandidates.push({ arrive: Math.min(softArrive + 4, riderArriveCap), leadExtraS: 0, destOverride: rd });
+        // ...and the RUNNER must be able to get there. The cap above bounds
+        // the ball's death, not the man's arrival; a seam he cannot reach is
+        // a ball into nobody, struck for the distance he currently stands.
+        const gap = Math.hypot(rd.x - mate.pos.x, rd.y - mate.pos.y);
+        const reachIn = (t: number): boolean => gap <= mate.speed * t + DECIDE.seamReachMarginM;
+        const aFast = Math.min(softArrive + 1, riderArriveCap);
+        const aSlow = Math.min(softArrive + 4, riderArriveCap);
+        if (reachIn(aFast)) allCandidates.push({ arrive: aFast, leadExtraS: 0, destOverride: rd });
+        if (reachIn(aSlow)) allCandidates.push({ arrive: aSlow, leadExtraS: 0, destOverride: rd });
       }
     }
     for (const { arrive: arrive0, leadExtraS, destOverride } of allCandidates) {
@@ -2346,14 +2369,20 @@ export const evaluateOptions = (input: DecideInput): Intent[] => {
       // two-iteration lead on the mate's current velocity
       let dest = destOverride ?? { x: mate.pos.x, y: mate.pos.y };
       if (!destOverride) {
-        for (let i = 0; i < 2; i++) {
-          const dd = Math.hypot(dest.x - here.x, dest.y - here.y);
+        // ONCE, from dist0 — not twice from the evolving dest. The old loop
+        // read dd off dest, tFly off dd, then rewrote dest from tFly, so each
+        // pass fed a longer distance back in and the lead amplified instead of
+        // converging (leadT p50 21.4 s against a mate at 2.1 m/s).
+        {
+          const dd = dist0;
           const tFly = dd / Math.max(speed - 0.85 * dd * 0.1, speed * 0.55) + leadExtraS;
           // a feet ball leads A STEP, not the whole flight — full-flight
           // extrapolation aimed balls 8-10 m down the receiver's motion and
           // dragged him off his spot to chase his own pass deep (the
           // judged down-the-line interceptions). Runs keep the real lead.
-          const leadT = (leadExtraS > 0 || mate.speed > 3.5) ? tFly : Math.min(tFly, 0.7);
+          // the ceiling now binds for EVERYONE — the runner most of all
+          const leadT = (leadExtraS > 0 || mate.speed > 3.5)
+            ? Math.min(tFly, DECIDE.leadMaxS) : Math.min(tFly, 0.7);
           dest = { x: mate.pos.x + mate.vel.x * leadT, y: mate.pos.y + mate.vel.y * leadT };
         }
       }
