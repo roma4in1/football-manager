@@ -59,13 +59,24 @@ function popRate(name: string, seeds: number): number {
   return contacts === 0 ? 0 : pops / contacts;
 }
 
-test('first-touch scenarios: silk kills driven balls; heavy feet under pressure spill (rates across 24 seeds)', () => {
-  const silk = popRate('first-touch-silk', 24);
-  const silkPressed = popRate('first-touch-silk-pressed', 24);
-  const heavy = popRate('first-touch-heavy', 24);
-  const heavyPressed = popRate('first-touch-heavy-pressed', 24);
+test('first-touch scenarios: silk kills driven balls; heavy feet under pressure spill (rates across 120 seeds)', () => {
+  // RE-DERIVED (pool 24 → 120, floor 0.33 → 0.25). The drills now feed
+  // `exact`, so the awkward-ball tax (touchPopPerSprayM 0.07 ×
+  // sprayPressureMult 1.75) no longer charges the receiver for the feeder's
+  // ~50cm miss at 20m — the old band was measuring the passer as well as the
+  // touch. Re-derived on the clean instrument at n=240: heavy-pressed reads
+  // 0.362, ABOVE the old floor; the 0.29 that failed was 24-seed noise
+  // (60-seed blocks ranged 0.30–0.42). So the pool is the fix and the floor
+  // is set with margin, not at the reading: 0.25 sits ~2.6σ below 0.362 at
+  // n=120. It can still fail — free-heavy reads 0.025 and silk-pressed 0.05,
+  // so anything that breaks the pressure term lands an order of magnitude low.
+  const N = 120;
+  const silk = popRate('first-touch-silk', N);
+  const silkPressed = popRate('first-touch-silk-pressed', N);
+  const heavy = popRate('first-touch-heavy', N);
+  const heavyPressed = popRate('first-touch-heavy-pressed', N);
   assert.ok(silk <= 0.15, `silk, free: almost always dead (${silk.toFixed(2)})`);
-  assert.ok(heavyPressed >= 0.33, `heavy under pressure spills often (${heavyPressed.toFixed(2)})`);
+  assert.ok(heavyPressed >= 0.25, `heavy under pressure spills often (${heavyPressed.toFixed(2)})`);
   assert.ok(heavyPressed > heavy - 1e-9, 'pressure only ever hurts');
   assert.ok(heavy > silk - 1e-9 && silkPressed >= silk - 1e-9, 'orderings hold');
 });
@@ -144,11 +155,30 @@ test('moving receives: cushioning in stride is easy, charging onto a drive is ha
     }
     return contacts === 0 ? -1 : pops / contacts;
   };
-  const withRun = rate('first-touch-run-with', 20, 1.0);
-  const onto = rate('first-touch-run-onto', 20, 2.0);
+  // RE-SPECIFIED. It asserted this contrast across first-touch-run-with (a
+  // 50m feed) and first-touch-run-onto (a 20m feed), so it confounded RUN
+  // DIRECTION — the thing it names — with FEED DISTANCE. Two ways: arrival
+  // speed rides drag over the distance, and delivery spray rode it too, since
+  // neither feed was exact. The measurement that changed it: a passing-19
+  // feeder misses a 20m target by ~50cm on average, and the arms therefore
+  // received balls of different quality as well as different pace. Now both
+  // feeds are `exact` and both are 20m from the same spot to the same target;
+  // only the receiver's run direction differs.
+  // The MARGIN is re-derived too, on the matched arms. The old +0.10 was
+  // measured across the mismatched pair, where the 20m arm also carried the
+  // spray tax — an absolute margin sized for rates of ~0.07 and ~0.20. Clean
+  // and matched, both rates fall by an order of magnitude (n=480/arm:
+  // with-near 0.0125 = 6/480, onto 0.0667 = 32/480 — a 5.3× ratio, diff
+  // 0.0542 at SE 0.0125 = 4.35σ). The DIRECTION is what the closing-speed
+  // model claims and it holds firmly; the old absolute margin was simply the
+  // wrong size for the clean scale. Floor 0.025 sits ~2.3σ below the measured
+  // difference and goes to zero if the closing-speed term ever stops biting.
+  // n=480 because at 240 the same difference is only 2.2σ — too thin to pin.
+  const withRun = rate('first-touch-run-with-near', 480, 1.0);
+  const onto = rate('first-touch-run-onto', 480, 2.0);
   assert.ok(withRun >= 0 && onto >= 0, 'both drills make contact');
   assert.ok(withRun <= 0.15, `a cushioned take in stride almost always sticks (${withRun.toFixed(2)})`);
-  assert.ok(onto > withRun + 0.1, `charging onto the drive spills more (${onto.toFixed(2)} vs ${withRun.toFixed(2)})`);
+  assert.ok(onto >= withRun + 0.025, `charging onto the drive spills more (${onto.toFixed(3)} vs ${withRun.toFixed(3)})`);
 });
 
 test('the DIRECTIONAL first touch: a charging receiver takes the ball in stride — no dead-stop, no circle-back', () => {

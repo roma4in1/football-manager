@@ -62,6 +62,19 @@ export const TECH = {
   /** direction sigma at passing 0, radians (~9°); passing 20 → ~1.5° */
   kickDirSigmaRad: 0.13,
   kickDirSkillFloor: 0.15,
+  /** THE STRIKE GROWS WITH THE BALL. A fixed ANGULAR sigma makes the lateral
+   * miss d·σ — linear in distance — which prices a ten-metre pass and a
+   * fifty-metre ball as the same act of aiming. They are not: a short pass is
+   * PLACED with the side of the foot at near-zero angular error, a long ball
+   * is a full-body swing that genuinely sprays. So σ itself scales with the
+   * distance asked of it, √d, making the lateral miss d^1.5 — placed at the
+   * near end, sprayed at the far. Anchored at kickDirRefM so the long ball
+   * (the end that already read plausible) is UNCHANGED and only the short
+   * pass tightens. Skill still multiplies at every distance. */
+  kickDirRefM: 50,
+  kickDirDistExp: 0.5,
+  kickDirDistMin: 0.25, // a 3m tap is still a kick, not a laser
+  kickDirDistMax: 1.3, // the 80m+ punt does not spray without limit
   /** power sigma share at passing 0 (~12%); skill floor keeps elite honest */
   kickVelSigma: 0.12,
   kickVelSkillFloor: 0.2,
@@ -170,10 +183,13 @@ export function noisyKick(
   const backheel = 1 + TECH.backheelNoiseGain * (misalign / Math.PI) ** 2;
   const powerKeep = 1 - TECH.backheelPowerLossMax *
     Math.max(0, misalign - Math.PI / 2) / (Math.PI / 2);
-  const dirSigma = TECH.kickDirSigmaRad * (TECH.kickDirSkillFloor + (1 - TECH.kickDirSkillFloor) * slack) * backheel;
+  const d = Math.hypot(target.x - from.x, target.y - from.y);
+  // the strike grows with the ball: σ ∝ √d ⇒ lateral miss ∝ d^1.5
+  const reach = Math.min(TECH.kickDirDistMax, Math.max(TECH.kickDirDistMin,
+    (d / TECH.kickDirRefM) ** TECH.kickDirDistExp));
+  const dirSigma = TECH.kickDirSigmaRad * (TECH.kickDirSkillFloor + (1 - TECH.kickDirSkillFloor) * slack) * backheel * reach;
   const velSigma = TECH.kickVelSigma * (TECH.kickVelSkillFloor + (1 - TECH.kickVelSkillFloor) * slack) * backheel;
   const dir = base + rng.gauss(0, dirSigma, tick, kickerId, 'kick-dir');
-  const d = Math.hypot(target.x - from.x, target.y - from.y);
   const speed = Math.max(1, speedMps * powerKeep * (1 + rng.gauss(0, velSigma, tick, kickerId, 'kick-vel')));
   return {
     target: { x: from.x + Math.cos(dir) * d, y: from.y + Math.sin(dir) * d },

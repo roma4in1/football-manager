@@ -1216,7 +1216,13 @@ export class Sim {
           // scripted kicks stay facing-blind: the script IS the player's
           // intent, body shape included — the backheel penalty is for
           // DECIDED kicks (the chooser knows his own facing)
-          const noisy = noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
+          // `exact` drills place the ball perfectly: the drill under test is
+          // what happens AFTER arrival, and it must not inherit the feeder's
+          // spray (a passing-19 feeder missed 20m by ~50cm, which was
+          // supplying a third of one first-touch pin's pop rate)
+          const noisy = k.kick.exact
+            ? { target: k.kick.target, speedMps: k.kick.speedMps }
+            : noisyKick(this.rng, this.tick, k.bodyId, kicker.attributes, k.kick.target, this.ball.pos, k.kick.speedMps);
           kickBall(this.ball, noisy.target, noisy.speedMps, k.kick.loftDeg, k.bodyId, this.tick, k.kick.spin ?? 0);
           this.ball.sprayM = Math.hypot(noisy.target.x - k.kick.target.x, noisy.target.y - k.kick.target.y);
         }

@@ -27,7 +27,30 @@ export const firstTouchRunScenarios: ScenarioDef[] = [
       // 27 m/s under realistic drag arrives ~7 m/s at x70 (as the old 15 m/s
       // did under weak friction) — the ball stays AHEAD of the running
       // receiver so he cushions it in stride (low closing speed preserved)
-      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 70, y: 34.5 }, speedMps: 27, loftDeg: 0 } },
+      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 70, y: 34.5 }, speedMps: 27, loftDeg: 0, exact: true } },
+    ],
+  },
+  {
+    version: 1,
+    name: 'first-touch-run-with-near',
+    description: 'run-with at run-onto\'s FEED DISTANCE (20m from the same feeder to the same target) — the distance-matched arm of the closing-speed contrast. Only the receiver\'s run direction differs.',
+    durationTicks: 120,
+    bodies: [
+      // deliberately MIRRORS first-touch-run-onto: same feeder spot, same
+      // target, same 20m feed. The old contrast compared a 50m feed against a
+      // 20m one, so it confounded run direction with delivery distance —
+      // arrival speed and (before `exact`) spray both differed with it.
+      { id: 'feeder', team: 'home', pos: { x: 45, y: 34 }, attributes: { ...base, firstTouch: 12 } },
+      { id: 'receiver', team: 'home', pos: { x: 50, y: 34.5 }, attributes: { ...base } },
+    ],
+    ball: { carrier: 'feeder' },
+    script: [
+      { atTick: 20, bodyId: 'receiver', command: { type: 'moveTo', target: { x: 90, y: 34.5 }, regime: 'run' } },
+    ],
+    kicks: [
+      // slower than the onto arm BY DESIGN — the contrast under test IS
+      // closing speed; what must be held equal is the feed, not the pace
+      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 65, y: 34.5 }, speedMps: 11, loftDeg: 0, exact: true } },
     ],
   },
   {
@@ -49,7 +72,7 @@ export const firstTouchRunScenarios: ScenarioDef[] = [
     kicks: [
       // 17 m/s: the head-on charge still meets a driven ball around x60, now
       // decelerated to a controllable pace by drag (was 13 m/s / weak friction)
-      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 65, y: 34 }, speedMps: 17, loftDeg: 0 } },
+      { atTick: 12, bodyId: 'feeder', kick: { target: { x: 65, y: 34 }, speedMps: 17, loftDeg: 0, exact: true } },
     ],
   },
 ];

@@ -95,7 +95,12 @@ export type MovementCommand =
 export interface KickEvent {
   atTick: number;
   bodyId: string; // must be the carrier at that tick, else the kick is a no-op
-  kick: { target: Vec2; speedMps: number; loftDeg: number; spin?: number };
+  /** `exact` bypasses execution noise: the ball leaves ON the named target at
+   * the named speed. For DRILLS that test what happens AFTER the ball arrives
+   * (first touch, control, duels) — such a drill must not inherit the feeder's
+   * spray, or it silently measures the passer instead of the receiver. Absent
+   * (the default) the kick goes through noisyKick like any other. */
+  kick: { target: Vec2; speedMps: number; loftDeg: number; spin?: number; exact?: boolean };
 }
 
 export interface BodyState {

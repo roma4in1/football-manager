@@ -25,7 +25,12 @@ const drill = (name: string, firstTouch: number, pressured: boolean): ScenarioDe
   ball: { carrier: 'feeder' },
   script: [],
   kicks: [
-    { atTick: 10, bodyId: 'feeder', kick: { target: { x: 55, y: 34 }, speedMps: 13, loftDeg: 0 } },
+    // EXACT: the drill asks what the RECEIVER'S TOUCH does with an arriving
+    // ball, so the ball must arrive identically in every arm. It did not
+    // before: the passing-19 feeder sprayed this 20m feed by ~50cm on
+    // average, and that miss — not the touch — was producing roughly a third
+    // of the heavy-pressed pop rate.
+    { atTick: 10, bodyId: 'feeder', kick: { target: { x: 55, y: 34 }, speedMps: 13, loftDeg: 0, exact: true } },
   ],
 });
 
