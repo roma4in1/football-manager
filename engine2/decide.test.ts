@@ -342,13 +342,6 @@ test('SLIDER: passChannel weights central vs wide, gegenpress scales the hunt (b
     for (let t = 0; t < 1200; t++) { const f = sim.step(); for (const b of f.bodies) if (b.action === 'counterpress') n++; }
     return n;
   };
-  const cp = (counterpress: number): number => {
-    let n = 0;
-    const sim = new Sim(scenarioByName('m11-match'), 'gp-0');
-    for (const b of sim.bodies) sim.instructions.set(b.id, { ...(sim.instructions.get(b.id) ?? {}), counterpress });
-    for (let t = 0; t < 1200; t++) { const f = sim.step(); for (const b of f.bodies) if (b.action === 'counterpress') n++; }
-    return n;
-  };
   // SINGLE-SEED CLAUSE CONVERTED (wb-0's correction class): gp-0 re-rolled
   // to ratio 1.10 after the eligibility repair raised BASELINE
   // counterpress (low-slider hunts more everywhere); gp-1/2/3 read

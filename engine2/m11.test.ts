@@ -329,7 +329,7 @@ test('THE FREE-KICK/PENALTY RETREAT PIN: ceremonied kicks are legal, and the wai
         spot = { x: sim.ball.pos.x, y: sim.ball.pos.y };
       } else if (pendStart >= 0) {
         const kb = sim.ball.kickerId ? (sim as any).byId.get(sim.ball.kickerId) : null;
-        const label = kb ? sim.actionLabels.get(kb.id) ?? '' : '';
+        const label = kb ? (sim as any).actionLabels.get(kb.id) ?? '' : '';
         const ceremonied = pen || label === 'fk-shot' || label === 'fk-cross';
         if (ceremonied && kb && spot) {
           if (pen) pens++;

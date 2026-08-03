@@ -21,6 +21,7 @@ import {
   type BodyState,
   type Frame,
   type FrameBody,
+  type KickEvent,
   type MovementCommand,
   type ScenarioDef,
   type Vec2,
@@ -38,7 +39,11 @@ export class Sim {
   tick = 0;
   private readonly byId = new Map<string, BodyState>();
   private readonly atTick = new Map<number, Array<{ bodyId: string; command: MovementCommand }>>();
-  private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: { target: Vec2; speedMps: number; loftDeg: number; spin?: number } }>>();
+  // typed FROM KickEvent, never re-spelled: an inline copy of the shape silently
+  // went stale when `exact` was added to the event, and `k.kick.exact` below
+  // stopped typechecking while still working at runtime (the whole kick object
+  // is stored by reference, so the drill flag survived — it was type-only)
+  private readonly kicksAt = new Map<number, Array<{ bodyId: string; kick: KickEvent['kick'] }>>();
   private readonly queues = new Map<string, MovementCommand[]>();
   /** per-tick live steering targets (intercepts/fetches) — the frame's debug
    * overlay shows what the body is ACTUALLY running to */
