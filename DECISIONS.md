@@ -33,11 +33,15 @@ The failure was one of separation, not of either track's work.
 - `engine/v2` forks from `2e386093`, the commit that made root typecheck green,
   so the engine track starts from a green gate rather than inheriting a red one.
 
-**Why the gate was silently red for 39 commits:** the work was never pushed.
-`origin/main` sat at `cdb768e9` while local `main` ran 6 commits ahead, so CI
-never ran on any of it. Not "CI red and ignored" — a long local run accumulating
-*outside* the gate, which then fires on all of it at once. The branch-and-PR
-discipline above is what keeps that from recurring.
+**Why the gate was red, corrected against the actual run history.** The first
+telling of this was wrong and the push disproved it. Both things are true at
+once: CI **did** run on `cdb768e9` (run 30739464519, 2026-08-02) and it **did**
+fail — `typecheck` red, every other job green — so the gate fired and was not
+acted on; and the 6 further local commits on top of it were never pushed, so
+they were never gated at all. Not "CI never ran" and not merely "unpushed": a
+known-red gate, then a local run accumulating on top of it. The branch-and-PR
+discipline above addresses the second half; only looking at the gate addresses
+the first.
 
 **The ledgers are split too, and that is a real gap.** This file records none of
 the engine arc's rulers — not `minLive`, the segment-distance correction, the

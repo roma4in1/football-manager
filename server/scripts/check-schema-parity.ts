@@ -78,7 +78,11 @@ function normalize(dump: string): string[] {
   return out;
 }
 
+// absolute, never relative: CI invokes this as `node server/scripts/...` from
+// the repo root, so a bare `-f schema.sql` resolves against the WRONG directory
+// (it only worked when run from server/, which is how it was first verified)
 const cwd = new URL('..', import.meta.url).pathname;
+const SCHEMA_SQL = new URL('../schema.sql', import.meta.url).pathname;
 
 try {
   for (const db of [A, B]) {
@@ -87,7 +91,7 @@ try {
   }
 
   // A — the canonical file, exactly as DEPLOY.md §1.3 and the tests apply it
-  await psql(A, ['-f', 'schema.sql']);
+  await psql(A, ['-f', SCHEMA_SQL]);
 
   // B — an empty database walked through the whole migration chain
   const { stdout } = await run('node', ['scripts/migrate.ts', '--confirm'], {
