@@ -24,11 +24,11 @@ export function ResetPassword() {
   if (!token) {
     return (
       <main className="narrow auth">
-        <h1 className="auth-brand">FM League</h1>
+        <h1 className="auth-brand"><a href="/">FM League</a></h1>
         <div className="card">
           <h2>Invalid link</h2>
           <p className="muted">This reset link is missing its token. Request a new one from the sign-in page.</p>
-          <a className="button" href="/">Back to sign in</a>
+          <a className="button" href="/login">Back to sign in</a>
         </div>
       </main>
     );
@@ -37,11 +37,11 @@ export function ResetPassword() {
   if (done) {
     return (
       <main className="narrow auth">
-        <h1 className="auth-brand">FM League</h1>
+        <h1 className="auth-brand"><a href="/">FM League</a></h1>
         <div className="card">
           <h2>Password updated</h2>
           <p className="muted">Sign in with your new password.</p>
-          <a className="button primary" href="/">Sign in</a>
+          <a className="button primary" href="/login">Sign in</a>
         </div>
       </main>
     );
@@ -70,7 +70,7 @@ export function ResetPassword() {
 
   return (
     <main className="narrow auth">
-      <h1 className="auth-brand">FM League</h1>
+      <h1 className="auth-brand"><a href="/">FM League</a></h1>
       <form className="card auth-card" onSubmit={(e) => { e.preventDefault(); if (canSubmit) void submit().catch(() => {}); }}>
         <h2>Choose a new password</h2>
         <label className="field">

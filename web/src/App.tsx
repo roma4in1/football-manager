@@ -4,6 +4,7 @@ import { api, ApiError, type Me, type MeWithClub } from './api.ts';
 import { Login } from './screens/Login.tsx';
 import { ResetPassword } from './screens/ResetPassword.tsx';
 import { AccountLanding } from './screens/AccountLanding.tsx';
+import { Landing } from './public/Landing.tsx';
 import { Rail } from './shell/Rail.tsx';
 import { Section } from './shell/Section.tsx';
 import { TacticsSection } from './tactics/TacticsSection.tsx';
@@ -65,22 +66,40 @@ export function App() {
 
   return (
     <BrowserRouter>
-      <div className="rotate-overlay">
-        <span className="glyph">📱↻</span>
-        <strong>Hold your phone sideways</strong>
-        <span>The league plays in landscape.</span>
-      </div>
       {me === 'anon' ? (
+        /* The PUBLIC shell. No rotate gate: a landing page is portrait-first on
+           a phone (see public/Landing.tsx). Unknown paths land on the pitch, so
+           a stranger following any link gets both doors. */
         <Routes>
+          <Route path="/login" element={<Login onAuthed={load} />} />
+          <Route path="/signup" element={<Login initialMode="signup" onAuthed={load} />} />
           <Route path="/reset" element={<ResetPassword />} />
-          <Route path="*" element={<Login onAuthed={load} />} />
+          <Route path="*" element={<Landing />} />
         </Routes>
-      ) : me.club && me.season ? (
-        <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={logout} />
       ) : (
-        <AccountLanding email={me.manager.email} onLogout={logout} />
+        /* The authenticated app IS always-landscape — the rotate gate belongs
+           here, and only here. */
+        <>
+          <RotateOverlay />
+          {me.club && me.season ? (
+            <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={logout} />
+          ) : (
+            <AccountLanding email={me.manager.email} onLogout={logout} />
+          )}
+        </>
       )}
     </BrowserRouter>
+  );
+}
+
+/** Portrait phones get the one prompt the app has (styles.css hides .app under it). */
+function RotateOverlay() {
+  return (
+    <div className="rotate-overlay">
+      <span className="glyph">📱↻</span>
+      <strong>Hold your phone sideways</strong>
+      <span>The league plays in landscape.</span>
+    </div>
   );
 }
 

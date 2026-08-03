@@ -26,8 +26,15 @@ function messageFor(err: unknown): string {
   return 'Something went wrong, try again.';
 }
 
-export function Login({ onAuthed }: { onAuthed: () => void }) {
-  const [mode, setMode] = useState<Mode>('login');
+/**
+ * `initialMode` seeds the card from the route (/login vs /signup). The mode
+ * toggles below stay local state and deliberately do NOT rewrite the URL —
+ * both routes render this same card, and re-routing would remount it and throw
+ * away whatever the visitor had already typed. It also keeps this component
+ * router-free.
+ */
+export function Login({ onAuthed, initialMode = 'login' }: { onAuthed: () => void; initialMode?: Mode }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +67,7 @@ export function Login({ onAuthed }: { onAuthed: () => void }) {
   if (mode === 'forgot' && sent) {
     return (
       <main className="narrow auth">
-        <h1 className="auth-brand">FM League</h1>
+        <h1 className="auth-brand"><a href="/">FM League</a></h1>
         <div className="card">
           <h2>Check your inbox</h2>
           <p className="muted">
@@ -79,7 +86,7 @@ export function Login({ onAuthed }: { onAuthed: () => void }) {
 
   return (
     <main className="narrow auth">
-      <h1 className="auth-brand">FM League</h1>
+      <h1 className="auth-brand"><a href="/">FM League</a></h1>
       <form className="card auth-card" onSubmit={(e) => { e.preventDefault(); if (canSubmit) void submit().catch(() => {}); }}>
         <h2>{title}</h2>
         <label className="field">

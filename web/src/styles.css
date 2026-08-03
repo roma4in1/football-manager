@@ -281,14 +281,16 @@ button.is-success.primary { background: var(--success); border-color: var(--succ
 }
 @keyframes btn-spin { to { transform: rotate(360deg); } }
 
-input[type='email'], input[type='number'], input[type='text'] {
+/* password was missing here, so every auth screen rendered a native, unstyled
+   password box next to a styled email one */
+input[type='email'], input[type='number'], input[type='text'], input[type='password'] {
   width: 100%; padding: 0.5rem 0.6rem; margin: 0.3rem 0 0.7rem;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--line-strong); border-radius: var(--radius-sm); font-size: var(--fs-body);
   font-family: inherit;
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-input[type='email']:focus, input[type='number']:focus, input[type='text']:focus {
+input[type='email']:focus, input[type='number']:focus, input[type='text']:focus, input[type='password']:focus {
   outline: none; border-color: var(--accent); box-shadow: var(--ring);
 }
 input[type='number'] { width: auto; }
@@ -682,8 +684,11 @@ button.watch:hover { background: var(--accent-soft); }
 }
 
 /* ── auth screens (login / signup / forgot / reset) ─────────────────────── */
+/* the bare selector matters: logged-out auth renders as a direct child of
+   #root, so the two scoped ones never matched and the card ran full-width */
 .content > main.narrow.auth,
-.app > main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
+.app > main.narrow.auth,
+main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
 /* auth renders full-viewport (outside the rail shell) — center it vertically */
 .auth { display: flex; flex-direction: column; justify-content: center; min-height: 100dvh; }
 .auth-brand {
@@ -698,6 +703,87 @@ button.watch:hover { background: var(--accent-soft); }
 .auth-switch { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-top: var(--sp-3); }
 .auth-switch .ghost { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
 .auth-switch .ghost:hover { color: var(--accent-deep); }
+.auth-brand a { color: inherit; text-decoration: none; }
+.auth-brand a:hover { color: var(--accent); }
+
+/* ══ the public shell (landing page) ═════════════════════════════════════════
+   NOT an app screen. The always-landscape / two-pane / rail layout above is
+   the IN-GAME app and does not apply out here: this is portrait-first on a
+   phone, wide on a desktop, and it scrolls. It inherits the IDENTITY only —
+   the tokens at the top of this file. No new colours, no new primitives. */
+
+.public { min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+.public-head,
+.public-main { width: 100%; max-width: 62rem; margin: 0 auto; }
+
+.public-head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4); flex-wrap: wrap;
+}
+.public-brand {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 1rem; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--text); text-decoration: none;
+}
+.public-brand svg { width: 28px; height: 28px; flex-shrink: 0; }
+.public-head-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
+
+.public-main { flex: 1; padding: 0 var(--sp-4) var(--sp-6); }
+
+/* hero — the one place type is allowed to get big */
+.hero { max-width: 34rem; padding: clamp(2rem, 8vw, 4.5rem) 0 clamp(1.5rem, 5vw, 2.5rem); }
+.hero-eyebrow {
+  margin: 0 0 var(--sp-3); font-size: var(--fs-eyebrow); font-weight: 700;
+  text-transform: uppercase; letter-spacing: var(--tracking-eyebrow); color: var(--accent);
+}
+.hero-title {
+  margin: 0 0 var(--sp-4); font-size: clamp(1.95rem, 7vw, 3rem);
+  line-height: 1.08; letter-spacing: -0.03em; font-weight: 800;
+}
+.hero-sub { margin: 0 0 var(--sp-5); font-size: 1.02rem; line-height: 1.55; color: var(--muted); }
+.hero-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.hero-cta { padding: 0.7rem 1.3rem; font-size: 1rem; border-radius: var(--radius); }
+.hero-note { margin: var(--sp-4) 0 0; font-size: var(--fs-sm); color: var(--faint); }
+.hero-note a { color: var(--accent); font-weight: 600; }
+
+.public-section { padding: clamp(1.75rem, 5vw, 2.75rem) 0; border-top: 1px solid var(--line); }
+.public-section-title { margin: 0 0 var(--sp-4); font-size: 1.2rem; letter-spacing: -0.02em; font-weight: 700; }
+
+/* the four beats — one column on a phone, as many as fit on a desktop */
+.steps {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+.step {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: var(--sp-4); box-shadow: var(--shadow-sm);
+}
+.step-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.7rem; height: 1.7rem; margin-bottom: var(--sp-3);
+  border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent-deep);
+  font-size: var(--fs-sm); font-weight: 800; font-variant-numeric: tabular-nums;
+}
+/* h3 is an uppercase eyebrow inside the app; out here it is a card heading */
+.step h3 {
+  margin: 0 0 var(--sp-1); font-size: var(--fs-body); font-weight: 700;
+  text-transform: none; letter-spacing: -0.008em; color: var(--text);
+}
+.step p { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--muted); }
+
+.public-note-card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: var(--sp-5); box-shadow: var(--shadow-sm);
+}
+.public-note-card p { margin: 0; max-width: 44rem; line-height: 1.55; }
+
+.public-closing { padding: clamp(2rem, 6vw, 3.25rem) 0; border-top: 1px solid var(--line); text-align: center; }
+.public-closing .hero-actions { justify-content: center; }
+
+.public-foot {
+  border-top: 1px solid var(--line); padding: var(--sp-4);
+  text-align: center; font-size: var(--fs-xs); color: var(--faint);
+}
 
 /* rail sign-out — sits under the club name at the foot of the rail */
 .rail-signout {
