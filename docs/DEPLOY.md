@@ -77,12 +77,59 @@ own `BEGIN/COMMIT`.) pg-boss creates its own `pgboss` schema automatically on
 first boot — nothing to do there.
 
 > **⚠️ Cutover point.** Pre-launch, the schema is create-once: to change it you
-> drop and re-run. **The moment real league data exists, that stops.** Any
-> schema change after go-live is a migration: a hand-written, reviewed
-> `ALTER`-script applied via psql, with `schema.sql` updated in the same PR so
-> fresh installs stay canonical. Take a backup (§8) before applying one. We
-> deliberately did not adopt a migration framework for an 8-user app — revisit
-> if migrations become frequent.
+> drop and re-run. **The moment real league data exists, that stops.** From then
+> on every schema change is a migration, applied by the runner in §1.6 — not by
+> hand. Take a backup (§8) before applying one.
+
+`schema.sql` stays canonical for **fresh** installs (this step, the tests and CI).
+Changing an **existing** database is §1.6.
+
+### 1.6 Change the schema on a live database — `scripts/migrate.ts`
+Ordered, versioned, **forward-only** migrations in `server/migrations/`, applied
+in sequence, each in its own transaction, recorded in `schema_migrations` so a
+re-run is a no-op. There are no down-migrations by decision: at this size the
+rollback path is the backup in §8, which is a real rollback.
+
+**The first run against production adopts, it does not build.** The live schema
+was created by §1.3 plus a hand-run `accounts` DDL, with nothing recording
+either. `migrations/0001_baseline.sql` is a frozen copy of `schema.sql` from that
+moment, and on a database that already has that schema the runner **records it as
+applied and executes nothing** — after first verifying every table and enum the
+baseline declares actually exists. If anything is missing it refuses rather than
+adopting a shape the database does not have. **The first run cannot re-create or
+alter the production database.**
+
+**It is manual, deliberately.** It is not wired into `fly deploy` and there is no
+Fly `release_command`: applying DDL to the live league is a decision that wants a
+fresh backup and eyes on the plan, not something that happens inside a deploy
+nobody is watching. Run it yourself, in this order:
+
+```sh
+# 1. back up FIRST (§8) — Actions → backup → Run workflow, and confirm you can decrypt it
+# 2. dry-run: prints the plan (state, what it would adopt, what it would run) and writes NOTHING
+DATABASE_URL='<session-pooler url, §1.2>' node scripts/migrate.ts
+# 3. read the plan, then apply
+DATABASE_URL='<session-pooler url, §1.2>' node scripts/migrate.ts --confirm
+# 4. now deploy the code that needs the new schema
+fly deploy
+```
+
+Migrations go **before** the deploy: additive DDL is harmless to the running old
+code, whereas new code against an old schema is a 500. (`pnpm migrate` from the
+repo root is the same thing.)
+
+A non-local target prints a production banner and the backup reminder before the
+plan. A migration whose file has been **edited since it was applied** is refused
+outright — the database cannot be re-run to match it; fix forward with a new
+migration. See `server/migrations/README.md` for authoring rules and the
+`ALTER TYPE … ADD VALUE` trap.
+
+**Why `schema.sql` still exists.** It stays the canonical, readable, commented
+description of the current schema — tests, the CI smoke job and `seed-demo.ts`
+all bootstrap from it. So every change is written twice: into `schema.sql`, and
+as a migration. `scripts/check-schema-parity.ts` builds one database from each
+path, `pg_dump`s both and diffs them; it runs in CI, so updating one and not the
+other goes red.
 
 ### 1.4 Create the league — `scripts/setup-production.ts`
 With the schema initialized (§1.3) and the player pool imported (pipeline),
@@ -261,7 +308,9 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
 
 ## 6. Go-live checklist (condensed order)
 
-1. §1 Supabase project → connection string → `schema.sql` once → seed league
+1. §1 Supabase project → connection string → `schema.sql` once (§1.3) →
+   `node scripts/migrate.ts --confirm` to adopt the baseline (§1.6, a no-op that
+   just starts tracking the schema) → seed league (§1.4)
 2. §2 Resend domain verified → API key
 3. §3 `fly apps create` + `fly secrets set`
 4. §4 `fly deploy` → health check green on `topfootballgame.fly.dev`
@@ -284,9 +333,15 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
 
 ### Redeploy (after a merge to main)
 ```sh
-git pull && fly deploy
+git pull
+node server/scripts/migrate.ts            # dry-run — "nothing pending" on most deploys
+node server/scripts/migrate.ts --confirm  # only if the dry-run shows pending migrations
+fly deploy
 ```
-CI green first — `deploy-image` proves the image boots. Deploys are
+CI green first — `deploy-image` proves the image boots. Note that it boots
+against an *empty* database and only probes `/api/health` (a `SELECT 1`), so a
+green CI does **not** prove your schema is current — the dry-run above does.
+Migrations before the deploy (§1.6). Deploys are
 brief-downtime on a single machine (seconds); avoid deploying inside an
 auction or right at a matchweek deadline — pg-boss retries queued work on
 boot, but why test it live.
@@ -357,7 +412,13 @@ locally.
 ## 9. What is deliberately NOT here
 
 - **Supabase Auth / Realtime / Storage** — our email + password auth is the auth.
-- **A migration framework** — see the §1.3 cutover note.
+- **An off-the-shelf migration framework** (Flyway, node-pg-migrate, Prisma
+  Migrate) — `scripts/migrate.ts` is ~200 lines with no new dependency, which
+  suits the zero-runtime-dependency discipline that keeps `node:24-slim`
+  buildable. See §1.6.
+- **Down-migrations** — forward-only by decision; §8's backup is the rollback.
+- **Migrations on deploy** — no Fly `release_command`, no migrate-on-boot. §1.6
+  says why.
 - **Public Postgres exposure** — only Fly (and the backup workflow) hold the
   connection string; Supabase's pooler requires TLS.
 - **Multi-machine / zero-downtime deploys** — one process is the design

@@ -3,6 +3,106 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-03 — the migration runner: forward-only, and it ADOPTS production
+
+This **reverses** the 2026-08-22 deploy entry's "no migration framework built"
+and DEPLOY.md §9's listing of one under *deliberately not here*. That call was
+right for a create-once pre-launch schema. It stopped being right the moment the
+`accounts` table was created BY HAND via psql against production while its DDL
+lived in schema.sql — and Phases 2, 3 and 4 of LOBBY-DESIGN-SPEC each add or
+change tables. Four more manual DDL sessions is how a schema drifts silently out
+of step with the code that expects it.
+
+- **Forward-only. Stated, not left unmentioned.** No down-migrations. The
+  rollback path is the nightly encrypted `pg_dump` (DEPLOY.md §8) plus
+  `fly scale count 0` — a *real* rollback, unlike an untested `DOWN` that cannot
+  un-drop a column's data. Eight users, one machine, one operator.
+- **The baseline is ADOPTED, never run** (`server/migrations/0001_baseline.sql`,
+  a frozen byte-copy of schema.sql). Against a database that already has the
+  schema the runner records it and executes ZERO statements — **the production
+  database cannot be re-created or altered by the first run**. Pinned by a test
+  that fingerprints every column and enum before and after and asserts equality.
+- **Adoption VERIFIES first.** Before recording, it parses every table and enum
+  the baseline declares out of the file (not a hardcoded list) and checks each
+  exists, refusing if any is missing. That is the check that would have caught a
+  partial hand-run DDL session — and it is the first honest confirmation that the
+  hand-run `accounts` DDL matched what the code expects. It has never been run
+  against production; that is the operator's call (DEPLOY.md §1.6).
+- **This only works because the baseline is true TODAY.** schema.sql and
+  production are identical right now, which is precisely why the runner had to
+  land before Phase 2 adds `club_identities`. A month later it would have been a
+  reconciliation problem instead of a copy.
+- **schema.sql stays canonical and the runner never reads it.** Tests
+  (`bootstrapSchema`), the CI smoke job and `seed-demo.ts` are untouched. So
+  every change is written twice — schema.sql AND a migration — and
+  `scripts/check-schema-parity.ts` makes that safe: it builds one database from
+  each path, `pg_dump`s both and diffs them, in CI. Trivially true today;
+  load-bearing from the first real migration, and it is the only thing that ever
+  executes an `ALTER` in CI (the fresh-install path never does). Tripwire proven
+  to trip: a table added to schema.sql alone fails it, naming the object.
+- **Transactional per migration.** Postgres has transactional DDL, so a failure
+  mid-migration rolls that migration back ENTIRELY and leaves every earlier one
+  applied and recorded; re-running resumes at the one that failed. Asserted with
+  a migration whose first statement succeeds and whose second cannot.
+  Documented limit: `ALTER TYPE … ADD VALUE` commits fine but the value is
+  unusable until commit, so Phase 4's `lobby` phase must split across two
+  migrations (migrations/README.md). No non-transactional escape hatch was
+  built — an untested code path is worse than not having one.
+- **A migration is immutable once applied**: checksummed, and an edited file is
+  refused outright. The database cannot be re-run to match it; fix forward.
+- **Manual, not wired into deploy** — no Fly `release_command`, no migrate-on-
+  boot. Applying DDL to the live league wants a fresh backup and eyes on the
+  plan, not a step inside a deploy nobody is watching (the ledger's own lesson:
+  the 5s auction timer that shipped invisibly from an edited tree). Dry-run is
+  the default, `--confirm` applies, a non-local target prints a production
+  banner — the reset-league.ts precedent, with the plan logic in a pure module
+  (`migrate-plan.ts`) so it unit-tests without a database.
+- Noted while wiring: CI's `deploy-image` job boots the image against an EMPTY
+  database and probes `/api/health`, which is `SELECT 1` — **a green CI does not
+  prove the schema is current.** DEPLOY.md §7 now says so.
+
+## 2026-08-03 — the public landing page, and why it is not the design pass
+
+A landing page at `/` for a visitor with no account. No schema, no migrations,
+no auth changes — Phase 1 auth (accounts, scrypt PHC, the manager_id bridge) is
+untouched. This is the shell around routes that already worked.
+
+- **THIS IS NOT A PRECEDENT FOR STYLING APP SCREENS EARLY.** DESIGN-BRIEF.md's
+  sequencing note stands: the design pass styles the *app's* final screens in
+  ONE coherent go, after feature freeze, so the identity reads intentional
+  rather than patchwork. A public marketing page is not an app screen — it has
+  no place in that pass and blocking it on the pass would have meant shipping
+  no front door for months. Nothing here licenses styling squad/tactics/market
+  ahead of the pass.
+- **The brief's LAYOUT does not apply out here; its IDENTITY does.**
+  Always-landscape / two-pane / persistent rail describes the in-game app. A
+  landing page is public: portrait on a phone, wide on a desktop, scrollable,
+  conventional. What it inherits is the token system in `styles.css` — light
+  surfaces, the one purple accent, whitespace, the same buttons. Zero new
+  colours, zero new primitives (`web/src/public/Landing.tsx`, the `public shell`
+  block in `styles.css`).
+- **The rotate gate moved into the authenticated branch** (`App.tsx`). It used
+  to render above the route switch, so on a portrait phone the "hold your phone
+  sideways" card stacked on top of the *logged-out* sign-in form. Authed
+  behaviour is byte-identical; public pages are now portrait-usable, which the
+  landing page requires.
+- **Anon routes:** `/` and `*` → landing, `/login`, `/signup` → the existing
+  Login card seeded by `initialMode`, `/reset` unchanged. Mode toggles inside
+  the card deliberately do NOT rewrite the URL — re-routing would remount the
+  card and discard whatever was typed, and it keeps Login router-free (its
+  tests render it bare). Unknown paths land on the pitch so a stranger
+  following any link gets both doors. Already-signed-in visitors never reach
+  this branch (`App` resolves `/me` first) — pinned in `Landing.test.tsx`.
+- Two shipped defects fixed in passing, both public-shell surface:
+  `input[type='password']` was absent from the input rule (every auth screen
+  rendered a native unstyled password box), and the auth card's `max-width`
+  was scoped to `.content >` / `.app >` selectors that never matched logged-out
+  auth, so the sign-in card ran full-viewport-width on desktop.
+- Copy is honest about what the game is and explicitly says it is not a
+  mass-market product. Placeholders are marked in the `COPY` object in
+  `Landing.tsx`: the product name ("FM League", the manifest's working title),
+  season cadence, and footer links.
+
 ## 2026-07-23 — L5E: the duel state machine (the designed session lands)
 
 The July whack-a-mole is resolved: designed as a unit (L5E-DESIGN.md), landed

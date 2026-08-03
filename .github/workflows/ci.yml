@@ -118,6 +118,18 @@ jobs:
           psql -h localhost -U postgres -c 'CREATE DATABASE smoke_test'
           psql -h localhost -U postgres -d smoke_test -v ON_ERROR_STOP=1 -q -f server/schema.sql
           psql -h localhost -U postgres -d smoke_test -v ON_ERROR_STOP=1 -q -f server/smoke.sql
+      # schema.sql stays canonical; migrations/ is how an EXISTING database
+      # reaches the same state. Every change is written twice, so this proves
+      # the two paths still agree — build one DB from each, pg_dump, diff.
+      # (needs an install: the runner it spawns imports pg)
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --filter @fm/engine --filter @fm/server
+      - name: schema.sql ≡ the migration chain
+        run: node server/scripts/check-schema-parity.ts
+        env:
+          DATABASE_URL: postgres://postgres:fm@localhost:5432/postgres
 
   pipeline:
     runs-on: ubuntu-latest
