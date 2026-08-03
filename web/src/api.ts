@@ -6,6 +6,7 @@
 import type { Attributes, HalfStats, MatchEvent, ReplayFrame, Tactics } from '@fm/engine/types';
 import type { EligibilityIssue } from '@fm/engine/eligibility';
 import type { FixtureState } from '@fm/engine/state-machine';
+import type { ClubIdentity } from '@fm/engine/club-identity';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -33,6 +34,11 @@ export interface Me {
   manager: { id: string; email: string; displayName: string };
   /** null until the account has a club (created in a later accounts-arc phase). */
   club: { id: string; name: string } | null;
+  /** The ACCOUNT's persistent club identity — name, crest, colours (accounts-arc
+   *  phase 2). Not league-scoped: it travels into every league the account joins.
+   *  Null until the account creates one, which is what gates the create-club
+   *  screen. Distinct from `club`, which is this league's competitive entry. */
+  clubIdentity: ClubIdentity | null;
   /** null when no season is configured yet. */
   season: { id: string; number: number; phase: string } | null;
 }
@@ -265,6 +271,9 @@ export const api = {
   logout: () => req<void>('POST', '/api/auth/logout'),
   forgotPassword: (email: string) => req<void>('POST', '/api/auth/forgot-password', { email }),
   resetPassword: (token: string, password: string) => req<{ ok: true }>('POST', '/api/auth/reset-password', { token, password }),
+  /** Create OR edit the club identity — one call, because the spec makes them
+   *  the same act (editable at any time, reflected across every league). */
+  saveClubIdentity: (identity: ClubIdentity) => req<ClubIdentity>('PUT', '/api/club-identity', identity),
   squad: () => req<{ players: SquadPlayerView[] }>('GET', '/api/squad'),
   playerDetail: (playerId: string) => req<PlayerDetailView>('GET', `/api/squad/player/${playerId}`),
   defaultTactics: () => req<{ payload: Tactics }>('GET', '/api/default-tactics'),

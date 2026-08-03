@@ -69,6 +69,36 @@ CREATE TABLE accounts (
 );
 CREATE INDEX accounts_reset_token ON accounts(reset_token) WHERE reset_token IS NOT NULL;
 
+-- Club identity = the account's PERSISTENT club: name, crest, colours. Phase 2
+-- of the accounts arc (LOBBY-DESIGN-SPEC §2/§6). It hangs off the ACCOUNT and
+-- nothing else — no league_id, no season_id, no club_id — and that is the whole
+-- point: editing it reflects in every league the account plays, and joining a
+-- new league resets competitive state while the identity travels intact.
+-- Phase 3's league_entries reference this row LIVE rather than snapshotting it
+-- (spec §2's recommendation: a badge change showing up everywhere is expected
+-- in a friends' game).
+--
+-- The badge is STRUCTURED, never an uploaded image: a shape id + an emblem id +
+-- the two colours, rendered to SVG on the client. No file storage, no
+-- moderation, crisp at every size (spec §6). The ids are validated by the
+-- client's curated sets, not by the database — adding a new emblem must not
+-- need a migration.
+--
+-- `name` is deliberately NOT unique. It identifies an ACCOUNT's club across all
+-- leagues, so global uniqueness would let one league's naming block another's.
+-- Per-league name collisions are Phase 4's problem, checked at join time.
+CREATE TABLE club_identities (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id      UUID NOT NULL UNIQUE REFERENCES accounts(id),
+  name            TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 2 AND 32),
+  badge_shape     TEXT NOT NULL,
+  badge_emblem    TEXT NOT NULL,
+  primary_color   TEXT NOT NULL CHECK (primary_color ~ '^#[0-9a-f]{6}$'),
+  secondary_color TEXT NOT NULL CHECK (secondary_color ~ '^#[0-9a-f]{6}$'),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE seasons (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   number          INT NOT NULL UNIQUE,               -- 1, 2, ...

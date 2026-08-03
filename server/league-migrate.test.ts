@@ -5,9 +5,9 @@
  *
  * The properties under test are the ones the runner exists to guarantee:
  *   • an EMPTY database gets the whole chain and ends up matching schema.sql;
- *   • a database in the CURRENT PRODUCTION SHAPE (schema.sql applied, accounts
- *     and all) is a NO-OP — the baseline is adopted, nothing is executed, and
- *     not one object is created, altered or dropped;
+ *   • against the CURRENT PRODUCTION SHAPE (the baseline, unmanaged) the
+ *     BASELINE ITSELF executes nothing — it is recorded, not run — and the
+ *     database converges on schema.sql via the later migrations;
  *   • running twice does nothing the second time;
  *   • a dry-run writes nothing at all, not even the bookkeeping table;
  *   • adoption REFUSES when the schema is incomplete (a partial hand-run DDL
@@ -18,7 +18,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -65,7 +65,22 @@ async function resetTarget(): Promise<pg.Pool> {
   return target;
 }
 
-/** the CURRENT PRODUCTION SHAPE: schema.sql applied once, nothing tracking it */
+/**
+ * THE CURRENT PRODUCTION SHAPE: the BASELINE applied once, nothing tracking it.
+ *
+ * Deliberately NOT schema.sql. Production was created from schema.sql at the
+ * moment schema.sql and the baseline were identical, and has not moved since —
+ * so what production actually has is the baseline, and every later migration is
+ * still owed to it. Once schema.sql gains a table that a later migration also
+ * creates (0002 did), building a "production-shaped" database from schema.sql
+ * would already contain that table and the migration would collide. The two are
+ * only interchangeable before the first real migration exists.
+ */
+async function applyBaselineSchema(pool: pg.Pool): Promise<void> {
+  await pool.query(readFileSync(new URL('./migrations/0001_baseline.sql', import.meta.url), 'utf8'));
+}
+
+/** what a FRESH install gets: the canonical file (tests, CI smoke, seed-demo). */
 async function applyCanonicalSchema(pool: pg.Pool): Promise<void> {
   await pool.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
 }
@@ -87,6 +102,11 @@ async function schemaFingerprint(pool: pg.Pool): Promise<string> {
                 WHERE n.nspname = 'public') y) AS f`);
   return r.f;
 }
+
+/** how many migrations exist on disk — the tests must not re-hardcode this
+ *  every time a phase adds one (0002 broke exactly those assertions once) */
+const migrationCount = (): number =>
+  readdirSync(new URL('./migrations/', import.meta.url)).filter((f) => /^\d{4}_.+\.sql$/.test(f)).length;
 
 const tableExists = async (pool: pg.Pool, name: string): Promise<boolean> => {
   const { rows: [r] } = await pool.query<{ oid: string | null }>(`SELECT to_regclass($1) AS oid`, [`public.${name}`]);
@@ -184,8 +204,11 @@ test('EMPTY database: runs the whole chain and lands on the schema.sql shape', a
   const canonical = await resetCanonicalReference();
   assert.equal(await schemaFingerprint(pool), canonical);
 
-  const { rows } = await pool.query<{ id: string; adopted: boolean }>(`SELECT id, adopted FROM schema_migrations`);
-  assert.deepEqual(rows, [{ id: BASELINE_ID, adopted: false }], 'the baseline was RUN here, not adopted');
+  const { rows } = await pool.query<{ id: string; adopted: boolean }>(`SELECT id, adopted FROM schema_migrations ORDER BY id`);
+  assert.equal(rows[0].id, BASELINE_ID);
+  assert.equal(rows[0].adopted, false, 'the baseline was RUN here, not adopted');
+  assert.ok(rows.every((r) => !r.adopted), 'nothing is adopted on an empty database');
+  assert.equal(rows.length, migrationCount(), 'every migration on disk is recorded');
 });
 
 /** build the schema.sql fingerprint in a scratch database, then drop it */
@@ -205,7 +228,7 @@ async function resetCanonicalReference(): Promise<string> {
 
 test('CURRENT PRODUCTION SHAPE: adopting the baseline is a NO-OP', async () => {
   const pool = await resetTarget();
-  await applyCanonicalSchema(pool);           // exactly what prod has today
+  await applyBaselineSchema(pool);             // exactly what prod has today
   const before = await schemaFingerprint(pool);
 
   const dry = await migrate();
@@ -219,14 +242,27 @@ test('CURRENT PRODUCTION SHAPE: adopting the baseline is a NO-OP', async () => {
   assert.equal(applied.code, 0, applied.out);
   assert.match(applied.out, /adopted \(0 statements executed\)/);
 
-  assert.equal(await schemaFingerprint(pool), before, 'adoption altered the schema — it must not');
-  const { rows } = await pool.query<{ id: string; adopted: boolean }>(`SELECT id, adopted FROM schema_migrations`);
-  assert.deepEqual(rows, [{ id: BASELINE_ID, adopted: true }]);
+  const { rows } = await pool.query<{ id: string; adopted: boolean; ms: number }>(
+    `SELECT id, adopted, duration_ms AS ms FROM schema_migrations ORDER BY id`);
+  assert.equal(rows[0].id, BASELINE_ID);
+  assert.equal(rows[0].adopted, true, 'the baseline must be ADOPTED against an existing schema');
+  assert.equal(rows[0].ms, 0, 'an adopted migration runs for zero milliseconds because it runs nothing');
+  assert.ok(rows.slice(1).every((r) => !r.adopted), 'only the baseline is ever adopted');
+  assert.equal(rows.length, migrationCount());
+
+  // The BASELINE changed nothing: everything the schema gained is exactly what
+  // the later migrations add, and the end state is schema.sql. That is the real
+  // production guarantee — prod converges on canonical without being rebuilt.
+  const canonical = await resetCanonicalReference();
+  assert.equal(await schemaFingerprint(pool), canonical, 'production must converge on schema.sql');
+  if (migrationCount() === 1) {
+    assert.equal(await schemaFingerprint(pool), before, 'with only the baseline, adoption is a total no-op');
+  }
 });
 
 test('re-running is a no-op the second time', async () => {
   const pool = await resetTarget();
-  await applyCanonicalSchema(pool);
+  await applyBaselineSchema(pool);
   await migrate(['--confirm']);
   const before = await schemaFingerprint(pool);
   const { rows: [first] } = await pool.query<{ at: string }>(`SELECT applied_at::text AS at FROM schema_migrations WHERE id = $1`, [BASELINE_ID]);
@@ -239,13 +275,13 @@ test('re-running is a no-op the second time', async () => {
   assert.equal(await schemaFingerprint(pool), before);
   const { rows: [again] } = await pool.query<{ at: string; n: number }>(
     `SELECT applied_at::text AS at, (SELECT count(*)::int FROM schema_migrations) AS n FROM schema_migrations WHERE id = $1`, [BASELINE_ID]);
-  assert.equal(again.n, 1, 'the second run inserted a duplicate bookkeeping row');
+  assert.equal(again.n, migrationCount(), 'the second run inserted a duplicate bookkeeping row');
   assert.equal(again.at, first.at, 'the second run rewrote the applied_at timestamp');
 });
 
 test('adoption REFUSES when the schema is incomplete (a partial hand-run DDL session)', async () => {
   const pool = await resetTarget();
-  await applyCanonicalSchema(pool);
+  await applyBaselineSchema(pool);
   // simulate exactly the accounts-arc risk: the table was hand-run, and wasn't
   await pool.query(`DROP INDEX accounts_reset_token`);
   await pool.query(`DROP TABLE accounts`);
@@ -260,7 +296,7 @@ test('adoption REFUSES when the schema is incomplete (a partial hand-run DDL ses
 
 test('an already-applied migration that has been EDITED is refused', async () => {
   const pool = await resetTarget();
-  await applyCanonicalSchema(pool);
+  await applyBaselineSchema(pool);
   await migrate(['--confirm']);
   // rewrite the recorded checksum to simulate the file having changed
   await pool.query(`UPDATE schema_migrations SET checksum = 'deadbeef' WHERE id = $1`, [BASELINE_ID]);
@@ -273,8 +309,8 @@ test('an already-applied migration that has been EDITED is refused', async () =>
 
 test('a failing migration rolls back completely; earlier ones stay applied', async () => {
   const pool = await resetTarget();
-  await applyCanonicalSchema(pool);
-  await migrate(['--confirm']);                       // baseline adopted
+  await applyBaselineSchema(pool);
+  await migrate(['--confirm']);                       // baseline adopted + 0002 applied
 
   const goodPath = new URL('./migrations/9998_parity-probe-ok.sql', import.meta.url);
   const badPath = new URL('./migrations/9999_parity-probe-bad.sql', import.meta.url);
@@ -293,7 +329,11 @@ test('a failing migration rolls back completely; earlier ones stay applied', asy
     assert.equal(await tableExists(pool, 'migrate_probe_ok'), true, 'the earlier migration must survive');
     assert.equal(await tableExists(pool, 'migrate_probe_bad'), false, 'the failed migration must leave nothing behind');
     const { rows } = await pool.query<{ id: string }>(`SELECT id FROM schema_migrations ORDER BY id`);
-    assert.deepEqual(rows.map((r) => r.id), [BASELINE_ID, '9998_parity-probe-ok']);
+    // everything already on disk, plus the probe that SUCCEEDED — and nothing
+    // for the one that failed
+    assert.deepEqual(rows.map((r) => r.id).slice(-1), ['9998_parity-probe-ok']);
+    assert.equal(rows.length, migrationCount() - 1, 'the failed probe left no bookkeeping row');
+    assert.ok(!rows.some((r) => r.id === '9999_parity-probe-bad'));
 
     // and re-running resumes at the one that failed
     rmSync(badPath);

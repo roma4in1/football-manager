@@ -706,6 +706,25 @@ main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
 .auth-brand a { color: inherit; text-decoration: none; }
 .auth-brand a:hover { color: var(--accent); }
 
+/* ── club identity editor (accounts phase 2) — an auth-frame screen, so it is
+      portrait-usable and never sits behind the landscape rotate gate ───────── */
+.club-editor { padding-top: var(--sp-5); padding-bottom: var(--sp-5); min-height: 100dvh; }
+.club-editor .auth-card { max-height: none; }
+.crest-hint { font-size: var(--fs-sm); margin-bottom: var(--sp-3); }
+.crest-preview { display: flex; justify-content: center; margin: var(--sp-2) 0 var(--sp-4); }
+.crest-preview .club-badge { filter: drop-shadow(0 4px 10px rgba(16, 24, 40, 0.18)); }
+.club-editor h3 { margin-top: var(--sp-3); }
+.pick-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.pick-row button { padding: 0.3rem 0.6rem; font-size: var(--fs-xs); }
+.swatch-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.swatch {
+  width: 26px; height: 26px; padding: 0; border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong); cursor: pointer;
+}
+/* the swatch carries its colour as an inline style, which beats the generic
+   button[aria-pressed] accent fill — so selection has to read as a RING */
+.swatch[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); border-color: var(--accent); }
+
 /* ══ the public shell (landing page) ═════════════════════════════════════════
    NOT an app screen. The always-landscape / two-pane / rail layout above is
    the IN-GAME app and does not apply out here: this is portrait-first on a

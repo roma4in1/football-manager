@@ -81,8 +81,21 @@ first boot — nothing to do there.
 > on every schema change is a migration, applied by the runner in §1.6 — not by
 > hand. Take a backup (§8) before applying one.
 
-`schema.sql` stays canonical for **fresh** installs (this step, the tests and CI).
-Changing an **existing** database is §1.6.
+> **⚠️ This step is for the ONE database that already exists.** A *brand-new*
+> database must be built by the migration runner (§1.6), **not** by this file
+> followed by §1.6. `schema.sql` describes the schema as it is *today*; the
+> migration chain rebuilds it from the baseline forward. Once a migration
+> creates a table that `schema.sql` also declares — `0002` created
+> `club_identities` — running `schema.sql` first and then migrating collides
+> ("relation already exists"). For a fresh database:
+>
+> ```sh
+> DATABASE_URL='<url>' node server/scripts/migrate.ts --confirm   # builds it from 0001 forward
+> ```
+>
+> `schema.sql` remains the canonical, readable description and the bootstrap for
+> the tests, the CI smoke job and `seed-demo.ts` — all throwaway databases that
+> never migrate.
 
 ### 1.6 Change the schema on a live database — `scripts/migrate.ts`
 Ordered, versioned, **forward-only** migrations in `server/migrations/`, applied

@@ -8,6 +8,7 @@
     "./rng": "./engine-rng.ts",
     "./aggregate": "./engine-aggregate.ts",
     "./eligibility": "./league-eligibility.ts",
+    "./club-identity": "./club-identity.ts",
     "./config": "./league-config.ts",
     "./state-machine": "./season-state-machine.ts",
     "./growth": "./league-growth.ts",
@@ -35,7 +36,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test league-eligibility.test.ts league-growth.test.ts league-economy.test.ts agent-sharpness.test.ts penalty-shootout.test.ts",
+    "test": "node --test league-eligibility.test.ts league-growth.test.ts league-economy.test.ts agent-sharpness.test.ts penalty-shootout.test.ts club-identity.test.ts",
     "harness": "node stat-harness.ts",
     "realism": "node realism-harness.ts",
     "realism:ci": "node realism-harness.ts --fixture",

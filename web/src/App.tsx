@@ -4,6 +4,7 @@ import { api, ApiError, type Me, type MeWithClub } from './api.ts';
 import { Login } from './screens/Login.tsx';
 import { ResetPassword } from './screens/ResetPassword.tsx';
 import { AccountLanding } from './screens/AccountLanding.tsx';
+import { CreateClub } from './screens/CreateClub.tsx';
 import { Landing } from './public/Landing.tsx';
 import { Rail } from './shell/Rail.tsx';
 import { Section } from './shell/Section.tsx';
@@ -77,16 +78,23 @@ export function App() {
           <Route path="*" element={<Landing />} />
         </Routes>
       ) : (
-        /* The authenticated app IS always-landscape — the rotate gate belongs
-           here, and only here. */
-        <>
-          <RotateOverlay />
-          {me.club && me.season ? (
-            <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={logout} />
-          ) : (
-            <AccountLanding email={me.manager.email} onLogout={logout} />
-          )}
-        </>
+        /* An account with no club identity yet names its club FIRST — and that
+           screen renders outside `.app`, with no rotate gate, so a brand-new
+           signup on a portrait phone is not the dead end AccountLanding was. */
+        me.clubIdentity === null ? (
+          <CreateClub existing={null} onSaved={load} onLogout={logout} />
+        ) : (
+          /* The authenticated app IS always-landscape — the rotate gate belongs
+             here, and only here. */
+          <>
+            <RotateOverlay />
+            {me.club && me.season ? (
+              <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={logout} />
+            ) : (
+              <AccountLanding email={me.manager.email} onLogout={logout} />
+            )}
+          </>
+        )
       )}
     </BrowserRouter>
   );

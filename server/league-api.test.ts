@@ -119,6 +119,45 @@ test('signup opens a session; duplicate email refused; a fresh account has no cl
   assert.equal(me.json().club, null);
 });
 
+test('club identity is ACCOUNT-scoped: a clubless account owns one, and it is editable', async () => {
+  const email = 'identity@test.io';
+  const up = await call({ method: 'POST', url: '/api/auth/signup', payload: { email, password: 'password123' } });
+  const cookie = up.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
+
+  // no identity yet — this is what gates the create-club screen
+  assert.equal((await call({ method: 'GET', url: '/api/me', cookie })).json().clubIdentity, null);
+
+  const identity = {
+    name: 'Real Coteaux', badgeShape: 'shield', badgeEmblem: 'lion',
+    primaryColor: '#534ab7', secondaryColor: '#1e3a8a',
+  };
+  assert.equal((await call({ method: 'PUT', url: '/api/club-identity', cookie, payload: identity })).statusCode, 200);
+
+  // it comes back on /me — for an account with NO CLUB AT ALL, which is the
+  // point: identity belongs to the person, competitive state to the league
+  const me = await call({ method: 'GET', url: '/api/me', cookie });
+  assert.equal(me.json().club, null);
+  assert.deepEqual(me.json().clubIdentity, identity);
+
+  // editable at any time, and it REPLACES rather than duplicating
+  const edited = { ...identity, name: 'Coteaux United', badgeEmblem: 'crown' };
+  assert.equal((await call({ method: 'PUT', url: '/api/club-identity', cookie, payload: edited })).statusCode, 200);
+  assert.deepEqual((await call({ method: 'GET', url: '/api/me', cookie })).json().clubIdentity, edited);
+  const { rows } = await q(`SELECT count(*)::int AS n FROM club_identities`);
+  assert.equal(rows[0].n, 1, 'editing upserts — one identity per account, never a second row');
+
+  // malformed input is refused with typed issues, and does not overwrite
+  const bad = await call({ method: 'PUT', url: '/api/club-identity', cookie, payload: { ...identity, name: 'R', primaryColor: 'red' } });
+  assert.equal(bad.statusCode, 422);
+  assert.deepEqual(bad.json().issues.sort(), ['bad_color', 'name_too_short']);
+  assert.deepEqual((await call({ method: 'GET', url: '/api/me', cookie })).json().clubIdentity, edited, 'a rejected edit changes nothing');
+});
+
+test('club identity requires a session', async () => {
+  const res = await call({ method: 'PUT', url: '/api/club-identity', payload: { name: 'Nope' } });
+  assert.equal(res.statusCode, 401);
+});
+
 test('login: correct password issues a session, wrong password → 401', async () => {
   const good = await call({ method: 'POST', url: '/api/auth/login', payload: { email: 'newbie@test.io', password: 'password123' } });
   assert.equal(good.statusCode, 200);

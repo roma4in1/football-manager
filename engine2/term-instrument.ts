@@ -154,8 +154,13 @@ const lsum = loose.touch + loose.carry + loose.never;
 const ssum = split.aimed + split.reachable + split.noRecv;
 const tsum = term.dead + term.tackled + term.uncontrolled;
 // TRAP 6 — EMPTY CLASSES, checked before anything is read
+// EVERY leaf class, first-touch included — it read 0 of 76 and only the
+// reader noticed. A class at zero is the instrument's job to flag.
 for (const [n, v] of [['possessions', tot], ['died', died], ['uncontrolled', term.uncontrolled],
-  ['never-controlled', loose.never], ['pass events', passEvents], ['tracked flights', nwTot]] as const) {
+  ['never-controlled', loose.never], ['pass events', passEvents], ['tracked flights', nwTot],
+  ['loose:first-touch', loose.touch], ['loose:carry', loose.carry],
+  ['split:aimed', split.aimed], ['split:reachable', split.reachable],
+  ['split:no-receiver', split.noRecv], ['term:dead', term.dead], ['term:tackled', term.tackled]] as const) {
   if (v === 0) fail.push(`EMPTY CLASS: ${n}`);
 }
 if (tsum !== died) fail.push(`terminals do not sum: ${tsum} vs ${died}`);

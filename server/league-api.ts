@@ -39,6 +39,7 @@ import { AuctionError } from './league-auction.ts';
 import { isTrainingFocus, TRAINING_FOCUSES } from '@fm/engine/growth';
 import { LEAGUE_CFG, facilityUpgradeCost } from '@fm/engine/config';
 import { validateHtResubmission, validateTactics } from '@fm/engine/eligibility';
+import { validateClubIdentity } from '@fm/engine/club-identity';
 import type { Orchestrator } from './league-orchestrator.ts';
 import { createTransferCore, TransferError } from './league-transfers.ts';
 import { hashPassword, verifyPassword } from './league-password.ts';
@@ -247,11 +248,27 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
     sessioned.get('/me', async (req) => {
       const s = await store.currentSeason(pool);
       const a = req.account;
+      // the ACCOUNT's club identity — not the league's club. Null until the
+      // account creates one, which is what the create-club screen keys off.
+      const identity = a.accountId ? await store.getClubIdentity(pool, a.accountId) : null;
       return {
         manager: { id: a.managerId, email: a.email, displayName: a.displayName },
         club: a.clubId ? { id: a.clubId, name: a.clubName } : null,
+        clubIdentity: identity,
         season: s ? { id: s.id, number: s.number, phase: s.phase } : null,
       };
+    });
+
+    // Create OR edit the club identity — one route, because the spec makes them
+    // the same act: the identity is editable at any time and the change reflects
+    // across every league the account plays in (LOBBY-DESIGN-SPEC §1).
+    sessioned.put('/club-identity', async (req, reply) => {
+      const a = req.account;
+      if (!a.accountId) return reply.code(403).send({ error: 'no_account' });
+      const parsed = validateClubIdentity(req.body);
+      if (!parsed.ok) return reply.code(422).send({ error: 'invalid_identity', issues: parsed.issues });
+      await store.upsertClubIdentity(pool, a.accountId, parsed.value);
+      return reply.send(parsed.value);
     });
   });
 

@@ -1362,20 +1362,29 @@ export interface SessionContext {
   displayName: string;
   clubId: string | null;
   clubName: string | null;
+  /** the ACCOUNT behind the session — club identity is account-scoped, not
+   *  league-scoped, so it is keyed on this and never on clubId. Null only for a
+   *  seeded manager whose session predates having an account. */
+  accountId: string | null;
 }
 
 export async function getSessionContext(c: Queryable, sessionId: string): Promise<SessionContext | null> {
   const { rows } = await c.query(
-    `SELECT m.id AS manager_id, m.email, m.display_name, cl.id AS club_id, cl.name AS club_name
+    `SELECT m.id AS manager_id, m.email, m.display_name, cl.id AS club_id, cl.name AS club_name,
+            a.id AS account_id
      FROM sessions s
      JOIN managers m ON m.id = s.manager_id
      LEFT JOIN clubs cl ON cl.manager_id = m.id
+     LEFT JOIN accounts a ON a.manager_id = m.id
      WHERE s.id = $1 AND s.expires_at > now()`,
     [sessionId],
   );
   const r = rows[0];
   if (!r) return null;
-  return { managerId: r.manager_id, email: r.email, displayName: r.display_name, clubId: r.club_id, clubName: r.club_name };
+  return {
+    managerId: r.manager_id, email: r.email, displayName: r.display_name,
+    clubId: r.club_id, clubName: r.club_name, accountId: r.account_id,
+  };
 }
 
 export async function managerIdByEmail(c: Queryable, email: string): Promise<string | null> {
@@ -1397,6 +1406,47 @@ export async function accountByEmail(c: Queryable, email: string): Promise<Accou
   );
   const r = rows[0];
   return r ? { id: r.id, managerId: r.manager_id, passwordHash: r.password_hash } : null;
+}
+
+// ── club identity (LOBBY-DESIGN-SPEC §2/§6; phase 2 of the accounts arc) ──────
+// Keyed on ACCOUNT, never on club or league: one identity per person, travelling
+// into every league they join. Phase 3's league_entries will read it live.
+
+export interface ClubIdentityRow {
+  name: string;
+  badgeShape: string;
+  badgeEmblem: string;
+  primaryColor: string;
+  secondaryColor: string;
+}
+
+export async function getClubIdentity(c: Queryable, accountId: string): Promise<ClubIdentityRow | null> {
+  const { rows } = await c.query(
+    `SELECT name, badge_shape, badge_emblem, primary_color, secondary_color
+       FROM club_identities WHERE account_id = $1`,
+    [accountId],
+  );
+  const r = rows[0];
+  return r ? {
+    name: r.name, badgeShape: r.badge_shape, badgeEmblem: r.badge_emblem,
+    primaryColor: r.primary_color, secondaryColor: r.secondary_color,
+  } : null;
+}
+
+/** Create-or-edit in one call: the create-club screen and account settings are
+ *  the same operation, and the identity is editable at any time (spec §1). */
+export async function upsertClubIdentity(
+  c: Queryable, accountId: string, id: ClubIdentityRow,
+): Promise<void> {
+  await c.query(
+    `INSERT INTO club_identities (account_id, name, badge_shape, badge_emblem, primary_color, secondary_color)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (account_id) DO UPDATE SET
+       name = EXCLUDED.name, badge_shape = EXCLUDED.badge_shape,
+       badge_emblem = EXCLUDED.badge_emblem, primary_color = EXCLUDED.primary_color,
+       secondary_color = EXCLUDED.secondary_color, updated_at = now()`,
+    [accountId, id.name, id.badgeShape, id.badgeEmblem, id.primaryColor, id.secondaryColor],
+  );
 }
 
 export async function createManager(c: Queryable, email: string, displayName: string): Promise<string> {
