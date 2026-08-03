@@ -32,6 +32,12 @@ CREATE TYPE txn_kind AS ENUM (
   'wage_payment', 'facility_investment', 'adjustment'
 );
 
+CREATE TYPE league_status AS ENUM (
+  'lobby',      -- clubs joining by code; no season yet
+  'active',     -- a season is running
+  'complete'
+);
+
 -- ── Identity ──────────────────────────────────────────────────────────────
 
 CREATE TABLE managers (
@@ -99,22 +105,58 @@ CREATE TABLE club_identities (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- A LEAGUE is the competition a group of friends plays. Accounts-arc phase 3
+-- (LOBBY-DESIGN-SPEC §2/§4). Everything competitive hangs off it — seasons,
+-- clubs, and the league's OWN COPY of the player pool — so two leagues running
+-- at once are fully independent.
+--
+-- THE POOL IS COPIED PER LEAGUE, not shared. That single decision is what keeps
+-- this phase small: `contracts_one_active` (one active contract per player row)
+-- and the season-end `UPDATE players SET attributes` both stay EXACTLY as they
+-- are, because a league's player rows are its own. A shared pool would have
+-- needed per-entry attribute state, dragging growth, rollover, attribute_audit
+-- and the harnesses into this phase. The cost, accepted: "Mbappé" in two
+-- leagues is two rows that develop separately.
+CREATE TABLE leagues (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             TEXT NOT NULL,
+  -- short shareable code; phase 4 generates it, so NULL until then (NULLs are
+  -- distinct in a unique index, so many un-coded leagues coexist fine)
+  join_code        TEXT UNIQUE,
+  -- who created it; NULL for a league that predates self-service creation
+  host_account_id  UUID REFERENCES accounts(id),
+  status           league_status NOT NULL DEFAULT 'lobby',
+  club_capacity    INT NOT NULL DEFAULT 8 CHECK (club_capacity BETWEEN 2 AND 10),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE seasons (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  number          INT NOT NULL UNIQUE,               -- 1, 2, ...
+  number          INT NOT NULL,                      -- 1, 2, ... UNIQUE PER LEAGUE
   phase           season_phase NOT NULL DEFAULT 'setup',
   matchweek_count INT NOT NULL,                      -- regular weeks, excl. transfer week
   transfer_week   INT NOT NULL,                      -- fixed: after this matchweek number
   champion_club_id UUID,                             -- set when the playoff final resolves (FK added below clubs)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (transfer_week > 0 AND transfer_week < matchweek_count)
+  -- declared LAST so the column order matches migrations/0003's ADD COLUMN,
+  -- which appends; the schema-parity check diffs pg_dump and would fail on a
+  -- different ordinal position
+  league_id       UUID NOT NULL REFERENCES leagues(id),
+  CHECK (transfer_week > 0 AND transfer_week < matchweek_count),
+  UNIQUE (league_id, number)
 );
 
+-- A club is a manager's entry IN ONE LEAGUE (spec §2's `league_entries`): the
+-- competitive state that resets when you join a new one. The persistent
+-- identity — name, crest, colours — lives on club_identities, keyed to the
+-- ACCOUNT, and travels into every league.
 CREATE TABLE clubs (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   manager_id  UUID NOT NULL REFERENCES managers(id),
-  name        TEXT NOT NULL UNIQUE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  name        TEXT NOT NULL,                        -- UNIQUE PER LEAGUE, not globally
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  league_id   UUID NOT NULL REFERENCES leagues(id), -- last: see the note on seasons
+  UNIQUE (league_id, name)
 );
 
 ALTER TABLE seasons ADD CONSTRAINT seasons_champion_fk FOREIGN KEY (champion_club_id) REFERENCES clubs(id);
@@ -162,8 +204,17 @@ CREATE TABLE players (
   attributes   JSONB NOT NULL,                       -- engine Attributes shape
   physical     JSONB NOT NULL,                       -- engine PlayerPhysical extras (injuryProneness…)
   source_meta  JSONB NOT NULL DEFAULT '{}',          -- fbref/tm ids for pipeline re-joins
-  UNIQUE (full_name, birth_date)
+  -- WHICH LEAGUE OWNS THIS ROW. NULL = an unclaimed TEMPLATE from the pipeline
+  -- import; a league's creation copies templates into rows of its own. Because
+  -- every contracted player row belongs to exactly one league, contracts and
+  -- season-end growth need no league predicate at all — they were already
+  -- correct per row (last column: see the note on seasons).
+  league_id    UUID REFERENCES leagues(id),
+  UNIQUE (league_id, full_name, birth_date)
 );
+-- ...and templates need their own guard: NULLs are DISTINCT in a unique index,
+-- so the constraint above would happily admit two identical unclaimed players.
+CREATE UNIQUE INDEX players_template_identity ON players (full_name, birth_date) WHERE league_id IS NULL;
 
 CREATE TABLE attribute_audit (
   player_id  UUID NOT NULL REFERENCES players(id),

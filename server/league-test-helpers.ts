@@ -98,10 +98,27 @@ export async function bootstrapSchema(pool: pg.Pool, databaseUrl: string): Promi
   await pool.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
 }
 
+/**
+ * The suite's single league. Seasons and clubs are league-scoped since 0003, so
+ * every seed needs one — but the suites are all single-league, so this
+ * creates one lazily and reuses it. Keeps every seed helper's signature (and
+ * therefore every call site) unchanged.
+ */
+export async function ensureLeague(pool: pg.Pool): Promise<string> {
+  const found = await pool.query(`SELECT id FROM leagues ORDER BY created_at, id LIMIT 1`);
+  if (found.rows[0]) return found.rows[0].id as string;
+  const made = await pool.query(
+    `INSERT INTO leagues (name, status, club_capacity) VALUES ('Test league', 'active', 10) RETURNING id`,
+  );
+  return made.rows[0].id as string;
+}
+
 /** Season 1, 10 matchweeks, transfer week 5, phase walked to the target. */
 export async function seedSeason(pool: pg.Pool, phase: 'regular' | 'auction' = 'regular'): Promise<string> {
+  const leagueId = await ensureLeague(pool);
   const season = await pool.query(
-    `INSERT INTO seasons (number, matchweek_count, transfer_week) VALUES (1, 10, 5) RETURNING id`,
+    `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id) VALUES (1, 10, 5, $1) RETURNING id`,
+    [leagueId],
   );
   const seasonId = season.rows[0].id as string;
   await pool.query(`UPDATE seasons SET phase = 'auction' WHERE id = $1`, [seasonId]);
@@ -118,7 +135,8 @@ export async function seedBareClub(
     `INSERT INTO managers (email, display_name) VALUES ($1, $2) RETURNING id`, [managerEmail, name],
   );
   const club = await pool.query(
-    `INSERT INTO clubs (manager_id, name) VALUES ($1, $2) RETURNING id`, [manager.rows[0].id, name],
+    `INSERT INTO clubs (manager_id, name, league_id) VALUES ($1, $2, $3) RETURNING id`,
+    [manager.rows[0].id, name, await ensureLeague(pool)],
   );
   await pool.query(
     `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, $3, $4)`,
@@ -153,7 +171,8 @@ export async function seedClub(
     `INSERT INTO managers (email, display_name) VALUES ($1, $2) RETURNING id`, [managerEmail, name],
   );
   const club = await pool.query(
-    `INSERT INTO clubs (manager_id, name) VALUES ($1, $2) RETURNING id`, [manager.rows[0].id, name],
+    `INSERT INTO clubs (manager_id, name, league_id) VALUES ($1, $2, $3) RETURNING id`,
+    [manager.rows[0].id, name, await ensureLeague(pool)],
   );
   const clubId = club.rows[0].id as string;
   // mid-season suites: the whole allotment sits in RESERVE (facilities + the

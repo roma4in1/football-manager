@@ -1238,8 +1238,9 @@ export async function createNextSeason(
   c: Queryable, prevSeasonId: string, reserveGrowthRate: number,
 ): Promise<string> {
   const { rows } = await c.query(
-    `INSERT INTO seasons (number, matchweek_count, transfer_week)
-     SELECT number + 1, matchweek_count, transfer_week FROM seasons WHERE id = $1
+    // league_id rides along: season N+1 belongs to the same league as season N
+    `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id)
+     SELECT number + 1, matchweek_count, transfer_week, league_id FROM seasons WHERE id = $1
      RETURNING id`,
     [prevSeasonId],
   );

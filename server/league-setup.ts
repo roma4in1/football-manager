@@ -69,6 +69,8 @@ export interface ClubSpec {
 
 export interface SeasonSpec {
   number?: number;
+  /** the league this season belongs to (0003); one is created per setup */
+  leagueName?: string;
   clubs: ClubSpec[];
   /** regular-week number the transfer week follows; default: halfway */
   transferAfterWeek?: number;
@@ -113,9 +115,17 @@ export async function setupSeason(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // THE LEAGUE (0003). Setup still creates exactly one — self-service
+    // create/join is phase 4 — but seasons and clubs are league-scoped now, so
+    // it has to exist before them.
+    const league = await client.query(
+      `INSERT INTO leagues (name, status, club_capacity) VALUES ($1, 'active', $2) RETURNING id`,
+      [spec.leagueName ?? 'League', Math.min(10, Math.max(2, n))],
+    );
+    const leagueId = league.rows[0].id as string;
     const season = await client.query(
-      `INSERT INTO seasons (number, matchweek_count, transfer_week) VALUES ($1, $2, $3) RETURNING id`,
-      [spec.number ?? 1, rounds, transferAfterWeek],
+      `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [spec.number ?? 1, rounds, transferAfterWeek, leagueId],
     );
     const seasonId = season.rows[0].id as string;
     await client.query(`UPDATE seasons SET phase = 'auction' WHERE id = $1`, [seasonId]);
@@ -133,8 +143,8 @@ export async function setupSeason(
         [club.managerEmail, club.name],
       );
       const inserted = await client.query(
-        `INSERT INTO clubs (manager_id, name) VALUES ($1, $2) RETURNING id`,
-        [manager.rows[0].id, club.name],
+        `INSERT INTO clubs (manager_id, name, league_id) VALUES ($1, $2, $3) RETURNING id`,
+        [manager.rows[0].id, club.name, leagueId],
       );
       await client.query(
         `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, $3, $4)`,
@@ -146,6 +156,14 @@ export async function setupSeason(
       );
       clubIds.push(inserted.rows[0].id as string);
     }
+    // THE POOL BECOMES THIS LEAGUE'S. Imported players arrive unclaimed
+    // (league_id NULL = template); setting up the league claims them, which is
+    // what makes `contracts_one_active` and the season-end growth pass correct
+    // per league without either of them gaining a league predicate.
+    // Phase 4 (many leagues) COPIES templates instead of claiming them — with
+    // one league the two are equivalent, and claiming keeps this migration
+    // behaviour-neutral.
+    await client.query(`UPDATE players SET league_id = $1 WHERE league_id IS NULL`, [leagueId]);
     await client.query('COMMIT');
     return { seasonId, clubIds, rounds, transferAfterWeek };
   } catch (err) {

@@ -20,7 +20,7 @@ import { createApi, SESSION_COOKIE } from './league-api.ts';
 import { createCore, createOrchestrator, type Orchestrator, type OrchestratorCore } from './league-orchestrator.ts';
 import { applySeasonEndGrowth } from './league-training.ts';
 import * as store from './league-store.ts';
-import { apiLogin, bootstrapSchema, flatAttributes, seedClub } from './league-test-helpers.ts';
+import { apiLogin, bootstrapSchema, ensureLeague, flatAttributes, seedClub } from './league-test-helpers.ts';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:fm@localhost:54329/fm_test';
 const SECRET = 'training-test-secret';
@@ -100,7 +100,10 @@ before(async () => {
 
   // MICRO-SEASON: 2 regular weeks, transfer bye after week 1 — three closes
   // walk regular → transfer_window → regular → season_end
-  const season = await q(`INSERT INTO seasons (number, matchweek_count, transfer_week) VALUES (1, 2, 1) RETURNING id`);
+  const season = await q(
+    `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id) VALUES (1, 2, 1, $1) RETURNING id`,
+    [await ensureLeague(pool)],
+  );
   seasonId = season.rows[0].id as string;
   await q(`UPDATE seasons SET phase = 'auction' WHERE id = $1`, [seasonId]);
   await q(`UPDATE seasons SET phase = 'regular' WHERE id = $1`, [seasonId]);

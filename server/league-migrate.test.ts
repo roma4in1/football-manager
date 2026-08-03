@@ -307,6 +307,133 @@ test('an already-applied migration that has been EDITED is refused', async () =>
   assert.match(res.out, /immutable once applied/);
 });
 
+/* ── 0003's backfill: the riskiest step in the league refactor ────────────── */
+
+/** the live league's data, inserted at BASELINE shape (no league columns yet) */
+async function seedLiveLeagueData(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    INSERT INTO managers (id,email,display_name) VALUES
+      ('00000000-0000-0000-0000-000000000001','a@x.io','A'),
+      ('00000000-0000-0000-0000-000000000002','b@x.io','B');
+    INSERT INTO seasons (id,number,matchweek_count,transfer_week) VALUES
+      ('00000000-0000-0000-0000-00000000000a',1,14,7);
+    INSERT INTO clubs (id,manager_id,name) VALUES
+      ('00000000-0000-0000-0000-0000000000c1','00000000-0000-0000-0000-000000000001','Alpha'),
+      ('00000000-0000-0000-0000-0000000000c2','00000000-0000-0000-0000-000000000002','Beta');
+    INSERT INTO players (id,full_name,birth_date,position,height_cm,market_value,attributes,physical) VALUES
+      ('00000000-0000-0000-0000-0000000000f1','Contracted Player','1998-01-01','FW',180,1000,'{}','{}'),
+      ('00000000-0000-0000-0000-0000000000f2','Pool Player','1999-01-01','MF',178,900,'{}','{}');
+    INSERT INTO contracts (player_id,club_id,season_signed,wage,duration) VALUES
+      ('00000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-0000000000c1',
+       '00000000-0000-0000-0000-00000000000a',100,2);
+  `);
+}
+
+const one = async (pool: pg.Pool, sql: string): Promise<number> =>
+  Number((await pool.query<{ n: string }>(sql)).rows[0].n);
+
+test('0003 backfill: a LIVE league gets a league row and everything attaches to it', async () => {
+  const pool = await resetTarget();
+  await applyBaselineSchema(pool);   // production: baseline, unmanaged, with data
+  await seedLiveLeagueData(pool);
+
+  const res = await migrate(['--confirm']);
+  assert.equal(res.code, 0, res.out);
+
+  assert.equal(await one(pool, `SELECT count(*) n FROM leagues`), 1, 'exactly one league is created');
+  assert.equal(await one(pool, `SELECT count(*) n FROM seasons WHERE league_id IS NULL`), 0);
+  assert.equal(await one(pool, `SELECT count(*) n FROM clubs WHERE league_id IS NULL`), 0);
+  // every existing player is the live league's pool — its contracts point at
+  // these rows, so they are NOT unclaimed templates
+  assert.equal(await one(pool, `SELECT count(*) n FROM players WHERE league_id IS NULL`), 0);
+  assert.equal(await one(pool, `SELECT count(*) n FROM players WHERE league_id IS NOT NULL`), 2);
+  assert.equal(
+    await one(pool, `SELECT count(DISTINCT league_id) n FROM
+      (SELECT league_id FROM seasons UNION SELECT league_id FROM clubs UNION SELECT league_id FROM players) x`),
+    1, 'seasons, clubs and players all land on the SAME league');
+
+  // the running league still resolves end to end
+  assert.equal(await one(pool, `SELECT count(*) n FROM contracts c
+     JOIN clubs cl ON cl.id = c.club_id JOIN players p ON p.id = c.player_id
+     WHERE c.released_at IS NULL`), 1, 'the active contract still joins club and player');
+
+  const { rows: [lg] } = await pool.query<{ status: string; cap: number }>(
+    `SELECT status::text, club_capacity AS cap FROM leagues`);
+  assert.equal(lg.status, 'active', 'a league with a running season is active, not lobby');
+  assert.equal(lg.cap, 2, 'capacity comes from the real club count');
+});
+
+test('0003 backfill: a FRESH database gets NO league — leagues are created, not migrated into', async () => {
+  const pool = await resetTarget();
+  const res = await migrate(['--confirm']);
+  assert.equal(res.code, 0, res.out);
+  assert.equal(await one(pool, `SELECT count(*) n FROM leagues`), 0);
+});
+
+test('0003 backfill: pool imported but NO season leaves the players as TEMPLATES', async () => {
+  // the "virgin league" state setup-production expects: the pipeline has run,
+  // no league exists yet. Those players belong to nobody and must stay NULL.
+  const pool = await resetTarget();
+  await applyBaselineSchema(pool);
+  await pool.query(
+    `INSERT INTO players (full_name,birth_date,position,height_cm,market_value,attributes,physical)
+     VALUES ('Pool A','1998-01-01','FW',180,1000,'{}','{}'), ('Pool B','1999-01-01','MF',178,900,'{}','{}')`);
+
+  const res = await migrate(['--confirm']);
+  assert.equal(res.code, 0, res.out);
+  assert.equal(await one(pool, `SELECT count(*) n FROM leagues`), 0, 'no season ⇒ no league');
+  assert.equal(await one(pool, `SELECT count(*) n FROM players WHERE league_id IS NULL`), 2,
+    'unclaimed players stay templates for a future league to copy');
+});
+
+test('0003: templates cannot duplicate, and two leagues CAN hold the same player name', async () => {
+  const pool = await resetTarget();
+  const res = await migrate(['--confirm']);
+  assert.equal(res.code, 0, res.out);
+
+  const mk = (league: string | null, name: string) => pool.query(
+    `INSERT INTO players (full_name,birth_date,position,height_cm,market_value,attributes,physical,league_id)
+     VALUES ($1,'1998-01-01','FW',180,1000,'{}','{}',$2)`, [name, league]);
+
+  await mk(null, 'Kylian Mbappé');
+  // NULLs are distinct in a plain unique index — the partial index is what stops this
+  await assert.rejects(() => mk(null, 'Kylian Mbappé'), /players_template_identity/,
+    'two unclaimed templates of the same player are refused');
+
+  const { rows: [a] } = await pool.query<{ id: string }>(
+    `INSERT INTO leagues (name, status) VALUES ('A','active') RETURNING id`);
+  const { rows: [b] } = await pool.query<{ id: string }>(
+    `INSERT INTO leagues (name, status) VALUES ('B','active') RETURNING id`);
+  // THE POINT OF THE PHASE: the same footballer exists in both leagues, as two
+  // rows that develop independently
+  await mk(a.id, 'Kylian Mbappé');
+  await mk(b.id, 'Kylian Mbappé');
+  assert.equal(await one(pool, `SELECT count(*) n FROM players WHERE full_name = 'Kylian Mbappé'`), 3);
+  await assert.rejects(() => mk(a.id, 'Kylian Mbappé'), /players_league_id_full_name_birth_date_key/,
+    'but not twice within one league');
+});
+
+test('0003: season numbers and club names are unique PER LEAGUE, not globally', async () => {
+  const pool = await resetTarget();
+  await migrate(['--confirm']);
+  const { rows: [a] } = await pool.query<{ id: string }>(
+    `INSERT INTO leagues (name, status) VALUES ('A','active') RETURNING id`);
+  const { rows: [b] } = await pool.query<{ id: string }>(
+    `INSERT INTO leagues (name, status) VALUES ('B','active') RETURNING id`);
+  const { rows: [m] } = await pool.query<{ id: string }>(
+    `INSERT INTO managers (email,display_name) VALUES ('m@x.io','M') RETURNING id`);
+
+  const season = (lg: string) => pool.query(
+    `INSERT INTO seasons (number,matchweek_count,transfer_week,league_id) VALUES (1,14,7,$1)`, [lg]);
+  const club = (lg: string) => pool.query(
+    `INSERT INTO clubs (manager_id,name,league_id) VALUES ($1,'Alpha',$2)`, [m.id, lg]);
+
+  await season(a.id); await season(b.id);   // both leagues have a season 1
+  await club(a.id);   await club(b.id);     // both have an "Alpha"
+  await assert.rejects(() => season(a.id), /seasons_league_id_number_key/);
+  await assert.rejects(() => club(a.id), /clubs_league_id_name_key/);
+});
+
 test('a failing migration rolls back completely; earlier ones stay applied', async () => {
   const pool = await resetTarget();
   await applyBaselineSchema(pool);
