@@ -3,6 +3,57 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-03 — phase 3 step 3: the routes, and TWO cross-league leaks
+
+The route enumeration found the leaks were **not** in the routes' own guards.
+Most routes act on `ctx.clubId`, which step 2 made the selected league's club,
+so they were already league-correct by construction. Two SQL reads were not.
+
+**LEAK 1 — the embargo's reveal branch was league-blind.** `EMBARGO_VISIBLE`
+grants visibility on `mw.revealed_at IS NOT NULL` OR participation. The reveal
+branch deliberately lets a NON-participant see a finished match — that is what
+revealing means, and within one league it is right. Across leagues, **once
+revealed, any club id satisfied it**, so a session in league B could read a
+league-A result or replay by fixture id. Fixed with a league predicate that
+rides the viewer's own club rather than a new parameter — the fixture's season
+must belong to the same league as `$2` — so **no caller can forget to pass it,
+because there is nothing to pass.** Tripwire proven: removing the predicate
+turns the two cross-league tests red.
+
+**LEAK 2 — `poolPlayers(seasonId)` had no league predicate**, so the auction
+pool and the transfer market would have listed every other league's uncontracted
+players and the unclaimed templates. A season names its league, so the predicate
+rides the seasonId already passed.
+
+Both fixed in SQL, per the standing decision that visibility is enforced in the
+query and never by JS post-filtering: **a forgotten league predicate is the same
+class of hole as a forgotten embargo filter, and both fail on the SECOND league,
+never the first** — which is why single-league testing could never have found
+either.
+
+Checked and found safe, recorded so the next reader does not re-derive it:
+`playerContract` is player-scoped and player rows are league-scoped since 0003;
+`contractedSquads` joins `club_seasons` on the season; `activeContractCounts` is
+league-blind but only ever read by keys drawn from one league's clubs.
+
+- **`/me` now returns the membership list + `selectedLeagueId`** — step 4's
+  Leagues Hub and switcher are built from exactly this, and were blocked on it.
+- **`PUT /api/league`** is the switcher, on `store.setSelectedLeague`, which
+  refuses a league the manager is not in; a forged or malformed id is a 404, not
+  a 500.
+- **`league-cross-league.test.ts`** (10 cases) is the point of the step: one
+  account in A and B with B selected, denied A's revealed result, replay, HT,
+  tactics, player and pool — then allowed all of it after switching. **The guard
+  is the league, not the row.**
+
+**A test-seeding consequence worth knowing.** Leak 2's predicate made
+`seedPoolPlayers` insert players the auction could not see, because they were
+templates (`league_id NULL`). That was the predicate working. `seedPoolPlayers`
+now claims them for the suite's league by default and takes `null` to seed
+templates instead — which is what the six `setupSeason`-style suites need, since
+`setupSeason` creates its own league and claims templates exactly as production
+does.
+
 ## 2026-08-03 — leagues (0003) + the league context layer (0004), phase 3 steps 1–2
 
 The refactor that lets one account hold several leagues at once. Split across

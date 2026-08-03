@@ -147,7 +147,7 @@ test('stubbed bracket: aggregates, levelâ†’shootout, neutral final, drawn finalâ
 
 test('e2e: a 5-club season crowns a champion through the playoffs, then rolls over', async () => {
   await bootstrapSchema(pool, DATABASE_URL);
-  await seedPoolPlayers(pool, 90, 'PO');
+  await seedPoolPlayers(pool, 90, 'PO', null);
   const names = ['Ash', 'Birch', 'Cedar', 'Doyle', 'Elm'];
   const setup = await setupSeason(pool, {
     clubs: names.map((n) => ({ name: n, managerEmail: `${n.toLowerCase()}@po5.io` })),

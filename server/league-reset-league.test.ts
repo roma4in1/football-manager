@@ -81,7 +81,7 @@ const count = async (table: string): Promise<number> =>
 /** A populated league: season, 2 clubs, and rows in the deep dependent tables
  *  (matchweek, fixture, contract, squad, transaction) to prove the CASCADE. */
 async function seedPopulatedLeague(): Promise<void> {
-  const players = await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8);
+  const players = await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8, 'Pool', null);
   const { seasonId, clubIds } = await setupSeason(pool, {
     clubs: [
       { name: 'Alpha FC', managerEmail: 'alice@demo.io' },

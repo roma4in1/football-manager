@@ -33,7 +33,7 @@ const q = (text: string, params?: unknown[]) => pool.query(text, params);
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
   await bootstrapSchema(pool, DATABASE_URL);
-  await seedPoolPlayers(pool, 40, 'SB');
+  await seedPoolPlayers(pool, 40, 'SB', null);
 
   ({ seasonId, clubIds } = await setupSeason(pool, {
     clubs: [{ name: 'Alpha', managerEmail: 'a@sb.io' }, { name: 'Beta', managerEmail: 'b@sb.io' }],

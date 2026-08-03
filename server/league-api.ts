@@ -256,7 +256,29 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
         club: a.clubId ? { id: a.clubId, name: a.clubName } : null,
         clubIdentity: identity,
         season: s ? { id: s.id, number: s.number, phase: s.phase } : null,
+        // EVERY league this account is in, plus which one is selected — the
+        // Leagues Hub and the switcher (step 4) are built from exactly this.
+        leagues: a.memberships.map((m) => ({
+          id: m.leagueId, name: m.leagueName, status: m.leagueStatus,
+          clubId: m.clubId, clubName: m.clubName,
+        })),
+        selectedLeagueId: a.leagueId,
       };
+    });
+
+    /**
+     * The league switcher. Points this session at another of the account's
+     * leagues; store.setSelectedLeague refuses one the manager is not in, so a
+     * forged id cannot select someone else's league.
+     */
+    sessioned.put('/league', async (req, reply) => {
+      const leagueId = (req.body as { leagueId?: unknown } | null)?.leagueId;
+      if (typeof leagueId !== 'string') return reply.code(400).send({ error: 'league_required' });
+      const sessionId = req.cookies[SESSION_COOKIE]!;
+      const ok = await store.setSelectedLeague(pool, sessionId, req.account.managerId, leagueId)
+        .catch(() => false); // malformed uuid → not one of yours
+      if (!ok) return reply.code(404).send({ error: 'not_found' });
+      return reply.send({ selectedLeagueId: leagueId });
     });
 
     // Create OR edit the club identity — one route, because the spec makes them

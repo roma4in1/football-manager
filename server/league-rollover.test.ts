@@ -74,7 +74,7 @@ async function playSeason(seasonId: string): Promise<void> {
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
   await bootstrapSchema(pool, DATABASE_URL);
-  await seedPoolPlayers(pool, 40, 'RP'); // GK/DF/DF/MF/MF/FW cycle
+  await seedPoolPlayers(pool, 40, 'RP', null); // GK/DF/DF/MF/MF/FW cycle
 
   const setup = await setupSeason(pool, {
     clubs: [{ name: 'Alpha', managerEmail: 'a@ro.io' }, { name: 'Beta', managerEmail: 'b@ro.io' }],

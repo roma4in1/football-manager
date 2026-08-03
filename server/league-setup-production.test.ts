@@ -62,7 +62,7 @@ test('empty player pool → refuses before any write', async () => {
 });
 
 test('dry-run (no --apply): validates, prints the plan, writes NOTHING', async () => {
-  await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8);
+  await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8, 'Pool', null);
   // alice is pre-seeded with her own display name — the script must plan a link
   await pool.query(`INSERT INTO managers (email, display_name) VALUES ('alice@test.io', 'Alice Original')`);
 

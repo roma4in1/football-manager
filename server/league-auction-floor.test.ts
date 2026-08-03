@@ -46,7 +46,7 @@ async function settle(lotId: string): Promise<Awaited<ReturnType<AuctionCore['cl
 before(async () => {
   pool = new pg.Pool({ connectionString: DATABASE_URL });
   await bootstrapSchema(pool, DATABASE_URL);
-  poolIds = await seedPoolPlayers(pool, 40, 'FL'); // sized past the setup guard's positional floors
+  poolIds = await seedPoolPlayers(pool, 40, 'FL', null); // sized past the setup guard's positional floors
 
   const setup = await setupSeason(pool, {
     clubs: [{ name: 'Alpha', managerEmail: 'a@fl.io' }, { name: 'Beta', managerEmail: 'b@fl.io' }],

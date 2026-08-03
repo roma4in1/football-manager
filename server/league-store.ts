@@ -594,9 +594,14 @@ export interface PoolPlayer {
 /** Uncontracted players not currently on a live lot. */
 export async function poolPlayers(c: Queryable, seasonId: string): Promise<PoolPlayer[]> {
   const { rows } = await c.query(
+    // p.league_id is the league predicate: the pool is PER LEAGUE since 0003,
+    // and without it the auction pool and the transfer market would list every
+    // other league's uncontracted players (and the unclaimed templates).
+    // A season names its league, so it rides the seasonId already passed.
     `SELECT p.id, p.full_name, p.position, p.market_value, p.birth_date, p.attributes
      FROM players p
-     WHERE NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)
+     WHERE p.league_id = (SELECT league_id FROM seasons WHERE id = $1)
+       AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)
        AND NOT EXISTS (
          SELECT 1 FROM auction_lots l
          WHERE l.player_id = p.id AND l.season_id = $1 AND l.won_by IS NULL AND l.closes_at > now()
@@ -1721,8 +1726,27 @@ export interface HalfResultView { half: 1 | 2; stats: unknown; events: MatchEven
  * post-final read (results, replays) — one rule, one place.
  * Placeholders: $1 = fixtureId, $2 = viewerClubId.
  */
+/**
+ * The embargo, in SQL so a forgotten JS filter cannot leak a row — plus the
+ * LEAGUE predicate, which is the same class of guard.
+ *
+ * The `revealed_at IS NOT NULL` branch deliberately lets a NON-participant see
+ * a finished match: that is the point of the reveal. Within one league that is
+ * right. Across leagues it was a leak — once revealed, ANY club id satisfied
+ * it, so a session in league B could read a league-A fixture by id.
+ *
+ * The fix rides the viewer's own club rather than a new parameter: the
+ * fixture's season must belong to the SAME LEAGUE as $2. No caller can forget
+ * to pass it, because there is nothing to pass. Proven by removing it and
+ * watching league-cross-league.test.ts go red.
+ */
 const EMBARGO_VISIBLE = `f.id = $1 AND f.state = 'final'
-       AND (mw.revealed_at IS NOT NULL OR $2 IN (f.home_club_id, f.away_club_id))`;
+       AND (mw.revealed_at IS NOT NULL OR $2 IN (f.home_club_id, f.away_club_id))
+       AND mw.season_id IN (
+         SELECT s.id FROM seasons s
+         JOIN clubs viewer ON viewer.league_id = s.league_id
+         WHERE viewer.id = $2
+       )`;
 
 export async function embargoedResult(c: Queryable, fixtureId: string, viewerClubId: string): Promise<HalfResultView[]> {
   const { rows } = await c.query(

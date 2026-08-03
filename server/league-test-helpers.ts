@@ -145,18 +145,33 @@ export async function seedBareClub(
   return { clubId: club.rows[0].id };
 }
 
-/** Uncontracted pool players for the auction; positions cycle GK/DF/DF/MF/MF/FW. */
-export async function seedPoolPlayers(pool: pg.Pool, count: number, prefix = 'Pool'): Promise<string[]> {
+/**
+ * Uncontracted pool players; positions cycle GK/DF/DF/MF/MF/FW.
+ *
+ * `leagueId` defaults to the suite's league (what an auction-style test wants:
+ * seedSeason then seedPoolPlayers, both on the same league). Pass NULL to seed
+ * them as unclaimed TEMPLATES instead — that is what a setupSeason-style test
+ * needs, because setupSeason creates its own league and claims the templates,
+ * exactly as production does.
+ */
+export async function seedPoolPlayers(
+  pool: pg.Pool, count: number, prefix = 'Pool', league?: string | null,
+): Promise<string[]> {
+  const leagueId = league === undefined ? await ensureLeague(pool) : league;
   const positions = ['GK', 'DF', 'DF', 'MF', 'MF', 'FW'];
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
     const position = positions[i % positions.length];
     const p = await pool.query(
-      `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      // players are LEAGUE-SCOPED since 0003 — seeded already claimed for the
+      // suite's league, exactly as setupSeason claims templates in production.
+      // Left as templates (league_id NULL) they are correctly invisible to the
+      // auction pool, which is what the league predicate is for.
+      `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical, league_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [`${prefix} Player ${i}`, '2001-03-01', position, position === 'GK' ? 190 : 180, 78,
         500_000 + i * 50_000,
-        JSON.stringify(flatAttributes(position === 'GK')), JSON.stringify({ injuryProneness: 10 })],
+        JSON.stringify(flatAttributes(position === 'GK')), JSON.stringify({ injuryProneness: 10 }), leagueId],
     );
     ids.push(p.rows[0].id as string);
   }
@@ -183,14 +198,19 @@ export async function seedClub(
      VALUES ($1, $2, 100000, 10000, 100000)`,
     [clubId, seasonId],
   );
+  const leagueId = await ensureLeague(pool);
   const playerIds: string[] = [];
   const positionFor = (i: number): string => (i === 0 ? 'GK' : i === 11 ? 'DF' : i === 12 ? 'FW' : 'MF');
   for (let i = 0; i < 13; i++) {
     const p = await pool.query(
-      `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      // players are LEAGUE-SCOPED since 0003 — seeded already claimed for the
+      // suite's league, exactly as setupSeason claims templates in production.
+      // Left as templates (league_id NULL) they are correctly invisible to the
+      // auction pool, which is what the league predicate is for.
+      `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, market_value, attributes, physical, league_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [`${name} Player ${i}`, '2000-01-15', positionFor(i), i === 0 ? 190 : 180, 78, 1_000_000,
-        JSON.stringify(flatAttributes(i === 0)), JSON.stringify({ injuryProneness: 10 })],
+        JSON.stringify(flatAttributes(i === 0)), JSON.stringify({ injuryProneness: 10 }), leagueId],
     );
     const playerId = p.rows[0].id as string;
     playerIds.push(playerId);

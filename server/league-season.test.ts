@@ -124,7 +124,7 @@ for (const n of [5, 6, 7, 8, 9, 10]) {
     await bootstrapSchema(pool, DATABASE_URL);
     // pool sized for the tuned squadMin/squadMax below (min 2 / max 3):
     // drain-safe = (n−1)·3 + 2; positional floors need n×(1,4,4,2) — seed generously
-    await seedPoolPlayers(pool, n * 13 + 12, `P${n}`);
+    await seedPoolPlayers(pool, n * 13 + 12, `P${n}`, null); // templates: setupSeason claims them
 
     const { seasonId, clubIds, rounds, transferAfterWeek } = await setupSeason(pool, {
       clubs: Array.from({ length: n }, (_, i) => ({ name: `Club ${i}`, managerEmail: `m${i}@n${n}.io` })),
@@ -222,7 +222,7 @@ for (const n of [5, 6, 7, 8, 9, 10]) {
 test('setupSeason rejects an undersupplied pool before writing anything', async () => {
   await bootstrapSchema(pool, DATABASE_URL);
   // 10 clubs at REAL squad sizes against a tiny pool → SetupError, no season row
-  await seedPoolPlayers(pool, 30, 'Tiny');
+  await seedPoolPlayers(pool, 30, 'Tiny', null);
   await assert.rejects(
     setupSeason(pool, {
       clubs: Array.from({ length: 10 }, (_, i) => ({ name: `Club ${i}`, managerEmail: `g${i}@x.io` })),
