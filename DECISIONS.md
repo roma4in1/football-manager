@@ -3,6 +3,51 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-03 — TWO TRACKS, TWO WORKTREES: the engine and the product separate
+
+Two sessions had been committing to the same local `main` at the same time. The
+tree moved mid-session — HEAD advanced `d9fc474d → e7948e69 → 928025bb`,
+`term-probe.ts` appeared and was deleted within minutes, `aim-probe.ts` and
+`spd-probe.ts` came and went, `technique.ts` and `behaviour-hash.ts` were
+written by the other track. **No measurement can state a stable world under that
+condition**, so the engine's possession-terminal probe was correctly not run.
+The failure was one of separation, not of either track's work.
+
+**The arrangement, so both sessions can follow it:**
+
+| track | directory | branch |
+| --- | --- | --- |
+| PRODUCT (web, server, schema, migrations, docs) | `/Users/romain/football-manager` | `main` |
+| ENGINE (`engine2/`, `workbench/`) | `.claude/worktrees/engine-v2` | `engine/v2` |
+
+- `git worktree` **enforces** this: the same branch cannot be checked out in two
+  worktrees, so the two tracks physically cannot share a HEAD.
+- Neither track commits in the other's directory. The engine track does not edit
+  `server/`, `web/` or `schema.sql`; the product track does not edit `engine2/`.
+- A fresh worktree has no `node_modules` — run
+  `pnpm install --frozen-lockfile --filter @fm/engine2` in it once.
+- **Merge path back to main:** `engine/v2` is pushed and merged by PR, gated by
+  CI, exactly as DECISIONS.md 2026-07-03 already required and as neither track
+  was doing. Product work does the same from its own `feat/*` branches. Direct
+  commits to `main` are what produced this entry.
+- `engine/v2` forks from `2e386093`, the commit that made root typecheck green,
+  so the engine track starts from a green gate rather than inheriting a red one.
+
+**Why the gate was silently red for 39 commits:** the work was never pushed.
+`origin/main` sat at `cdb768e9` while local `main` ran 6 commits ahead, so CI
+never ran on any of it. Not "CI red and ignored" — a long local run accumulating
+*outside* the gate, which then fires on all of it at once. The branch-and-PR
+discipline above is what keeps that from recurring.
+
+**The ledgers are split too, and that is a real gap.** This file records none of
+the engine arc's rulers — not `minLive`, the segment-distance correction, the
+689-possession partition, the router rule, or the C-branch. They live in the
+engine session's context, which is why a contamination question about earlier
+shares could not be answered from the product side. The engine track should
+write its rulers down somewhere durable; a chat log is not a ledger, which is
+the same lesson `behaviour-hash.ts` records about itself (it "lived only in a
+chat log for ~40 sessions").
+
 ## 2026-08-03 — the migration runner: forward-only, and it ADOPTS production
 
 This **reverses** the 2026-08-22 deploy entry's "no migration framework built"
