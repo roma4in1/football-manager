@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "bench": "node bench.ts",
-    "hash": "node behaviour-hash.ts"
+    "hash": "node behaviour-hash.ts",
+    "terminals": "node term-instrument.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
