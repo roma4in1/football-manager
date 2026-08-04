@@ -80,13 +80,16 @@ test('anon deep-linking into the app lands on the pitch, not a dead end', async 
 test('a visitor who is already signed in is sent to the app, not the pitch', async () => {
   mocks.me.mockResolvedValue({
     manager: { id: 'm1', email: 'boss@club.io', displayName: 'Boss' },
-    club: null, // clubless account → the account placeholder, still not the landing page
-    season: null,
+    // has an identity but no league yet → the Leagues Hub (phase 3 step 4,
+    // which retired AccountLanding). Either way: still NOT the public pitch.
+    clubIdentity: {
+      name: 'Real Coteaux', badgeShape: 'shield', badgeEmblem: 'lion',
+      primaryColor: '#534ab7', secondaryColor: '#1e3a8a',
+    },
+    leagues: [], selectedLeagueId: null, club: null, season: null,
   });
   window.history.pushState({}, '', '/');
-  const { container } = render(<App />);
-  expect(await screen.findByText("You're signed in")).toBeTruthy();
+  render(<App />);
+  expect(await screen.findByText('Your leagues')).toBeTruthy();
   expect(screen.queryByText(/how a season goes/i)).toBeNull();
-  // and the always-landscape gate follows the authenticated app, as it always did
-  expect(container.querySelector('.rotate-overlay')).not.toBeNull();
 });

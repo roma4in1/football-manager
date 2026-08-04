@@ -3,6 +3,53 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-05 — phase 3 step 4: the web layer, and the end-to-end two-league test
+
+**The eight screens needed no edits, and that is the finding.** Every use of
+`me.club` / `me.season` in Home, Standings, Results, MatchDetail, HalfTime and
+Transfer is an id comparison or a phase/name read — and `/me` already returns the
+SELECTED league's club and season (step 2 made `ctx.clubId` the selected club;
+step 3 made `/me`'s season `currentSeason(a.leagueId)`). They were league-correct
+transitively. What they lacked was a way to SWITCH, not a way to scope. Eight
+speculative edits were not made.
+
+**THE HUB RENDERS OUTSIDE `.app`, and the reason is the dead end.** styles.css
+hides `.app` on a portrait phone behind the rotate overlay. An account with NO
+leagues has the Hub as its only screen, so inside `.app` it would be exactly the
+trap AccountLanding was. It is also a chooser you pass THROUGH — the same
+category as create-club and the landing page — not one of the always-landscape
+two-pane screens. **AccountLanding is deleted**; the Hub replaces it and the
+board item is closed for good.
+
+- Wired via an `Authed` component using `useLocation`, so GameShell's route table
+  stays ABSOLUTE. Nesting it under a splat route would have silently made every
+  path relative.
+- The rail's switcher appears only at `leagueCount > 1` — with one league it
+  would be a control that does nothing.
+- **Not styled ahead of the design pass**: `.card`, the standard button and the
+  existing tokens only, no new visual vocabulary. DESIGN-BRIEF's one-coherent-go
+  rule holds; the landing page was exempt as a PUBLIC page and this is not.
+- Creating and joining is phase 4, so the empty state says so plainly rather than
+  offering a button that does not exist.
+
+**Verified in a real browser against the BUILT dist**, the method that found the
+landing page's two shipped defects: the Hub is visible at 390×844 **portrait**
+with no `.app` and no rotate overlay (the dead end, provably gone), the app frame
+appears only in landscape, the switch drives Alpha → Beta through the real PUT
+and `/me` re-fetch, zero horizontal overflow and zero page errors at every
+viewport.
+
+**A PRE-EXISTING FLAKE, FOUND AND NOT CAUSED HERE.** `pnpm test:server` exits
+non-zero intermittently — observed 0, then 1, on identical runs — with **zero
+failing assertions**. It is `league-admin.test.ts`, the one suite that drives a
+real week-close through sims and pg-boss; it exits 1 silently with all five tests
+passing. Reproduced at HEAD with the step-4 web changes stashed, and no server
+file was touched this step. Previous sessions reported "server 21 suites green"
+from `fail 0` counts, which was true of the assertions and **blind to the process
+exit** — recorded so the claim is not repeated. CI last ran green on `f85584ec`,
+which predates `0003`, step 2 and step 3; all three are still unpushed, so the
+gate has not seen them. Worth resolving before the next push.
+
 ## 2026-08-03 — phase 3 step 3: the routes, and TWO cross-league leaks
 
 The route enumeration found the leaks were **not** in the routes' own guards.

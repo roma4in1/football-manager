@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { api, ApiError, type Me, type MeWithClub } from './api.ts';
 import { Login } from './screens/Login.tsx';
 import { ResetPassword } from './screens/ResetPassword.tsx';
-import { AccountLanding } from './screens/AccountLanding.tsx';
 import { CreateClub } from './screens/CreateClub.tsx';
+import { LeaguesHub } from './screens/LeaguesHub.tsx';
 import { Landing } from './public/Landing.tsx';
 import { Rail } from './shell/Rail.tsx';
 import { Section } from './shell/Section.tsx';
@@ -78,25 +78,42 @@ export function App() {
           <Route path="*" element={<Landing />} />
         </Routes>
       ) : (
-        /* An account with no club identity yet names its club FIRST — and that
-           screen renders outside `.app`, with no rotate gate, so a brand-new
-           signup on a portrait phone is not the dead end AccountLanding was. */
-        me.clubIdentity === null ? (
-          <CreateClub existing={null} onSaved={load} onLogout={logout} />
-        ) : (
-          /* The authenticated app IS always-landscape — the rotate gate belongs
-             here, and only here. */
-          <>
-            <RotateOverlay />
-            {me.club && me.season ? (
-              <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={logout} />
-            ) : (
-              <AccountLanding email={me.manager.email} onLogout={logout} />
-            )}
-          </>
-        )
+        <Authed me={me} onReload={load} onLogout={logout} />
       )}
     </BrowserRouter>
+  );
+}
+
+/**
+ * The authenticated shell, in order of what the account still needs:
+ *   no club identity   → name your club            (outside `.app`)
+ *   no league, or /leagues → the Leagues Hub       (outside `.app`)
+ *   otherwise          → the always-landscape game (inside `.app`)
+ *
+ * The first two render OUTSIDE `.app` on purpose: styles.css hides `.app` on a
+ * portrait phone behind the rotate overlay, so anything that is a manager's
+ * ONLY available screen must live outside it or it is a dead end — the bug
+ * AccountLanding had, which the Hub now retires for good.
+ *
+ * Split out as a component so it can call useLocation (a hook needs to be
+ * inside BrowserRouter), which keeps GameShell's absolute route table exactly
+ * as it was — nesting it under a splat route would have made every path
+ * relative.
+ */
+function Authed({ me, onReload, onLogout }: { me: Me; onReload: () => void; onLogout: () => void }) {
+  const { pathname } = useLocation();
+
+  if (me.clubIdentity === null) {
+    return <CreateClub existing={null} onSaved={onReload} onLogout={onLogout} />;
+  }
+  if (pathname === '/leagues' || !me.club || !me.season) {
+    return <LeaguesHub me={me} onSwitched={onReload} onLogout={onLogout} />;
+  }
+  return (
+    <>
+      <RotateOverlay />
+      <GameShell me={{ ...me, club: me.club, season: me.season }} onLogout={onLogout} />
+    </>
   );
 }
 
@@ -117,7 +134,7 @@ function GameShell({ me, onLogout }: { me: MeWithClub; onLogout: () => void }) {
 
   return (
     <div className="app">
-        <Rail phase={me.season.phase} clubName={me.club.name} onLogout={onLogout} />
+        <Rail phase={me.season.phase} clubName={me.club.name} leagueCount={me.leagues.length} onLogout={onLogout} />
         <div className="content">
           <Routes>
             <Route path="/" element={<Home me={me} />} />

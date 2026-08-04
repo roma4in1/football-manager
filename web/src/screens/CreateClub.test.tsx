@@ -33,6 +33,7 @@ const IDENTITY = {
 const authed = (clubIdentity: unknown) => ({
   manager: { id: 'm1', email: 'boss@club.io', displayName: 'Boss' },
   club: null, clubIdentity, season: null,
+  leagues: [], selectedLeagueId: null,
 });
 
 test('creating a club: name + crest choices save as one identity', async () => {
@@ -92,8 +93,9 @@ test('an account WITH an identity is past create-club (the gate does not re-fire
   window.history.pushState({}, '', '/');
   const { container } = render(<App />);
 
-  await waitFor(() => expect(screen.getByText("You're signed in")).toBeTruthy());
+  // an identity but no league → the Leagues Hub, and the create-club gate does
+  // NOT re-fire. AccountLanding (and its portrait dead end) is gone for good.
+  await waitFor(() => expect(screen.getByText('Your leagues')).toBeTruthy());
   expect(screen.queryByRole('heading', { name: 'Name your club' })).toBeNull();
-  // ...and the always-landscape gate is back, because this IS the app frame
-  expect(container.querySelector('.rotate-overlay')).not.toBeNull();
+  expect(container.querySelector('.rotate-overlay')).toBeNull();
 });

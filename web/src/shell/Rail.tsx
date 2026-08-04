@@ -34,6 +34,14 @@ const ICONS = {
       <path d="M14.8 9.2a3 3 0 0 0-2.8-1.7c-1.6 0-2.8.9-2.8 2.2 0 2.9 5.8 1.5 5.8 4.4 0 1.3-1.3 2.3-3 2.3a3.3 3.3 0 0 1-3.1-1.9M12 5.8v1.7M12 16.4v1.8" />
     </svg>
   ),
+  leagues: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <rect x="3" y="4" width="7" height="7" rx="1" />
+      <rect x="14" y="4" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  ),
   season: (
     <svg viewBox="0 0 24 24" {...stroke}>
       <path d="M7 4h10v4a5 5 0 0 1-10 0V4Z" />
@@ -51,7 +59,9 @@ const SECTIONS = [
   { to: '/season', label: 'season', icon: ICONS.season },
 ];
 
-export function Rail({ phase, clubName, onLogout }: { phase: string; clubName: string; onLogout?: () => void }) {
+export function Rail({ phase, clubName, leagueCount = 1, onLogout }: {
+  phase: string; clubName: string; leagueCount?: number; onLogout?: () => void;
+}) {
   const windowOpen = phase === 'auction' || phase === 'transfer_window';
   return (
     <nav className="rail" aria-label="sections">
@@ -63,6 +73,14 @@ export function Rail({ phase, clubName, onLogout }: { phase: string; clubName: s
         </NavLink>
       ))}
       <span className="spacer" />
+      {/* the switcher: only worth a rail slot once there IS something to switch
+          between. One league and it would be a control that does nothing. */}
+      {leagueCount > 1 && (
+        <NavLink to="/leagues" className={({ isActive }) => (isActive ? 'active' : '')}>
+          {ICONS.leagues}
+          leagues
+        </NavLink>
+      )}
       <span className="whoami">{clubName}</span>
       {onLogout && (
         <button className="rail-signout" onClick={onLogout} aria-label="Sign out" title="Sign out">

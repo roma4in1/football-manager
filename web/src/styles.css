@@ -725,6 +725,22 @@ main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
    button[aria-pressed] accent fill — so selection has to read as a RING */
 .swatch[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); border-color: var(--accent); }
 
+/* ── leagues hub (accounts phase 3) — an auth-frame chooser, so it is
+      portrait-usable and never sits behind the landscape rotate gate.
+      Deliberately NOT styled ahead of the design pass: it reuses .card, the
+      standard button and the existing tokens, and adds no new vocabulary. ─── */
+.leagues-hub .card { margin-bottom: var(--sp-3); }
+.league-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.league-row {
+  width: 100%; display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3); text-align: left; background: var(--surface);
+}
+.league-row.selected { border-color: var(--accent); background: var(--accent-soft); }
+.league-row-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.league-name { font-weight: 700; font-size: var(--fs-body); }
+.league-meta { font-size: var(--fs-xs); }
+.league-row-cta { font-size: var(--fs-xs); font-weight: 700; color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.04em; }
+
 /* ══ the public shell (landing page) ═════════════════════════════════════════
    NOT an app screen. The always-landscape / two-pane / rail layout above is
    the IN-GAME app and does not apply out here: this is portrait-first on a

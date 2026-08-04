@@ -30,8 +30,21 @@ async function req<T>(method: 'GET' | 'POST' | 'PUT', url: string, body?: unknow
   return data as T;
 }
 
+/** One league this account has an entry in (accounts arc phase 3). */
+export interface LeagueMembership {
+  id: string;
+  name: string;
+  status: string;
+  clubId: string;
+  clubName: string;
+}
+
 export interface Me {
   manager: { id: string; email: string; displayName: string };
+  /** every league this account is in, oldest first */
+  leagues: LeagueMembership[];
+  /** which one the session is looking at; null when the account is in none */
+  selectedLeagueId: string | null;
   /** null until the account has a club (created in a later accounts-arc phase). */
   club: { id: string; name: string } | null;
   /** The ACCOUNT's persistent club identity — name, crest, colours (accounts-arc
@@ -274,6 +287,10 @@ export const api = {
   /** Create OR edit the club identity — one call, because the spec makes them
    *  the same act (editable at any time, reflected across every league). */
   saveClubIdentity: (identity: ClubIdentity) => req<ClubIdentity>('PUT', '/api/club-identity', identity),
+  /** Point this session at another of the account's leagues. The server refuses
+   *  a league the account is not in (404), so this cannot select someone else's. */
+  selectLeague: (leagueId: string) =>
+    req<{ selectedLeagueId: string }>('PUT', '/api/league', { leagueId }),
   squad: () => req<{ players: SquadPlayerView[] }>('GET', '/api/squad'),
   playerDetail: (playerId: string) => req<PlayerDetailView>('GET', `/api/squad/player/${playerId}`),
   defaultTactics: () => req<{ payload: Tactics }>('GET', '/api/default-tactics'),
