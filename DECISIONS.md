@@ -3,6 +3,46 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-05 — the server suite's flakes: TWO, both statistical, both mine to correct
+
+**The previous entry's diagnosis was wrong and the correction is the point.** It
+recorded "exits non-zero with ZERO failing assertions", suspecting a teardown
+leak — an open pg-boss handle, a pending timer. There was no leak. Both failures
+were ordinary assertions failing loudly with `fail 1`; I had grepped the output
+of *passing* runs and concluded the failure was silent. **Never diagnose a flake
+from a run that passed.** Catching one required looping to failure and keeping
+that run's full output (33 runs for the first, 4 full suites for the second).
+
+Neither predates nothing: **both predate the league work entirely.** None of
+`0003`, step 2, step 3 or step 4 touches `league-admin.test.ts`,
+`league-facilities.test.ts` or the engine — checked per commit, so no bisect was
+needed.
+
+**FLAKE 1 — `league-admin`, "players actually travel".** The assertion sampled
+`Object.keys(frames[0].players)[0]`: ONE arbitrary player. x-span over a half is
+starkly bimodal — the two KEEPERS legitimately cover 0–4 m while every outfielder
+covers 41–63 m (measured across 22 players, all fully sampled) — so whenever key
+order put a keeper first it failed on correct behaviour. Now the MEDIAN across
+the cohort, which is immune to which player is first and a STRONGER claim than
+one player moving: fabricated frames hovered around anchors, so every span would
+collapse and the median with them. Verified live by forcing the threshold to 500
+— it fires with `median 55.6m, range 1.0–70.2`, which also shows the bimodality
+in the failure message itself. 40/40 clean, where the old form failed on run 33.
+
+**FLAKE 2 — `league-facilities`, "level 5 shrugs some off (10 < 10)".** The
+medical avoidance draw is deterministic per (fixture-seed, player) — retry-safe,
+which is what it was designed for — but the player ids are fresh uuids each run,
+so ACROSS runs the draws are effectively random. Ten draws at p=0.30 gives
+P(none avoided) = 0.7^10 ≈ 2.8%, matching the observed rate exactly. Widened to
+three fixture seeds — thirty draws, tail ~2e-5 — with the inequality still
+STRICT. Not weakened, resampled. 30/30 clean.
+
+**THE METHOD NOTE THAT MATTERS MORE THAN EITHER FIX: check the process exit, not
+the assertion count.** `grep -c "fail 0"` counts what passed and is blind to what
+the run returned; several prior sessions reported "N suites green" from it while
+`pnpm test:server` was exiting 1. Every gate in this session was measured by exit
+code.
+
 ## 2026-08-05 — phase 3 step 4: the web layer, and the end-to-end two-league test
 
 **The eight screens needed no edits, and that is the finding.** Every use of

@@ -171,10 +171,26 @@ test('the replay is REAL agent motion: dense frames, carrier tags, ball at the c
 
   // real motion, not anchor noise: a player's positions across the half form
   // a path with real displacement (fabricated frames hovered around anchors)
-  const someId = Object.keys(frames[0].players)[0];
-  const xs = frames.slice(0, 200).map((f) => f.players[someId]).filter(Boolean);
-  const span = Math.max(...xs.map((p) => p.x)) - Math.min(...xs.map((p) => p.x));
-  assert.ok(span > 5, `players actually travel (x-span ${span.toFixed(1)}m over 20 min)`);
+  // ...measured across the COHORT, not one arbitrary player. The previous form
+  // sampled Object.keys(players)[0], and x-span is starkly bimodal: the two
+  // KEEPERS legitimately range 0-4 m over a half while every outfielder covers
+  // 41-63 m (measured). So whenever key order put a keeper first the assertion
+  // failed on correct behaviour — a ~3% flake that exited 1 with the failure
+  // buried under four passes. The median is immune to which player is first and
+  // is a STRONGER claim than one player moving: fabricated frames hovered around
+  // anchors, so EVERY span would collapse and the median with them.
+  const spans = Object.keys(frames[0].players).map((id) => {
+    const pts = frames.slice(0, 200).map((f) => f.players[id]).filter(Boolean);
+    if (pts.length < 100) return null; // too few samples to say anything
+    return Math.max(...pts.map((q) => q.x)) - Math.min(...pts.map((q) => q.x));
+  }).filter((v): v is number => v !== null).sort((a, b) => a - b);
+  assert.ok(spans.length >= 20, `every player is sampled across the half (got ${spans.length})`);
+  const medianSpan = spans[Math.floor(spans.length / 2)];
+  assert.ok(
+    medianSpan > 5,
+    `players actually travel (median x-span ${medianSpan.toFixed(1)}m over 20 min, `
+    + `range ${spans[0].toFixed(1)}-${spans[spans.length - 1].toFixed(1)})`,
+  );
 });
 
 test('a second force on the same (now revealed) week → 409 no_open_matchweek', async () => {

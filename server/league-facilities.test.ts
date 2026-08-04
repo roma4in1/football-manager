@@ -171,12 +171,28 @@ async function runStubbedFixture(seed: string): Promise<{ applied: number; total
 }
 
 test('medical level measurably reduces applied injuries and their duration', async () => {
+  // THREE fixtures per level, not one. The avoidance draw is deterministic per
+  // (fixture-seed, player) — retry-safe, which is what it was designed for —
+  // but the player ids are fresh uuids each run, so ACROSS runs the draws are
+  // effectively random. One fixture is ten draws at p=0.30, and P(none avoided)
+  // = 0.7^10 ≈ 2.8% — which is exactly the rate at which this asserted
+  // `10 < 10` and exited non-zero. Thirty draws puts that tail at ~2e-5 without
+  // weakening the claim: the inequality below is still STRICT.
+  const overSeeds = async (): Promise<{ applied: number; totalWeeks: number }> => {
+    let applied = 0, totalWeeks = 0;
+    for (const s of ['medical-ab-1', 'medical-ab-2', 'medical-ab-3']) {
+      const r = await runStubbedFixture(s);
+      applied += r.applied; totalWeeks += r.totalWeeks;
+    }
+    return { applied, totalWeeks };
+  };
+
   await q(`UPDATE club_seasons SET medical_level = 0 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
-  const at0 = await runStubbedFixture('medical-ab');
-  assert.equal(at0.applied, 10, 'level 0 avoids nothing');
+  const at0 = await overSeeds();
+  assert.equal(at0.applied, 30, 'level 0 avoids nothing');
 
   await q(`UPDATE club_seasons SET medical_level = 5 WHERE club_id = $1 AND season_id = $2`, [clubA, seasonId]);
-  const at5 = await runStubbedFixture('medical-ab'); // SAME seed → same deterministic draws
+  const at5 = await overSeeds();
   assert.ok(at5.applied < at0.applied, `level 5 shrugs some off (${at5.applied} < ${at0.applied})`);
   assert.ok(at5.totalWeeks < at0.totalWeeks, `and shortens the rest (${at5.totalWeeks} < ${at0.totalWeeks} weeks)`);
   assert.ok(at5.applied > 0, 'injuries still happen at max medical');
