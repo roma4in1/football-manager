@@ -3,6 +3,56 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-07 — the agent engine obeys the designated set-piece taker
+
+The takers-and-styles slice stopped at its own gate last session: THE AGENT
+ENGINE — the sim live on production — CARRIED tactics.setPieceTakers AND NEVER
+READ IT. Corners/free kicks picked the best setPieceDelivery attribute on the
+pitch (:242), penalties the best finishing (:307). It went unnoticed because
+web/src/lineup/build.ts:80 SYNTHESIZES the field from the same attributes at
+submit — a dead field whose machine pick coincides with the live behaviour is
+invisible by construction. Fourth dead-control instance; first caught before a
+UI shipped.
+
+**The `explicit` marker is the design decision.** Because every stored payload
+already carries synthesized ids, "designated" cannot be distinguished from
+"machine-filled" — so the engine obeys `setPieceTakers` ONLY when
+`explicit: true` (a human choice, set by the future UI) and the player is on
+the pitch; otherwise the fallback is TEXTUALLY the old expression. This is what
+makes the null case guaranteeable: legacy payloads and UI-less submissions
+cannot begin steering matches.
+
+- **Null case proven byte-identical, not asserted**: 6 halves, varied
+  attributes (so reduces have real winners), non-explicit takers —
+  sha256 6969492acd8be52461f8a263 before AND after the change. The keyed rng
+  ((tick, playerId, purpose) — agent-rng.ts) is why a code-shape change cannot
+  perturb draws when the taker is unchanged.
+- **Primary tested directly** (agent-setpiece-takers.test.ts): an explicit
+  designated taker takes every corner, free kick and penalty while on the
+  pitch (24 seeds; collection stops when a red card/injury removes any home
+  player — the empty-bench fixture makes an injury a departure). The null test
+  is the exact-prediction form: the taker EQUALS an independently computed
+  attribute-argmax, every event. Two fixture traps found and fixed: setup()
+  elects the keeper by gk-composite, so varied attributes once made the
+  DESIGNATED taker the keeper (contract: keeper designation falls back); and
+  H2 can legitimately win on attributes, so "never H2" was the wrong assertion.
+- **Realism harness 7/7, nothing moved** — its fixtures are non-explicit, so
+  the byte-identical path carries them. Parity green (no schema change: the
+  payload is JSONB by design). Full suites green.
+- **build.ts synthesis, ruled for revisit**: KEEP it for now — it satisfies the
+  server's setPieceTakers validation and steers nothing (non-explicit). When
+  the takers UI lands, the UI sets explicit:true on a human choice; whether the
+  synthesizer should then be replaced by an honest unset is decided WITH that
+  UI, not before it (removing it now would change nothing and touch the
+  validation contract for no user-visible gain).
+- Styles (cornerStyle/freeKickStyle) remain V2-only and re-queued behind the
+  cutover: the agent engine has no delivery-style concept, and inventing one to
+  justify a menu is throwaway behaviour.
+
+The takers UI is now honest in both engines and unblocked — a tactics-screen
+addition, per-type taker from the squad, no canvas, no migration. Next product
+session.
+
 ## 2026-08-05 — the account surface: logout was never the missing thing
 
 **The watch item's premise was wrong, and checking it changed what got built.**
