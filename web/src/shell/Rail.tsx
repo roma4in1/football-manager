@@ -81,7 +81,13 @@ export function Rail({ phase, clubName, leagueCount = 1, onLogout }: {
           leagues
         </NavLink>
       )}
-      <span className="whoami">{clubName}</span>
+      {/* the club name is the ACCOUNT entry — email, club identity + its editor,
+          the selected league, and sign out. The one-tap sign-out icon below it
+          STAYS: the account surface is a container, not a replacement, and
+          making the common action slower would be a regression. */}
+      <NavLink to="/account" className={({ isActive }) => `whoami-link${isActive ? ' active' : ''}`} title="Account">
+        <span className="whoami">{clubName}</span>
+      </NavLink>
       {onLogout && (
         <button className="rail-signout" onClick={onLogout} aria-label="Sign out" title="Sign out">
           <svg viewBox="0 0 24 24" {...stroke}>

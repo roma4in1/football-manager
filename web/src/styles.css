@@ -725,6 +725,24 @@ main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
    button[aria-pressed] accent fill — so selection has to read as a RING */
 .swatch[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); border-color: var(--accent); }
 
+/* ── account surface — same auth frame as the hub, so signing out never needs
+      the phone rotated. Existing vocabulary only; no new primitives. ───────── */
+.account .card { margin-bottom: var(--sp-3); }
+.account-email { font-size: var(--fs-sm); margin-bottom: var(--sp-3); }
+.account-row { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.account-row-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.account-row-title { font-weight: 700; font-size: var(--fs-body); }
+.account-row-meta { font-size: var(--fs-xs); }
+.account-signout-note { font-size: var(--fs-xs); margin-bottom: var(--sp-2); }
+.account-signout { width: 100%; }
+/* the rail's club name doubles as the account link — a text target, not a
+   pill, so the rail's five-section rhythm is unchanged */
+.rail .whoami-link { display: block; text-decoration: none; padding: 0; width: 100%; }
+.rail .whoami-link:hover .whoami { color: var(--accent-deep); }
+.rail .whoami-link.active .whoami { color: var(--accent-deep); font-weight: 700; }
+/* the one way out of a portrait phone inside a league */
+.rotate-overlay .rotate-account { margin-top: var(--sp-3); font-size: var(--fs-sm); }
+
 /* ── leagues hub (accounts phase 3) — an auth-frame chooser, so it is
       portrait-usable and never sits behind the landscape rotate gate.
       Deliberately NOT styled ahead of the design pass: it reuses .card, the

@@ -3,6 +3,51 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-05 — the account surface: logout was never the missing thing
+
+**The watch item's premise was wrong, and checking it changed what got built.**
+"Auth shipped a logout route and nothing in the game shell calls it" — the rail
+has called it since phase 1: `rail-signout` → `onLogout` → `api.logout()` →
+`POST /auth/logout`, which deletes the session row AND clears the cookie. Fully
+wired, end to end.
+
+**The two real gaps, neither of them the stated one:**
+
+1. **Logout was landscape-only.** The rail lives inside `.app`, which styles.css
+   hides in portrait behind the rotate overlay — so inside a league on a portrait
+   phone the overlay is *all that renders* and there was no way out at all. Half
+   an exit, exactly as suspected, but for a different reason than "no button".
+2. **The club identity EDITOR was built in phase 2 and unreachable.** `CreateClub`
+   takes an `existing` prop, switches to "Your club" / "Save changes", pre-fills,
+   and `PUT /api/club-identity` is an upsert — all shipped and tested. But App
+   only ever rendered it with `existing={null}`, so once you named your club you
+   could never change its name, crest or colours. That is
+   LOBBY-DESIGN-SPEC §5.7's "edit club identity", shipped and stranded.
+
+**What was built.** `/account`, rendered OUTSIDE `.app` for the same reason the
+Leagues Hub is — signing out must not require rotating the phone. It carries only
+what already exists: the signed-in email, the club identity with its now-reachable
+editor at `/account/club`, the selected league, and sign out. Entry points: the
+rail's club name (the one-tap sign-out icon STAYS — the surface is a container,
+not a replacement, and slowing the common action would be a regression), and a
+link in the rotate overlay, which is the only thing a portrait phone renders
+inside a league.
+
+**PROFILE and SETTINGS were deliberately NOT built.** Nothing real backs either.
+"Profile" would duplicate the club identity, which is the profile. "Settings"
+would mean changing email or password, and phase 1 shipped no route for either —
+only signup / login / logout / forgot / reset. A password change is already
+possible through forgot-password. An empty screen is worse than an absent one.
+
+**EXIT LEAGUE: scoped, not built** — it is a data decision, not a UI one, and the
+questions are recorded on the board rather than guessed at.
+
+Verified in a real browser against the built dist at 812×375 and 390×844: the
+surface renders outside `.app` at both, zero horizontal overflow, zero page
+errors. **Logout was driven for real**: click, then a FRESH LOAD of the protected
+`/squad` lands on the public side — which proves the server session is gone
+rather than client state merely cleared.
+
 ## 2026-08-05 — the server suite's flakes: TWO, both statistical, both mine to correct
 
 **The previous entry's diagnosis was wrong and the correction is the point.** It
