@@ -384,6 +384,11 @@ async function driveAuction(clients: Client[]): Promise<void> {
 
     // WAIT FOR THE SIGNING, never a fixed delay: lot closes are pg-boss paced,
     // and re-reading too early re-nominates the same player forever.
+    //
+    // The signing is the ONLY terminal signal. `state.lot` going null is not:
+    // store.liveLot filters `closes_at > now()`, so a lot reads as gone the
+    // instant its window expires — a good two seconds before the pg-boss worker
+    // actually closes it and writes the contract.
     const target = before.signings.length + 1;
     const deadline = Date.now() + 60_000;
     let after = before;
@@ -392,12 +397,13 @@ async function driveAuction(clients: Client[]): Promise<void> {
       after = await nominator.get<AuctionState>('/auction/state');
       if (after.phase !== 'auction') break;      // that lot completed the auction
       if (after.signings.length >= target) break;
-      if (!after.lot && after.signings.length < target) {
-        die(`lot ${lot.lotId} closed without a signing for ${nominator.club}`, `bid ${amount} on ${pick.fullName}`);
-      }
     }
     if (after.phase === 'auction' && after.signings.length < target) {
-      die(`lot ${lot.lotId} did not close within 60s`, JSON.stringify(after.lot));
+      const lotState = await lotStateFromDb(lot.lotId);
+      die(
+        `lot ${lot.lotId} produced no signing for ${nominator.club} within 60s`,
+        `bid ${amount} on ${pick.fullName} (${pick.position}); lot row: ${JSON.stringify(lotState)}`,
+      );
     }
     const counts = after.clubs.map((c) => `${c.name} ${c.squadCount}`).join(', ');
     console.log(`  lot ${String(lots).padStart(2)} — ${nominator.club} signs ${pick.fullName} (${pick.position}) for ${amount.toLocaleString()} · ${counts}`);
@@ -430,6 +436,23 @@ async function submitLineup(c: Client, fixtureId: string): Promise<void> {
   const tactics: Tactics = bestXI(eligible, fixtureId);
   await c.send('PUT', `/fixture/${fixtureId}/tactics/1`, tactics);
   console.log(`  ${c.club} submitted an XI (${tactics.players.length} starters, ${tactics.bench.length} on the bench)`);
+}
+
+/** diagnostics for a lot that never produced a signing — the bid trail, not a guess */
+async function lotStateFromDb(lotId: string): Promise<unknown> {
+  const client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT l.won_by, l.opens_at, l.closes_at, now() AS db_now,
+              (SELECT count(*) FROM auction_bids b WHERE b.lot_id = l.id) AS bids
+         FROM auction_lots l WHERE l.id = $1`,
+      [lotId],
+    );
+    return rows[0] ?? 'lot row missing';
+  } finally {
+    await client.end();
+  }
 }
 
 async function fixtureStateFromDb(fixtureId: string): Promise<string> {

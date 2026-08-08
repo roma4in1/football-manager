@@ -13,14 +13,16 @@
  * and opens matchweek 1.
  *
  * ── THIS SCRIPT'S TEST IS `pnpm playable` ────────────────────────────────────
- * No suite runs seed-demo, and that silence is how it rotted once already: the
- * phase-3 league predicate (6a35569f) changed `seedPoolPlayers`' default and
- * every *suite* caller was updated, but this file was not, so the demo pool
- * landed in a different league from the demo season and the auction saw an
- * empty pool for weeks. `scripts/playable-match.ts` drives this script all the
- * way to a completed match and asserts the result, so it is the regression test
- * this file has. IF YOU CHANGE `seedPoolPlayers`, `setupSeason` OR THE POOL'S
- * LEAGUE SCOPING, RUN `pnpm playable` — the suites will not tell you.
+ * Exactly one suite runs this file — league-setup-production.test.ts, and only
+ * to assert it REFUSES a non-local DATABASE_URL. Nothing has ever tested that
+ * it actually seeds a usable league, and that gap is how it rotted: the phase-3
+ * league predicate (6a35569f) changed `seedPoolPlayers`' default and updated
+ * every *suite* caller, but not this one, so the demo pool landed in a
+ * different league from the demo season and the auction saw an empty pool.
+ * `scripts/playable-match.ts` drives this script all the way to a completed,
+ * asserted match, so it is the regression test this file has. IF YOU CHANGE
+ * `seedPoolPlayers`, `setupSeason` OR THE POOL'S LEAGUE SCOPING, RUN
+ * `pnpm playable` — the suites will not tell you.
  */
 
 import pg from 'pg';
