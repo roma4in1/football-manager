@@ -11,6 +11,18 @@
  * Log in as alice@demo.io / bob@demo.io (links print on the server console),
  * run the auction to squadMin per club; completion generates the fixture list
  * and opens matchweek 1.
+ *
+ * ── THIS SCRIPT'S TEST IS `pnpm playable` ────────────────────────────────────
+ * Exactly one suite runs this file — league-setup-production.test.ts, and only
+ * to assert it REFUSES a non-local DATABASE_URL. Nothing has ever tested that
+ * it actually seeds a usable league, and that gap is how it rotted: the phase-3
+ * league predicate (6a35569f) changed `seedPoolPlayers`' default and updated
+ * every *suite* caller, but not this one, so the demo pool landed in a
+ * different league from the demo season and the auction saw an empty pool.
+ * `scripts/playable-match.ts` drives this script all the way to a completed,
+ * asserted match, so it is the regression test this file has. IF YOU CHANGE
+ * `seedPoolPlayers`, `setupSeason` OR THE POOL'S LEAGUE SCOPING, RUN
+ * `pnpm playable` — the suites will not tell you.
  */
 
 import pg from 'pg';
@@ -30,8 +42,13 @@ if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
 
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 await bootstrapSchema(pool, DATABASE_URL);
-// pool first — setupSeason's supply guards check it before any write
-const poolIds = await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8, 'Demo');
+// pool first — setupSeason's supply guards check it before any write.
+// `null` = seed them as unclaimed TEMPLATES, which setupSeason then CLAIMS for
+// the league it creates — exactly the production import path. Omitting it makes
+// seedPoolPlayers call ensureLeague() and invent a SECOND league for the pool,
+// which setupSeason's claim (WHERE league_id IS NULL) then cannot touch: the
+// season's auction pool comes back empty.
+const poolIds = await seedPoolPlayers(pool, 2 * LEAGUE_CFG.squadMin + 8, 'Demo', null);
 const { seasonId } = await setupSeason(pool, {
   clubs: [
     { name: 'Alpha FC', managerEmail: 'alice@demo.io' },

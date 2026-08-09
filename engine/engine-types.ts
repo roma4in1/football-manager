@@ -111,7 +111,14 @@ export interface Tactics {
   players: PlayerTactic[];   // exactly 11 starting
   team: TeamInstructions;
   bench: string[];           // playerIds, ≤9
-  setPieceTakers: { corners: string; freeKicks: string; penalties: string };
+  /** Per-type takers. `explicit` marks a HUMAN designation: the engine obeys
+   * only explicit takers (when on the pitch), because build.ts has always
+   * machine-filled these ids from attributes — a dead field whose synthesized
+   * pick coincided with the engine's own attribute-best choice, which is why
+   * nobody ever noticed it was unread. Without the marker, a designation
+   * cannot be distinguished from the synthesizer's output, and the null case
+   * (no human choice) could not be guaranteed byte-identical. */
+  setPieceTakers: { corners: string; freeKicks: string; penalties: string; explicit?: boolean };
 }
 
 // ── Match inputs ──────────────────────────────────────────────────────────

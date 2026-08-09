@@ -239,7 +239,15 @@ export class AgentEngine implements SimEngine {
       const attackers = active(states).filter((s) => s.side === side && !s.isGk);
       const defenders = active(states).filter((s) => s.side !== side);
       if (attackers.length === 0 || defenders.length === 0) return;
-      const taker = attackers.reduce((b, s) => (s.attributes.setPieceDelivery > b.attributes.setPieceDelivery ? s : b));
+      // THE MANAGER'S DESIGNATED TAKER outranks the attribute-best — but only
+      // an EXPLICIT (human) designation, and only while he is on the pitch.
+      // The fallback is the exact expression that has always run, so an unset
+      // club plays a byte-identical match (draws are keyed by taker.id, and
+      // the keyed rng makes them independent of call order — agent-rng.ts).
+      const spt = (side === 'home' ? homeCtx : awayCtx).tactics.setPieceTakers;
+      const wantId = kind === 'corner' ? spt.corners : spt.freeKicks;
+      const designated = spt.explicit ? attackers.find((s) => s.id === wantId) : undefined;
+      const taker = designated ?? attackers.reduce((b, s) => (s.attributes.setPieceDelivery > b.attributes.setPieceDelivery ? s : b));
       const aerialScore = (s: AgentState): number => s.attributes.jumping + s.attributes.heading;
       const att = attackers.reduce((b, s) => (aerialScore(s) > aerialScore(b) ? s : b));
       const def = defenders.reduce((b, s) => (aerialScore(s) > aerialScore(b) ? s : b));
@@ -305,7 +313,11 @@ export class AgentEngine implements SimEngine {
     /** Penalty: parameterized outcome, no open-play machinery. */
     const resolvePenalty = (side: Side, takerHint: AgentState, now: number, tick: number): void => {
       const attackers = active(states).filter((s) => s.side === side && !s.isGk);
-      const taker = attackers.reduce(
+      // the designated penalty taker, same contract as the delivery path; a
+      // designated keeper or an off-pitch taker falls back to today's pick
+      const sptP = (side === 'home' ? homeCtx : awayCtx).tactics.setPieceTakers;
+      const designatedP = sptP.explicit ? attackers.find((s) => s.id === sptP.penalties) : undefined;
+      const taker = designatedP ?? attackers.reduce(
         (b, s) => (s.attributes.finishing > b.attributes.finishing ? s : b),
         takerHint,
       );

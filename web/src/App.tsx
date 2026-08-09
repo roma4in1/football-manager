@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api, ApiError, type Me, type MeWithClub } from './api.ts';
 import { Login } from './screens/Login.tsx';
 import { ResetPassword } from './screens/ResetPassword.tsx';
 import { CreateClub } from './screens/CreateClub.tsx';
 import { LeaguesHub } from './screens/LeaguesHub.tsx';
+import { Account } from './screens/Account.tsx';
 import { Landing } from './public/Landing.tsx';
 import { Rail } from './shell/Rail.tsx';
 import { Section } from './shell/Section.tsx';
@@ -102,9 +103,22 @@ export function App() {
  */
 function Authed({ me, onReload, onLogout }: { me: Me; onReload: () => void; onLogout: () => void }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   if (me.clubIdentity === null) {
     return <CreateClub existing={null} onSaved={onReload} onLogout={onLogout} />;
+  }
+  // the account surface and the identity EDITOR — both outside `.app`, because
+  // signing out must not require rotating the phone
+  if (pathname === '/account') return <Account me={me} onLogout={onLogout} />;
+  if (pathname === '/account/club') {
+    return (
+      <CreateClub
+        existing={me.clubIdentity}
+        onSaved={() => { onReload(); navigate('/account'); }}
+        onLogout={onLogout}
+      />
+    );
   }
   if (pathname === '/leagues' || !me.club || !me.season) {
     return <LeaguesHub me={me} onSwitched={onReload} onLogout={onLogout} />;
@@ -124,6 +138,10 @@ function RotateOverlay() {
       <span className="glyph">📱↻</span>
       <strong>Hold your phone sideways</strong>
       <span>The league plays in landscape.</span>
+      {/* the overlay is ALL a portrait phone renders inside a league, so
+          without this the account surface — and signing out — would be
+          reachable only by rotating. Account renders outside `.app`. */}
+      <Link className="button ghost rotate-account" to="/account">Account &amp; sign out</Link>
     </div>
   );
 }
