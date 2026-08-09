@@ -3,6 +3,80 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-09 — THE POOL SOURCE: phase 4 COPIES TEMPLATES, it does not re-import
+
+**The ruling (user's, 2026-08-09).** A new league's pool is built by COPYING
+template rows, never by re-running the pipeline import. Re-import would couple
+every future league creation to a pipeline parked at 96.9% on a sofifa export
+that has not arrived — **a league-creation path that cannot run until an external
+dependency lands is not a path.** Copying keeps creation self-contained.
+
+**It had a deadline, and the deadline is why this was checked now.** Applying
+0003 IS the act that consumes the template pool: its backfill claims every
+existing player for "Original league", and `setupSeason` CLAIMS templates
+(`UPDATE players SET league_id = $1 WHERE league_id IS NULL`) rather than copying
+them. So the ruling had to be sound BEFORE the operator sitting's `--confirm`,
+not discovered when the second league turned up empty.
+
+**CHECK 1 — the copy is permitted, proven against the real constraints** (scratch
+database from schema.sql; no migration applied anywhere):
+
+- `UNIQUE (league_id, full_name, birth_date)` — the same footballer in two
+  leagues is two rows with different `league_id`, so the tuple differs and both
+  insert. **Permitted.**
+- `players_template_identity` is `UNIQUE (full_name, birth_date) WHERE
+  league_id IS NULL` — **partial**. A copy writes a NON-NULL `league_id`, so the
+  copied row is outside the index's predicate entirely and cannot collide with
+  the template it came from or with another league's copy. The template
+  survives the copy and stays reusable.
+- The other two uniques 0003 converts (`seasons`, `clubs`) are not on `players`
+  and cannot reject a copy.
+- Tripwires proven to FIRE, not assumed: a second copy into the same league →
+  `players_league_id_full_name_birth_date_key`; a second identical template →
+  `players_template_identity`; a second active contract on one row →
+  `contracts_one_active`.
+
+**CHECK 2 — a copy preserves what the pool assumes.** `poolPlayers` reads
+`id, full_name, position, market_value, birth_date, attributes` under three
+predicates: the league, no active contract, no live lot. A fresh copy satisfies
+the last two by construction (new id ⇒ no rows anywhere).
+
+- **VERBATIM** (the union of every read across store/auction/setup/training):
+  `full_name, birth_date, position, height_cm, weight_kg, foot, market_value,
+  attributes, physical`. `source_meta` has no server/web/engine reader (pipeline
+  only) — carry it to keep re-joins possible.
+- **RESET** — and these are separate TABLES, not columns, so "reset" means DO NOT
+  COPY THEM: `contracts`, `squad_players`, `familiarity`, `attribute_audit`,
+  `auction_lots`, `transfer_offers`, `transactions`.
+- **DERIVED, never stored**: age is
+  `date_part('year', age(now(), p.birth_date))` (league-store.ts:1956, :2004),
+  which is why `birth_date` must be verbatim; wage is
+  `wageFromMarketValue(market_value)` and lives on `contracts`; fatigue,
+  sharpness, injury and minutes live on `squad_players`.
+- **THE FK THAT WOULD BREAK A NAIVE COPY IS NOT THE ONE THAT ERRORS.**
+  `players.league_id` must be rewritten, and a naive `INSERT … SELECT *` also
+  collides on the `id` PK — both fail loudly. The dangerous one is copying
+  `contracts`/`squad_players` alongside: their `club_id` and `season_id` point
+  into the SOURCE league, the FKs are perfectly valid, and Postgres accepts the
+  insert. That silently creates a player in league B under contract to a club in
+  league A. **The copy must be columns of `players` only.**
+
+**VERDICT: the ruling survives both checks.** Copy-templates is implementable
+against the schema as it stands; 0003 can be applied without foreclosing it,
+because the backfill claims only rows that exist, and future templates
+(a re-import, or copies from a league) are unaffected.
+
+**ONE FINDING, not fixed here.** `setupSeason`'s supply guard
+(league-setup.ts:104-113) counts uncontracted players **league-blind** — no
+league predicate, the same class of hole as leaks 1 and 2. Today it is harmless
+(one league), and it stays harmless for the FIRST created league. From the
+second on it counts other leagues' uncontracted players as supply for the one
+being created, so `validatePoolSupply` would pass for the wrong reason and the
+undersupply it exists to catch would surface as an auction that cannot complete.
+Measured, not predicted: with a template + two league copies and one of them
+signed, the guard returned `FW: 2`. **Phase 4 must give it a league predicate in
+the same change that adds the copy.**
+
 ## 2026-08-07 — the agent engine obeys the designated set-piece taker
 
 The takers-and-styles slice stopped at its own gate last session: THE AGENT
