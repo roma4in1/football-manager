@@ -71,6 +71,17 @@ export interface SeasonSpec {
   number?: number;
   /** the league this season belongs to (0003); one is created per setup */
   leagueName?: string;
+  /**
+   * PHASE 4: start a season INTO AN EXISTING LEAGUE — one created by
+   * `POST /api/leagues`, whose pool `copyPoolInto` has already stamped and whose
+   * clubs `POST /api/leagues/join` has already seated. Three things change when
+   * it is present, and each is the same fact seen once: THE POOL IS ALREADY THIS
+   * LEAGUE'S. The supply guard counts the league's rows instead of the
+   * templates; no league row is inserted; and the template CLAIM is skipped,
+   * because claiming would drag any un-copied template into a league that did
+   * not copy it.
+   */
+  leagueId?: string;
   clubs: ClubSpec[];
   /** regular-week number the transfer week follows; default: halfway */
   transferAfterWeek?: number;
@@ -110,13 +121,25 @@ export async function setupSeason(
   // as supply and passed for the wrong reason — while the update below would
   // have claimed only the templates it never counted. One league hid it, which
   // is the family's signature.
-  const { rows: poolRows } = await pool.query(
-    `SELECT p.position, count(*)::int AS n
-     FROM players p
-     WHERE p.league_id IS NULL
-       AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id)
-     GROUP BY p.position`,
-  );
+  // ...and PHASE 4 makes the predicate conditional rather than constant: a
+  // season started into an existing league counts THAT LEAGUE's copied pool,
+  // because that is the pool its auction will draw from.
+  const { rows: poolRows } = spec.leagueId
+    ? await pool.query(
+      `SELECT p.position, count(*)::int AS n
+       FROM players p
+       WHERE p.league_id = $1
+         AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id)
+       GROUP BY p.position`,
+      [spec.leagueId],
+    )
+    : await pool.query(
+      `SELECT p.position, count(*)::int AS n
+       FROM players p
+       WHERE p.league_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id)
+       GROUP BY p.position`,
+    );
   const byPosition = Object.fromEntries(poolRows.map((r) => [r.position, Number(r.n)]));
   const supplyIssues = validatePoolSupply(byPosition, n, spec.squadMin, spec.squadMax);
   if (supplyIssues.length) throw new SetupError(supplyIssues);
@@ -127,11 +150,18 @@ export async function setupSeason(
     // THE LEAGUE (0003). Setup still creates exactly one — self-service
     // create/join is phase 4 — but seasons and clubs are league-scoped now, so
     // it has to exist before them.
-    const league = await client.query(
-      `INSERT INTO leagues (name, status, club_capacity) VALUES ($1, 'active', $2) RETURNING id`,
-      [spec.leagueName ?? 'League', Math.min(10, Math.max(2, n))],
-    );
-    const leagueId = league.rows[0].id as string;
+    let leagueId: string;
+    if (spec.leagueId) {
+      // an existing lobby league starts its season: it becomes 'active'
+      await client.query(`UPDATE leagues SET status = 'active' WHERE id = $1`, [spec.leagueId]);
+      leagueId = spec.leagueId;
+    } else {
+      const league = await client.query(
+        `INSERT INTO leagues (name, status, club_capacity) VALUES ($1, 'active', $2) RETURNING id`,
+        [spec.leagueName ?? 'League', Math.min(10, Math.max(2, n))],
+      );
+      leagueId = league.rows[0].id as string;
+    }
     const season = await client.query(
       `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id) VALUES ($1, $2, $3, $4) RETURNING id`,
       [spec.number ?? 1, rounds, transferAfterWeek, leagueId],
@@ -151,12 +181,19 @@ export async function setupSeason(
          RETURNING id`,
         [club.managerEmail, club.name],
       );
+      // A PHASE-4 LEAGUE ALREADY HAS ITS CLUBS — `/leagues` seated the host and
+      // `/leagues/join` seated the rest. `clubs UNIQUE (league_id, name)` is the
+      // adoption key: the no-op UPDATE only exists to make RETURNING work, the
+      // same idiom as the manager upsert above.
       const inserted = await client.query(
-        `INSERT INTO clubs (manager_id, name, league_id) VALUES ($1, $2, $3) RETURNING id`,
+        `INSERT INTO clubs (manager_id, name, league_id) VALUES ($1, $2, $3)
+         ON CONFLICT (league_id, name) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
         [manager.rows[0].id, club.name, leagueId],
       );
       await client.query(
-        `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO club_seasons (club_id, season_id, transfer_budget, wage_cap) VALUES ($1, $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
         [
           inserted.rows[0].id, seasonId,
           club.budget ?? spec.defaultBudget ?? LEAGUE_CFG.defaultTransferBudget,
@@ -172,7 +209,12 @@ export async function setupSeason(
     // Phase 4 (many leagues) COPIES templates instead of claiming them — with
     // one league the two are equivalent, and claiming keeps this migration
     // behaviour-neutral.
-    await client.query(`UPDATE players SET league_id = $1 WHERE league_id IS NULL`, [leagueId]);
+    // ...and a PHASE-4 league skips the claim entirely: `copyPoolInto` already
+    // stamped its rows, and claiming here would drag every remaining template
+    // into a league that never copied them.
+    if (!spec.leagueId) {
+      await client.query(`UPDATE players SET league_id = $1 WHERE league_id IS NULL`, [leagueId]);
+    }
     await client.query('COMMIT');
     return { seasonId, clubIds, rounds, transferAfterWeek };
   } catch (err) {
