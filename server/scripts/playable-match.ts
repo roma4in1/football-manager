@@ -30,6 +30,7 @@ import { existsSync } from 'node:fs';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { setupSeason } from '../league-setup.ts';
 import { LEAGUE_CFG } from '@fm/engine/config';
 import { bestXI } from '@fm/engine/eligibility';
 import type { EligiblePlayer } from '@fm/engine/eligibility';
@@ -49,6 +50,19 @@ const MANAGERS = [
   { email: 'bob@demo.io', club: 'Beta United' },
 ];
 const PASSWORD = 'playable-match-demo';
+
+/**
+ * LEAGUE B — the second league, and the reason this script grew. Four instances
+ * of the league-blind family have been found and EVERY ONE WAS INVISIBLE AT A
+ * SINGLE LEAGUE; the fourth wrote cross-league rows. Until now the only
+ * end-to-end proof exercised the FIRST league, which is the one the copy does
+ * not exist for. These two managers create and join through the PRODUCT PATH —
+ * `POST /api/leagues`, `POST /api/leagues/join` — not a seed helper.
+ */
+const MANAGERS_B = [
+  { email: 'carol@demo.io', club: 'Gamma Rovers' },
+  { email: 'dave@demo.io', club: 'Delta Town' },
+];
 /** 13 = LEAGUE_CFG.squadMin; the shape only has to make a legal XI possible */
 const TARGET_SHAPE: Array<[string, number]> = [['GK', 2], ['DF', 5], ['MF', 4], ['FW', 2]];
 
@@ -484,6 +498,111 @@ async function markScratch(): Promise<void> {
   }
 }
 
+/** every uncontracted player in a league — the live pool, read from the DB so
+ *  the isolation claim is about rows rather than about a route's answer. */
+async function poolCount(leagueId: string): Promise<number> {
+  const client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT count(*)::int AS n FROM players p
+       WHERE p.league_id = $1
+         AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)`,
+      [leagueId],
+    );
+    return rows[0].n;
+  } finally { await client.end(); }
+}
+
+/**
+ * THE ISOLATION ASSERTIONS, RUN AGAINST THE LIVE SEASONS. Each asks the database
+ * for a row that should not exist: a contract, a squad row or an auction lot
+ * whose club and player belong to different leagues. Postgres accepts every one
+ * of them — no constraint requires the two to share a league — which is exactly
+ * why they are asserted rather than trusted.
+ */
+async function assertNoCrossLeagueRows(): Promise<void> {
+  const client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    const checks: Array<[string, string]> = [
+      ['contracts', `SELECT count(*)::int AS n FROM contracts ct
+                     JOIN clubs cl ON cl.id = ct.club_id
+                     JOIN players p ON p.id = ct.player_id
+                     WHERE cl.league_id IS DISTINCT FROM p.league_id`],
+      ['squad rows', `SELECT count(*)::int AS n FROM squad_players sp
+                      JOIN clubs cl ON cl.id = sp.club_id
+                      JOIN players p ON p.id = sp.player_id
+                      WHERE cl.league_id IS DISTINCT FROM p.league_id`],
+      ['squad rows vs season', `SELECT count(*)::int AS n FROM squad_players sp
+                      JOIN clubs cl ON cl.id = sp.club_id
+                      JOIN seasons se ON se.id = sp.season_id
+                      WHERE cl.league_id IS DISTINCT FROM se.league_id`],
+      ['auction lots', `SELECT count(*)::int AS n FROM auction_lots l
+                        JOIN seasons se ON se.id = l.season_id
+                        JOIN players p ON p.id = l.player_id
+                        WHERE se.league_id IS DISTINCT FROM p.league_id`],
+    ];
+    for (const [what, sql] of checks) {
+      const { rows } = await client.query(sql);
+      expect(rows[0].n === 0, `no ${what} cross a league`, '0 rows', rows[0].n);
+    }
+  } finally { await client.end(); }
+}
+
+/** the auction, the lineups, the close and the proof — for whichever league
+ *  these clients are seated in. Returns the label line for the summary. */
+async function driveLeagueToFinal(clients: Client[], label: string): Promise<string> {
+  console.log(`\n  — ${label} —`);
+  await driveAuction(clients);
+
+  const mw = await clients[0].get<CurrentMatchweek>('/matchweek/current');
+  if (!mw.fixture) die(`${label}: matchweek 1 has no fixture for this club`, JSON.stringify(mw.matchweek));
+  const fixtureId = mw.fixture.id;
+  console.log(`  MW${mw.matchweek.number}: ${mw.fixture.home.name} v ${mw.fixture.away.name} (${fixtureId})`);
+  for (const c of clients) await submitLineup(c, fixtureId);
+
+  const closed = await clients[0].send<{ matchweek: number; status: string }>(
+    'POST', '/admin/force-week-close', { confirm: 'SIM NOW' },
+  );
+  console.log(`  week close → ${closed.status}`);
+
+  const state = await fixtureStateFromDb(fixtureId);
+  expect(state === 'final', `${label}: the fixture reached \`final\``, "state === 'final'", state);
+
+  const replay = await clients[0].try_('GET', `/fixture/${fixtureId}/replay`);
+  expect(replay.status === 200, `${label}: /replay returns 200`, '200', `${replay.status} ${JSON.stringify(replay.body)}`);
+  const halves: Array<{ half: number; frames: unknown[] }> = replay.body?.halves ?? [];
+  expect(halves.length === 2, `${label}: the replay carries both halves`, '2 halves', halves.length);
+  for (const h of halves) {
+    expect(Array.isArray(h.frames) && h.frames.length > 0,
+      `${label}: half ${h.half} has replay frames`, '> 0 frames', Array.isArray(h.frames) ? h.frames.length : h.frames);
+  }
+
+  const result = await clients[0].try_('GET', `/fixture/${fixtureId}/result`);
+  expect(result.status === 200, `${label}: /result returns 200`, '200', `${result.status} ${JSON.stringify(result.body)}`);
+  const score = result.body?.finalScore;
+  expect(Array.isArray(score) && score.length === 2 && score.every((n: unknown) => Number.isInteger(n)),
+    `${label}: the scoreline is a pair of integers`, '[home, away]', score);
+
+  const events = (result.body?.halves ?? []).flatMap((h: { events: Array<{ type: string }> }) => h.events ?? []);
+  expect(events.length > 0, `${label}: the match timeline is non-empty`, '> 0 events', events.length);
+  const shots = events.filter((e: { type: string }) => e.type === 'shot').length;
+  expect(shots > 0, `${label}: the timeline contains shots`, '> 0 shot events', shots);
+
+  for (const h of result.body.halves as Array<{ half: number; stats: Record<string, unknown> }>) {
+    const stats = h.stats ?? {};
+    const possession = stats.possession as [number, number] | undefined;
+    expect(Array.isArray(possession) && Math.round(possession[0] + possession[1]) === 100,
+      `${label}: half ${h.half} possession sums to 100`, 'a pair summing to 100', possession);
+    const ratings = stats.playerRatings as Record<string, number> | undefined;
+    expect(ratings !== undefined && Object.keys(ratings).length > 0,
+      `${label}: half ${h.half} carries player ratings`, '> 0 rated players', ratings && Object.keys(ratings).length);
+  }
+  const goals = events.filter((e: { type: string }) => e.type === 'goal').length;
+  return `│ ${label}: ${mw.fixture.home.name} ${score[0]}–${score[1]} ${mw.fixture.away.name}   (${goals} goal${goals === 1 ? '' : 's'}, ${shots} shots)  ${base}/season/match/${fixtureId}`;
+}
+
 // ── the run ──────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -505,6 +624,7 @@ async function main(): Promise<void> {
 
   step(4, 'sign both demo managers up (this claims their seeded clubs)');
   const clients: Client[] = [];
+  let leagueAId = '';
   for (const m of MANAGERS) {
     const c = makeClient(m.email, m.club);
     const signup = await c.try_('POST', '/auth/signup', { email: m.email, password: PASSWORD });
@@ -512,78 +632,80 @@ async function main(): Promise<void> {
     const me = await c.get<{ club: { id: string; name: string } | null }>('/me');
     if (!me.club) die(`${m.email} signed up but claimed no club — seed-demo's manager rows did not match`);
     c.clubId = me.club.id;
+    const full = await c.get<{ leagues: Array<{ id: string }>; selectedLeagueId: string | null }>('/me');
+    leagueAId = full.selectedLeagueId ?? full.leagues[0]?.id ?? '';
     console.log(`  ${m.email} → ${me.club.name}`);
     clients.push(c);
   }
 
-  step(5, `drive the auction to squadMin (${LEAGUE_CFG.squadMin}) for both clubs`);
-  await driveAuction(clients);
+  // A's pool BEFORE it signs anyone — the baseline the isolation claim needs.
+  // Captured here and not at step 6, because by then A's auction has already
+  // run and "A's pool fell" would compare a number with itself.
+  const poolABefore = await poolCount(leagueAId);
+  console.log(`  league A pool before its auction: ${poolABefore}`);
 
-  step(6, 'find matchweek 1 and submit both lineups');
-  const mw = await clients[0].get<CurrentMatchweek>('/matchweek/current');
-  if (!mw.fixture) die('matchweek 1 has no fixture for this club', JSON.stringify(mw.matchweek));
-  const fixtureId = mw.fixture.id;
-  console.log(`  MW${mw.matchweek.number}: ${mw.fixture.home.name} v ${mw.fixture.away.name} (${fixtureId})`);
-  for (const c of clients) await submitLineup(c, fixtureId);
+  step(5, `LEAGUE A: auction to squadMin (${LEAGUE_CFG.squadMin}), lineups, close, proof`);
+  const lineA = await driveLeagueToFinal(clients, 'league A');
 
-  step(7, 'force the matchweek close — real sims, real bookkeeping, real reveal');
-  const closed = await clients[0].send<{ matchweek: number; status: string }>(
-    'POST', '/admin/force-week-close', { confirm: 'SIM NOW' },
-  );
-  console.log(`  week close → ${closed.status}`);
-
-  step(8, 'assert the match is complete and watchable');
-  const state = await fixtureStateFromDb(fixtureId);
-  expect(state === 'final', 'the fixture reached `final`', "state === 'final'", state);
-
-  const replay = await clients[0].try_('GET', `/fixture/${fixtureId}/replay`);
-  expect(replay.status === 200, '/api/fixture/:id/replay returns 200', '200', `${replay.status} ${JSON.stringify(replay.body)}`);
-  const halves: Array<{ half: number; frames: unknown[] }> = replay.body?.halves ?? [];
-  expect(halves.length === 2, 'the replay carries both halves', '2 halves', halves.length);
-  for (const h of halves) {
-    expect(
-      Array.isArray(h.frames) && h.frames.length > 0,
-      `half ${h.half} has replay frames`, '> 0 frames', Array.isArray(h.frames) ? h.frames.length : h.frames,
-    );
+  step(6, 'LEAGUE B: created and joined through the PRODUCT PATH — POST /leagues, POST /leagues/join');
+  const clientsB: Client[] = [];
+  for (const m of MANAGERS_B) {
+    const c = makeClient(m.email, m.club);
+    const signup = await c.try_('POST', '/auth/signup', { email: m.email, password: PASSWORD });
+    if (signup.status !== 200) die(`signup failed for ${m.email}`, `${signup.status} ${JSON.stringify(signup.body)}`);
+    clientsB.push(c);
   }
+  const created = await clientsB[0].send<{
+    leagueId: string; joinCode: string; clubId: string; pool: { copied: number; source: string };
+  }>('POST', '/leagues', { name: 'Gamma League', clubName: MANAGERS_B[0].club, capacity: 2 });
+  console.log(`  created ${created.leagueId} code ${created.joinCode} — pool ${created.pool.copied} from ${created.pool.source}`);
 
-  const result = await clients[0].try_('GET', `/fixture/${fixtureId}/result`);
-  expect(result.status === 200, '/api/fixture/:id/result returns 200', '200', `${result.status} ${JSON.stringify(result.body)}`);
-  const score = result.body?.finalScore;
-  expect(
-    Array.isArray(score) && score.length === 2 && score.every((n: unknown) => Number.isInteger(n)),
-    'the scoreline is a pair of integers', '[home, away]', score,
+  // THE COPY'S SOURCE IS ASSERTED, NOT PRINTED. seed-demo's setup CLAIMED every
+  // template, so by now there are none and the honest source is the fallback:
+  // an existing league's roster. Asserting it is what stops a silent 'none'
+  // (an empty pool) from passing as a copy.
+  expect(created.pool.source === 'league', "league B's pool came from an existing league's roster",
+    "source === 'league' (seed-demo claimed the templates)", created.pool.source);
+  expect(created.pool.copied > 0, "league B's pool is non-empty", '> 0 players copied', created.pool.copied);
+  expect(await poolCount(created.leagueId) === created.pool.copied,
+    "league B's live pool matches what was copied", String(created.pool.copied), await poolCount(created.leagueId));
+
+  const joined = await clientsB[1].send<{ leagueId: string; clubId: string }>(
+    'POST', '/leagues/join', { code: created.joinCode.toLowerCase(), clubName: MANAGERS_B[1].club },
   );
+  expect(joined.leagueId === created.leagueId, 'the join code seated the second manager in league B',
+    created.leagueId, joined.leagueId);
 
-  const events = (result.body?.halves ?? []).flatMap((h: { events: Array<{ type: string }> }) => h.events ?? []);
-  expect(events.length > 0, 'the match timeline is non-empty', '> 0 events', events.length);
-  // shots, not goals: a 0–0 with no cards is a legitimate match, so asserting on
-  // goal/card events would be a flake. A 90 minutes with zero shots would not be.
-  const shots = events.filter((e: { type: string }) => e.type === 'shot').length;
-  expect(shots > 0, 'the timeline contains shots', '> 0 shot events', shots);
+  step(7, 'LEAGUE B: isolation BEFORE its season — A has signed, B has not');
+  const poolAAfter = await poolCount(leagueAId);
+  expect(poolAAfter < poolABefore, "league A's pool fell as it signed", `< ${poolABefore}`, poolAAfter);
+  expect(await poolCount(created.leagueId) === created.pool.copied,
+    "league B's pool is UNTOUCHED by A's signings — the whole point of the copy",
+    String(created.pool.copied), await poolCount(created.leagueId));
+  await assertNoCrossLeagueRows();
 
-  for (const h of result.body.halves as Array<{ half: number; stats: Record<string, unknown> }>) {
-    const stats = h.stats ?? {};
-    const possession = stats.possession as [number, number] | undefined;
-    expect(
-      Array.isArray(possession) && Math.round(possession[0] + possession[1]) === 100,
-      `half ${h.half} stats carry possession summing to 100`, 'possession pair summing to 100', possession,
-    );
-    const ratings = stats.playerRatings as Record<string, number> | undefined;
-    expect(
-      ratings !== undefined && Object.keys(ratings).length > 0,
-      `half ${h.half} stats carry player ratings`, '> 0 rated players', ratings && Object.keys(ratings).length,
-    );
+  step(8, "LEAGUE B: its own season, its own auction, its own match");
+  await setupSeason(new pg.Pool({ connectionString: DATABASE_URL, max: 2 }), {
+    leagueId: created.leagueId,
+    clubs: MANAGERS_B.map((m) => ({ name: m.club, managerEmail: m.email })),
+  });
+  for (const c of clientsB) {
+    const me = await c.get<{ club: { id: string } | null; leagues: Array<{ id: string }> }>('/me');
+    if (!me.club) die(`${c.email} has no club after league B's setup`, JSON.stringify(me.leagues));
+    c.clubId = me.club.id;
   }
+  const lineB = await driveLeagueToFinal(clientsB, 'league B');
 
-  step(9, 'done');
-  const goals = events.filter((e: { type: string }) => e.type === 'goal').length;
+  step(9, 'isolation AFTER both seasons ran');
+  await assertNoCrossLeagueRows();
+  expect(await poolCount(leagueAId) === poolAAfter,
+    "league A's pool did not move while league B ran", String(poolAAfter), await poolCount(leagueAId));
+
   console.log(`
-  ┌─ A COMPLETE MATCH ─────────────────────────────────────────────
-  │ ${mw.fixture.home.name} ${score[0]}–${score[1]} ${mw.fixture.away.name}   (${goals} goal event${goals === 1 ? '' : 's'}, ${shots} shots, ${events.length} events)
-  │ fixture   ${fixtureId}
-  │ watch it  ${base}/season/match/${fixtureId}
-  │ sign in   ${MANAGERS[0].email} / ${PASSWORD}
+  ┌─ TWO COMPLETE MATCHES, TWO LEAGUES ────────────────────────────
+  ${lineA}
+  ${lineB}
+  │ sign in   ${MANAGERS[0].email} / ${PASSWORD}   (league B: ${MANAGERS_B[0].email})
   └────────────────────────────────────────────────────────────────`);
 
   if (EXIT_WHEN_DONE) {
