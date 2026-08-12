@@ -281,6 +281,81 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       return reply.send({ selectedLeagueId: leagueId });
     });
 
+    /**
+     * PHASE 4 — CREATE A LEAGUE. Session-scoped, not club-scoped: creating is
+     * exactly what an account with no club does. The league arrives in 'lobby'
+     * with a join code, its pool COPIED (never re-imported — the ruling), and
+     * the creator seated in it.
+     *
+     * `pool.source` is returned rather than hidden: on a production database
+     * whose backfill has been claimed by setup-production there are no templates
+     * left, and the caller is entitled to know whether it copied templates, an
+     * existing league's roster, or NOTHING AT ALL. A league with an empty pool is
+     * created and reported, not silently blessed — it cannot run a season and the
+     * lobby screen (not this slice) is where that is surfaced.
+     */
+    sessioned.post('/leagues', async (req, reply) => {
+      const a = req.account;
+      const body = (req.body ?? {}) as { name?: unknown; clubName?: unknown; capacity?: unknown };
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return reply.code(400).send({ error: 'name_required' });
+      const identity = a.accountId ? await store.getClubIdentity(pool, a.accountId) : null;
+      const clubName = (typeof body.clubName === 'string' && body.clubName.trim())
+        || identity?.name || '';
+      if (!clubName) return reply.code(400).send({ error: 'club_name_required' });
+      const capacity = typeof body.capacity === 'number' ? body.capacity : 8;
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const created = await store.createLeague(client, {
+          name, hostAccountId: a.accountId ?? null, clubCapacity: capacity,
+        });
+        const clubId = await store.addClubToLeague(client, created.leagueId, a.managerId, clubName);
+        await client.query('COMMIT');
+        return reply.code(201).send({
+          leagueId: created.leagueId, joinCode: created.joinCode, clubId,
+          pool: { copied: created.copied, source: created.source },
+        });
+      } catch (err) {
+        await client.query('ROLLBACK');
+        if ((err as { code?: string }).code === '23505') return reply.code(409).send({ error: 'club_name_taken' });
+        throw err;
+      } finally {
+        client.release();
+      }
+    });
+
+    /**
+     * PHASE 4 — JOIN BY CODE. Refuses a league that is not in 'lobby', one that
+     * is full, and a second seat for a manager already in it. The code is
+     * case-insensitive and trimmed because it is read off a screen by a person.
+     */
+    sessioned.post('/leagues/join', async (req, reply) => {
+      const a = req.account;
+      const body = (req.body ?? {}) as { code?: unknown; clubName?: unknown };
+      const code = typeof body.code === 'string' ? body.code.trim() : '';
+      if (!code) return reply.code(400).send({ error: 'code_required' });
+      const league = await store.leagueByJoinCode(pool, code);
+      if (!league) return reply.code(404).send({ error: 'not_found' });
+      if (league.status !== 'lobby') return reply.code(409).send({ error: 'league_started' });
+      if (await store.clubInLeague(pool, a.managerId, league.leagueId)) {
+        return reply.code(409).send({ error: 'already_joined' });
+      }
+      if (league.clubs >= league.capacity) return reply.code(409).send({ error: 'league_full' });
+      const identity = a.accountId ? await store.getClubIdentity(pool, a.accountId) : null;
+      const clubName = (typeof body.clubName === 'string' && body.clubName.trim())
+        || identity?.name || '';
+      if (!clubName) return reply.code(400).send({ error: 'club_name_required' });
+      try {
+        const clubId = await store.addClubToLeague(pool, league.leagueId, a.managerId, clubName);
+        return reply.code(200).send({ leagueId: league.leagueId, name: league.name, clubId });
+      } catch (err) {
+        if ((err as { code?: string }).code === '23505') return reply.code(409).send({ error: 'club_name_taken' });
+        throw err;
+      }
+    });
+
     // Create OR edit the club identity — one route, because the spec makes them
     // the same act: the identity is editable at any time and the change reflects
     // across every league the account plays in (LOBBY-DESIGN-SPEC §1).

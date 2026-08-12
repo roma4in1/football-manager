@@ -102,10 +102,19 @@ export async function setupSeason(
   const rounds = expectedRounds(n);
   const transferAfterWeek = Math.max(1, Math.min(spec.transferAfterWeek ?? Math.floor(rounds / 2), rounds - 1));
 
+  // LEAGUE-BLIND, THE THIRD INSTANCE — and the fix is `league_id IS NULL`
+  // rather than "this league's id", because THE ONLY POOL THIS SETUP WILL EVER
+  // CLAIM IS THE TEMPLATES: line ~180 runs `UPDATE players SET league_id = $1
+  // WHERE league_id IS NULL`. The old form counted every uncontracted row in the
+  // database, so from the SECOND league onward it counted other leagues' players
+  // as supply and passed for the wrong reason — while the update below would
+  // have claimed only the templates it never counted. One league hid it, which
+  // is the family's signature.
   const { rows: poolRows } = await pool.query(
     `SELECT p.position, count(*)::int AS n
      FROM players p
-     WHERE NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id)
+     WHERE p.league_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id)
      GROUP BY p.position`,
   );
   const byPosition = Object.fromEntries(poolRows.map((r) => [r.position, Number(r.n)]));

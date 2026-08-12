@@ -1273,9 +1273,23 @@ export async function createNextSeason(
  * progress consumed by the growth that just ran.
  */
 export async function carrySquadsForward(c: Queryable, nextSeasonId: string): Promise<void> {
+  // LEAGUE-BLIND, THE FOURTH INSTANCE (found by grepping for it before phase 4
+  // rather than by hitting it). The old form selected EVERY live contract in the
+  // database and inserted a squad row for it into THIS league's next season, so
+  // league A's rollover would have written league B's clubs and players into
+  // league A's season. squad_players has FKs to clubs, seasons and players and
+  // NOTHING that requires them to share a league, so Postgres accepts it — the
+  // same shape as the copy hazard: the dangerous case is the one that does not
+  // error. Unlike instance 3 (a guard passing for the wrong reason) this one
+  // WRITES cross-league rows. Scoped through the club's league, matched to the
+  // season's.
   await c.query(
     `INSERT INTO squad_players (club_id, season_id, player_id)
-     SELECT ct.club_id, $1, ct.player_id FROM contracts ct WHERE ct.released_at IS NULL`,
+     SELECT ct.club_id, $1, ct.player_id
+     FROM contracts ct
+     JOIN clubs cl ON cl.id = ct.club_id
+     WHERE ct.released_at IS NULL
+       AND cl.league_id = (SELECT league_id FROM seasons WHERE id = $1)`,
     [nextSeasonId],
   );
 }
@@ -1431,6 +1445,137 @@ export async function getSessionContext(c: Queryable, sessionId: string): Promis
 }
 
 /** Every league entry this manager holds. One row per league since 0003. */
+/**
+ * PHASE 4 — CREATE AND JOIN.
+ *
+ * THE POOL SOURCE IS A RULING, NOT A CHOICE: COPY TEMPLATES, DO NOT RE-IMPORT.
+ * Re-import would couple every future league to a pipeline parked at 96.9% on an
+ * export that has not arrived; a copy is rows this database already holds.
+ *
+ * WHAT MAY BE COPIED, AND WHY THE LIST IS EXACT. Columns of `players` ONLY.
+ * `players_template_identity` is PARTIAL on `league_id IS NULL`, so a copy is
+ * invisible to it, and the per-league key `(league_id, full_name, birth_date)`
+ * lets the same person exist once per league. THE DANGEROUS CASE IS THE ONE THAT
+ * DOES NOT ERROR: copying `contracts` or `squad_players` alongside is ACCEPTED by
+ * Postgres and silently creates a player in league B under contract to a club in
+ * league A. Neither table is touched here and neither may be.
+ *
+ * AND THE SOURCE IS NOT ALWAYS TEMPLATES. `setupSeason` claims the whole template
+ * pool (`UPDATE players SET league_id = $1 WHERE league_id IS NULL`), so after the
+ * first league is set up there are NO templates left — which is exactly the case a
+ * first real user hits on a production database whose backfill has run. The copy
+ * therefore falls back to an existing league's roster, and reports which source it
+ * used rather than pretending there was only ever one.
+ */
+export type PoolSource = 'templates' | 'league' | 'none';
+
+export async function copyPoolInto(
+  c: Queryable, leagueId: string,
+): Promise<{ copied: number; source: PoolSource }> {
+  const { rows: t } = await c.query(`SELECT count(*)::int AS n FROM players WHERE league_id IS NULL`);
+  if (t[0].n > 0) {
+    const r = await c.query(
+      `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, foot,
+                            market_value, attributes, physical, source_meta, league_id)
+       SELECT full_name, birth_date, position, height_cm, weight_kg, foot,
+              market_value, attributes, physical, source_meta, $1
+       FROM players WHERE league_id IS NULL`,
+      [leagueId],
+    );
+    return { copied: r.rowCount ?? 0, source: 'templates' };
+  }
+  // no templates: copy the fullest existing league's roster. DISTINCT ON keeps
+  // one row per identity so the per-league unique key cannot be violated even if
+  // the source itself somehow holds a duplicate.
+  const { rows: src } = await c.query(
+    `SELECT league_id FROM players
+     WHERE league_id IS NOT NULL AND league_id <> $1
+     GROUP BY league_id ORDER BY count(*) DESC LIMIT 1`,
+    [leagueId],
+  );
+  if (!src[0]) return { copied: 0, source: 'none' };
+  const r = await c.query(
+    `INSERT INTO players (full_name, birth_date, position, height_cm, weight_kg, foot,
+                          market_value, attributes, physical, source_meta, league_id)
+     SELECT DISTINCT ON (full_name, birth_date)
+            full_name, birth_date, position, height_cm, weight_kg, foot,
+            market_value, attributes, physical, source_meta, $1
+     FROM players WHERE league_id = $2
+     ORDER BY full_name, birth_date`,
+    [leagueId, src[0].league_id],
+  );
+  return { copied: r.rowCount ?? 0, source: 'league' };
+}
+
+/** Unambiguous alphabet: no O/0, I/1, L. Six chars = 26^6 with the confusables
+ *  removed; the UNIQUE index is the real guarantee and the retry is the handler. */
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function makeJoinCode(): string {
+  let out = '';
+  for (let i = 0; i < 6; i++) out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return out;
+}
+
+export async function createLeague(
+  c: Queryable, spec: { name: string; hostAccountId: string | null; clubCapacity: number },
+): Promise<{ leagueId: string; joinCode: string; copied: number; source: PoolSource }> {
+  const cap = Math.min(10, Math.max(2, spec.clubCapacity));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = makeJoinCode();
+    try {
+      const { rows } = await c.query(
+        `INSERT INTO leagues (name, join_code, host_account_id, status, club_capacity)
+         VALUES ($1, $2, $3, 'lobby', $4) RETURNING id`,
+        [spec.name, code, spec.hostAccountId, cap],
+      );
+      const leagueId = rows[0].id as string;
+      const pool = await copyPoolInto(c, leagueId);
+      return { leagueId, joinCode: code, ...pool };
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505' && attempt < 7) continue; // code collision
+      throw err;
+    }
+  }
+  throw new Error('join_code_exhausted');
+}
+
+export interface LeagueByCode {
+  leagueId: string; name: string; status: string; capacity: number; clubs: number;
+}
+
+export async function leagueByJoinCode(c: Queryable, code: string): Promise<LeagueByCode | null> {
+  const { rows } = await c.query(
+    `SELECT l.id, l.name, l.status::text AS status, l.club_capacity,
+            (SELECT count(*)::int FROM clubs cl WHERE cl.league_id = l.id) AS clubs
+     FROM leagues l WHERE l.join_code = $1`,
+    [code.trim().toUpperCase()],
+  );
+  const r = rows[0];
+  return r ? { leagueId: r.id, name: r.name, status: r.status, capacity: r.club_capacity, clubs: r.clubs } : null;
+}
+
+/** This manager's club in this league, or null — the membership test. */
+export async function clubInLeague(
+  c: Queryable, managerId: string, leagueId: string,
+): Promise<string | null> {
+  const { rows } = await c.query(
+    `SELECT id FROM clubs WHERE manager_id = $1 AND league_id = $2`, [managerId, leagueId],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/** Seat a manager in a league. `clubs` UNIQUE (league_id, name) is the real
+ *  guard against two identical club names in one league. */
+export async function addClubToLeague(
+  c: Queryable, leagueId: string, managerId: string, clubName: string,
+): Promise<string> {
+  const { rows } = await c.query(
+    `INSERT INTO clubs (manager_id, name, league_id) VALUES ($1, $2, $3) RETURNING id`,
+    [managerId, clubName, leagueId],
+  );
+  return rows[0].id as string;
+}
+
 export async function listMemberships(c: Queryable, managerId: string): Promise<LeagueMembership[]> {
   const { rows } = await c.query(
     `SELECT l.id AS league_id, l.name AS league_name, l.status::text AS league_status,
