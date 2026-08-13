@@ -779,6 +779,9 @@ dig +short topfootballgame.com A && curl -s https://topfootballgame.com/api/heal
   restored into a throwaway container: every row count matched. Both restore
   targets were tested — a brand-new database, and one wiped with
   `DROP SCHEMA public CASCADE; CREATE SCHEMA public`.
+- Verified on the script's own default, `postgres:17-alpine`, restoring a dump
+  written by `pg_dump` 16 — the direction that matters (a client no older than
+  the server on the way out, a server no older than the dump on the way back).
 - **And the failure that looks like success was constructed and caught.** A
   truncated dump — valid encryption, valid gzip, 2 000 lines of perfectly good
   SQL, 281 KB — is rejected by the completion-marker check with exit 1 before

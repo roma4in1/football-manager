@@ -69,7 +69,8 @@ echo "     $(wc -l < "$WORK/league.sql" | tr -d ' ') lines, complete"
 # ── 3. restore it, for real ─────────────────────────────────────────────────
 echo "  3. starting a throwaway ${IMAGE}..."
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-docker run -d --name "${CONTAINER}" -e POSTGRES_PASSWORD="${PGPASS}" "${IMAGE}" >/dev/null
+docker run -d --name "${CONTAINER}" -e POSTGRES_PASSWORD="${PGPASS}" "${IMAGE}" >/dev/null \
+  || die "could not start ${IMAGE}. If this machine cannot reach Docker Hub, set PG_IMAGE to an image you already hold — it must be at least as new as the pg_dump that wrote the artifact."
 for _ in $(seq 1 60); do
   docker exec "${CONTAINER}" pg_isready -U postgres >/dev/null 2>&1 && break
   sleep 1
