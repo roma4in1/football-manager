@@ -192,7 +192,9 @@ DATABASE_URL='<session-pooler url, §1.2>' node scripts/setup-production.ts club
 
 It prints the season id, the schedule shape, each club with its manager (and
 whether the manager already existed and was linked), and whose nomination
-opens the auction. Managers **sign up with that same email** to claim the seeded
+opens the auction. Its pool line reads **`unclaimed templates`**: it counts
+`players WHERE league_id IS NULL`, the same set `setupSeason` will claim, so the
+dry-run and the apply cannot disagree (corrected 2026-08-14). Managers **sign up with that same email** to claim the seeded
 club (the account links to it), or use forgot-password; then the auction is live.
 **There is no magic link** — `POST /auth/signup` claims a seeded manager row with
 the same email (`league-api.ts`), so claiming needs no email delivery at all. The
@@ -210,11 +212,26 @@ no replacing — that's the §1.3 cutover.
 ### 1.5 Reset a TEST league — `scripts/reset-league.ts`
 Pre-launch you will want to tear a test league back down to zero (e.g. after
 smoke-testing, before loading the real clubs). `scripts/reset-league.ts` does
-exactly that: one `TRUNCATE seasons, clubs, matchweeks, fixtures CASCADE`
+exactly that: `TRUNCATE seasons, clubs, matchweeks, fixtures CASCADE`
 empties the entire league graph — clubs, contracts, squads, fixtures, results,
 auctions, transfers, transactions, playoffs — while **keeping the imported
 `players` pool and the `managers`** (so §1.4 can re-link them). Afterwards the
 database is a virgin league again, ready for `setup-production.ts`.
+
+> **⚠️ Corrected 2026-08-14 — post-0003 "virgin" means TEMPLATES.** The reset used
+> to keep the players and leave every one of them stamped with the id of the
+> league it had just deleted, so the pool looked full and read as empty:
+> `setup-production.ts` printed `pool 120 players` and then refused with
+> `position_undersupplied: MF has 0 in the pool` on the same database. The reset
+> now returns the pool to `league_id IS NULL`, collapsing each league's copies
+> back to one row per footballer, and **deletes the emptied `leagues` rows** so a
+> ghost league cannot survive a reset. Both scripts now count the same predicate.
+>
+> **It still empties EVERY league on the database, not one.** That was right when
+> a database held one league; phase 4 lets a user make more. The dry-run now
+> names every league it will remove — read that list before `--confirm`. Scoping
+> the teardown to a single league is a separate change (TRUNCATE cannot be
+> filtered, so it becomes ordered DELETEs plus a `--league` argument).
 
 It runs locally against `DATABASE_URL`, same as `setup-production.ts` — no
 deploy involved. Two independent locks make wiping a real season by accident

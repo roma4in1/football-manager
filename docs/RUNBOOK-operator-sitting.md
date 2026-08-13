@@ -576,10 +576,26 @@ Managers then **sign up at the site with the same email address** to claim their
 seeded club (§0.4 — no link, no magic). Ignore the script's closing
 `next: managers log in via magic link` line; it is stale text in a `console.log`.
 
-**PASS** — dry-run prints the pool count by position and one line per club, then
-`--apply` prints the season id, the schedule shape and who nominates first.
-**STOP** — `a season already exists … refusing`, or `player pool is EMPTY`.
-Both mean the database is not in the state this script is for; re-read §3.
+**PASS** — the dry-run prints `pool N unclaimed templates (GK …, DF …, MF …, FW …)`
+and one line per club, then `--apply` prints the season id, the schedule shape
+and who nominates first.
+**STOP** — `a season already exists … refusing`, or `player pool is EMPTY`, or
+`no UNCLAIMED players: all N player row(s) already belong to a league`. Each means
+the database is not in the state this script is for; re-read §3.
+
+> **The word `templates` in that line is load-bearing, and it is new.** Until
+> 2026-08-14 this script counted every `players` row while `setupSeason` claimed
+> only `league_id IS NULL` — so on a database whose pool had been claimed, the
+> dry-run said `pool 120 players` and `--apply` refused with `MF has 0 in the
+> pool`, seconds apart. Both now read the same predicate. **If you ever see those
+> two disagree again, stop: it is the same family of defect and the numbers are
+> the symptom.**
+
+> **AND IF YOU ARE TEMPTED BY `reset-league.ts` (DEPLOY.md §1.5) — read its
+> dry-run first.** It empties EVERY league on the database, not one, and it now
+> names them all in the plan. On the sitting's database that is a single
+> "Original league", so it does what you expect; it is listed here because the
+> runbook is also read after phase 4, when it is not.
 
 ### 9.2 The self-serve path — the lobby
 
