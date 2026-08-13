@@ -3,6 +3,61 @@
 Running log of decisions that aren't obvious from the types or schema alone.
 Newest first. Keep entries short: what, why, where enforced.
 
+## 2026-08-12 — THE LOBBY: create, join by code, and the host's start
+
+**What shipped.** `POST /api/leagues` and `POST /api/leagues/join` (landed in the
+previous slice) gained the two that make them usable:
+`GET /api/leagues/:id/lobby` — name, code, capacity, the clubs that have joined,
+`isHost`, and a LIVE `poolCount` — and `POST /api/leagues/:id/start`, which is the
+only way a season now begins for a self-served league. The screens are
+`LeaguesHub` (create + join, and the phase-4 promissory prose removed) and
+`LeagueLobby`. **No migration**: `league_status`, `join_code`, `host_account_id`
+and `club_capacity` all shipped in 0003.
+
+**TWO RULINGS (user's, 2026-08-12), and both are enforced in two places.**
+
+- **CAPACITY IS A CEILING, NOT A QUORUM.** The host may start at **≥ 2 clubs** —
+  `setupSeason`'s own floor — against a capacity that is only the most the league
+  will hold. A league waiting on a tenth manager who never arrives is worse than a
+  four-club league that plays. Enforced at `/leagues/:id/start` (409
+  `need_two_clubs`, with the count) and shown as "2 of 8 joined" with a live
+  button.
+- **A `none` POOL IS SHOWN AT CREATION AND BLOCKS THE START.** `copyPoolInto` can
+  honestly return `none` — no templates, no other league — and such a league can
+  never auction. Enforced at `/leagues/:id/start` (409 `empty_pool`) and said at
+  creation, where the sentence **holds the screen**: walking straight into the
+  lobby would unmount it in the tick that produced it, and "shown at creation"
+  would be true of the code and false of the experience.
+
+**AND A THIRD REFUSAL THAT IS NOT A RULING BUT WOULD HAVE BEEN A 500.**
+`poolCount > 0` is not "enough for this many clubs": `setupSeason` wants
+(N−1)·squadMax + squadMin and a 4-4-2 per club per position. `SetupError` is
+caught and returned as 409 `pool_insufficient` with its own issue strings, so a
+host who filled a big league from a small pool gets the reason.
+
+**THE JOIN CODE IS THE ONE STRING A HUMAN HANDS TO ANOTHER HUMAN.** Six
+characters from an alphabet with no O/0, I/1 or L, shown verbatim in a monospace
+`.join-code` next to a Copy button (clipboard is refused on an insecure origin, so
+the failure says "select the code and copy it" rather than nothing). The server
+trims and uppercases, and **a wrong code comes back as the code that was typed** —
+`No league has the code K7QM2Z` — never a raw 404. A typo is the commonest thing a
+first user does; a raw 404 is the second-worst outcome after a league that cannot
+run.
+
+**THE SCRIPT AND THE SCREEN NOW HIT THE SAME THREE ROUTES.** `pnpm playable` step
+8 called `setupSeason()` directly; it calls `POST /leagues/:id/start` as the host's
+own client instead. The screen has no other way in, so neither does the proof —
+a defect in the host's start can no longer hide behind a helper the product never
+calls.
+
+**One guard added to an already-merged route.** `POST /api/leagues` refuses a
+session with no `accountId` (403 `no_account`). The host is identified BY ACCOUNT,
+so a manager-only session would have created a league nobody could ever start.
+
+**Recorded, not fixed:** `activeContractCounts` remains league-blind — the fifth
+of that family. It survives because it is read by keys from one league's clubs.
+The lobby does not touch it.
+
 ## 2026-08-09 — THE POOL SOURCE: phase 4 COPIES TEMPLATES, it does not re-import
 
 **The ruling (user's, 2026-08-09).** A new league's pool is built by COPYING
@@ -239,7 +294,8 @@ board item is closed for good.
   existing tokens only, no new visual vocabulary. DESIGN-BRIEF's one-coherent-go
   rule holds; the landing page was exempt as a PUBLIC page and this is not.
 - Creating and joining is phase 4, so the empty state says so plainly rather than
-  offering a button that does not exist.
+  offering a button that does not exist. **Superseded 2026-08-12** — the buttons
+  exist; see the lobby entry at the top of this file.
 
 **Verified in a real browser against the BUILT dist**, the method that found the
 landing page's two shipped defects: the Hub is visible at 390×844 **portrait**

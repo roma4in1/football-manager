@@ -39,6 +39,26 @@ export interface LeagueMembership {
   clubName: string;
 }
 
+export interface CreatedLeague {
+  leagueId: string;
+  joinCode: string;
+  clubId: string;
+  /** `none` means no players were copied — the league cannot run an auction. */
+  pool: { copied: number; source: 'templates' | 'league' | 'none' };
+}
+
+export interface LobbyView {
+  leagueId: string;
+  name: string;
+  status: string;
+  capacity: number;
+  joinCode: string | null;
+  isHost: boolean;
+  clubs: Array<{ clubId: string; clubName: string; managerId: string; displayName: string }>;
+  /** uncontracted players in this league; 0 blocks the start */
+  poolCount: number;
+}
+
 export interface Me {
   manager: { id: string; email: string; displayName: string };
   /** every league this account is in, oldest first */
@@ -291,6 +311,16 @@ export const api = {
    *  a league the account is not in (404), so this cannot select someone else's. */
   selectLeague: (leagueId: string) =>
     req<{ selectedLeagueId: string }>('PUT', '/api/league', { leagueId }),
+  /** PHASE 4 — create a league. `pool.source` is returned because a league whose
+   *  pool copied NOTHING cannot run an auction, and the screen must say so at
+   *  creation rather than at the auction. */
+  createLeague: (name: string, capacity: number, clubName?: string) =>
+    req<CreatedLeague>('POST', '/api/leagues', { name, capacity, clubName }),
+  joinLeague: (code: string, clubName?: string) => req<{ leagueId: string; name: string; clubId: string }>(
+    'POST', '/api/leagues/join', { code, clubName }),
+  leagueLobby: (leagueId: string) => req<LobbyView>('GET', `/api/leagues/${leagueId}/lobby`),
+  startLeague: (leagueId: string) =>
+    req<{ leagueId: string; seasonId: string; clubs: number }>('POST', `/api/leagues/${leagueId}/start`),
   squad: () => req<{ players: SquadPlayerView[] }>('GET', '/api/squad'),
   playerDetail: (playerId: string) => req<PlayerDetailView>('GET', `/api/squad/player/${playerId}`),
   defaultTactics: () => req<{ payload: Tactics }>('GET', '/api/default-tactics'),

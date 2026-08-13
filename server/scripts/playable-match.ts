@@ -30,7 +30,6 @@ import { existsSync } from 'node:fs';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { setupSeason } from '../league-setup.ts';
 import { LEAGUE_CFG } from '@fm/engine/config';
 import { bestXI } from '@fm/engine/eligibility';
 import type { EligiblePlayer } from '@fm/engine/eligibility';
@@ -56,8 +55,9 @@ const PASSWORD = 'playable-match-demo';
  * of the league-blind family have been found and EVERY ONE WAS INVISIBLE AT A
  * SINGLE LEAGUE; the fourth wrote cross-league rows. Until now the only
  * end-to-end proof exercised the FIRST league, which is the one the copy does
- * not exist for. These two managers create and join through the PRODUCT PATH —
- * `POST /api/leagues`, `POST /api/leagues/join` — not a seed helper.
+ * not exist for. These two managers create, join AND START through the PRODUCT
+ * PATH — `POST /api/leagues`, `POST /api/leagues/join`, `POST /api/leagues/:id/
+ * start` — the same three routes the lobby screen calls, and not a seed helper.
  */
 const MANAGERS_B = [
   { email: 'carol@demo.io', club: 'Gamma Rovers' },
@@ -684,11 +684,18 @@ async function main(): Promise<void> {
     String(created.pool.copied), await poolCount(created.leagueId));
   await assertNoCrossLeagueRows();
 
-  step(8, "LEAGUE B: its own season, its own auction, its own match");
-  await setupSeason(new pg.Pool({ connectionString: DATABASE_URL, max: 2 }), {
-    leagueId: created.leagueId,
-    clubs: MANAGERS_B.map((m) => ({ name: m.club, managerEmail: m.email })),
-  });
+  step(8, 'LEAGUE B: THE HOST STARTS IT — POST /leagues/:id/start, the lobby button\'s own route');
+  // NOT setupSeason() DIRECTLY. The screen has no other way in, so neither does
+  // this: the script and the lobby now hit the identical route, and a defect in
+  // the host's start cannot hide behind a helper the product never calls.
+  // Two clubs of a capacity of two here — but the route's floor is TWO OF
+  // CAPACITY, because capacity is a ceiling and not a quorum. It is sent by the
+  // creator's client because the route refuses anyone who is not the host.
+  const startedB = await clientsB[0].send<{ seasonId: string; clubs: number }>(
+    'POST', `/leagues/${created.leagueId}/start`, {},
+  );
+  expect(startedB.clubs === MANAGERS_B.length, 'the host start seated every club that had joined',
+    String(MANAGERS_B.length), startedB.clubs);
   for (const c of clientsB) {
     const me = await c.get<{ club: { id: string } | null; leagues: Array<{ id: string }> }>('/me');
     if (!me.club) die(`${c.email} has no club after league B's setup`, JSON.stringify(me.leagues));
