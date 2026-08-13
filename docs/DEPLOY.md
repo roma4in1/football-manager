@@ -147,8 +147,11 @@ other goes red.
 ### 1.4 Create the league — `scripts/setup-production.ts`
 With the schema initialized (§1.3) and the player pool imported (pipeline),
 the league itself — managers, clubs, season, auction — is created by
-`server/scripts/setup-production.ts`. There is no in-app league creation;
-this script is the only path. It is **production-safe by construction**: it
+`server/scripts/setup-production.ts`. **Corrected 2026-08-13: this is no longer
+the only path** — phase 4 shipped `POST /api/leagues` + `POST /api/leagues/join`,
+so a league can be created in the app and joined by code. See
+`docs/RUNBOOK-operator-sitting.md` §9, which is the current instruction for
+creating the first league. It is **production-safe by construction**: it
 never drops or seeds anything, only INSERTs the league rows, and refuses to
 run unless the database is a virgin league (players present, zero seasons,
 zero clubs).
@@ -191,6 +194,9 @@ It prints the season id, the schedule shape, each club with its manager (and
 whether the manager already existed and was linked), and whose nomination
 opens the auction. Managers **sign up with that same email** to claim the seeded
 club (the account links to it), or use forgot-password; then the auction is live.
+**There is no magic link** — `POST /auth/signup` claims a seeded manager row with
+the same email (`league-api.ts`), so claiming needs no email delivery at all. The
+`next: managers log in via magic link` line the script prints is stale text.
 Auth is email + password (`/auth/signup`, `/auth/login`); the only email left is
 password reset. Phase 3 of the accounts arc (LOBBY-DESIGN-SPEC) removes this
 seeded path for a self-service create/join flow.
@@ -262,6 +268,8 @@ the pattern to extend.
 ## 3. Fly — create the app and set secrets
 
 ```sh
+# ⚠️ CORRECTED 2026-08-13: the app that actually exists is football-manager---594q
+# (fly.toml:16). This create line was never used; `fly deploy` reads fly.toml.
 fly apps create topfootballgame        # name must match `app` in fly.toml
 fly secrets set \
   DATABASE_URL='<from §1.2>' \
@@ -290,7 +298,8 @@ fallback.
 First verification, before DNS:
 
 ```sh
-curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
+curl https://football-manager---594q.fly.dev/api/health   # → {"ok":true}
+# (topfootballgame.fly.dev does NOT resolve — corrected 2026-08-13)
 ```
 
 ## 5. Domain — point Cloudflare at Fly
@@ -322,14 +331,18 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
 ## 6. Go-live checklist (condensed order)
 
 1. §1 Supabase project → connection string → `schema.sql` once (§1.3) →
-   `node scripts/migrate.ts --confirm` to adopt the baseline (§1.6, a no-op that
-   just starts tracking the schema) → seed league (§1.4)
+   `node scripts/migrate.ts --confirm` → seed league (§1.4).
+   **No longer a no-op (corrected 2026-08-13):** it adopts 0001 *and runs*
+   0002/0003/0004, and 0003 rewrites every row of `players`, `seasons` and
+   `clubs`. Read `docs/RUNBOOK-operator-sitting.md` §4 before you type it.
 2. §2 Resend domain verified → API key
 3. §3 `fly apps create` + `fly secrets set`
-4. §4 `fly deploy` → health check green on `topfootballgame.fly.dev`
+4. §4 `fly deploy` → health check green on `football-manager---594q.fly.dev`
 5. §5 DNS + cert → health check green on `topfootballgame.com`
 6. §8 set the two GitHub backup secrets, run the `backup` workflow once
-   manually, and confirm you can decrypt the artifact
+   manually, and confirm you can decrypt the artifact. **The job exits 0 with
+   `secrets not configured — skipping` and uploads NOTHING when the secrets are
+   missing** — a green run is not a backup; the artifact is.
 7. **Unset every test override** — `fly config show` must have NONE of
    (`fly secrets unset <NAME>` for each; all live in
    `server/league-test-overrides.ts` and warn loudly at boot):
@@ -340,6 +353,10 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
    - `TEST_FORCE_WEEK_CLOSE` — enables POST /api/admin/force-week-close,
      which closes + sims the current matchweek ON DEMAND (any logged-in
      manager with `{"confirm":"SIM NOW"}`). MUST NOT exist in a real season.
+   - `SIM_ENGINE` — **added 2026-08-13.** Not in `league-test-overrides.ts`, but
+     it has the same boot banner and the same blast radius: `SIM_ENGINE=agent`
+     runs the spatial sim, which does not meet the harness bands. Aggregate is
+     the shipping engine; this must be absent.
 8. Send the 8 managers their URL
 
 ## 7. Ongoing ops
