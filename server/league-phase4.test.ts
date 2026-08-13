@@ -166,6 +166,50 @@ test('THE FOURTH LEAGUE-BLIND INSTANCE: a rollover carries only its OWN league f
   assert.equal(rows[0].player_id, pa);
 });
 
+test('THE FIFTH LEAGUE-BLIND INSTANCE: active contract counts are ONE league\'s', async () => {
+  // The only member of the family that was LATENT: its single caller reads the
+  // map back by keys from one league's clubs, so the extra entries were built
+  // and never looked at. The defect is in the QUERY, so it is pinned at the
+  // query — a second caller with a key from anywhere else is what it costs.
+  await seedTemplates(4);
+  const m1 = await makeManager('One');
+  const m2 = await makeManager('Two');
+  const a = await store.createLeague(pool, { name: 'A', hostAccountId: null, clubCapacity: 4 });
+  const b = await store.createLeague(pool, { name: 'B', hostAccountId: null, clubCapacity: 4 });
+  const clubA = await store.addClubToLeague(pool, a.leagueId, m1, 'Aston');
+  const clubB = await store.addClubToLeague(pool, b.leagueId, m2, 'Boro');
+  const { rows: [sA] } = await pool.query<{ id: string }>(
+    `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id)
+     VALUES (1, 14, 7, $1) RETURNING id`, [a.leagueId]);
+  const { rows: [sB] } = await pool.query<{ id: string }>(
+    `INSERT INTO seasons (number, matchweek_count, transfer_week, league_id)
+     VALUES (1, 14, 7, $1) RETURNING id`, [b.leagueId]);
+
+  // A signs two, B signs one — different numbers so a leak cannot look right
+  const pa = (await pool.query(`SELECT id FROM players WHERE league_id = $1 ORDER BY full_name LIMIT 2`, [a.leagueId])).rows;
+  const pb = (await pool.query(`SELECT id FROM players WHERE league_id = $1 ORDER BY full_name LIMIT 1`, [b.leagueId])).rows;
+  for (const p of pa) {
+    await pool.query(`INSERT INTO contracts (player_id, club_id, wage, duration, season_signed) VALUES ($1,$2,1000,2,$3)`, [p.id, clubA, sA.id]);
+  }
+  await pool.query(`INSERT INTO contracts (player_id, club_id, wage, duration, season_signed) VALUES ($1,$2,1000,2,$3)`, [pb[0].id, clubB, sB.id]);
+
+  const inA = await store.activeContractCounts(pool, sA.id);
+  const inB = await store.activeContractCounts(pool, sB.id);
+
+  // the old form returned BOTH clubs from either call — the whole database
+  assert.equal(inA.size, 1, "league A's ledger holds league A's clubs and no others");
+  assert.equal(inA.get(clubA), 2);
+  assert.equal(inA.get(clubB), undefined, "league B's club must not appear in league A's ledger");
+  assert.equal(inB.size, 1);
+  assert.equal(inB.get(clubB), 1);
+  assert.equal(inB.get(clubA), undefined);
+
+  // and a released contract still drops out, per league
+  await pool.query(`UPDATE contracts SET released_at = now() WHERE club_id = $1`, [clubA]);
+  assert.equal((await store.activeContractCounts(pool, sA.id)).get(clubA), undefined);
+  assert.equal((await store.activeContractCounts(pool, sB.id)).get(clubB), 1, "B is untouched by A releasing");
+});
+
 test('the empty tree: a league created with no templates and no other league gets an EMPTY pool, reported', async () => {
   const a = await store.createLeague(pool, { name: 'A', hostAccountId: null, clubCapacity: 4 });
   assert.equal(a.source, 'none');
