@@ -125,31 +125,115 @@ it would match the thing you accidentally built.
 
 ## 2. STEP 1 — THE BACKUP, AND HOW TO KNOW IT IS REAL
 
-Do this first and do not skip it because a nightly ran. §11 is the only undo for
-what §4 does, and it is only as good as this artifact.
+§11 is the only undo for what §4 does. `0003` is forward-only and claims every
+player row; there is no down-migration and no PITR on the free Supabase plan. So
+this section is not "take a backup" — it is **hold a file you have watched
+restore**.
 
-1. GitHub → **Actions → backup → Run workflow**.
-2. When it finishes, open the run and look at the **Artifacts** section.
+> **TAKE THE SITTING'S BACKUP BY HAND. Do not rely on the nightly.** Not because
+> the workflow is broken (it is fixed — §2.3), but because they answer different
+> questions. The nightly is a net for the weeks either side of the sitting: up to
+> 24 hours stale, living in a GitHub artifact that expires in 30 days and that you
+> would have to download before you could use it. The sitting needs a snapshot
+> from **minutes** before `--confirm`, in your own hands, decryptable now. Every
+> hour between the dump and the migration is data a rollback would lose.
 
-**PASS** — an artifact named `league-backup-<run_id>` exists, containing
-`league-YYYY-MM-DD.sql.gz.enc`, and its size is plausibly a database (tens of KB
-at minimum, not a few hundred bytes).
-**STOP** — the log says `secrets not configured — skipping (pre-launch)`, or the
-run is green with **no artifact**. That is not a backup. Set `PROD_DATABASE_URL`
-and `BACKUP_PASSPHRASE` (GitHub → Settings → Secrets and variables → Actions) and
-run it again.
+### 2.1 Take it
 
-3. **Prove you can decrypt it** — a backup you cannot open is not a backup:
+`$PROD` is already set (§1). The passphrase is the same `BACKUP_PASSPHRASE` the
+workflow uses — one secret, one habit:
 
 ```sh
-export BACKUP_PASSPHRASE='...'
-openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
-  -in league-2026-08-13.sql.gz.enc | gunzip | head -40
+export BACKUP_PASSPHRASE='<the same value as the repo secret>'
+OUT="league-$(date -u +%F)-pre-sitting.sql.gz.enc"
+
+docker run --rm postgres:17-alpine \
+  pg_dump --no-owner --no-privileges --dbname "$PROD" \
+  | gzip \
+  | openssl enc -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
+  > "$OUT"
+
+ls -lh "$OUT"
 ```
 
-**PASS** — SQL header lines (`-- PostgreSQL database dump`, `SET statement_timeout`).
-**STOP** — `bad decrypt`, or binary noise. Wrong passphrase; fix it before going
-further.
+`postgres:17-alpine` because the client must never be older than the server, and
+because the dump carries a `\restrict` header an older `psql` cannot read on the
+way back. The dump is deliberately **not** narrowed with `--schema`: `pg_dump -n
+public` emits `CREATE SCHEMA public`, which fails on restore into a fresh
+database that already has one. Verified locally on 2026-08-13 — the unrestricted
+form is the one whose restore is proven.
+
+**PASS** — the file exists and is tens of KB or more.
+**STOP** — a `pg_dump: error:` line, or a file of a few hundred bytes. Do not
+continue; you have no rollback.
+
+### 2.2 PROVE IT RESTORES — this is the step that matters
+
+A dump that decrypts is not a backup. A dump that *restores* is. One command,
+and it never touches production:
+
+```sh
+BACKUP_PASSPHRASE='…' scripts/verify-backup.sh "$OUT"
+```
+
+It decrypts, gunzips, checks pg_dump's own completion marker, starts a
+throwaway `postgres:17-alpine`, restores into it with `ON_ERROR_STOP=1`, prints
+the row census, and removes the container.
+
+**PASS** — it ends with `✓ RESTORE VERIFIED`, and the census shows the league you
+expect: non-zero `players`, your real club count, your seasons.
+**STOP** — anything else. Each failure is named:
+
+| What it says | What is wrong |
+| --- | --- |
+| `decryption failed` | wrong `BACKUP_PASSPHRASE`, or not one of our files |
+| `decrypted, but not valid gzip` | the artifact is corrupt |
+| `no completion marker — it was cut short` | the dump died mid-stream. It decrypts and gunzips perfectly and is **missing rows**. This is the failure that looks like success. |
+| `the restore FAILED` | it will not bring the league back |
+| `the player pool is EMPTY` | it restored something, but not the league |
+
+**Send me the census.** Then keep the artifact and the passphrase somewhere that
+is not the machine you might be restoring — they are useless apart.
+
+### 2.3 The nightly, which is a separate concern
+
+Fixed in this same change, and worth setting up while you are here, but it is
+**not** the sitting's backup.
+
+**What it was:** `.github/workflows/backup.yml` ended its secrets guard with
+`echo "secrets not configured — skipping (pre-launch)"; exit 0`. A run with no
+secrets was **green and uploaded nothing** — indistinguishable in the Actions
+list from a run that backed the league up, while the rollback for an
+irreversible migration rested on it.
+
+**What it is now:**
+
+- **Missing secrets fail the job**, with an `::error::` naming which ones. A red
+  backup job every night until it is configured is information; a green one that
+  did nothing is a trap.
+- **The artifact is verified before it is uploaded** — the job decrypts its own
+  output, gunzips it, and requires pg_dump's completion marker. The file is only
+  given its `league-*.sql.gz.enc` name after it passes, so the upload step
+  cannot pick up an unverified one.
+- A green run therefore means: the dump completed, it decrypts with the stored
+  passphrase, and it is whole. It still does **not** mean it restores — only
+  §2.2 proves that, on the file you actually hold.
+
+**What you must set, exactly:**
+
+| Secret | Where | Value |
+| --- | --- | --- |
+| `PROD_DATABASE_URL` | **GitHub repo secret** (Settings → Secrets and variables → Actions) | the same session-pooler string as the Fly secret — `$PROD` |
+| `BACKUP_PASSPHRASE` | **GitHub repo secret**, and your password manager | `openssl rand -base64 32` — generate once, never rotate casually: old artifacts only open with the passphrase they were written with |
+
+Both are repo secrets only; neither belongs in Fly. (`DATABASE_URL`,
+`SESSION_SECRET` and `RESEND_API_KEY` are the Fly side and are unrelated to
+backups.)
+
+Then: **Actions → backup → Run workflow**, and check that the run is green **and
+has an artifact** named `league-backup-<run_id>`. Retention is **30 days** — long
+enough to notice a problem, not long enough to be an archive. If a season becomes
+precious, download one and keep it.
 
 ---
 
@@ -513,11 +597,12 @@ a ceiling, not a quorum.
 
 ## 10. EVERYTHING I NEED FROM YOU, IN ONE LIST
 
-Send these five, in this order. Each is quoted verbatim above with its own pass
+Send these six, in this order. Each is quoted verbatim above with its own pass
 and stop conditions.
 
 | # | What | Where | Good | Stop |
 | --- | --- | --- | --- | --- |
+| 0 | the restore census from `scripts/verify-backup.sh` | §2.2 | `✓ RESTORE VERIFIED` and a census that looks like your league | anything else — you have no rollback |
 | 1 | the state read | §3 | matches one of the first three table rows | `has_leagues=t, managed=f`, or `players = 0` |
 | 2 | the migrate dry-run plan | §4.1 | `state unmanaged`, adopt `0001` + run `0002/0003/0004`, `✓ baseline verified` | any `✗`, or `state empty` |
 | 3 | the first 40 boot lines | §6 | none of the four banners | any banner |
@@ -551,7 +636,11 @@ an application bug, never a fix for a bad migration.
 down-migrations by decision. The path is the encrypted dump from §2:
 
 ```sh
-# 1. STOP WRITES FIRST. pg-boss timers keep firing on a live machine.
+# 0. PROVE THE ARTIFACT FIRST. You are about to drop the live schema; find out
+#    that the dump is broken BEFORE that, not after. Costs ~30 seconds.
+BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-13.sql.gz.enc
+
+# 1. STOP WRITES. pg-boss timers keep firing on a live machine.
 fly scale count 0
 
 # 2. decrypt
@@ -569,6 +658,12 @@ psql "$PROD" -v ON_ERROR_STOP=1 -f league.sql
 # 4. back up
 fly scale count 1
 ```
+
+Restore with a `psql` **at least as new as the `pg_dump` that wrote the file** —
+the dump carries a `\restrict` header an older client rejects. The workflow dumps
+with `postgres:17-alpine`; `scripts/verify-backup.sh` restores with the same
+image for exactly this reason (override with `PG_IMAGE=` if you already hold a
+suitable one).
 
 pg-boss rebuilds its own `pgboss` schema on boot. The dump is
 `--no-owner --no-privileges`, so it also restores cleanly into a **fresh Supabase
@@ -621,8 +716,13 @@ first.
 git fetch origin && git status --short && git log --oneline -1 origin/main
 export PROD='postgresql://…pooler.supabase.com:5432/postgres?sslmode=require'
 
-# 1 — backup, and confirm the ARTIFACT exists and decrypts        (§2)
-#     Actions → backup → Run workflow
+# 1 — TAKE THE BACKUP BY HAND, then PROVE IT RESTORES              (§2)
+export BACKUP_PASSPHRASE='<same value as the repo secret>'
+OUT="league-$(date -u +%F)-pre-sitting.sql.gz.enc"
+docker run --rm postgres:17-alpine \
+  pg_dump --no-owner --no-privileges --dbname "$PROD" \
+  | gzip | openssl enc -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE > "$OUT"
+scripts/verify-backup.sh "$OUT"      # must end: ✓ RESTORE VERIFIED
 
 # 2 — read the state; send it                                     (§3)
 psql "$PROD" -c "SELECT to_regclass('public.schema_migrations') IS NOT NULL AS managed, …"
@@ -673,3 +773,15 @@ dig +short topfootballgame.com A && curl -s https://topfootballgame.com/api/heal
 - `pnpm playable` on `main` @ `1a8f93d9`: **41 assertions, 0 failures**, two
   leagues driven to a complete match — the loop closes on the commit this
   runbook deploys.
+- **The restore path in §2.2 and §11.1 was executed, not described.** A rich
+  local database (2 leagues, 4 clubs, 68 players, 52 contracts, 4 played
+  fixtures) was dumped with the workflow's own pipeline, encrypted, then
+  restored into a throwaway container: every row count matched. Both restore
+  targets were tested — a brand-new database, and one wiped with
+  `DROP SCHEMA public CASCADE; CREATE SCHEMA public`.
+- **And the failure that looks like success was constructed and caught.** A
+  truncated dump — valid encryption, valid gzip, 2 000 lines of perfectly good
+  SQL, 281 KB — is rejected by the completion-marker check with exit 1 before
+  any restore is attempted. Five other failure modes (wrong passphrase, corrupt
+  file, tiny file, random bytes, no passphrase) all exit non-zero with named
+  messages.

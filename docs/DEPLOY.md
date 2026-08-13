@@ -406,7 +406,11 @@ hence the supplementary dump.
 
 **What the repo provides:** `.github/workflows/backup.yml` runs a nightly
 `pg_dump`, gzips, **encrypts with AES-256**, and uploads a GitHub artifact
-with 30-day retention. Encryption is mandatory, not paranoia: this repo is
+with 30-day retention. **Corrected 2026-08-13:** it used to `exit 0` with
+`secrets not configured — skipping` and upload nothing, so a green run was
+indistinguishable from a real backup. It now **fails** when the secrets are
+missing, and **verifies its own artifact** (decrypt → gunzip → pg_dump's
+completion marker) before uploading it. Encryption is mandatory, not paranoia: this repo is
 public and public-repo artifacts are downloadable by any logged-in GitHub
 user, while a raw dump contains manager emails and live session ids.
 
@@ -416,7 +420,18 @@ Set two repo secrets (GitHub → Settings → Secrets and variables → Actions)
   manager**: a backup you can't decrypt is not a backup
 
 Then run the workflow once by hand (Actions → backup → Run workflow) and
-**rehearse the restore** before go-live:
+**rehearse the restore** before go-live. One command does the whole rehearsal —
+it decrypts, checks the dump is complete, restores into a throwaway container and
+prints the row census, and never touches production:
+
+```sh
+BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-13.sql.gz.enc
+```
+
+**A dump that decrypts is not a backup; a dump that restores is.** A run cut
+short by a dropped connection decrypts and gunzips perfectly and is missing
+rows — only the completion marker and an actual restore catch it. The manual
+steps, if you want them:
 
 ```sh
 # decrypt + inspect
@@ -427,6 +442,12 @@ openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
 # restore into an EMPTY database (fresh Supabase project or wiped schema):
 psql "<DATABASE_URL>" -v ON_ERROR_STOP=1 -f league.sql
 ```
+
+Restore with a `psql` **at least as new as the `pg_dump` that wrote the file** —
+the dump carries a `\restrict` header an older client does not understand. The
+dump is deliberately not narrowed with `--schema`: `pg_dump -n public` emits
+`CREATE SCHEMA public`, which fails on restore into a database that already has
+one (verified 2026-08-13).
 
 Restoring over a live app: `fly scale count 0` first (stop writes), restore,
 `fly scale count 1`. The dump is `--no-owner --no-privileges`, so it restores
