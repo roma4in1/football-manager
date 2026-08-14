@@ -592,10 +592,14 @@ the database is not in the state this script is for; re-read §3.
 > the symptom.**
 
 > **AND IF YOU ARE TEMPTED BY `reset-league.ts` (DEPLOY.md §1.5) — read its
-> dry-run first.** It empties EVERY league on the database, not one, and it now
-> names them all in the plan. On the sitting's database that is a single
-> "Original league", so it does what you expect; it is listed here because the
-> runbook is also read after phase 4, when it is not.
+> dry-run first.** It empties EVERY league on the database, not one, and it names
+> them all in the plan. On the sitting's database that is a single "Original
+> league", so it does what you expect. After phase 4 it is not: it now **refuses
+> outright** when a non-local database holds more than one league, and it no
+> longer treats "no season" as safe when clubs exist, because a lobby has members
+> and a join code and no season. If you ever see `✗ REFUSE — N leagues on a
+> non-local database`, that is working as intended; there is no flag to override
+> it.
 
 ### 9.2 The self-serve path — the lobby
 

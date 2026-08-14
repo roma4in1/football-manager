@@ -35,26 +35,68 @@ export interface ResetVerdict {
 }
 
 /**
- * Safe to reset when the database cannot be a real league: no season yet, a
- * local dev host, or every club's manager email is a test address. Any club
- * with a real-looking inbox on a non-local host → refuse.
+ * Safe to reset when the database cannot be a real league.
+ *
+ * ── TWO OF THESE RULES ARE NEWER THAN THE TOOL, AND BOTH EXIST BECAUSE PHASE 4
+ *    CHANGED WHAT A DATABASE CAN HOLD ─────────────────────────────────────────
+ *
+ * THE TEARDOWN IS GLOBAL AND STAYS GLOBAL. `reset-league.ts` empties EVERY
+ * league; that is right for the one thing it is for — an operator clearing a
+ * pre-launch database — and it cannot be narrowed without becoming a different
+ * tool (see that file's header for why ordered DELETEs are not a substitution).
+ * So the guard refuses the case the tool cannot express: MORE THAN ONE LEAGUE on
+ * a database that is not a dev box. "Delete one user's league" is a product
+ * feature, not a teardown script, and it must be safe against leagues that are
+ * live — a different problem with a different risk.
+ *
+ * AND "NO SEASON" STOPPED MEANING "NOTHING TO PROTECT". It meant it when the
+ * only way to make a league was `setup-production.ts`, which creates the season
+ * in the same act. A phase-4 LOBBY has clubs, members and a join code somebody
+ * is holding, and no season at all — so the season count alone would have waved
+ * it through. It is only an escape now when there are no clubs either, which is
+ * the genuinely empty tree (and the state a repaired reset leaves behind).
  */
 export function classifyReset(input: {
   host: string;
   seasonCount: number;
+  clubCount: number;
+  leagueCount: number;
   clubEmails: string[];
 }): ResetVerdict {
-  const { host, seasonCount, clubEmails } = input;
+  const { host, seasonCount, clubCount, leagueCount, clubEmails } = input;
   const realEmails = clubEmails.filter((e) => !isTestEmail(e));
-  const localHost = isLocalHost(host);
-  const noSeason = seasonCount === 0;
-  const allTestEmails = clubEmails.length > 0 && realEmails.length === 0;
 
-  const safe = noSeason || localHost || allTestEmails;
-  const reason = noSeason ? 'no season exists — nothing real to protect'
-    : localHost ? `local host (${host}) — a dev database`
-    : allTestEmails ? 'every club manager email is a test address'
-    : `${realEmails.length} club(s) have real manager emails — looks like a real league`;
+  // A dev box is disposable, and `pnpm playable` leaves TWO leagues on one — so
+  // this stays first and unconditional, exactly as before.
+  if (isLocalHost(host)) {
+    return { safe: true, reason: `local host (${host}) — a dev database`, realEmails };
+  }
 
-  return { safe, reason, realEmails };
+  // The tool has no way to remove one of several. Refuse rather than choose.
+  if (leagueCount > 1) {
+    return {
+      safe: false,
+      reason: `${leagueCount} leagues on a non-local database — this tool empties EVERY league and cannot remove one. `
+        + 'Scoping it is a different tool (docs/DEPLOY.md §1.5)',
+      realEmails,
+    };
+  }
+
+  // The genuinely empty tree: no season AND no clubs.
+  if (seasonCount === 0 && clubCount === 0) {
+    return { safe: true, reason: 'no season and no clubs — nothing real to protect', realEmails };
+  }
+
+  if (clubEmails.length > 0 && realEmails.length === 0) {
+    return { safe: true, reason: 'every club manager email is a test address', realEmails };
+  }
+
+  return {
+    safe: false,
+    reason: seasonCount === 0
+      ? `${clubCount} club(s) but no season — a LOBBY league is real: its members hold a join code. `
+        + `${realEmails.length} of them have real manager emails`
+      : `${realEmails.length} club(s) have real manager emails — looks like a real league`,
+    realEmails,
+  };
 }

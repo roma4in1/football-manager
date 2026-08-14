@@ -38,15 +38,49 @@
  *      as well, because CASCADE truncates every table with a foreign key to the
  *      target whether or not any row points at it.
  *
- * ☠️ THE TRUNCATE IS STILL GLOBAL, AND THAT IS RECORDED RATHER THAN FIXED.
- * It empties EVERY league on the database, not one. That was correct while a
- * database held a single league and it is the same league-blind family in a
- * third form now that phase 4 lets a user make more. Scoping it is not a
- * one-line change — TRUNCATE cannot be filtered, so it becomes ordered DELETEs
- * plus a `--league` argument, which changes this tool's contract with its only
- * caller (a human, and docs/DEPLOY.md §1.5). That is its own slice. What this
- * one does is stop it being a surprise: the plan below NAMES every league it is
- * about to remove.
+ * ── THE TEARDOWN IS GLOBAL BY DECISION, AND THE GUARD REFUSES WHAT IT CANNOT
+ *    EXPRESS ──────────────────────────────────────────────────────────────────
+ * It empties EVERY league on the database, not one. That is not an oversight and
+ * it is not getting a `--league` argument, for three reasons that were checked
+ * rather than assumed:
+ *
+ *  1. NOBODY HAS THE PROBLEM A SCOPED RESET SOLVES. This tool has one caller —
+ *     an operator clearing a PRE-LAUNCH database (docs/DEPLOY.md §1.5) — and
+ *     that operator wants everything gone. "Remove one user's league" is a
+ *     product feature that has to be safe while other leagues are LIVE; it
+ *     belongs behind an authenticated route with its own transaction and its own
+ *     confirmation, not in a teardown script whose whole design is that the
+ *     database is disposable.
+ *  2. ORDERED DELETEs ARE NOT A SUBSTITUTION FOR TRUNCATE HERE. Every foreign
+ *     key in this schema is NO ACTION — the ONE exception is
+ *     sessions.selected_league_id (SET NULL). TRUNCATE ... CASCADE works because
+ *     its CASCADE empties dependent TABLES; a DELETE gets no such help, so a
+ *     scoped teardown means ~18 statements in a strict order, and clubs↔seasons
+ *     are a CYCLE: `DELETE FROM clubs WHERE league_id = $1` fails on
+ *     `seasons_champion_fk` while any season in that league names a champion, so
+ *     the cycle must be broken first with an UPDATE. Worse, the rows that must
+ *     go reach a league only TRANSITIVELY and by more than one path —
+ *     `contracts` through clubs AND through seasons(season_signed),
+ *     `squad_players` through clubs AND seasons, `transfer_offers` and
+ *     `transactions` through four columns each. Those paths are exactly what
+ *     this family of defects has already made disagree twice. The dangerous case
+ *     is the one that does not error, and a mis-ordered DELETE that happens to
+ *     succeed leaves orphans behind.
+ *  3. AND THE COLLAPSE MAKES A SCOPED RESET BREAK ON ITS SECOND USE. Resetting
+ *     league A un-stamps A's copy of a footballer — legal, because league B's
+ *     copy is not in `players_template_identity` (the index is partial on
+ *     `league_id IS NULL`). Then resetting league B tries to un-stamp ITS copy of
+ *     the same person and hits `duplicate key value violates unique constraint
+ *     "players_template_identity"`. Verified. A scoped form would have to merge
+ *     into the existing template instead of un-stamping, which is a data-loss
+ *     decision (per-league growth has moved the copies apart) that no teardown
+ *     script should be making silently.
+ *
+ * So the answer is a REFUSAL, not an argument: `classifyReset` now refuses more
+ * than one league on a non-local database, and no longer treats "no season" as
+ * proof that nothing is at stake — a phase-4 LOBBY has clubs, members and a join
+ * code, and no season at all. The plan below still NAMES every league it would
+ * remove, refusal or not.
  *
  * ☠️ THIS DELETES A LEAGUE. Two independent locks make an accidental wipe of a
  *    real friends' season impossible:
@@ -140,6 +174,8 @@ try {
   const { safe, reason } = classifyReset({
     host,
     seasonCount: seasons.length,
+    clubCount: clubs.length,
+    leagueCount: leagues.length,
     clubEmails: clubs.map((c) => c.email),
   });
 

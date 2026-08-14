@@ -227,11 +227,24 @@ database is a virgin league again, ready for `setup-production.ts`.
 > back to one row per footballer, and **deletes the emptied `leagues` rows** so a
 > ghost league cannot survive a reset. Both scripts now count the same predicate.
 >
-> **It still empties EVERY league on the database, not one.** That was right when
-> a database held one league; phase 4 lets a user make more. The dry-run now
-> names every league it will remove — read that list before `--confirm`. Scoping
-> the teardown to a single league is a separate change (TRUNCATE cannot be
-> filtered, so it becomes ordered DELETEs plus a `--league` argument).
+> **It empties EVERY league on the database, not one — by decision, and it now
+> REFUSES rather than guessing.** (Updated 2026-08-14.) There is no `--league`
+> argument and there is not going to be one: this tool's only caller is a
+> pre-launch operator who wants everything gone, "remove one user's league" is a
+> product feature that must be safe while other leagues are live, and a scoped
+> teardown would need ~18 ordered DELETEs (every FK in the schema is NO ACTION),
+> would have to break the clubs↔seasons cycle by hand, and would break on its
+> *second* use when un-stamping a second league's copy collides with the template
+> the first reset created. So instead:
+>
+> - **More than one league on a non-local database → REFUSED**, whatever the
+>   manager emails say. The tool cannot express "just that one".
+> - **"No season" is no longer proof that nothing is at stake.** A phase-4 lobby
+>   has clubs, members and a join code and no season at all; the empty-tree escape
+>   now requires no clubs either.
+>
+> The dry-run still names every league it would remove, refusal or not — read
+> that list before `--confirm`.
 
 It runs locally against `DATABASE_URL`, same as `setup-production.ts` — no
 deploy involved. Two independent locks make wiping a real season by accident
@@ -241,11 +254,13 @@ impossible:
   what it would delete (row counts per table) and the verdict, and writes
   nothing.
 - **Test-season guard.** Even with `--confirm` it refuses unless the database
-  cannot be a real league — one of: *no season exists*, the `DATABASE_URL` host
-  is *local* (`localhost`/`127.0.0.1`/`::1` — a dev DB; the real league is on
-  Supabase), or *every club's manager email is a test address* (sub-addressed
-  like `you+alpha@gmail.com`, or a reserved/demo domain like `example.com` or
-  `demo.io`). A real league's clubs carry real, distinct inboxes, so it refuses
+  cannot be a real league. A *local* `DATABASE_URL` host
+  (`localhost`/`127.0.0.1`/`::1` — a dev DB; the real league is on Supabase) is
+  always allowed. Otherwise it needs one of: *no season **and** no clubs* (a
+  genuinely empty tree — a lobby has clubs and is real), or *every club's manager
+  email is a test address* (sub-addressed like `you+alpha@gmail.com`, or a
+  reserved/demo domain like `example.com` or `demo.io`) — **and never more than
+  one league**. A real league's clubs carry real, distinct inboxes, so it refuses
   on the production database by construction. To replace a *real* season there
   is no shortcut — that is the §1.3 drop-and-reinitialize cutover.
 
