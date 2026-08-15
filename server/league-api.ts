@@ -44,6 +44,7 @@ import type { Orchestrator } from './league-orchestrator.ts';
 import { createTransferCore, TransferError } from './league-transfers.ts';
 import { hashPassword, verifyPassword } from './league-password.ts';
 import * as store from './league-store.ts';
+import { setupSeason, SetupError } from './league-setup.ts';
 
 export const SESSION_COOKIE = 'fm_session';
 
@@ -299,6 +300,11 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
       const body = (req.body ?? {}) as { name?: unknown; clubName?: unknown; capacity?: unknown };
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return reply.code(400).send({ error: 'name_required' });
+      // THE HOST IS AN ACCOUNT, AND A LEAGUE WITHOUT ONE COULD NEVER BE STARTED
+      // — `POST /leagues/:id/start` identifies the host by account. A seeded
+      // manager whose session predates having an account is refused here rather
+      // than left holding a league with no way in.
+      if (!a.accountId) return reply.code(403).send({ error: 'no_account' });
       const identity = a.accountId ? await store.getClubIdentity(pool, a.accountId) : null;
       const clubName = (typeof body.clubName === 'string' && body.clubName.trim())
         || identity?.name || '';
@@ -352,6 +358,71 @@ export async function createApi(opts: ApiOptions): Promise<FastifyInstance> {
         return reply.code(200).send({ leagueId: league.leagueId, name: league.name, clubId });
       } catch (err) {
         if ((err as { code?: string }).code === '23505') return reply.code(409).send({ error: 'club_name_taken' });
+        throw err;
+      }
+    });
+
+    /**
+     * PHASE 4 — THE LOBBY'S READ. Any member of the league may see it; a
+     * non-member gets 404 rather than 403, so a forged id cannot confirm that a
+     * league exists.
+     */
+    sessioned.get('/leagues/:id/lobby', async (req, reply) => {
+      const leagueId = (req.params as { id: string }).id;
+      const mine = await store.clubInLeague(pool, req.account.managerId, leagueId).catch(() => null);
+      if (!mine) return reply.code(404).send({ error: 'not_found' });
+      const view = await store.lobbyView(pool, leagueId);
+      if (!view) return reply.code(404).send({ error: 'not_found' });
+      // `isHost` goes over the wire, the host's ACCOUNT ID does not — it is an
+      // internal key and every member of the league can read this.
+      const { hostAccountId, ...rest } = view;
+      return reply.send({
+        ...rest,
+        isHost: hostAccountId !== null && hostAccountId === req.account.accountId,
+      });
+    });
+
+    /**
+     * PHASE 4 — THE HOST STARTS THE SEASON, and the two refusals are rulings
+     * rather than taste:
+     *  · CAPACITY IS A CEILING, NOT A QUORUM. The floor is setupSeason's own: two
+     *    clubs. A league waiting for a tenth manager who never arrives is worse
+     *    than a four-club league that plays.
+     *  · AN EMPTY POOL BLOCKS THE START. `copyPoolInto` can honestly return
+     *    `none`, and a league with no players cannot auction. It is refused here
+     *    AND surfaced at creation, so it fails loudly when the league is made
+     *    rather than when the auction opens.
+     */
+    sessioned.post('/leagues/:id/start', async (req, reply) => {
+      const leagueId = (req.params as { id: string }).id;
+      const view = await store.lobbyView(pool, leagueId).catch(() => null);
+      if (!view) return reply.code(404).send({ error: 'not_found' });
+      if (view.hostAccountId === null || view.hostAccountId !== req.account.accountId) {
+        return reply.code(403).send({ error: 'not_host' });
+      }
+      if (view.status !== 'lobby') return reply.code(409).send({ error: 'already_started' });
+      if (view.clubs.length < 2) {
+        return reply.code(409).send({ error: 'need_two_clubs', joined: view.clubs.length });
+      }
+      if (view.poolCount === 0) return reply.code(409).send({ error: 'empty_pool' });
+      const { rows: mgrs } = await pool.query(
+        `SELECT m.email, cl.name FROM clubs cl JOIN managers m ON m.id = cl.manager_id
+         WHERE cl.league_id = $1 ORDER BY cl.id`, [leagueId],
+      );
+      try {
+        const out = await setupSeason(pool, {
+          leagueId,
+          clubs: mgrs.map((r: { email: string; name: string }) => ({ name: r.name, managerEmail: r.email })),
+        });
+        return reply.send({ leagueId, seasonId: out.seasonId, clubs: out.clubIds.length });
+      } catch (err) {
+        // THE SUPPLY GUARD IS A REFUSAL, NOT A CRASH. `poolCount > 0` is not the
+        // same as "enough for this many clubs": setupSeason wants
+        // (N-1)*squadMax + squadMin and a 4-4-2 per club per position. A host who
+        // filled a big league from a small pool gets the reason, not a 500.
+        if (err instanceof SetupError) {
+          return reply.code(409).send({ error: 'pool_insufficient', issues: err.issues });
+        }
         throw err;
       }
     });

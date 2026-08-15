@@ -1576,6 +1576,48 @@ export async function addClubToLeague(
   return rows[0].id as string;
 }
 
+export interface LobbyView {
+  leagueId: string; name: string; status: string; capacity: number;
+  joinCode: string | null; hostAccountId: string | null;
+  clubs: Array<{ clubId: string; clubName: string; managerId: string; displayName: string }>;
+  /** uncontracted players in THIS league — 0 means the league cannot auction */
+  poolCount: number;
+}
+
+/**
+ * THE LOBBY'S ONE READ. Everything the screen needs in a single round trip: who
+ * has joined, against what capacity, with what code, and — the part that is not
+ * cosmetic — HOW MANY PLAYERS THIS LEAGUE ACTUALLY HAS. `copyPoolInto` can
+ * legitimately return `none` on a database whose templates were claimed and
+ * which holds no other league, and a league with an empty pool cannot run an
+ * auction. The count is recomputed rather than stored so it stays true as the
+ * league fills and signs.
+ */
+export async function lobbyView(c: Queryable, leagueId: string): Promise<LobbyView | null> {
+  const { rows: l } = await c.query(
+    `SELECT id, name, status::text AS status, club_capacity, join_code, host_account_id
+     FROM leagues WHERE id = $1`, [leagueId],
+  );
+  if (!l[0]) return null;
+  const { rows: clubs } = await c.query(
+    `SELECT cl.id, cl.name, cl.manager_id, m.display_name
+     FROM clubs cl JOIN managers m ON m.id = cl.manager_id
+     WHERE cl.league_id = $1 ORDER BY cl.id`, [leagueId],
+  );
+  const { rows: pool } = await c.query(
+    `SELECT count(*)::int AS n FROM players p
+     WHERE p.league_id = $1
+       AND NOT EXISTS (SELECT 1 FROM contracts ct WHERE ct.player_id = p.id AND ct.released_at IS NULL)`,
+    [leagueId],
+  );
+  return {
+    leagueId: l[0].id, name: l[0].name, status: l[0].status, capacity: l[0].club_capacity,
+    joinCode: l[0].join_code, hostAccountId: l[0].host_account_id,
+    clubs: clubs.map((r) => ({ clubId: r.id, clubName: r.name, managerId: r.manager_id, displayName: r.display_name })),
+    poolCount: pool[0].n,
+  };
+}
+
 export async function listMemberships(c: Queryable, managerId: string): Promise<LeagueMembership[]> {
   const { rows } = await c.query(
     `SELECT l.id AS league_id, l.name AS league_name, l.status::text AS league_status,

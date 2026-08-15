@@ -759,6 +759,19 @@ main.narrow.auth { max-width: 380px; margin: 0 auto; padding: 0 1rem; }
 .league-meta { font-size: var(--fs-xs); }
 .league-row-cta { font-size: var(--fs-xs); font-weight: 700; color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* the lobby (phase 4). A seat is NOT a button — nobody clicks another manager's
+   club — so it borrows .league-row's layout and restates only the border the
+   button rule was providing. And the join code is the one string a person reads
+   out to another person: it is transcribed by hand, so it gets monospace and
+   tracking, and nothing else. Still no new vocabulary. */
+li > .league-row { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.join-code-line { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-2) 0; }
+.join-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-display); font-weight: 700; letter-spacing: 0.2em;
+  padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); background: var(--surface-sunk);
+}
+
 /* ══ the public shell (landing page) ═════════════════════════════════════════
    NOT an app screen. The always-landscape / two-pane / rail layout above is
    the IN-GAME app and does not apply out here: this is portrait-first on a
