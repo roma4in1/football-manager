@@ -73,9 +73,20 @@ if (forceWeekCloseEnabled()) {
 
 // sim engine: default = the calibrated AggregateEngine. SIM_ENGINE=agent
 // opts in to the spatial sim — integration + sim-cost verified, but it does
-// NOT yet meet the stat-harness bands (DECISIONS 2026-08-29): per-match
-// stats will read off-spec (possession spreads, offsides). Visible in
-// `fly config show`, like every operational knob.
+// NOT yet meet the stat-harness bands: per-match stats will read off-spec
+// (possession spreads, offsides). Visible in `fly config show`, like every
+// operational knob.
+//
+// CITED BY TITLE, NOT BY DATE, AND DELIBERATELY. The entry is
+// "engine switch attempted: BLOCKED on outcomes" in DECISIONS.md, which heads
+// it 2026-08-29 — a date the git history contradicts: the commit that wrote it
+// (fac56b32) landed 2026-07-10. It is not alone. 43 of the ledger's 148 dated
+// entries, a contiguous block, are headed between +6 and +55 days AFTER the
+// commit that wrote them, and 15 places in this tree cite that block by date.
+// So the date here was not "corrected" to 2026-07-10: that would point at a
+// heading which does not exist, breaking a reference that works today. Repairing
+// the ledger's dates is its own slice, and it has to renumber all 15 citations
+// in the same change or they break together. A title survives it.
 if (process.env.SIM_ENGINE && !['agent', 'aggregate'].includes(process.env.SIM_ENGINE)) {
   throw new Error(`SIM_ENGINE must be 'agent' or 'aggregate', got ${process.env.SIM_ENGINE}`);
 }
@@ -83,7 +94,8 @@ const engine = process.env.SIM_ENGINE === 'agent' ? new AgentEngine() : undefine
 if (engine) {
   console.warn(
     '[league] ⚠️ SIM_ENGINE=agent — the spatial sim is live: real replay motion, but per-match ' +
-    'stats are NOT yet calibrated to the harness bands (possession spread, offsides — DECISIONS 2026-08-29)',
+    'stats are NOT yet calibrated to the harness bands (possession spread, offsides). ' +
+    'See DECISIONS.md: "engine switch attempted: BLOCKED on outcomes".',
   );
 }
 
