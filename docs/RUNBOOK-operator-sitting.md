@@ -145,40 +145,46 @@ workflow uses — one secret, one habit:
 
 ```sh
 export BACKUP_PASSPHRASE='<the same value as the repo secret>'
-OUT="league-$(date -u +%F)-pre-sitting.sql.gz.enc"
-
-docker run --rm postgres:17-alpine \
-  pg_dump --no-owner --no-privileges --dbname "$PROD" \
-  | gzip \
-  | openssl enc -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
-  > "$OUT"
-
-ls -lh "$OUT"
+DATABASE_URL="$PROD" scripts/take-backup.sh
 ```
+
+One command, and it dumps, encrypts, size-checks and then **verifies the restore**
+before it returns. **It is a script and not three piped commands on purpose** —
+the hand-typed form failed twice in ways a script cannot:
+
+- `-pass env:BACKUP_PASSPHRASE` is correct openssl, but it is the one shell idiom
+  where a `$` is *wrong*. Typed as `-pass env:$BACKUP_PASSPHRASE` the shell
+  expands it first; openssl answers `Can't read environment variable <your
+  passphrase>` — printing the secret — and the redirect still leaves a
+  **zero-byte artifact that looks like a backup**. That happened. The scripts now
+  use `-pass file:`, which takes the `$` the way everything else does and keeps
+  the secret out of `ps` (unlike `-pass pass:…`).
+- An interactive shell has no `pipefail`, so `pg_dump | gzip | openssl > out`
+  reports success when `pg_dump` dies.
 
 `postgres:17-alpine` because the client must never be older than the server, and
 because the dump carries a `\restrict` header an older `psql` cannot read on the
-way back. The dump is deliberately **not** narrowed with `--schema`: `pg_dump -n
-public` emits `CREATE SCHEMA public`, which fails on restore into a fresh
-database that already has one. Verified locally on 2026-08-13 — the unrestricted
-form is the one whose restore is proven.
+way back. **The dump is scoped to `public` + `pgboss`** — see §2.3 for why that
+changed.
 
-**PASS** — the file exists and is tens of KB or more.
-**STOP** — a `pg_dump: error:` line, or a file of a few hundred bytes. Do not
-continue; you have no rollback.
+**PASS** — it ends `✓ RESTORE VERIFIED`.
+**STOP** — anything else. Do not continue; you have no rollback.
 
 ### 2.2 PROVE IT RESTORES — this is the step that matters
 
-A dump that decrypts is not a backup. A dump that *restores* is. One command,
-and it never touches production:
+A dump that decrypts is not a backup. A dump that *restores* is. §2.1 already
+ran this; run it again on any artifact you did not just make — a nightly you
+downloaded, or one from last week:
 
 ```sh
-BACKUP_PASSPHRASE='…' scripts/verify-backup.sh "$OUT"
+BACKUP_PASSPHRASE='…' scripts/verify-backup.sh league-2026-08-15-pre-sitting.sql.gz.enc
 ```
 
-It decrypts, gunzips, checks pg_dump's own completion marker, starts a
-throwaway `postgres:17-alpine`, restores into it with `ON_ERROR_STOP=1`, prints
-the row census, and removes the container.
+It decrypts, gunzips, checks pg_dump's own completion marker, refuses a dump that
+was taken unscoped, starts a throwaway `postgres:17-alpine`, **drops `public` and
+restores into it with `ON_ERROR_STOP=1`** — the rollback's own sequence, not an
+easier one — prints the row census, names the schema version it found, and
+removes the container.
 
 **PASS** — it ends with `✓ RESTORE VERIFIED`, and the census shows the league you
 expect: non-zero `players`, your real club count, your seasons.
@@ -189,15 +195,45 @@ expect: non-zero `players`, your real club count, your seasons.
 | `decryption failed` | wrong `BACKUP_PASSPHRASE`, or not one of our files |
 | `decrypted, but not valid gzip` | the artifact is corrupt |
 | `no completion marker — it was cut short` | the dump died mid-stream. It decrypts and gunzips perfectly and is **missing rows**. This is the failure that looks like success. |
+| `it was taken UNSCOPED` | it carries Supabase's own extensions and nobody can restore it. Re-take it with `scripts/take-backup.sh`. |
 | `the restore FAILED` | it will not bring the league back |
 | `the player pool is EMPTY` | it restored something, but not the league |
+
+The census also prints **which schema version the artifact holds** — e.g.
+`PRE-0003 baseline — accounts, no club_identities, no leagues (untracked)`. On the
+backup you take before §4 that is exactly what you should see, and it is a second
+independent confirmation of §3's state read.
 
 **Send me the census.** Then keep the artifact and the passphrase somewhere that
 is not the machine you might be restoring — they are useless apart.
 
-### 2.3 The nightly, which is a separate concern
+### 2.3 Why the dump is scoped to `public` + `pgboss`
 
-Fixed in this same change, and worth setting up while you are here, but it is
+Because it was not, and a Supabase dump then failed **two ways at once**:
+
+```
+unrestricted      →  extension "supabase_vault" is not available
+--schema=public   →  schema "public" already exists
+```
+
+The first version of the restore path was proven against a `pnpm playable`
+database and never against a Supabase one, and that is the assumption this
+corrects. Supabase owns `auth`, `storage`, `graphql`, `vault` and `extensions`,
+and the extensions inside them: they already exist in any project you would
+restore into, and `supabase_vault` cannot be installed anywhere else at all — so
+an unrestricted dump is not restorable by *anyone*, including the verifier.
+
+Scoped, the dump carries **no `CREATE EXTENSION` line at all** and contains
+exactly what a rollback has to put back. The `CREATE SCHEMA public;` it does emit
+is satisfied by dropping the schema first — which is what §11's rollback does
+anyway, so the verifier now rehearses the real sequence rather than an easier
+one. Nothing is tolerated and no SQL is filtered: an earlier restore only
+"worked" by grepping `CREATE SCHEMA public;` out of the file, and that is a
+workaround, not a verified backup.
+
+### 2.4 The nightly, which is a separate concern
+
+Fixed in an earlier change, and worth setting up while you are here, but it is
 **not** the sitting's backup.
 
 **What it was:** `.github/workflows/backup.yml` ended its secrets guard with
@@ -657,27 +693,49 @@ down-migrations by decision. The path is the encrypted dump from §2:
 
 ```sh
 # 0. PROVE THE ARTIFACT FIRST. You are about to drop the live schema; find out
-#    that the dump is broken BEFORE that, not after. Costs ~30 seconds.
-BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-13.sql.gz.enc
+#    that the dump is broken BEFORE that, not after. Costs ~40 seconds.
+BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-15-pre-sitting.sql.gz.enc
 
 # 1. STOP WRITES. pg-boss timers keep firing on a live machine.
 fly scale count 0
+fly status                      # confirm: 0 machines running
 
-# 2. decrypt
+# 2. DROP WHAT WE OWN, AND ONLY WHAT WE OWN. The dump re-creates both schemas,
+#    so they must not exist — and a scoped dump touches nothing else, which is
+#    why `auth`, `storage`, `graphql`, `vault` and `extensions` are absent from
+#    these lines. THEY ARE SUPABASE'S. Dropping them breaks the project and
+#    nothing in the backup would put them back.
+#    THIS IS THE POINT OF NO RETURN IN THE OTHER DIRECTION: everything currently
+#    in public and pgboss is discarded.
+psql "$PROD" -c 'DROP SCHEMA IF EXISTS pgboss CASCADE;' \
+             -c 'DROP SCHEMA public CASCADE;'
+
+# 3. decrypt (file:, never env: — §2.1) and restore
 export BACKUP_PASSPHRASE='...'
-openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
-  -in league-2026-08-13.sql.gz.enc | gunzip > league.sql
+PASSFILE=$(mktemp); chmod 600 "$PASSFILE"; printf '%s' "$BACKUP_PASSPHRASE" > "$PASSFILE"
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:"$PASSFILE" \
+  -in league-2026-08-15-pre-sitting.sql.gz.enc | gunzip > league.sql
+rm -f "$PASSFILE"
+psql "$PROD" -v ON_ERROR_STOP=1 -f league.sql     # it CREATEs public and pgboss
 
-# 3. the dump has no DROP statements — it restores into an EMPTY schema only.
-#    THIS IS ITSELF DESTRUCTIVE and is the point of no return in the other
-#    direction: everything currently in the database is discarded.
-psql "$PROD" -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' \
-             -c 'DROP SCHEMA IF EXISTS pgboss CASCADE;'
-psql "$PROD" -v ON_ERROR_STOP=1 -f league.sql
+# 4. sanity-check before letting anyone in
+psql "$PROD" -c "SELECT (SELECT count(*) FROM players) AS players,
+                        (SELECT count(*) FROM managers) AS managers;"
 
-# 4. back up
+# 5. back up
 fly scale count 1
+fly checks list
+curl -s https://football-manager---594q.fly.dev/api/health    # {"ok":true}
 ```
+
+> **Do not `CREATE SCHEMA public` yourself.** The older form of this sequence did
+> (`DROP … CASCADE; CREATE SCHEMA public;`) because the dump was unrestricted and
+> did not create it. A scoped dump does, and creating it first is how you get
+> `schema "public" already exists` half way through a rollback.
+
+> **Supabase's dashboard and PostgREST expose `public`.** Dropping and re-creating
+> it is normal for a restore and they recover; this app does not use PostgREST at
+> all, it holds its own connection.
 
 Restore with a `psql` **at least as new as the `pg_dump` that wrote the file** —
 the dump carries a `\restrict` header an older client rejects. The workflow dumps
@@ -736,13 +794,9 @@ first.
 git fetch origin && git status --short && git log --oneline -1 origin/main
 export PROD='postgresql://…pooler.supabase.com:5432/postgres?sslmode=require'
 
-# 1 — TAKE THE BACKUP BY HAND, then PROVE IT RESTORES              (§2)
+# 1 — TAKE THE BACKUP, WHICH VERIFIES ITSELF                       (§2)
 export BACKUP_PASSPHRASE='<same value as the repo secret>'
-OUT="league-$(date -u +%F)-pre-sitting.sql.gz.enc"
-docker run --rm postgres:17-alpine \
-  pg_dump --no-owner --no-privileges --dbname "$PROD" \
-  | gzip | openssl enc -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE > "$OUT"
-scripts/verify-backup.sh "$OUT"      # must end: ✓ RESTORE VERIFIED
+DATABASE_URL="$PROD" scripts/take-backup.sh      # must end: ✓ RESTORE VERIFIED
 
 # 2 — read the state; send it                                     (§3)
 psql "$PROD" -c "SELECT to_regclass('public.schema_migrations') IS NOT NULL AS managed, …"
