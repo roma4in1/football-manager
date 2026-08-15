@@ -147,8 +147,11 @@ other goes red.
 ### 1.4 Create the league — `scripts/setup-production.ts`
 With the schema initialized (§1.3) and the player pool imported (pipeline),
 the league itself — managers, clubs, season, auction — is created by
-`server/scripts/setup-production.ts`. There is no in-app league creation;
-this script is the only path. It is **production-safe by construction**: it
+`server/scripts/setup-production.ts`. **Corrected 2026-08-13: this is no longer
+the only path** — phase 4 shipped `POST /api/leagues` + `POST /api/leagues/join`,
+so a league can be created in the app and joined by code. See
+`docs/RUNBOOK-operator-sitting.md` §9, which is the current instruction for
+creating the first league. It is **production-safe by construction**: it
 never drops or seeds anything, only INSERTs the league rows, and refuses to
 run unless the database is a virgin league (players present, zero seasons,
 zero clubs).
@@ -189,8 +192,13 @@ DATABASE_URL='<session-pooler url, §1.2>' node scripts/setup-production.ts club
 
 It prints the season id, the schedule shape, each club with its manager (and
 whether the manager already existed and was linked), and whose nomination
-opens the auction. Managers **sign up with that same email** to claim the seeded
+opens the auction. Its pool line reads **`unclaimed templates`**: it counts
+`players WHERE league_id IS NULL`, the same set `setupSeason` will claim, so the
+dry-run and the apply cannot disagree (corrected 2026-08-14). Managers **sign up with that same email** to claim the seeded
 club (the account links to it), or use forgot-password; then the auction is live.
+**There is no magic link** — `POST /auth/signup` claims a seeded manager row with
+the same email (`league-api.ts`), so claiming needs no email delivery at all. The
+`next: managers log in via magic link` line the script prints is stale text.
 Auth is email + password (`/auth/signup`, `/auth/login`); the only email left is
 password reset. Phase 3 of the accounts arc (LOBBY-DESIGN-SPEC) removes this
 seeded path for a self-service create/join flow.
@@ -204,11 +212,39 @@ no replacing — that's the §1.3 cutover.
 ### 1.5 Reset a TEST league — `scripts/reset-league.ts`
 Pre-launch you will want to tear a test league back down to zero (e.g. after
 smoke-testing, before loading the real clubs). `scripts/reset-league.ts` does
-exactly that: one `TRUNCATE seasons, clubs, matchweeks, fixtures CASCADE`
+exactly that: `TRUNCATE seasons, clubs, matchweeks, fixtures CASCADE`
 empties the entire league graph — clubs, contracts, squads, fixtures, results,
 auctions, transfers, transactions, playoffs — while **keeping the imported
 `players` pool and the `managers`** (so §1.4 can re-link them). Afterwards the
 database is a virgin league again, ready for `setup-production.ts`.
+
+> **⚠️ Corrected 2026-08-14 — post-0003 "virgin" means TEMPLATES.** The reset used
+> to keep the players and leave every one of them stamped with the id of the
+> league it had just deleted, so the pool looked full and read as empty:
+> `setup-production.ts` printed `pool 120 players` and then refused with
+> `position_undersupplied: MF has 0 in the pool` on the same database. The reset
+> now returns the pool to `league_id IS NULL`, collapsing each league's copies
+> back to one row per footballer, and **deletes the emptied `leagues` rows** so a
+> ghost league cannot survive a reset. Both scripts now count the same predicate.
+>
+> **It empties EVERY league on the database, not one — by decision, and it now
+> REFUSES rather than guessing.** (Updated 2026-08-14.) There is no `--league`
+> argument and there is not going to be one: this tool's only caller is a
+> pre-launch operator who wants everything gone, "remove one user's league" is a
+> product feature that must be safe while other leagues are live, and a scoped
+> teardown would need ~18 ordered DELETEs (every FK in the schema is NO ACTION),
+> would have to break the clubs↔seasons cycle by hand, and would break on its
+> *second* use when un-stamping a second league's copy collides with the template
+> the first reset created. So instead:
+>
+> - **More than one league on a non-local database → REFUSED**, whatever the
+>   manager emails say. The tool cannot express "just that one".
+> - **"No season" is no longer proof that nothing is at stake.** A phase-4 lobby
+>   has clubs, members and a join code and no season at all; the empty-tree escape
+>   now requires no clubs either.
+>
+> The dry-run still names every league it would remove, refusal or not — read
+> that list before `--confirm`.
 
 It runs locally against `DATABASE_URL`, same as `setup-production.ts` — no
 deploy involved. Two independent locks make wiping a real season by accident
@@ -218,11 +254,13 @@ impossible:
   what it would delete (row counts per table) and the verdict, and writes
   nothing.
 - **Test-season guard.** Even with `--confirm` it refuses unless the database
-  cannot be a real league — one of: *no season exists*, the `DATABASE_URL` host
-  is *local* (`localhost`/`127.0.0.1`/`::1` — a dev DB; the real league is on
-  Supabase), or *every club's manager email is a test address* (sub-addressed
-  like `you+alpha@gmail.com`, or a reserved/demo domain like `example.com` or
-  `demo.io`). A real league's clubs carry real, distinct inboxes, so it refuses
+  cannot be a real league. A *local* `DATABASE_URL` host
+  (`localhost`/`127.0.0.1`/`::1` — a dev DB; the real league is on Supabase) is
+  always allowed. Otherwise it needs one of: *no season **and** no clubs* (a
+  genuinely empty tree — a lobby has clubs and is real), or *every club's manager
+  email is a test address* (sub-addressed like `you+alpha@gmail.com`, or a
+  reserved/demo domain like `example.com` or `demo.io`) — **and never more than
+  one league**. A real league's clubs carry real, distinct inboxes, so it refuses
   on the production database by construction. To replace a *real* season there
   is no shortcut — that is the §1.3 drop-and-reinitialize cutover.
 
@@ -262,6 +300,8 @@ the pattern to extend.
 ## 3. Fly — create the app and set secrets
 
 ```sh
+# ⚠️ CORRECTED 2026-08-13: the app that actually exists is football-manager---594q
+# (fly.toml:16). This create line was never used; `fly deploy` reads fly.toml.
 fly apps create topfootballgame        # name must match `app` in fly.toml
 fly secrets set \
   DATABASE_URL='<from §1.2>' \
@@ -290,7 +330,8 @@ fallback.
 First verification, before DNS:
 
 ```sh
-curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
+curl https://football-manager---594q.fly.dev/api/health   # → {"ok":true}
+# (topfootballgame.fly.dev does NOT resolve — corrected 2026-08-13)
 ```
 
 ## 5. Domain — point Cloudflare at Fly
@@ -322,14 +363,18 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
 ## 6. Go-live checklist (condensed order)
 
 1. §1 Supabase project → connection string → `schema.sql` once (§1.3) →
-   `node scripts/migrate.ts --confirm` to adopt the baseline (§1.6, a no-op that
-   just starts tracking the schema) → seed league (§1.4)
+   `node scripts/migrate.ts --confirm` → seed league (§1.4).
+   **No longer a no-op (corrected 2026-08-13):** it adopts 0001 *and runs*
+   0002/0003/0004, and 0003 rewrites every row of `players`, `seasons` and
+   `clubs`. Read `docs/RUNBOOK-operator-sitting.md` §4 before you type it.
 2. §2 Resend domain verified → API key
 3. §3 `fly apps create` + `fly secrets set`
-4. §4 `fly deploy` → health check green on `topfootballgame.fly.dev`
+4. §4 `fly deploy` → health check green on `football-manager---594q.fly.dev`
 5. §5 DNS + cert → health check green on `topfootballgame.com`
 6. §8 set the two GitHub backup secrets, run the `backup` workflow once
-   manually, and confirm you can decrypt the artifact
+   manually, and confirm you can decrypt the artifact. **The job exits 0 with
+   `secrets not configured — skipping` and uploads NOTHING when the secrets are
+   missing** — a green run is not a backup; the artifact is.
 7. **Unset every test override** — `fly config show` must have NONE of
    (`fly secrets unset <NAME>` for each; all live in
    `server/league-test-overrides.ts` and warn loudly at boot):
@@ -340,6 +385,10 @@ curl https://topfootballgame.fly.dev/api/health   # → {"ok":true}
    - `TEST_FORCE_WEEK_CLOSE` — enables POST /api/admin/force-week-close,
      which closes + sims the current matchweek ON DEMAND (any logged-in
      manager with `{"confirm":"SIM NOW"}`). MUST NOT exist in a real season.
+   - `SIM_ENGINE` — **added 2026-08-13.** Not in `league-test-overrides.ts`, but
+     it has the same boot banner and the same blast radius: `SIM_ENGINE=agent`
+     runs the spatial sim, which does not meet the harness bands. Aggregate is
+     the shipping engine; this must be absent.
 8. Send the 8 managers their URL
 
 ## 7. Ongoing ops
@@ -389,7 +438,11 @@ hence the supplementary dump.
 
 **What the repo provides:** `.github/workflows/backup.yml` runs a nightly
 `pg_dump`, gzips, **encrypts with AES-256**, and uploads a GitHub artifact
-with 30-day retention. Encryption is mandatory, not paranoia: this repo is
+with 30-day retention. **Corrected 2026-08-13:** it used to `exit 0` with
+`secrets not configured — skipping` and upload nothing, so a green run was
+indistinguishable from a real backup. It now **fails** when the secrets are
+missing, and **verifies its own artifact** (decrypt → gunzip → pg_dump's
+completion marker) before uploading it. Encryption is mandatory, not paranoia: this repo is
 public and public-repo artifacts are downloadable by any logged-in GitHub
 user, while a raw dump contains manager emails and live session ids.
 
@@ -399,7 +452,18 @@ Set two repo secrets (GitHub → Settings → Secrets and variables → Actions)
   manager**: a backup you can't decrypt is not a backup
 
 Then run the workflow once by hand (Actions → backup → Run workflow) and
-**rehearse the restore** before go-live:
+**rehearse the restore** before go-live. One command does the whole rehearsal —
+it decrypts, checks the dump is complete, restores into a throwaway container and
+prints the row census, and never touches production:
+
+```sh
+BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-13.sql.gz.enc
+```
+
+**A dump that decrypts is not a backup; a dump that restores is.** A run cut
+short by a dropped connection decrypts and gunzips perfectly and is missing
+rows — only the completion marker and an actual restore catch it. The manual
+steps, if you want them:
 
 ```sh
 # decrypt + inspect
@@ -410,6 +474,12 @@ openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
 # restore into an EMPTY database (fresh Supabase project or wiped schema):
 psql "<DATABASE_URL>" -v ON_ERROR_STOP=1 -f league.sql
 ```
+
+Restore with a `psql` **at least as new as the `pg_dump` that wrote the file** —
+the dump carries a `\restrict` header an older client does not understand. The
+dump is deliberately not narrowed with `--schema`: `pg_dump -n public` emits
+`CREATE SCHEMA public`, which fails on restore into a database that already has
+one (verified 2026-08-13).
 
 Restoring over a live app: `fly scale count 0` first (stop writes), restore,
 `fly scale count 1`. The dump is `--no-owner --no-privileges`, so it restores

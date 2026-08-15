@@ -59,12 +59,6 @@ const pool = new pg.Pool({ connectionString: DATABASE_URL });
 try {
   // ── guards: only a virgin league is acceptable ──────────────────────────────
 
-  const players = await pool.query(
-    `SELECT position, count(*)::int AS n FROM players GROUP BY position ORDER BY position`,
-  );
-  const poolTotal = players.rows.reduce((a, r) => a + Number(r.n), 0);
-  if (poolTotal === 0) fail('player pool is EMPTY — load the pool first (pipeline import); this script never seeds players');
-
   const { rows: [counts] } = await pool.query(
     `SELECT (SELECT count(*)::int FROM seasons) AS seasons,
             (SELECT count(*)::int  FROM clubs) AS clubs,
@@ -77,6 +71,32 @@ try {
     fail(`${counts.clubs} club(s) already exist without a season — the database is in an unexpected half-state; inspect it before setting up`);
   }
 
+  // ── and only then the pool ──────────────────────────────────────────────
+  // ORDER MATTERS: the state guards run FIRST. A database that already has a
+  // season has also already had its templates claimed by that setup, so a pool
+  // check in front would refuse with "no unclaimed players" and bury the real
+  // reason, which is that this script only ever creates the FIRST season.
+  //
+  // THE SAME POOL setupSeason WILL CLAIM, AND FOR THE SAME REASON IT CLAIMS IT.
+  // This count was league-blind — `GROUP BY position` over every row in the
+  // table — while setupSeason's supply guard counts `WHERE league_id IS NULL`.
+  // Post-0003 those are different sets, and the two disagreed out loud: the
+  // dry-run printed `pool 120 players` and `--apply` refused with `MF has 0 in
+  // the pool` on the same database. They now read the same predicate, so they
+  // agree BY CONSTRUCTION rather than by coincidence on a freshly reset tree.
+  const players = await pool.query(
+    `SELECT position, count(*)::int AS n FROM players WHERE league_id IS NULL GROUP BY position ORDER BY position`,
+  );
+  const poolTotal = players.rows.reduce((a, r) => a + Number(r.n), 0);
+  if (poolTotal === 0) {
+    const { rows: [all] } = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM players`);
+    fail(Number(all.n) === 0
+      ? 'player pool is EMPTY — load the pool first (pipeline import); this script never seeds players'
+      : `no UNCLAIMED players: all ${all.n} player row(s) already belong to a league (players.league_id is set). ` +
+        'A league\'s pool is its own; this script can only claim templates. Reset first (docs/DEPLOY.md §1.5), ' +
+        'which returns the pool to templates.');
+  }
+
   const { rows: existingManagers } = await pool.query(
     `SELECT email FROM managers WHERE email = ANY($1)`,
     [clubs.map((c) => c.managerEmail)],
@@ -85,7 +105,7 @@ try {
 
   // ── the plan ────────────────────────────────────────────────────────────────
 
-  console.log(`  pool     ${poolTotal} players (${players.rows.map((r) => `${r.position} ${r.n}`).join(', ')})`);
+  console.log(`  pool     ${poolTotal} unclaimed templates (${players.rows.map((r) => `${r.position} ${r.n}`).join(', ')})`);
   for (const c of clubs) {
     console.log(`  club     ${c.name} — ${c.managerEmail}${preExisting.has(c.managerEmail) ? ' (manager already seeded, will link)' : ''}`);
   }
@@ -107,7 +127,9 @@ try {
   console.log(`  schedule ${rounds} regular matchweeks, transfer window after week ${transferAfterWeek}`);
   console.log(`  clubs    ${clubIds.length} (each needs ${LEAGUE_CFG.squadMin} players to complete the auction)`);
   console.log(`  auction  ${firstNominator} nominates first (snake over reverse seed order; seed = club name A→Z)`);
-  console.log('next: managers log in via magic link and run the auction');
+  // There is no magic link: POST /auth/signup CLAIMS a seeded manager row with
+  // the same email (league-api.ts), so a manager takes their club by signing up.
+  console.log('next: each manager SIGNS UP at the site with the email above — that claims their club');
 } finally {
   await pool.end();
 }
