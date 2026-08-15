@@ -328,7 +328,7 @@ export function createAuctionCore(opts: AuctionCoreOptions): AuctionCore {
       const clubs = await store.clubsBySeed(c, season.id);
       const floors = async (): Promise<Map<string, number>> => {
         const counts = await store.squadCounts(c, season.id);
-        const contracted = await store.activeContractCounts(c);
+        const contracted = await store.activeContractCounts(c, season.id);
         return new Map(clubs.map((club) => [
           club.clubId,
           Math.min(counts.get(club.clubId) ?? 0, contracted.get(club.clubId) ?? 0),

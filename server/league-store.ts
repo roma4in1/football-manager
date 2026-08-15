@@ -668,10 +668,35 @@ export async function squadCounts(c: Queryable, seasonId: string): Promise<Map<s
   return new Map(rows.map((r) => [r.club_id, r.n]));
 }
 
-/** Active contracts per club — the second ledger the completion floor checks. */
-export async function activeContractCounts(c: Queryable): Promise<Map<string, number>> {
+/**
+ * Active contracts per club — the second ledger the completion floor checks.
+ *
+ * LEAGUE-BLIND, THE FIFTH INSTANCE, AND THE ONLY ONE THAT WAS LATENT RATHER
+ * THAN LIVE. The old form was `SELECT club_id, count(*) FROM contracts WHERE
+ * released_at IS NULL GROUP BY club_id` — every live contract in the database,
+ * keyed by club, with no league predicate at all. It survived a two-league
+ * production run for a reason that is not a property of the query: its one
+ * caller reads it back with `contracted.get(club.clubId)` for clubs drawn from
+ * `clubsBySeed(seasonId)`, so the extra leagues' entries were built and never
+ * looked at. THAT IS A PROPERTY OF THE CALLER. A second caller passing a key
+ * from anywhere else — a lobby view, an admin screen, a cross-league report —
+ * would read another league's count and never error, which is this family's
+ * whole signature.
+ *
+ * Scoped by SEASON to match `squadCounts` directly above it: the completion
+ * floor compares the two ledgers club by club, and two ledgers on different
+ * scopes is how the ledgers disagree in the first place. The season resolves to
+ * its league; contracts reach a league only through `clubs`.
+ */
+export async function activeContractCounts(c: Queryable, seasonId: string): Promise<Map<string, number>> {
   const { rows } = await c.query(
-    `SELECT club_id, count(*)::int AS n FROM contracts WHERE released_at IS NULL GROUP BY club_id`,
+    `SELECT ct.club_id, count(*)::int AS n
+     FROM contracts ct
+     JOIN clubs cl ON cl.id = ct.club_id
+     WHERE ct.released_at IS NULL
+       AND cl.league_id = (SELECT league_id FROM seasons WHERE id = $1)
+     GROUP BY ct.club_id`,
+    [seasonId],
   );
   return new Map(rows.map((r) => [r.club_id, r.n]));
 }
