@@ -457,7 +457,10 @@ it decrypts, checks the dump is complete, restores into a throwaway container an
 prints the row census, and never touches production:
 
 ```sh
-BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-13.sql.gz.enc
+# take one (dumps, encrypts, and verifies the restore in one command)
+BACKUP_PASSPHRASE='...' DATABASE_URL='<url>' scripts/take-backup.sh
+# or verify one you already hold
+BACKUP_PASSPHRASE='...' scripts/verify-backup.sh league-2026-08-15.sql.gz.enc
 ```
 
 **A dump that decrypts is not a backup; a dump that restores is.** A run cut
@@ -466,20 +469,31 @@ rows — only the completion marker and an actual restore catch it. The manual
 steps, if you want them:
 
 ```sh
-# decrypt + inspect
+# decrypt + inspect. `-pass file:`, NOT `-pass env:` — the env form is correct
+# openssl but is the one idiom where a `$` is wrong, and `-pass env:$VAR` makes
+# the shell expand it: openssl then prints your passphrase in an error and the
+# redirect leaves a zero-byte "backup". (`-pass pass:…` leaks it to `ps`.)
 export BACKUP_PASSPHRASE='...'
-openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
-  -in league-2026-07-09.sql.gz.enc | gunzip > league.sql
+PASSFILE=$(mktemp); chmod 600 "$PASSFILE"; printf '%s' "$BACKUP_PASSPHRASE" > "$PASSFILE"
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:"$PASSFILE" \
+  -in league-2026-08-15.sql.gz.enc | gunzip > league.sql
+rm -f "$PASSFILE"
 
 # restore into an EMPTY database (fresh Supabase project or wiped schema):
 psql "<DATABASE_URL>" -v ON_ERROR_STOP=1 -f league.sql
 ```
 
 Restore with a `psql` **at least as new as the `pg_dump` that wrote the file** —
-the dump carries a `\restrict` header an older client does not understand. The
-dump is deliberately not narrowed with `--schema`: `pg_dump -n public` emits
-`CREATE SCHEMA public`, which fails on restore into a database that already has
-one (verified 2026-08-13).
+the dump carries a `\restrict` header an older client does not understand.
+
+**The dump is scoped to `public` + `pgboss` (corrected 2026-08-15).** It was
+unrestricted, which was tested against a local database and never against a
+Supabase one — and a Supabase dump fails both ways: unrestricted it needs
+`supabase_vault`, which cannot be installed elsewhere; with `--schema=public` it
+hits `schema "public" already exists`. Scoped, it carries no `CREATE EXTENSION`
+at all, and the `CREATE SCHEMA public` it emits is satisfied by **dropping the
+schema first**, which is what a rollback does anyway. Restore into a database
+where `public` and `pgboss` do NOT exist; do not create them yourself.
 
 Restoring over a live app: `fly scale count 0` first (stop writes), restore,
 `fly scale count 1`. The dump is `--no-owner --no-privileges`, so it restores

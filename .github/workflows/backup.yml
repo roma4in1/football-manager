@@ -34,10 +34,24 @@
 # (docs/RUNBOOK-operator-sitting.md §2) makes that a required step of the
 # operator sitting.
 #
-# The dump is deliberately NOT restricted with --schema. `pg_dump -n public`
-# emits `CREATE SCHEMA public`, which fails on restore into a fresh database
-# that already has one (verified locally, 2026-08-13). Unrestricted is the form
-# whose restore is proven.
+# ── THE DUMP IS SCOPED TO public + pgboss, AND THAT WAS A CORRECTION ────────
+# It was unrestricted, on the reasoning that `pg_dump -n public` emits
+# `CREATE SCHEMA public` and fails on restore into a fresh database that already
+# has one. Both halves of that were true and the conclusion was still wrong,
+# because it was tested against a `pnpm playable` database and never against a
+# SUPABASE one. A Supabase dump breaks BOTH ways:
+#
+#     unrestricted     →  extension "supabase_vault" is not available
+#     --schema=public  →  schema "public" already exists
+#
+# Supabase owns auth/storage/graphql/vault/extensions and the extensions inside
+# them. They exist already in any project we would restore into, and
+# supabase_vault cannot be installed anywhere else at all — so an unrestricted
+# dump is not restorable by anyone, including this job's own verify step. Scoped,
+# the dump carries no CREATE EXTENSION line and contains exactly what a rollback
+# has to put back; the `CREATE SCHEMA public` it does emit is satisfied by
+# dropping the schema first, which is what the rollback does anyway (runbook
+# §11). pg_dump tolerates `pgboss` being absent as long as one pattern matches.
 
 name: backup
 
@@ -74,14 +88,21 @@ jobs:
           PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
+          # the passphrase goes in a FILE, never `env:` and never `pass:` — see
+          # scripts/take-backup.sh for why (`-pass env:$VAR` is the trap; a `$`
+          # makes the shell expand it and openssl prints the secret and writes a
+          # zero-byte artifact). CI does not type it, but the runbook copies from
+          # here, so both use one form.
+          umask 077; printf '%s' "$BACKUP_PASSPHRASE" > pass.txt
           # pg_dump from the postgres:17 image so the client is never older than
           # the Supabase server (new projects are Postgres 17). Restore with a
           # psql at least this new: the dump carries a \restrict header that an
           # older client does not understand.
           docker run --rm postgres:17-alpine \
-            pg_dump --no-owner --no-privileges --dbname "$PROD_DATABASE_URL" \
+            pg_dump --no-owner --no-privileges --schema=public --schema=pgboss \
+                    --dbname "$PROD_DATABASE_URL" \
             | gzip \
-            | openssl enc -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
+            | openssl enc -aes-256-cbc -pbkdf2 -pass file:pass.txt \
             > unverified.sql.gz.enc
           ls -l unverified.sql.gz.enc
 
@@ -96,8 +117,9 @@ jobs:
             exit 1
           fi
 
+          umask 077; printf '%s' "$BACKUP_PASSPHRASE" > pass.txt
           # decrypt → gunzip → does it carry pg_dump's own last line?
-          if ! openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE \
+          if ! openssl enc -d -aes-256-cbc -pbkdf2 -pass file:pass.txt \
                  -in unverified.sql.gz.enc > plain.sql.gz; then
             echo "::error title=backup does not decrypt::BACKUP_PASSPHRASE does not open the file this job just wrote"
             exit 1
@@ -111,8 +133,15 @@ jobs:
             exit 1
           fi
 
+          # an unscoped dump would carry Supabase's extensions and be
+          # unrestorable — catch it here rather than in someone's rollback
+          if grep -q '^CREATE EXTENSION' plain.sql; then
+            echo "::error title=backup is UNSCOPED::it carries CREATE EXTENSION statements (Supabase's own) and cannot be restored"
+            exit 1
+          fi
+
           echo "verified: $(wc -l < plain.sql) SQL lines, $(du -h plain.sql | cut -f1) uncompressed, ${size} bytes encrypted"
-          rm -f plain.sql plain.sql.gz
+          rm -f plain.sql plain.sql.gz pass.txt
           # only NOW does it get the name the upload step globs for
           mv unverified.sql.gz.enc "league-$(date -u +%F).sql.gz.enc"
           ls -lh league-*.sql.gz.enc
